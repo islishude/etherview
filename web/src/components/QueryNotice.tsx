@@ -14,8 +14,8 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   if (loading) {
     return (
       <div className={compact ? "query-notice compact" : "query-notice"} role="status">
-        <span className="pulse-dot" aria-hidden="true" />
-        {t("state.loading")}
+        <span className="query-loading-spinner" aria-hidden="true" />
+        <span>{t("state.loading")}</span>
       </div>
     );
   }

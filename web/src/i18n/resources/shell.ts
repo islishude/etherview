@@ -134,7 +134,6 @@ export const shellResources = {
       statusDescription:
         "Core coverage and optional enrichment completeness are tracked independently.",
       verify: "Verify contract",
-      verifyDescription: "Submit Solidity or Yul source for bounded, code-hash-bound verification.",
       block: "Block",
       transaction: "Transaction",
       transactionDetails: "Transaction details",
@@ -320,7 +319,6 @@ export const shellResources = {
       status: "索引器状态",
       statusDescription: "核心覆盖与可选增强的完整度分别跟踪。",
       verify: "验证合约",
-      verifyDescription: "提交 Solidity 或 Yul 源码，在资源受限环境中按代码哈希验证。",
       block: "区块",
       transaction: "交易",
       transactionDetails: "交易详情",

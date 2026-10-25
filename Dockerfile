@@ -21,6 +21,7 @@ RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --fi
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/tsconfig.worker.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
+COPY web/test ./web/test
 ARG ETHERVIEW_WEB_BRANDING_DIR=web/branding/default
 COPY ["${ETHERVIEW_WEB_BRANDING_DIR}/", "/src/web-branding/"]
 RUN ETHERVIEW_WEB_BRANDING_DIR=/src/web-branding pnpm --dir web run build

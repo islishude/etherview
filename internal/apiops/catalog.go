@@ -73,6 +73,11 @@ type Spec struct {
 }
 
 var catalog = []Spec{
+	spec("submitBrowserAddressVerification", "POST", "/verification-jobs/local", false),
+	spec("importBrowserSourcifyContract", "POST", "/verification-jobs/sourcify-import", false),
+	spec("submitBrowserSourcifyVerification", "POST", "/verification-jobs/sourcify", false),
+	spec("submitBrowserSourcifyFromEtherscan", "POST", "/verification-jobs/sourcify-from-etherscan", false),
+	spec("getBrowserVerifierJob", "GET", "/verification-jobs/{id}", false, pathParameter("id", ParameterUUID)),
 	spec("getStatus", "GET", "/status", false),
 	spec("getPublicConfig", "GET", "/config", false),
 	spec("listGenesisAccounts", "GET", "/genesis/accounts", false,
@@ -280,6 +285,8 @@ var catalog = []Spec{
 		pathParameter("address", ParameterAddress),
 		cursorParameter(), limitParameter("20")),
 	spec("submitAddressVerification", "POST", "/contracts/{address}/verification", false,
+		pathParameter("address", ParameterAddress)),
+	spec("importSourcifyContract", "POST", "/contracts/{address}/verification/sourcify", false,
 		pathParameter("address", ParameterAddress)),
 	spec("verifyVyperMultipart", "POST", "/verifier/vyper/multipart", false),
 	spec("verifyVyperStandardJson", "POST", "/verifier/vyper/standard-json", false),

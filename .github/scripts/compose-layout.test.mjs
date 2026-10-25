@@ -221,3 +221,27 @@ test("Preview Make commands pass the unified env path through the Compose native
     /^start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = \$\(PREVIEW_ENV_FILE\)$/m,
   );
 });
+
+for (const key of [
+  "ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS",
+  "ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS",
+]) {
+  test(`${key} reaches Preview and both deployment topologies`, () => {
+    for (const value of [undefined, "false", "true"]) {
+      for (const [args, owner] of [
+        [[], "api"],
+        [
+          ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "monolith"],
+          "etherview",
+        ],
+        [
+          ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "distributed"],
+          "api",
+        ],
+      ]) {
+        const config = render(args, { [key]: value });
+        assert.equal(config.services[owner].environment[key], value ?? null);
+      }
+    }
+  });
+}

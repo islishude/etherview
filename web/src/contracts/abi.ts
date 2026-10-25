@@ -12,6 +12,7 @@ import {
   type AbiParameter,
   type Hex,
 } from "viem";
+import { parseAbiMutability } from "./abiMutability";
 import {
   ABI_LIMITS,
   AbiBudget,
@@ -48,6 +49,8 @@ export type {
  * Parses one verified artifact ABI into a detached, deeply frozen value.
  * Accessors, custom prototypes, sparse arrays, unknown fields, unsupported
  * Solidity types, and values outside the fixed browser work limits fail closed.
+ * Historical field omissions are normalized; constant/payable flags must agree
+ * with explicit stateMutability, which is retained as the single source of truth.
  */
 export function parseVerifiedABI(value: unknown): Abi {
   try {
@@ -361,20 +364,25 @@ function parseAbiJSON(value: unknown): unknown {
 
 function parseAbiItem(value: unknown, path: string, budget: AbiBudget): Abi[number] {
   const record = snapshotRecord(value, path, budget);
-  const type = requiredString(record, "type", path, budget);
+  const type = record.has("type") ? requiredString(record, "type", path, budget) : "function";
   switch (type) {
     case "function": {
       assertAllowedKeys(
         record,
-        new Set(["type", "name", "inputs", "outputs", "stateMutability"]),
+        new Set(["type", "name", "inputs", "outputs", "stateMutability", "constant", "payable"]),
         path,
       );
       const name = requiredIdentifier(record, "name", path, budget);
       const inputs = parseParameters(record.get("inputs"), `${path}.inputs`, budget, 0, false);
-      const outputs = parseParameters(record.get("outputs"), `${path}.outputs`, budget, 0, false);
-      const stateMutability = requiredEnum(
+      const outputs = parseParameters(
+        record.has("outputs") ? record.get("outputs") : [],
+        `${path}.outputs`,
+        budget,
+        0,
+        false,
+      );
+      const stateMutability = parseAbiMutability(
         record,
-        "stateMutability",
         ["pure", "view", "nonpayable", "payable"] as const,
         path,
         budget,
@@ -382,11 +390,14 @@ function parseAbiItem(value: unknown, path: string, budget: AbiBudget): Abi[numb
       return Object.freeze({ type, name, inputs, outputs, stateMutability });
     }
     case "constructor": {
-      assertAllowedKeys(record, new Set(["type", "inputs", "stateMutability"]), path);
-      const inputs = parseParameters(record.get("inputs"), `${path}.inputs`, budget, 0, false);
-      const stateMutability = requiredEnum(
+      assertAllowedKeys(
         record,
-        "stateMutability",
+        new Set(["type", "inputs", "stateMutability", "constant", "payable"]),
+        path,
+      );
+      const inputs = parseParameters(record.get("inputs"), `${path}.inputs`, budget, 0, false);
+      const stateMutability = parseAbiMutability(
+        record,
         ["nonpayable", "payable"] as const,
         path,
         budget,
@@ -394,10 +405,9 @@ function parseAbiItem(value: unknown, path: string, budget: AbiBudget): Abi[numb
       return Object.freeze({ type, inputs, stateMutability });
     }
     case "fallback": {
-      assertAllowedKeys(record, new Set(["type", "stateMutability"]), path);
-      const stateMutability = requiredEnum(
+      assertAllowedKeys(record, new Set(["type", "stateMutability", "constant", "payable"]), path);
+      const stateMutability = parseAbiMutability(
         record,
-        "stateMutability",
         ["nonpayable", "payable"] as const,
         path,
         budget,
@@ -405,14 +415,8 @@ function parseAbiItem(value: unknown, path: string, budget: AbiBudget): Abi[numb
       return Object.freeze({ type, stateMutability });
     }
     case "receive": {
-      assertAllowedKeys(record, new Set(["type", "stateMutability"]), path);
-      const stateMutability = requiredEnum(
-        record,
-        "stateMutability",
-        ["payable"] as const,
-        path,
-        budget,
-      );
+      assertAllowedKeys(record, new Set(["type", "stateMutability", "constant", "payable"]), path);
+      const stateMutability = parseAbiMutability(record, ["payable"] as const, path, budget, false);
       return Object.freeze({ type, stateMutability });
     }
     case "event": {
@@ -1404,18 +1408,6 @@ function optionalBoolean(
   if (!record.has(key)) return undefined;
   const value = record.get(key);
   if (typeof value !== "boolean") throw new AbiFormError("INVALID_ABI", `${path}.${key}`);
-  return value;
-}
-
-function requiredEnum<const Values extends readonly string[]>(
-  record: ReadonlyMap<string, unknown>,
-  key: string,
-  values: Values,
-  path: string,
-  budget: AbiBudget,
-): Values[number] {
-  const value = requiredString(record, key, path, budget);
-  if (!values.includes(value)) throw new AbiFormError("INVALID_ABI", `${path}.${key}`);
   return value;
 }
 

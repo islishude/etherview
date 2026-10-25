@@ -3,6 +3,7 @@ package verify
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -62,6 +63,16 @@ func TestVyperLockedCacheAuthenticatesAndRepairs(t *testing.T) {
 	var downloads atomic.Int32
 	parent := &VyperCompiler{Path: fixture.Path, SharedPath: fixture.SharedPath, Cache: &CompilerCache{Root: t.TempDir(), InstallLocker: testCompilerCacheInstallLocker, unsafeHTTPClient: lockedVyperClient(t, &downloads)}}
 	entry := CatalogEntry{Version: recipe.Version, ArtifactSHA256: compilerDigest}
+	working := parent.Cache.unsafeHTTPClient
+	parent.Cache.unsafeHTTPClient = &http.Client{Transport: vyperTestTransport(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 503, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader([]byte("secret")))}, nil
+	})}
+	if _, err := parent.ensureRuntime(t.Context(), recipe.Version, entry, artifact); err == nil {
+		t.Fatal("unavailable archive accepted")
+	} else if failure, ok := errors.AsType[CompilerDownloadError](err); !ok || failure.Code != ErrorCompilerDownloadUnavailable {
+		t.Fatalf("lost download error classification: %v", err)
+	}
+	parent.Cache.unsafeHTTPClient = working
 	child, err := parent.ensureRuntime(t.Context(), recipe.Version, entry, artifact)
 	if err != nil {
 		t.Fatal(err)

@@ -32,14 +32,10 @@ export function ProxySummary({
     .filter((outcome) => outcome.family && outcome.status !== "not-detected")
     .map((outcome) => `${outcome.family}${outcome.variant ? ` (${outcome.variant})` : ""}`)
     .join(" → ");
-  const eyebrow = proxyEyebrow(detail, primaryOutcome?.family, diamond !== undefined);
   return (
     <details className="panel proxy-summary">
       <summary className="panel-heading">
-        <div>
-          <span className="eyebrow">{eyebrow}</span>
-          <h2 id="proxy-summary-title">{t("contracts.proxy.title")}</h2>
-        </div>
+        <h2 id="proxy-summary-title">{t("contracts.proxy.title")}</h2>
         {detail ? (
           <span
             className={
@@ -276,17 +272,6 @@ function Fact({ label, value, mono }: { label: string; value: string; mono?: boo
       <dd className={mono ? "mono-wrap" : undefined}>{value}</dd>
     </div>
   );
-}
-
-function proxyEyebrow(
-  detail: ContractProxyDetails | undefined,
-  family: string | undefined,
-  diamond: boolean,
-): string {
-  if (diamond) return "ERC-2535 Diamond";
-  if (detail?.mechanism === "cwia" || family === "cwia") return "Solady legacy CWIA";
-  if (family === "safe") return "Safe Proxy";
-  return "OpenZeppelin 5.x";
 }
 
 function ImmutableArgsFacts({ detail, t }: { detail: ContractProxyDetails; t: Translate }) {

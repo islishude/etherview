@@ -13,6 +13,8 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
   await more.focus();
   await page.keyboard.press("Enter");
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Verify contract", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "User Ops", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(more).toBeFocused();
@@ -28,6 +30,7 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
     await expect(more).toBeHidden();
     await explore.click();
     await more.click();
+    await expect(page.getByRole("link", { name: "Verify contract", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Sync status" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(more).toBeFocused();

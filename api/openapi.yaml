@@ -1615,6 +1615,136 @@ paths:
           $ref: "#/components/responses/Error"
         default:
           $ref: "#/components/responses/Error"
+  /verification-jobs/local:
+    post:
+      operationId: submitBrowserAddressVerification
+      tags: [verification]
+      description: >-
+        Browser submission requires an active user session, exact same-origin
+        Origin and session-bound CSRF. API keys do not authorize this operation.
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserAddressVerificationSubmission"
+      responses:
+        "202":
+          description: Verification accepted for asynchronous execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserVerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification-jobs/sourcify-import:
+    post:
+      operationId: importBrowserSourcifyContract
+      tags: [verification]
+      description: >-
+        Browser submission requires an active user session, exact same-origin
+        Origin and session-bound CSRF. API keys do not authorize this operation.
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrowserSourcifySourceImportRequest"
+      responses:
+        "202":
+          description: Verification accepted for asynchronous execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserVerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification-jobs/sourcify:
+    post:
+      operationId: submitBrowserSourcifyVerification
+      tags: [verification]
+      description: >-
+        Browser submission requires an active user session, exact same-origin
+        Origin and session-bound CSRF. API keys do not authorize this operation.
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcifySubmission"
+      responses:
+        "202":
+          description: Verification accepted for asynchronous execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserVerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification-jobs/sourcify-from-etherscan:
+    post:
+      operationId: submitBrowserSourcifyFromEtherscan
+      tags: [verification]
+      description: >-
+        Browser submission requires an active user session, exact same-origin
+        Origin and session-bound CSRF. API keys do not authorize this operation.
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcifyFromEtherscanSubmission"
+      responses:
+        "202":
+          description: Verification accepted for asynchronous execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserVerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /verification-jobs/{id}:
+    get:
+      operationId: getBrowserVerifierJob
+      tags: [verification]
+      description: >-
+        An active user may read a known job ID. Jobs are not user-owned.
+        Returns only status, outcome and target identity, never submitted files
+        or credentials. Reads remain available when new submissions are disabled.
+      security:
+        - UserSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Current verification status and durable target identity.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrowserVerificationJobResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /contracts/{address}/verification:
     post:
       operationId: submitAddressVerification
@@ -1650,6 +1780,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerifiedContractResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /contracts/{address}/verification/sourcify:
+    post:
+      operationId: importSourcifyContract
+      tags: [contracts, verification]
+      description: >-
+        Fetch already-verified sources from the configured Sourcify service for
+        the requested source chain and enqueue ordinary local address verification
+        on this deployment's chain for the same address.
+        No sources are uploaded to Sourcify. External results are not trusted as
+        local evidence; compiler and canonical publication checks remain required.
+      security:
+        - APIKey: []
+      parameters:
+        - $ref: "#/components/parameters/Address"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourcifySourceImportRequest"
+      responses:
+        "202":
+          description: Sources retrieved and local verification queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationJobResponse"
         default:
           $ref: "#/components/responses/Error"
   /contracts/{address}/proxy:
@@ -2468,6 +2627,18 @@ components:
       type: string
       pattern: "^0x[0-9a-fA-F]{40}$"
       description: A 20-byte address; responses use the EIP-55 checksum form.
+    SourcifySourceImportRequest:
+      type: object
+      additionalProperties: false
+      required: [chain_id]
+      properties:
+        chain_id:
+          allOf:
+            - $ref: "#/components/schemas/Quantity"
+          description: >-
+            Positive uint64 source chain ID on Sourcify, encoded as a canonical
+            decimal string. The local verification target remains on the
+            deployment's chain and must have identical runtime bytecode.
     Quantity:
       type: string
       pattern: "^(0|[1-9][0-9]*)$"
@@ -5633,6 +5804,16 @@ components:
           $ref: "#/components/schemas/Quantity"
         address:
           $ref: "#/components/schemas/Address"
+        etherscan_api_key:
+          type: string
+          minLength: 1
+          maxLength: 256
+          pattern: "^[!-~]+$"
+          writeOnly: true
+          description: >-
+            Optional Etherscan API key, separate from the Etherview X-API-Key.
+            Sent to the configured Sourcify service only for this import.
+            Encrypted before durable enqueue and never returned in job responses.
     VerificationMatchType:
       type: string
       enum: [full, partial]
@@ -5963,7 +6144,7 @@ components:
                 $ref: "#/components/schemas/DerivedContract"
     VerificationOrigin:
       type: string
-      enum: [submitted, sourcify, factory_derived]
+      enum: [submitted, sourcify, factory_derived, eth_bytecode_db]
     DerivedVerificationProvenance:
       type: object
       additionalProperties: false
@@ -7447,6 +7628,152 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SearchResult"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    BrowserAddressVerificationSubmission:
+      type: object
+      additionalProperties: false
+      required: [address, language, compiler_version, input_kind]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        target_file:
+          type: string
+          minLength: 1
+          maxLength: 384
+          description: Required Vyper target .vy file in the inline source bundle.
+        optimization_mode:
+          type: string
+          enum: [none, gas, codesize]
+          description: Vyper multipart optimization mode; omit to use the selected compiler default.
+        interfaces:
+          type: object
+          maxProperties: 1024
+          additionalProperties:
+            type: object
+            additionalProperties: true
+          description: Vyper multipart inline interfaces containing content or an ABI array.
+        language:
+          $ref: "#/components/schemas/VerifierLanguage"
+        compiler_version:
+          type: string
+          minLength: 1
+          maxLength: 128
+        input_kind:
+          type: string
+          enum: [multipart, standard_json, geas_sources]
+        input:
+          type: object
+          additionalProperties: true
+        sources:
+          type: object
+          minProperties: 1
+          maxProperties: 1024
+          additionalProperties:
+            type: string
+        evm_version:
+          type: string
+          maxLength: 64
+        optimization_runs:
+          type: integer
+          minimum: 0
+          maximum: 2147483647
+        libraries:
+          type: object
+          maxProperties: 4096
+          additionalProperties:
+            $ref: "#/components/schemas/Address"
+        contract_name_hint:
+          type: string
+          maxLength: 512
+        runtime_entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 384
+        creation_entrypoint:
+          type: string
+          minLength: 1
+          maxLength: 384
+    BrowserSourcifySourceImportRequest:
+      type: object
+      additionalProperties: false
+      required: [address, chain_id]
+      properties:
+        address:
+          $ref: "#/components/schemas/Address"
+        chain_id:
+          allOf:
+            - $ref: "#/components/schemas/Quantity"
+          description: >-
+            Positive uint64 source chain ID on Sourcify, encoded as a canonical
+            decimal string. The local verification target remains on the
+            deployment's chain and must have identical runtime bytecode.
+    BrowserVerificationJob:
+      type: object
+      required: [id, kind, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - address
+            - solidity_multipart
+            - solidity_standard_json
+            - vyper_standard_json
+            - vyper_multipart
+            - solidity_batch_multipart
+            - solidity_batch_standard_json
+            - sourcify
+            - sourcify_from_etherscan
+        status:
+          type: string
+          enum: [queued, running, succeeded, failed, cancelled]
+        outcome:
+          $ref: "#/components/schemas/BrowserVerificationOutcome"
+        error_code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        address:
+          $ref: "#/components/schemas/Address"
+        chain_id:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+          description: Durable target chain ID; absent for standalone bytecode jobs.
+    BrowserVerificationOutcome:
+      type: object
+      required: [kind]
+      description: Status and match evidence only; source and compiler artifacts are excluded.
+      properties:
+        kind:
+          type: string
+          enum:
+            [
+              compilation_failure,
+              verification_failure,
+              verification_success,
+              batch_results,
+              sourcify_success,
+            ]
+        verification_id:
+          type: string
+          format: uuid
+        runtime_match:
+          $ref: "#/components/schemas/VerificationMatchDetails"
+        creation_match:
+          $ref: "#/components/schemas/VerificationMatchDetails"
+    BrowserVerificationJobResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/BrowserVerificationJob"
         meta:
           $ref: "#/components/schemas/Meta"
     VerificationJobResponse:

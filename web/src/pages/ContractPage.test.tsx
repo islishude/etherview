@@ -97,6 +97,105 @@ afterEach(() => {
 });
 
 describe("contract proxy route", () => {
+  it("keeps Code visible while proxy classification is pending and then shows unverified state", async () => {
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const pendingResponse = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    installContractAPI({
+      pattern: "none",
+      verificationStatus: 404,
+      proxyResponse: () => pendingResponse,
+    });
+    renderContractRoute();
+    try {
+      const panel = await screen.findByRole("tabpanel", { name: "Code" });
+      expect(within(panel).getByRole("status")).toHaveTextContent(i18n.t("state.loading"));
+      expect(panel.querySelector(".query-loading-spinner")).toHaveAttribute("aria-hidden", "true");
+      expect(
+        within(panel).queryByRole("link", { name: "Submit a verification request" }),
+      ).toBeNull();
+      resolveResponse?.(envelope(proxyDetail("none")));
+      expect(
+        await within(panel).findByRole("link", { name: "Submit a verification request" }),
+      ).toBeVisible();
+    } finally {
+      resolveResponse?.(envelope(proxyDetail("none")));
+    }
+  });
+
+  it.each([
+    ["read-contract", "Read contract"],
+    ["write-contract", "Write contract"],
+    ["read-implementation", "Read implementation (as proxy)"],
+    ["write-implementation", "Write implementation (as proxy)"],
+    ["management", "Proxy management"],
+    ["upgrades", "Upgrade history"],
+    ["initializations", "Initialization history"],
+    ["diamond-facets", "Diamond facets"],
+    ["diamond-cuts", "DiamondCut history"],
+  ] as const)(
+    "shows loading instead of an empty %s subpage while resolving its dependencies",
+    async (hash, label) => {
+      let resolveResponse: ((response: Response) => void) | undefined;
+      const pendingResponse = new Promise<Response>((resolve) => {
+        resolveResponse = resolve;
+      });
+      installContractAPI({
+        pattern: "none",
+        verificationStatus: 404,
+        proxyResponse: () => pendingResponse,
+      });
+      renderContractRoute(hash);
+      try {
+        const panel = await screen.findByRole("tabpanel", { name: label });
+        expect(within(panel).getByRole("status")).toHaveTextContent(i18n.t("state.loading"));
+        expect(panel.querySelector(".query-loading-spinner")).toBeInTheDocument();
+        resolveResponse?.(envelope(proxyDetail("none")));
+        expect(
+          await screen.findByRole("link", { name: "Submit a verification request" }),
+        ).toBeVisible();
+        expect(screen.queryByText(i18n.t("state.loading"))).toBeNull();
+      } finally {
+        resolveResponse?.(envelope(proxyDetail("none")));
+      }
+    },
+  );
+
+  it("does not report a missing optional proxy record as an artifact error", async () => {
+    installContractAPI({
+      pattern: "none",
+      proxyResponse: async () =>
+        Response.json({ error: { code: "not_found", message: "not found" } }, { status: 404 }),
+    });
+    renderContractRoute();
+    expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
+    expect(screen.queryByText("Indexed entity not found")).toBeNull();
+  });
+
+  it.each(["unavailable", "failed"] as const)(
+    "explains a %s proxy classification without displaying unchecked artifacts",
+    async (status) => {
+      installContractAPI({
+        pattern: "none",
+        proxyResponse: async () => envelope({ ...proxyDetail("none"), status }),
+      });
+      renderContractRoute();
+      const panel = await screen.findByRole("tabpanel", { name: "Code" });
+      expect(
+        await within(panel).findByText(i18n.t(`contracts.proxy.status.${status}`)),
+      ).toBeVisible();
+      expect(within(panel).queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+    },
+  );
+
+  it("shows a proxy request error on Code even when the artifact is unverified", async () => {
+    installContractAPI({ pattern: "none", proxyStatus: 503, verificationStatus: 404 });
+    renderContractRoute();
+    const panel = await screen.findByRole("tabpanel", { name: "Code" });
+    expect(await within(panel).findByText("Explorer API is not available yet")).toBeVisible();
+  });
+
   it("explains when the contract has no verified artifact", async () => {
     installContractAPI({ pattern: "none", verificationStatus: 404 });
     renderContractRoute();
@@ -160,6 +259,7 @@ describe("contract proxy route", () => {
   it("preserves a requested subpage while a contract API request is temporarily unavailable", async () => {
     installContractAPI({ pattern: "none", proxyStatus: 503 });
     renderContractRoute("management");
+    expect(await screen.findByText("Explorer API is not available yet")).toBeVisible();
 
     const tabs = await screen.findByRole("tablist", { name: "Contract interaction sections" });
     await waitFor(() =>
@@ -197,10 +297,10 @@ describe("contract proxy route", () => {
     renderContractRoute();
 
     await screen.findByRole("heading", { name: "Proxy identity" });
-    const summary = document.querySelector("details.proxy-summary");
+    const summary = document.querySelector<HTMLElement>("details.proxy-summary");
     expect(summary).not.toBeNull();
     summary!.setAttribute("open", "");
-    expect(await screen.findByText("Safe Proxy")).toBeVisible();
+    expect(within(summary!).getByText("Proxy family").nextElementSibling).toHaveTextContent("safe");
     expect(screen.getAllByText("Confirmed").length).toBeGreaterThan(0);
     expect(screen.getByText(implementationAddress)).toBeVisible();
     expect(
@@ -214,7 +314,7 @@ describe("contract proxy route", () => {
     renderContractRoute();
 
     await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
-    expect(await screen.findByText("ERC-2535 Diamond")).toBeVisible();
+    expect(screen.getByText("Proxy family").nextElementSibling).toHaveTextContent("erc2535");
     expect(screen.getByText("Full cross-check")).toBeVisible();
     expect(screen.getByText("Not detected")).toBeVisible();
 
@@ -255,6 +355,9 @@ describe("contract proxy route", () => {
       await within(codePanel!).findByRole("heading", { name: "Proxy identity" });
       expect(codePanel!.querySelector("details.proxy-summary")).not.toHaveAttribute("open");
       expect(within(codePanel!).getByRole("heading", { name: "Proxy identity" })).toBeVisible();
+      const proxyHeading = codePanel!.querySelector<HTMLElement>("details.proxy-summary > summary");
+      expect(proxyHeading!.querySelector(".eyebrow")).toBeNull();
+      expect(within(proxyHeading!).getByText("Verified")).toBeVisible();
       const tabs = await screen.findByRole("tablist", {
         name: "Contract interaction sections",
       });
@@ -628,6 +731,7 @@ function installContractAPI({
   safeDetection,
   diamondDetection,
   proxyStatus,
+  proxyResponse,
   verificationStatus,
   cwiaSchemaStatus,
   cwiaUnverified,
@@ -639,6 +743,7 @@ function installContractAPI({
   safeDetection?: boolean;
   diamondDetection?: boolean;
   proxyStatus?: number;
+  proxyResponse?: () => Promise<Response>;
   verificationStatus?: number;
   cwiaSchemaStatus?: "decoded" | "schema_unavailable";
   cwiaUnverified?: boolean;
@@ -667,6 +772,7 @@ function installContractAPI({
       });
     }
     if (url.pathname === `/api/v1/contracts/${proxyAddress}/proxy`) {
+      if (proxyResponse) return proxyResponse();
       if (proxyStatus !== undefined) {
         return Response.json(
           { error: { code: "temporary_failure", message: "temporarily unavailable" } },

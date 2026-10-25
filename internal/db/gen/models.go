@@ -402,6 +402,51 @@ type BlockStatistic struct {
 	ContractCreationCount  *int64             `db:"contract_creation_count" json:"contract_creation_count"`
 }
 
+type BytecodeDbAttempt struct {
+	ServiceID       []byte      `db:"service_id" json:"service_id"`
+	TargetDigest    []byte      `db:"target_digest" json:"target_digest"`
+	CandidateDigest []byte      `db:"candidate_digest" json:"candidate_digest"`
+	SupportDigest   []byte      `db:"support_digest" json:"support_digest"`
+	JobID           pgtype.UUID `db:"job_id" json:"job_id"`
+}
+
+type BytecodeDbLookup struct {
+	ServiceID      []byte             `db:"service_id" json:"service_id"`
+	BytecodeType   string             `db:"bytecode_type" json:"bytecode_type"`
+	Digest         []byte             `db:"digest" json:"digest"`
+	Bytecode       []byte             `db:"bytecode" json:"bytecode"`
+	Sources        []byte             `db:"sources" json:"sources"`
+	Requested      bool               `db:"requested" json:"requested"`
+	Limited        bool               `db:"limited" json:"limited"`
+	Outcome        string             `db:"outcome" json:"outcome"`
+	Failures       int32              `db:"failures" json:"failures"`
+	NextAttemptAt  pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	LeaseToken     *string            `db:"lease_token" json:"lease_token"`
+	LeaseExpiresAt pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+}
+
+type BytecodeDbScan struct {
+	ServiceID     []byte             `db:"service_id" json:"service_id"`
+	ChainID       pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	CursorAddress []byte             `db:"cursor_address" json:"cursor_address"`
+	ScanAfter     pgtype.Timestamptz `db:"scan_after" json:"scan_after"`
+}
+
+type BytecodeDbService struct {
+	ID            []byte             `db:"id" json:"id"`
+	NextRequestAt pgtype.Timestamptz `db:"next_request_at" json:"next_request_at"`
+}
+
+type BytecodeDbTarget struct {
+	ServiceID      []byte             `db:"service_id" json:"service_id"`
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Address        []byte             `db:"address" json:"address"`
+	NextAttemptAt  pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
+	Outcome        string             `db:"outcome" json:"outcome"`
+	LeaseToken     *string            `db:"lease_token" json:"lease_token"`
+	LeaseExpiresAt pgtype.Timestamptz `db:"lease_expires_at" json:"lease_expires_at"`
+}
+
 type CanonicalBlock struct {
 	ChainID   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Number    pgtype.Numeric     `db:"number" json:"number"`
@@ -2380,6 +2425,10 @@ type UupsImplementationObservationGeneration struct {
 	DurableJobID            int64              `db:"durable_job_id" json:"durable_job_id"`
 	JobGeneration           int64              `db:"job_generation" json:"job_generation"`
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type VerificationClaimGate struct {
+	Singleton bool `db:"singleton" json:"singleton"`
 }
 
 type VerificationCompilationContract struct {

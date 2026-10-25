@@ -71,6 +71,13 @@ The first administrator first proves wallet ownership through ordinary login,
 then an operator promotes that existing user through the writer-backed CLI.
 Public registration never creates an administrator.
 
+Browser verification has a separate session-authenticated boundary at
+`/api/v1/verification-jobs/*`, with exact Origin and CSRF checks on writes.
+These endpoints never accept an API key as user identity, and existing native
+and Etherscan verification endpoints never accept a Cookie in place of a key.
+The status projection and shared execution rules are defined in
+[ADR-0024](ADR-0024-verifier-v2-workflow.md#session-authenticated-verification).
+
 ## Consequences
 
 - User sessions require PostgreSQL and are identical in monolith and split API

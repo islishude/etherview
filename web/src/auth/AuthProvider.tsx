@@ -142,6 +142,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    if (!session.authenticated || !session.expires_at) return;
+    const expires = Date.parse(session.expires_at);
+    let timer: ReturnType<typeof setTimeout>;
+    const expire = () => {
+      const remaining = expires - Date.now();
+      if (remaining > 0) {
+        timer = setTimeout(expire, Math.min(remaining, 2_147_483_647));
+        return;
+      }
+      generationRef.current += 1;
+      loginAttemptRef.current = undefined;
+      commitSession(unauthenticatedSession);
+      setPending(false);
+      setLoading(false);
+    };
+    expire();
+    return () => clearTimeout(timer);
+  }, [commitSession, session.authenticated, session.expires_at]);
+
   const walletIdentity = wallet.active
     ? [
         wallet.active.uuid,

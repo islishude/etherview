@@ -50,6 +50,8 @@ type Registry struct {
 	traceJobs                     map[string]uint64
 	verifyJobs                    map[string]uint64
 	derivedVerification           map[pair]uint64
+	bytecodeDB                    map[string]uint64
+	bytecodeDBBacklog             int64
 	metadata                      map[string]uint64
 	maintenance                   map[pair]uint64
 	browserPush                   map[string]uint64
@@ -123,6 +125,7 @@ func NewRegistry(version, role string) *Registry {
 		traceJobs:                     make(map[string]uint64),
 		verifyJobs:                    make(map[string]uint64),
 		derivedVerification:           make(map[pair]uint64),
+		bytecodeDB:                    make(map[string]uint64),
 		metadata:                      make(map[string]uint64),
 		maintenance:                   make(map[pair]uint64),
 		browserPush:                   make(map[string]uint64),
@@ -338,6 +341,22 @@ func (registry *Registry) RecordDerivedVerification(kind, result string) {
 	registry.incrementPair(registry.derivedVerification, kind, result)
 }
 
+// RecordBytecodeDB uses a closed vocabulary, never provider URLs or addresses.
+func (registry *Registry) RecordBytecodeDB(result string) {
+	switch result {
+	case "hit", "not_found", "unavailable", "rate_limited", "rejected", "response_too_large", "invalid_response", "invalid_candidate", "unsupported_candidate", "compiler_unavailable", "verification_pending", "verification_failed", "verified", "waiting_facts", "lookup_pending", "limited", "candidate_limited", "storage_error":
+	default:
+		result = "other"
+	}
+	registry.increment(registry.bytecodeDB, result)
+}
+
+func (registry *Registry) SetBytecodeDBBacklog(count int64) {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	registry.bytecodeDBBacklog = max(count, 0)
+}
+
 // SetVerificationCompilerAvailable records one bounded compiler family's
 // runtime and catalog availability.
 func (registry *Registry) SetVerificationCompilerAvailable(family string, available bool) {
@@ -523,6 +542,9 @@ func (registry *Registry) Gather() string {
 	fmt.Fprintf(&output, "etherview_safe_proxy_compatible_candidate_total %d\n", registry.safeProxyCompatibleCandidates)
 	writeCounters(&output, "etherview_trace_jobs_total", "Trace jobs grouped by result.", "result", registry.traceJobs)
 	writeCounters(&output, "etherview_verification_jobs_total", "Verification jobs grouped by result.", "result", registry.verifyJobs)
+	writeCounters(&output, "etherview_bytecode_db_total", "Automatic source discovery outcomes.", "result", registry.bytecodeDB)
+	writeHelp(&output, "etherview_bytecode_db_pending", "Source discovery targets ready for processing.", "gauge")
+	fmt.Fprintf(&output, "etherview_bytecode_db_pending %d\n", registry.bytecodeDBBacklog)
 	writePairCounters(&output, "etherview_derived_verification_total", "Factory-derived verification operations grouped by bounded kind and result.", "kind", "result", registry.derivedVerification)
 	writeCounters(&output, "etherview_metadata_fetches_total", "Metadata fetches grouped by result, including SSRF rejection.", "result", registry.metadata)
 	writePairCounters(&output, "etherview_maintenance_requests_total", "Repair and reindex executions grouped by operation and result.", "operation", "result", registry.maintenance)

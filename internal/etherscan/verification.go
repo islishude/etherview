@@ -17,7 +17,6 @@ import (
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -43,15 +42,6 @@ type etherscanVerificationForm struct {
 	standardJSON         json.RawMessage
 	constructorArguments string
 	licenseType          string
-}
-
-type verificationTarget struct {
-	codeHash         []byte
-	blockHash        []byte
-	runtimeBytecode  []byte
-	creationBytecode string
-	hasCreation      bool
-	genesisPredeploy bool
 }
 
 type proxyVerificationTarget struct {
@@ -442,72 +432,15 @@ func translateVerificationServiceError(err error) error {
 	return fmt.Errorf("verification service: %w", err)
 }
 
-func (b *PostgresBackend) currentVerificationTarget(ctx context.Context, addressBytes []byte, address string) (verificationTarget, error) {
-	var target verificationTarget
-	var creation pgtype.Text
-	err := func() error {
-		var queryValue0 pgtype.Numeric
-		if err := queryValue0.Scan(b.chain); err != nil {
-			return err
-		}
-		queryRow, err := dbgen.New(b.db).EtherscanVerificationTarget(ctx, addressBytes, queryValue0, strings.ToLower(address))
-		if err != nil {
-			return err
-		}
-		target.codeHash = queryRow.CodeHash
-		target.blockHash = queryRow.BlockHash
-		target.runtimeBytecode = queryRow.Code
-		creation = pgtype.Text{String: queryRow.CreationBytecode, Valid: queryRow.CreationBytecodePresent}
-		target.genesisPredeploy = queryRow.GenesisPredeploy
-		return nil
-	}()
-	if errors.Is(err, pgx.ErrNoRows) {
-		return verificationTarget{}, ErrVerificationTargetUnavailable
+func (b *PostgresBackend) resolveVerificationTarget(ctx context.Context, _ []byte, address string) (verify.VerificationTarget, error) {
+	target, err := verify.ResolveTarget(ctx, b.db, b.chainID, address, b.maxVerificationInputBytes)
+	if errors.Is(err, verify.ErrTargetUnavailable) {
+		return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
 	}
 	if err != nil {
-		return verificationTarget{}, fmt.Errorf("query verification target: %w", err)
-	}
-	if len(target.codeHash) != 32 || len(target.blockHash) != 32 || len(target.runtimeBytecode) == 0 || len(target.runtimeBytecode) > b.maxVerificationInputBytes {
-		return verificationTarget{}, ErrVerificationTargetUnavailable
-	}
-	if !bytes.Equal(crypto.Keccak256(target.runtimeBytecode), target.codeHash) {
-		return verificationTarget{}, ErrVerificationTargetUnavailable
-	}
-	if creation.Valid {
-		target.hasCreation = true
-		target.creationBytecode = creation.String
-	} else if !target.genesisPredeploy {
-		return verificationTarget{}, ErrVerificationTargetUnavailable
+		return verify.VerificationTarget{}, fmt.Errorf("query verification target: %w", err)
 	}
 	return target, nil
-}
-
-func (b *PostgresBackend) resolveVerificationTarget(
-	ctx context.Context,
-	addressBytes []byte,
-	address string,
-) (verify.VerificationTarget, error) {
-	target, err := b.currentVerificationTarget(ctx, addressBytes, address)
-	if err != nil {
-		return verify.VerificationTarget{}, err
-	}
-	creation := ""
-	if target.hasCreation {
-		creation, err = stripConstructorArguments(
-			target.creationBytecode, "", b.maxVerificationInputBytes,
-		)
-		if err != nil {
-			return verify.VerificationTarget{}, ErrVerificationTargetUnavailable
-		}
-	}
-	return verify.VerificationTarget{
-		ChainID: b.chainID, Address: strings.ToLower(address),
-		CodeHash:         "0x" + hex.EncodeToString(target.codeHash),
-		AtBlockHash:      "0x" + hex.EncodeToString(target.blockHash),
-		CreationBytecode: creation,
-		RuntimeBytecode:  "0x" + hex.EncodeToString(target.runtimeBytecode),
-		GenesisPredeploy: target.genesisPredeploy && creation == "",
-	}, nil
 }
 
 // ResolveVerificationTarget returns only locally authoritative canonical facts
@@ -930,23 +863,6 @@ func contractIdentifier(raw, fallbackSource string, sourceRequired bool) (string
 		return "", "", invalidParameter("contractname must be a valid source:name identifier")
 	}
 	return source, name, nil
-}
-
-func stripConstructorArguments(creation, arguments string, maximum int) (string, error) {
-	normalized, err := normalizeVerificationHex(creation, "canonical creation bytecode", maximum)
-	if err != nil || normalized == "" {
-		return "", ErrVerificationTargetUnavailable
-	}
-	if arguments != "" {
-		if len(arguments) > len(normalized) || !strings.HasSuffix(normalized, arguments) {
-			return "", invalidParameter("constructorArguments do not match the canonical creation input")
-		}
-		normalized = strings.TrimSuffix(normalized, arguments)
-		if normalized == "" {
-			return "", invalidParameter("constructorArguments consume the entire canonical creation input")
-		}
-	}
-	return "0x" + normalized, nil
 }
 
 func normalizeVerificationHex(raw, name string, maximum int) (string, error) {

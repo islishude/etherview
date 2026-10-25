@@ -93,7 +93,7 @@ func TestCompilerCacheChecksDigestAndAllowlist(t *testing.T) {
 	}
 	entry.Language = LanguageSolidity
 	entry.ArtifactSHA256 = [sha256.Size]byte{1}
-	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil || err.Error() != string(ErrorCompilerChecksum) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

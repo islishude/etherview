@@ -434,7 +434,7 @@ func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
 		"verifySolidityMultipart", "verifySolidityStandardJson",
 		"batchVerifySolidityMultipart", "batchVerifySolidityStandardJson",
 		"listVerifierCompilers", "lookupVerifierMethods",
-		"submitSourcifyVerification", "submitSourcifyFromEtherscan",
+		"submitSourcifyVerification", "submitSourcifyFromEtherscan", "importSourcifyContract",
 	}
 	for _, operation := range verification {
 		if scope := requiredAPIScope(operation); scope != auth.ScopeVerification {

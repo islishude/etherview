@@ -45,6 +45,13 @@ budget before parsing compatibility bodies or performing writer lookups. Invalid
 credentials cannot bypass it. The authenticated per-key quota remains a separate
 post-authentication decision; no authentication result is cached.
 
+Browser verification has a separate session-authenticated boundary at
+`/api/v1/verification-jobs/*`, with exact Origin and CSRF checks on writes.
+These endpoints never accept an API key as user identity, and existing native
+and Etherscan verification endpoints never accept a Cookie in place of a key.
+The status projection and shared execution rules are defined in
+[ADR-0024](ADR-0024-verifier-v2-workflow.md#session-authenticated-verification).
+
 ## Consequences
 
 - The browser route remains `/account`; `/users/me/api-keys` is only a native

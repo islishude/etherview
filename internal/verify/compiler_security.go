@@ -38,6 +38,8 @@ type outboundResolver interface {
 	LookupIPAddr(context.Context, string) ([]net.IPAddr, error)
 }
 
+var errOutboundPolicy = errors.New("restricted outbound host resolves to a disallowed network")
+
 type compilerCacheFileOperations struct {
 	lstat func(string) (os.FileInfo, error)
 	open  func(string) (*os.File, error)
@@ -212,7 +214,7 @@ func restrictedOutboundClient(
 	}
 	client.Timeout = timeout
 	client.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return errors.New("compiler artifact redirects are not allowed")
+		return errOutboundPolicy
 	}
 	return &client
 }
@@ -234,7 +236,7 @@ func dialRestrictedOutboundHost(
 	}
 	for _, candidate := range addresses {
 		if !allowPrivate && !netpolicy.PublicIP(candidate.IP) {
-			return nil, errors.New("restricted outbound host resolves to a disallowed network")
+			return nil, errOutboundPolicy
 		}
 	}
 	dialer := net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}

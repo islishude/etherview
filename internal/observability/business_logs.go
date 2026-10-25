@@ -393,6 +393,8 @@ func boundedVerificationCode(value string) string {
 	case verify.ErrorCompileFailed, verify.ErrorCompilerOutput, verify.ErrorCompilerTooLarge,
 		verify.ErrorMatchFailed, verify.ErrorSandboxRequired, verify.ErrorCompilerProvenanceMismatch,
 		verify.ErrorCompilerUnavailable, verify.ErrorTargetNotCanonical,
+		verify.ErrorCompilerDownloadUnavailable, verify.ErrorCompilerDownloadTimeout, verify.ErrorCompilerDownloadRateLimited,
+		verify.ErrorCompilerDownloadRejected, verify.ErrorCompilerChecksum, verify.ErrorCompilerArtifactTooLarge,
 		verify.ErrorAttemptsExhausted, verify.ErrorExecutorMigrated:
 		return value
 	case "":

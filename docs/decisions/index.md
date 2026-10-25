@@ -28,6 +28,7 @@ merging distinct invariants.
 
 ## Contract verification and intelligence
 
+- [ADR-0056 — Bytecode Database Source Discovery](ADR-0056-bytecode-db-source-discovery.md)
 - [ADR-0053 — Shared Python WASM Vyper Distribution](ADR-0053-vyper-wasm-distribution.md)
 - [ADR-0049 — Signed Dynamic Vyper Runtimes](ADR-0049-dynamic-vyper-runtimes.md)
 

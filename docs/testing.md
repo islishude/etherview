@@ -218,6 +218,16 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   Tailwind-class, or package-key sorting. `make web-test` includes executable
   tooling-policy regressions for limits, exclusions, hooks, and idempotence.
 - `make test`: Go and frontend unit tests.
+  Browser ABI regressions include the published Solidity 0.5.3 ERC1820Registry
+  ABI and unmodified native Standard JSON ABI output from official solc-js
+  0.4.15, 0.4.16, 0.5.11 and 0.6.0. The historical fixture in
+  `web/src/contracts/testdata/historical-solidity-abi.json` records each compiler
+  URL, manifest-verified SHA-256, exact version and source. Reproduce with
+  `Historical.sol`, language `Solidity`, and `outputSelection: {"*":{"*":["abi"]}}`
+  through the compiler's native Standard JSON entry point; no wrapper ABI
+  translation is applied. Tests consume checked-in fixtures without downloads
+  and cover historical defaults, conflicting flags, entry boundaries,
+  recursive tuples, resource limits, read/write classification and forms.
 - `make test-race`: Go tests with the race detector.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then
   run Playwright against that embedded distribution. Local runs use installed
@@ -797,6 +807,37 @@ them on any external network.
 - Load and soak evidence records the revision, dataset, hardware, RPC behavior,
   duration, throughput, latency, error rate, and index lag.
 
+## Sourcify transport gates
+
+Sourcify transport/configuration changes run
+`go test -race ./internal/config ./internal/app ./internal/verify -run TestSourcify`.
+The private-network cases exercise default rejection, explicit local HTTPS
+access through the production dialer, application configuration wiring, strict
+boolean overrides and independent client policies. TLS and redirect rejection,
+request bounds, hostile responses and explicit source-publication consent remain
+covered by the Sourcify regressions. Credential changes also run
+`go test ./internal/httpapi -run TestVerifierV2SourcifyEtherscanCredentials`
+and `go run ./cmd/testintegration -packages ./internal/verify -race -run
+TestSourcifyCredentialsPostgresWorkerRestart`. These cover separate Etherview
+and Etherscan credentials, response/log redaction, authenticated encryption,
+active-job deduplication, durable restart, and forwarding to a local HTTPS
+fixture without local contract publication. Web tests cover optional omission,
+consent reset and clearing completed mutation/form state; bilingual browser
+coverage lives in `web/e2e/sourcify.spec.ts`. Source import additionally runs
+`go test ./internal/verify ./internal/httpapi -run
+'TestSourcifyImportV2|TestVerifierV2SourcifyImport'` and
+`go run ./cmd/testintegration -packages ./internal/verify -race -run
+TestSourcifyImportPostgresLocalPublication`. Local HTTPS fixtures verify GET-only
+retrieval, exact large source-chain IDs, independent local target identity,
+supported compiler preparation and hostile-source
+rejection; PostgreSQL verifies dual compilation, local source/ABI publication,
+mismatch rejection and reorg fencing. Browser checks cover direct import,
+post-publication import, separate source/metadata selection and replacement,
+keyboard service cards, 390/1440px layouts and native
+select icon proportions. These are local fixtures, not live Sourcify acceptance.
+Run `make deployment-check` for its Compose
+and Helm configuration surfaces.
+
 ## Vyper verification gates
 
 `make compiler-install` builds the shared Python WASM runtime, Node SEA and
@@ -1145,3 +1186,50 @@ then `make check`, `make test-integration-race`, `make test-e2e`,
 payload envelopes and compares the request commitment with the execution header
 and public API in both split and all-role layouts. Synthetic nonempty five-type
 fixtures do not establish real builder transactions or public historical retention.
+
+## Bytecode database source discovery acceptance
+
+Run `go test ./internal/verify ./internal/config -run TestBytecodeDB` for
+search-only transport, hostile response, candidate and configuration regressions.
+Private-network exception cases cover default rejection, explicit loopback access,
+Fake-IP and mixed DNS answers, strict boolean/environment overrides and client
+policy isolation. They retain real TLS verification and reject redirects after
+opt-in; the ordinary hostile-response suite uses the same production dialer.
+The integration-tagged `TestBytecodeDB` cases exercise real PostgreSQL discovery,
+per-chain cursor isolation, request admission, retry/cooldown, lease fencing,
+local dual-compilation flow,
+creation-input fallback, Yul import, source origin, manual priority and the
+single automatic compiler slot. The controlled client fixture never grants source publication directly.
+
+`TestWorkerCompilerDownloadRecoveryAndBudget` covers a cold compiler download
+recovering after HTTP 503 and bounded exhaustion. Download regressions cover
+stable error labels, cancellation, policy rejection and lease loss during
+backoff. `TestBytecodeDBCompilerFailureRecovery` verifies cooldown, competing
+restarted workers, immutable job/compiler binding, successful publication after
+recovery and deterministic checksum-failure retention in PostgreSQL.
+
+Changes require `make check`, `make test-integration-race`, `make test-e2e`,
+`make test-schema-e2e`, `make test-runtime-e2e` and affected Hardhat/Vyper
+production suites. `make test-hardhat3-e2e` also runs `TestBytecodeDBProductionE2E`: a
+test-owned HTTPS provider on an isolated Docker network supplies Solidity and
+Vyper fixtures to both production topologies. All-role mode uses strict
+public-address checks; split mode explicitly enables the Fake-IP exception on
+an isolated `198.18.0.0/15` network. Both retain TLS verification and the
+production SEA compiles and publishes each source locally. Public remote
+health, actual public-source coverage, production compiler execution and native
+CI acceptance are separate evidence.
+
+## Browser verification acceptance
+
+P50-T78 covers the two-step Verify page, session-only `/verification-jobs`
+operations, and preserved API-key-only native/Etherscan protocols. HTTP tests
+exercise Origin/CSRF, revocation, capability switches, request admission and
+redacted status projection before expensive work. Frontend and embedded
+browser tests cover drafts through login/return, result links and refresh,
+account-change cancellation, terminal polling, bilingual mobile accessibility,
+and separate local/Sourcify results. Production `make test-runtime-e2e` includes
+real SIWE login, Geas address verification with and without a creation
+entrypoint, and native-key submission in both all and split roles. PostgreSQL
+regressions accept omitted/null creation matches for runtime-only Geas, reject
+invented or missing required match evidence, and check published artifact reads.
+These local checks do not establish remote CI acceptance.

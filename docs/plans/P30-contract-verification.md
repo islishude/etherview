@@ -13,7 +13,8 @@ the maintained Solidity/Yul, pinned Geas and pinned Vyper verification paths, au
 artifact reuse, standard/Safe/Diamond/CWIA proxy evidence, trace-bound ABI and
 failure decoding, EIP-7702 execution identity, factory-derived verification,
 and the PostgreSQL-authoritative monolith/split runtime, deployment, telemetry,
-and disposable accelerator boundaries.
+and disposable accelerator boundaries. Optional eth-bytecode-db discovery uses
+external source candidates only after local compilation and verification.
 
 Runtime operations also owns the real Lighthouse PoS Preview and role-scoped
 durable blob archive deployment. Optional Beacon/archive failures remain isolated
@@ -24,6 +25,7 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 
 ## References
 
+- [ADR-0056](../decisions/ADR-0056-bytecode-db-source-discovery.md)
 - [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
 - [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md)
 - [Architecture](../architecture/overview.md)
@@ -85,9 +87,21 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 | P30-T79  | done   | P30-T15, P30-T20                                              | Authenticated compilation units and candidates, historical CREATE/CREATE2 unique creation/runtime matching, transitive forward discovery, exact-epoch provenance, bounded backfill and generated API/Web                | generation/heartbeat fences, short publication transactions, fork rewind, retry/pagination, A-to-B-to-A and direct-child provenance, PostgreSQL/race and topology tests |
 | P30-T97  | done   | P30-T14, P30-T79                                              | Native/Etherscan/Web Vyper verification, dual Pyodide runtime routing, application-locked PyPI archives/recipe provenance, supported-version policy and reviewed updater                                                | package equivalence/isolation, fresh-process version matrices, PostgreSQL, identity-bound aggregation, native AMD64/ARM64 and monolith/split acceptance                 |
 | P30-T138 | done   | P20-T19, P20-T20, P40-T22, P50-T75, P30-T35, P30-T36, P30-T34 | Real Lighthouse PoS Preview, role-scoped durable archive deployment, explicit initialization, and outage/recovery parity with documented deferred writer IAM enforcement                                                | Preview consensus/metadata, RustFS, schema/runtime, finality, permissions, restart, and common gates                                                                    |
+| P30-T139 | done   | P30-T10, P30-T14, P30-T15, P30-T97                            | Bounded remote eth-bytecode-db discovery, durable scheduling and locally verified source publication with provenance and role parity                                                                                    | Protocol/PG race, creation fallback/Yul, source provenance, common/browser/schema/runtime gates and production Solidity/Vyper topology parity                           |
+| P30-T140 | done   | P30-T10                                                       | Optional Etherscan credentials for Sourcify imports, authenticated encryption before durable enqueue, credential-safe request identity and bilingual Web inputs                                                         | API, redaction/tamper/deduplication, PostgreSQL worker and browser regressions                                                                                          |
+| P30-T141 | done   | P30-T10, P30-T140                                             | Sourcify-to-Etherview source import through canonical local verification, explicit post-publication import and accessible verification choices                                                                          | API authorization, hostile-source and PostgreSQL publication regressions, bilingual browser and select visual checks                                                    |
 
 ## Acceptance
 
+- [x] Existing Sourcify sources import from an explicit source chain without
+      re-upload through ordinary local compilation and canonical/lease-fenced
+      publication on the deployment's chain. Direct and post-publication imports
+      keep local and external outcomes separate; independent source/metadata
+      uploads, bilingual service cards and select controls pass keyboard, theme
+      and mobile browser checks.
+- [x] Optional Etherscan credentials remain encrypted across durable Sourcify
+      submission/restart, never enter responses or logs, and remain separate
+      from Etherview authentication in the bilingual Web flow.
 - [x] Compiler/helper identity, exact runtime matching and canonical publication are authenticated.
 - [x] Solidity/Yul, Vyper and Geas retain separate bounded execution contracts.
 - [x] Vyper uses application-locked archives and explicit fresh-process runtime routing.
@@ -168,6 +182,20 @@ P60/P70 release blockers remain independent.
 
 ## Evidence
 
+P30-T141 passed on 2026-10-25 against the worktree based on `d6da23b` on local
+macOS ARM64: Go package and focused race tests, PostgreSQL 18 local publication,
+compiler mismatch and reorg regressions, 659 Web tests, 129 browser tests, and
+generation, OpenAPI, lint, docs, plan and deployment checks. Local HTTPS and
+compiler fixtures prove import boundaries; a public Sourcify GET checked response
+shape only. No live public publication/import or remote CI acceptance is implied.
+
+P30-T140 passed on 2026-10-25 against the worktree based on `d6da23b` on local
+macOS ARM64: Go package tests and focused race tests, PostgreSQL 18 encrypted
+queue/restart/deduplication regression, 647 Web tests, 127 browser tests, and
+generation, OpenAPI, lint, docs, plan and deployment checks. External calls used
+local HTTPS fixtures; this does not establish live Sourcify/Etherscan service
+availability or remote CI acceptance.
+
 P30-T33/P30-T35/P30-T37 retain process TLS, certificate deployment, native
 healthcheck/Compose lifecycle and bounded logging acceptance. Historical
 Genesis, analytics and compiler production paths passed their feature gates.
@@ -216,9 +244,17 @@ application acceptance tool. PR #148 records timings: recovery 13m50s / 122.27
 runner-minutes, full rerun 16m43s / 125.60 versus baseline 18m40s / 119.18.
 Recovery excludes reused jobs; these samples do not establish a stable speedup.
 
+P30-T139 passed protocol and PostgreSQL race regressions, `make check`, browser,
+fresh-schema and runtime gates, plus the Hardhat/Vyper production suites. The
+final discovery image passed controlled HTTPS source import and real local
+Solidity/Vyper compilation in both topologies; Yul creation fallback and
+cross-address/chain isolation passed PostgreSQL regressions. These are local
+ARM64/Docker results. Public search from this host returned HTTP 403 on
+2026-10-25, so public-source coverage and new remote CI acceptance remain unproven.
+
 Retained completed milestones: P30-T10, P30-T14, P30-T15, P30-T16, P30-T20, P30-T24,
 P30-T33, P30-T34, P30-T35, P30-T36, P30-T37, P30-T43, P30-T59, P30-T64, P30-T68,
-P30-T79, P30-T97, P30-T138.
+P30-T79, P30-T97, P30-T138, P30-T139.
 
 Contract matching, compiler provenance, ABI/proxy/trace decoding and
 canonical publication passed focused unit/fuzz/race and PostgreSQL regressions.

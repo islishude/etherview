@@ -16,6 +16,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.8
 	github.com/fjl/geas v0.3.3
 	github.com/fxamacker/cbor/v2 v2.9.6
+	github.com/getkin/kin-openapi v0.149.0
 	github.com/google/uuid v1.6.0
 	github.com/holiman/uint256 v1.3.2
 	github.com/ipfs/go-cid v0.6.2
@@ -76,7 +77,6 @@ require (
 	github.com/ferranbt/fastssz v0.1.4 // indirect
 	github.com/fjl/jsonw v0.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	github.com/getkin/kin-openapi v0.149.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect

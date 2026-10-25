@@ -460,7 +460,9 @@ CREATE TABLE verification_results (
     CONSTRAINT verification_results_digest_check CHECK ((octet_length(request_digest) = 32)),
     CONSTRAINT verification_results_outcome_check CHECK (((outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (octet_length((outcome)::text) <= 268435456))),
     CONSTRAINT verification_results_proxy_attestation_shape CHECK ((((proxy_artifact_kind IS NULL) AND (proxy_standard_version IS NULL) AND (proxy_runtime_immutable_address IS NULL) AND (proxy_source_manifest_sha256 IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (proxy_artifact_kind IS NOT NULL) AND (proxy_artifact_kind = ANY (ARRAY['erc1967_proxy'::text, 'transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text, 'proxy_admin'::text, 'upgradeable_beacon'::text])) AND (proxy_standard_version = '5.6.1'::text) AND (proxy_source_manifest_sha256 IS NOT NULL) AND (octet_length(proxy_source_manifest_sha256) = 32) AND (proxy_source_manifest_sha256 <> decode(repeat('00'::text, 32), 'hex'::text)) AND (((proxy_artifact_kind = ANY (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (proxy_runtime_immutable_address IS NOT NULL) AND (octet_length(proxy_runtime_immutable_address) = 20) AND (proxy_runtime_immutable_address <> decode(repeat('00'::text, 20), 'hex'::text))) OR ((proxy_artifact_kind <> ALL (ARRAY['transparent_proxy'::text, 'beacon_proxy'::text, 'uups_implementation'::text])) AND (proxy_runtime_immutable_address IS NULL)))))),
-    CONSTRAINT verification_results_success_shape_check CHECK ((((outcome_kind <> 'verification_success'::text) AND (file_name IS NULL) AND (contract_name IS NULL) AND (language IS NULL) AND (compiler_version IS NULL) AND (match_type IS NULL) AND (abi IS NULL) AND (sources IS NULL) AND (settings IS NULL) AND (compilation_artifacts IS NULL) AND (creation_code_artifacts IS NULL) AND (runtime_code_artifacts IS NULL) AND (constructor_arguments IS NULL) AND (libraries IS NULL) AND (is_blueprint IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (length(file_name) BETWEEN 1 AND 512) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND ((abi IS NULL) OR (jsonb_typeof(abi) = 'array'::text)) AND (jsonb_typeof(sources) = 'object'::text) AND (jsonb_typeof(settings) = 'object'::text) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text) AND (jsonb_typeof(libraries) = 'object'::text) AND (is_blueprint IS NOT NULL) AND ((language <> 'geas'::text) OR (((compiler_version = '0.3.3'::text) AND (match_type = 'full'::text) AND (abi = '[]'::jsonb) AND (compilation_artifacts = '{}'::jsonb) AND (creation_code_artifacts = '{}'::jsonb) AND (runtime_code_artifacts = '{}'::jsonb) AND (libraries = '{}'::jsonb) AND (constructor_arguments IS NULL) AND (is_blueprint = false) AND (jsonb_typeof((settings -> 'runtime_entrypoint'::text)) = 'string'::text) AND ((settings -> 'stack_check'::text) = 'true'::jsonb) AND ((settings - ARRAY['runtime_entrypoint'::text, 'creation_entrypoint'::text, 'stack_check'::text]) = '{}'::jsonb) AND valid_geas_verification_sources(sources) AND ((outcome #>> '{runtime_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{runtime_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{runtime_match,values}'::text[]) = '{}'::jsonb) AND (((jsonb_typeof((settings -> 'creation_entrypoint'::text)) = 'string'::text) AND ((outcome #>> '{creation_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{creation_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{creation_match,values}'::text[]) = '{}'::jsonb)) OR ((NOT (settings ? 'creation_entrypoint'::text)) AND ((outcome -> 'creation_match'::text) = 'null'::jsonb)))) IS TRUE))))),
+    -- A runtime-only worker omits creation_match; JSON null also claims no match.
+    -- Keep the Geas evidence predicate IS TRUE so missing required fields fail closed.
+    CONSTRAINT verification_results_success_shape_check CHECK ((((outcome_kind <> 'verification_success'::text) AND (file_name IS NULL) AND (contract_name IS NULL) AND (language IS NULL) AND (compiler_version IS NULL) AND (match_type IS NULL) AND (abi IS NULL) AND (sources IS NULL) AND (settings IS NULL) AND (compilation_artifacts IS NULL) AND (creation_code_artifacts IS NULL) AND (runtime_code_artifacts IS NULL) AND (constructor_arguments IS NULL) AND (libraries IS NULL) AND (is_blueprint IS NULL)) OR ((outcome_kind = 'verification_success'::text) AND (length(file_name) BETWEEN 1 AND 512) AND ((length(contract_name) >= 1) AND (length(contract_name) <= 256)) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (match_type = ANY (ARRAY['full'::text, 'partial'::text])) AND ((abi IS NULL) OR (jsonb_typeof(abi) = 'array'::text)) AND (jsonb_typeof(sources) = 'object'::text) AND (jsonb_typeof(settings) = 'object'::text) AND (jsonb_typeof(compilation_artifacts) = 'object'::text) AND (jsonb_typeof(creation_code_artifacts) = 'object'::text) AND (jsonb_typeof(runtime_code_artifacts) = 'object'::text) AND (jsonb_typeof(libraries) = 'object'::text) AND (is_blueprint IS NOT NULL) AND ((language <> 'geas'::text) OR (((compiler_version = '0.3.3'::text) AND (match_type = 'full'::text) AND (abi = '[]'::jsonb) AND (compilation_artifacts = '{}'::jsonb) AND (creation_code_artifacts = '{}'::jsonb) AND (runtime_code_artifacts = '{}'::jsonb) AND (libraries = '{}'::jsonb) AND (constructor_arguments IS NULL) AND (is_blueprint = false) AND (jsonb_typeof((settings -> 'runtime_entrypoint'::text)) = 'string'::text) AND ((settings -> 'stack_check'::text) = 'true'::jsonb) AND ((settings - ARRAY['runtime_entrypoint'::text, 'creation_entrypoint'::text, 'stack_check'::text]) = '{}'::jsonb) AND valid_geas_verification_sources(sources) AND ((outcome #>> '{runtime_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{runtime_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{runtime_match,values}'::text[]) = '{}'::jsonb) AND (((jsonb_typeof((settings -> 'creation_entrypoint'::text)) = 'string'::text) AND ((outcome #>> '{creation_match,match_type}'::text[]) = 'full'::text) AND ((outcome #> '{creation_match,transformations}'::text[]) = '[]'::jsonb) AND ((outcome #> '{creation_match,values}'::text[]) = '{}'::jsonb)) OR ((NOT (settings ? 'creation_entrypoint'::text)) AND ((NOT (outcome ? 'creation_match'::text)) OR ((outcome -> 'creation_match'::text) = 'null'::jsonb))))) IS TRUE))))),
     CONSTRAINT verification_results_job_digest_key UNIQUE (job_id, request_digest),
     CONSTRAINT verification_results_pkey PRIMARY KEY (job_id),
     CONSTRAINT verification_results_job_id_fkey FOREIGN KEY (job_id) REFERENCES verification_jobs(id) ON DELETE RESTRICT
@@ -641,3 +643,58 @@ CREATE CONSTRAINT TRIGGER verification_results_v2_terminal_job AFTER INSERT ON v
 CREATE TRIGGER verified_contract_proxy_artifacts_source_guard BEFORE INSERT ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION enforce_verified_contract_proxy_artifact();
 
 CREATE TRIGGER verified_contracts_v2_source_guard BEFORE INSERT OR UPDATE ON verified_contracts FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_publication();
+
+-- Optional source discovery is PostgreSQL-owned and never an external trust root.
+CREATE TABLE bytecode_db_services (
+    id bytea PRIMARY KEY CHECK (octet_length(id) = 32),
+    next_request_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE bytecode_db_scans (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    cursor_address bytea NOT NULL DEFAULT ''::bytea CHECK (octet_length(cursor_address) IN (0,20)),
+    scan_after timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (service_id,chain_id)
+);
+CREATE TABLE bytecode_db_targets (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    address bytea NOT NULL CHECK (octet_length(address) = 20),
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    outcome text NOT NULL DEFAULT 'pending' CHECK (length(outcome) BETWEEN 1 AND 64),
+    lease_token text,
+    lease_expires_at timestamptz,
+    PRIMARY KEY (service_id, chain_id, address),
+    CHECK ((lease_token IS NULL) = (lease_expires_at IS NULL))
+);
+CREATE INDEX bytecode_db_targets_due_idx ON bytecode_db_targets(service_id,next_attempt_at);
+CREATE TABLE bytecode_db_lookups (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    bytecode_type text NOT NULL CHECK (bytecode_type IN ('DEPLOYED_BYTECODE','CREATION_INPUT')),
+    digest bytea NOT NULL CHECK (octet_length(digest) = 32),
+    bytecode bytea NOT NULL CHECK (octet_length(bytecode) BETWEEN 1 AND 67108864),
+    sources jsonb,
+    requested boolean NOT NULL DEFAULT true,
+    limited boolean NOT NULL DEFAULT false,
+    outcome text NOT NULL DEFAULT 'pending' CHECK (length(outcome) BETWEEN 1 AND 64),
+    failures integer NOT NULL DEFAULT 0 CHECK (failures BETWEEN 0 AND 3),
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    lease_token text,
+    lease_expires_at timestamptz,
+    PRIMARY KEY (service_id,bytecode_type,digest),
+    CHECK (digest = sha256(bytecode)),
+    CHECK (sources IS NULL OR (jsonb_typeof(sources) = 'array' AND octet_length(sources::text) <= 67108864)),
+    CHECK ((lease_token IS NULL) = (lease_expires_at IS NULL))
+);
+CREATE INDEX bytecode_db_lookups_due_idx ON bytecode_db_lookups(service_id,next_attempt_at);
+CREATE TABLE bytecode_db_attempts (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    target_digest bytea NOT NULL CHECK (octet_length(target_digest) = 32),
+    candidate_digest bytea NOT NULL CHECK (octet_length(candidate_digest) = 32),
+    support_digest bytea NOT NULL CHECK (octet_length(support_digest) = 32),
+    job_id uuid NOT NULL UNIQUE REFERENCES verification_jobs(id),
+    PRIMARY KEY (service_id,target_digest,candidate_digest,support_digest)
+);
+-- Serialize claim decisions so automatic work cannot occupy two compiler slots.
+CREATE TABLE verification_claim_gate (singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton));
+INSERT INTO verification_claim_gate (singleton) VALUES (true);

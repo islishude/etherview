@@ -52,6 +52,9 @@ func (compiler *VyperCompiler) ensureRuntime(ctx context.Context, version string
 		if contextErr := assemblyContext.Err(); contextErr != nil {
 			return nil, contextErr
 		}
+		if download, ok := errors.AsType[CompilerDownloadError](err); ok {
+			return nil, download
+		}
 		return nil, errors.New("assemble locked Vyper package")
 	}
 	var expected bytes.Buffer

@@ -116,7 +116,7 @@ func TestCompilerDownloadRejectsRedirectsAndPrivateDNS(t *testing.T) {
 	}
 	entry := compilerCatalogEntry(redirect.URL, payload, 1<<20)
 	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil ||
-		err.Error() != "download compiler artifact" {
+		err.Error() != string(ErrorCompilerDownloadRejected) {
 		t.Fatalf("unexpected redirect error: %v", err)
 	}
 	if targetHits.Load() != 0 {
@@ -129,7 +129,7 @@ func TestCompilerDownloadRejectsRedirectsAndPrivateDNS(t *testing.T) {
 	cache.resolver = fixedOutboundResolver{addresses: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}}
 	entry.ArtifactURL = "https://compiler.example/artifact"
 	if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil ||
-		err.Error() != "download compiler artifact" {
+		err.Error() != string(ErrorCompilerDownloadRejected) {
 		t.Fatalf("unexpected private DNS error: %v", err)
 	}
 
@@ -166,7 +166,7 @@ func TestCompilerCacheBoundsDeclaredAndStreamingArtifacts(t *testing.T) {
 			}
 			entry := compilerCatalogEntry(server.URL, payload, int64(len(payload)-1))
 			if _, err := cache.EnsureCatalogEntry(context.Background(), entry); err == nil ||
-				err.Error() != "compiler artifact exceeds size limit" {
+				err.Error() != string(ErrorCompilerArtifactTooLarge) {
 				t.Fatalf("unexpected size error: %v", err)
 			}
 		})

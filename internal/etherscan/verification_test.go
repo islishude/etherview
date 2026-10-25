@@ -284,7 +284,7 @@ func TestResolveVerificationTargetRejectsUnprovenGenesisShapes(t *testing.T) {
 
 func TestVerificationTargetQueryAuthenticatesExactGenesisRuntime(t *testing.T) {
 	t.Parallel()
-	query := compactSQL(testpgx.Statement("EtherscanVerificationTarget"))
+	query := compactSQL(testpgx.Statement("VerifyResolveTarget"))
 	for _, required := range []string{
 		"imported.state = 'complete'",
 		"genesis_canonical.number = 0",
@@ -640,4 +640,16 @@ func TestProxyVerificationStatusUsesDedicatedJobKind(t *testing.T) {
 
 func testRuntimeCodeHash(code []byte) []byte {
 	return crypto.Keccak256(code)
+}
+
+func TestResolveVerificationTargetPreservesStorageFailure(t *testing.T) {
+	t.Parallel()
+	storageErr := errors.New("storage unavailable")
+	backend := testPostgresBackend(t, fakeDatabase(t, sqlExpectation{
+		contains: "FROM contract_code_observations AS observation", err: storageErr,
+	}), PostgresOptions{ChainID: 1})
+	_, err := backend.ResolveVerificationTarget(t.Context(), testContract)
+	if !errors.Is(err, storageErr) || errors.Is(err, ErrVerificationTargetUnavailable) {
+		t.Fatalf("storage failure misclassified: %v", err)
+	}
 }

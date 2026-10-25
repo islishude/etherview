@@ -1,3 +1,5 @@
+import { withVerificationSession } from "../../test/verificationSession";
+import { uploadFiles } from "@/test/verificationUpload";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import axe from "axe-core";
@@ -521,8 +523,8 @@ describe("P50 capability pages", () => {
       if (path === "/api/v1/config") {
         return configResponse({ verification: false, sourcify: false });
       }
-      if (path === `/api/v1/verifier/jobs/${jobID}`) {
-        expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+      if (path === `/api/v1/verification-jobs/${jobID}`) {
+        expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
         return Response.json({
           data: {
             id: jobID,
@@ -552,16 +554,14 @@ describe("P50 capability pages", () => {
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer("/verify");
+    renderExplorer(`/verify?job=${jobID}`);
 
     expect(
       await screen.findByRole("heading", { name: "Public verification is unavailable" }),
     ).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Verification request" })).toBeNull();
-    expect(screen.getByRole("heading", { name: "Open a durable verification job" })).toBeVisible();
-    fireEvent.change(screen.getByLabelText("Job ID"), { target: { value: jobID } });
-    fireEvent.change(screen.getByLabelText("Job read API key"), { target: { value: secret } });
-    await userEvent.setup().click(screen.getByRole("button", { name: "Load job" }));
+    expect(screen.queryByRole("heading", { name: "Open a durable verification job" })).toBeNull();
+    await userEvent.setup().click(await screen.findByText("Technical details"));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(screen.getAllByText("full").length).toBeGreaterThan(0);
@@ -654,7 +654,7 @@ describe("P50 capability pages", () => {
     expect(
       await screen.findByRole("heading", { name: "ReadOnlyArtifact", level: 2 }),
     ).toBeVisible();
-    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Etherview API Key(?!\s*[(（])/)).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Public verification is unavailable" }),
     ).toBeNull();
@@ -686,7 +686,7 @@ describe("P50 capability pages", () => {
           meta,
         });
       }
-      if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
+      if (path === "/api/v1/verification-jobs/local" && init?.method === "POST") {
         return apiError("queued-for-test", 503);
       }
       return apiError("not_found", 404);
@@ -694,15 +694,17 @@ describe("P50 capability pages", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer("/verify");
     fireEvent.change(await screen.findByLabelText("Language"), { target: { value: "vyper" } });
-    expect(await screen.findByRole("option", { name: "0.4.3" })).toBeVisible();
+    expect(await screen.findByDisplayValue("0.4.3")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "multipart" } });
     fireEvent.change(screen.getByLabelText("Address"), { target: { value: address } });
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "test-secret" } });
     fireEvent.change(screen.getByLabelText("Optimization mode"), { target: { value: "codesize" } });
+    await uploadFiles(screen.getByLabelText("Source files"), {
+      "A.vy": "@external\ndef value() -> uint256:\n    return 42\n",
+    });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
     const submitted = fetcher.mock.calls.find(
       ([input, init]) =>
-        String(input) === `/api/v1/contracts/${address}/verification` && init?.method === "POST",
+        String(input) === "/api/v1/verification-jobs/local" && init?.method === "POST",
     );
     expect(submitted).toBeDefined();
     expect(JSON.parse(String(submitted?.[1]?.body))).toMatchObject({
@@ -727,8 +729,8 @@ describe("P50 capability pages", () => {
 
     const duplicateInput =
       '{"language":"Solidity","sources":{},"settings":{"optimizer":true,"\\u006fptimizer":false}}';
-    fireEvent.change(await screen.findByLabelText(/^Standard JSON input/), {
-      target: { value: duplicateInput },
+    await uploadFiles(await screen.findByLabelText(/^Standard JSON input/), {
+      "input.json": duplicateInput,
     });
     expect(screen.queryByText(/Sourcify upload/)).toBeNull();
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
@@ -757,8 +759,8 @@ describe("P50 capability pages", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer("/verify");
 
-    fireEvent.change(await screen.findByLabelText(/^Standard JSON input/), {
-      target: { value: standardJSON },
+    await uploadFiles(await screen.findByLabelText(/^Standard JSON input/), {
+      "input.json": standardJSON,
     });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
@@ -922,6 +924,7 @@ describe("P50 capability pages", () => {
 });
 
 function renderExplorer(path: string) {
+  if (path.startsWith("/verify")) vi.stubGlobal("fetch", withVerificationSession(fetch));
   const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },

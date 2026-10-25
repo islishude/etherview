@@ -57,7 +57,10 @@ WITH exhausted AS (
                OR (sqlc.arg('vyper_prepared_enabled')::boolean AND language = 'vyper' AND compiler_digest IS NOT NULL AND executor_kind = 'node_vyper_wasm_v1'))
       AND attempt_count < max_attempts
       AND NOT EXISTS (SELECT 1 FROM exhausted WHERE exhausted.id = verification_jobs.id)
-    ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+    AND (NOT EXISTS (SELECT 1 FROM bytecode_db_attempts a WHERE a.job_id=verification_jobs.id)
+      OR NOT EXISTS (SELECT 1 FROM verification_jobs active JOIN bytecode_db_attempts a ON a.job_id=active.id
+                     WHERE active.status='running' AND active.lease_expires_at>clock_timestamp()))
+    ORDER BY EXISTS (SELECT 1 FROM bytecode_db_attempts a WHERE a.job_id=verification_jobs.id), created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
 )
 UPDATE verification_jobs AS job
 SET status = 'running', leased_by = sqlc.arg('leased_by'), lease_token = sqlc.arg('lease_token'),

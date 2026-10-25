@@ -1,3 +1,4 @@
+import "@/i18n/resources/sourcify";
 import { defaultKeymap } from "@codemirror/commands";
 import { StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
 import { highlightSelectionMatches, openSearchPanel, searchKeymap } from "@codemirror/search";
@@ -292,6 +293,11 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 
   return (
     <div className="contract-code-view">
+      {verificationOrigin === "eth_bytecode_db" ? (
+        <p className="context-note" role="status">
+          {t("contracts.artifact.bytecodeDBOrigin")}
+        </p>
+      ) : null}
       {artifact.resolution === "exact_address" && artifact.derived_from ? (
         <p className="context-note" role="status">
           {t(

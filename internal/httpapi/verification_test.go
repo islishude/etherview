@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +21,7 @@ type verificationV2Service struct {
 	submission verify.SubmissionV2
 	job        verify.VerificationJob
 	contract   verify.VerifiedContract
+	err        error
 }
 
 func (service *verificationV2Service) SubmitV2(
@@ -25,7 +29,7 @@ func (service *verificationV2Service) SubmitV2(
 	submission verify.SubmissionV2,
 ) (verify.VerificationJob, bool, error) {
 	service.submission = submission
-	return service.job, true, nil
+	return service.job, true, service.err
 }
 
 func (service *verificationV2Service) Job(_ context.Context, id string) (verify.VerificationJob, bool, error) {
@@ -53,6 +57,76 @@ func (resolver verificationTargetResolver) ResolveVerificationTarget(
 }
 
 type compilerCatalogStub struct{}
+
+func TestVerifierV2SourcifyEtherscanCredentials(t *testing.T) {
+	const secret = "etherscan-test-secret-never-return"
+	var logs bytes.Buffer
+	service := &verificationV2Service{job: verify.VerificationJob{
+		ID: "123e4567-e89b-42d3-a456-426614174000", Kind: verify.JobSourcifyFromEtherscan,
+		Status: verify.JobQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		RequestV2: &verify.SubmissionV2{SourcifyAPIKey: verify.SourcifyAPIKey(secret), SourcifyRequest: json.RawMessage(`{"credential":{"ciphertext":"internal-only"}}`)},
+	}}
+	handler, err := New(Options{Config: config.Default(), Reader: fakeReader{}, VerificationReader: service, VerificationSubmitter: service, Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := auth.Manager{Repository: auth.NewMemoryRepository(), Pepper: []byte(strings.Repeat("p", 32))}
+	key, err := manager.Create(t.Context(), "test", 100, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protected := manager.Middleware(false, handler)
+	for _, test := range []struct {
+		name, extra, key string
+		status           int
+	}{
+		{"omitted", "", "", http.StatusAccepted},
+		{"provided", `,"etherscan_api_key":"` + secret + `"`, secret, http.StatusAccepted},
+		{"empty", `,"etherscan_api_key":""`, "", http.StatusBadRequest},
+		{"whitespace", `,"etherscan_api_key":"a b"`, "", http.StatusBadRequest},
+		{"oversize", `,"etherscan_api_key":"` + strings.Repeat("x", 257) + `"`, "", http.StatusBadRequest},
+		{"duplicate", `,"etherscan_api_key":"a","etherscan_api_key":"b"`, "", http.StatusBadRequest},
+		{"caller ciphertext", `,"credential":{"ciphertext":"x"}`, "", http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service.submission = verify.SubmissionV2{}
+			body := `{"chain_id":"1","address":"0x1111111111111111111111111111111111111111"` + test.extra + `}`
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/verifier/sourcify/from-etherscan", strings.NewReader(body))
+			request.Header.Set("X-API-Key", key.Token)
+			response := httptest.NewRecorder()
+			protected.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status=%d expected=%d", response.Code, test.status)
+			}
+			if strings.Contains(response.Body.String(), secret) || strings.Contains(response.Body.String(), "credential") || strings.Contains(response.Body.String(), "internal-only") {
+				t.Fatal("response exposed private request data")
+			}
+			if test.status == http.StatusAccepted {
+				if string(service.submission.SourcifyAPIKey) != test.key || strings.Contains(string(service.submission.SourcifyRequest), "key") || strings.Contains(string(service.submission.SourcifyRequest), secret) {
+					t.Fatal("credential was not separated from durable request")
+				}
+			} else if service.submission.Kind != "" {
+				t.Fatal("invalid key reached service")
+			}
+		})
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/verifier/jobs/"+service.job.ID, nil)
+	request.Header.Set("X-API-Key", key.Token)
+	response := httptest.NewRecorder()
+	protected.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), secret) || strings.Contains(response.Body.String(), "internal-only") {
+		t.Fatal("job read exposed private request data")
+	}
+	// Even an unexpected dependency error echoing a credential must not leak.
+	service.err = errors.New(secret)
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/verifier/sourcify/from-etherscan", strings.NewReader(`{"chain_id":"1","address":"0x1111111111111111111111111111111111111111","etherscan_api_key":"`+secret+`"}`))
+	request.Header.Set("X-API-Key", key.Token)
+	response = httptest.NewRecorder()
+	protected.ServeHTTP(response, request)
+	if response.Code < 500 || strings.Contains(response.Body.String(), secret) || strings.Contains(logs.String(), secret) {
+		t.Fatal("failure exposed a credential in the response or logs")
+	}
+}
 
 func (compilerCatalogStub) Versions(context.Context, verify.Language) ([]string, error) {
 	return []string{"0.8.30+commit.73712a01"}, nil

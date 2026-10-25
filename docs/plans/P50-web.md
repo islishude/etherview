@@ -11,7 +11,8 @@ injected EIP-1193 wallet for all contract reads and writes.
 The generated-client explorer includes UserOperation global/detail and bundle
 activity, authoritative Token holder pages, and optional consensus/blob views.
 The account workspace adds private watches, browser push, and CSV downloads
-with session-isolated browser state.
+with session-isolated browser state. Verify uses session-authenticated
+submission and independent, recoverable result steps.
 
 ## References
 
@@ -55,8 +56,15 @@ with session-isolated browser state.
 | P50-T75 | done   | P40-T22, P50-T06                   | Consensus overview, slot provenance, blob archive status, on-demand preview, and exact-hash downloads                                                                                                  | generated-client, disabled/unavailable/freshness, mobile, browser, and production parity tests                                 |
 | P50-T76 | done   | P50-T01, P40                       | Pinned Hey API Fetch SDK with explicit same-origin client, exact types, error/stream preservation and explicit generation ([#169](https://github.com/islishude/etherview/issues/169))                  | type/runtime regressions, deterministic directory generation, Web/build/browser and common gates                               |
 | P50-T77 | done   | P40-T24                            | Bilingual Requests tab with five request types, filtering, details and pagination                                                                                                                      | 545 frontend tests and 105 embedded browser scenarios; bilingual 390px accessibility                                           |
+| P50-T78 | done   | P50-T03, P60-T03, P60-T05          | Session-authenticated browser verification with two-step submission/results and recoverable result links; API-key protocol isolation                                                                   | authentication matrix, frontend/browser, PostgreSQL, production all/split and common gates                                     |
 
 ## Acceptance
+
+- [x] Verify lives under More and preserves address-prefilled entries and file
+      uploads. SIWE-authenticated submission opens a separate result step;
+      saved job links restore redacted results after login. Native/Etherscan
+      APIs remain key-scoped. Terminal/error polling stops; account changes,
+      expiration and cancelled requests cannot retain or revive private results.
 
 - [x] The Requests tab loads by exact execution hash and supports five types,
       precise amounts, exit labels, filters, cursor reset, expandable/copyable
@@ -119,6 +127,12 @@ None. P60/P70 retain independent release blockers.
 
 ## Evidence
 
+P50-T78 passed local `make check`, 699 frontend tests, all 131 embedded Chromium
+scenarios, `make test-integration-race` and `make test-runtime-e2e`. Production
+all/split tests exercise real SIWE, Cookie/CSRF submission, result reads and
+native API-key isolation using Geas creation and runtime entrypoints. Local
+fixtures do not establish public Sourcify availability or remote CI acceptance.
+
 P50-T77 passed 545 frontend tests and all 105 embedded browser scenarios,
 including the new bilingual 390px Requests deep links, five-type details,
 exact quantities, filtering, pagination reset, capability states and accessibility.
@@ -154,7 +168,8 @@ combined browser run. Aggregate/runtime evidence is retained in P30-T35 and
 P30-T138.
 
 Retained completed milestones: P50-T01, P50-T02, P50-T03, P50-T04, P50-T05, P50-T06,
-P50-T10, P50-T11, P50-T14, P50-T16, P50-T72, P50-T73, P50-T74, P50-T75, P50-T76.
+P50-T10, P50-T11, P50-T14, P50-T16, P50-T72, P50-T73, P50-T74, P50-T75, P50-T76,
+P50-T77, P50-T78.
 
 Frontend unit, generated-client, embedded Chromium, responsive and
 accessibility checks passed at the feature revisions. Coverage includes

@@ -76,19 +76,32 @@ func sourcifyClient(cfg config.Config) (*verify.SourcifyClient, error) {
 	if !cfg.Features.Sourcify {
 		return nil, nil
 	}
+	credentials, err := sourcifyCredentials(cfg)
+	if err != nil {
+		return nil, err
+	}
 	client, err := verify.NewSourcifyClient(verify.SourcifyOptions{
-		BaseURL:          cfg.Sourcify.BaseURL,
-		Timeout:          cfg.Sourcify.Timeout,
-		MaxRequestBytes:  cfg.Sourcify.MaxRequestBytes,
-		MaxResponseBytes: cfg.Sourcify.MaxResponseBytes,
-		Attempts:         cfg.Sourcify.Attempts,
-		PollInterval:     cfg.Sourcify.PollInterval,
-		MaxPolls:         cfg.Sourcify.MaxPolls,
+		Credentials:                credentials,
+		UnsafeAllowPrivateNetworks: cfg.Sourcify.UnsafeAllowPrivateNetworks,
+		BaseURL:                    cfg.Sourcify.BaseURL,
+		Timeout:                    cfg.Sourcify.Timeout,
+		MaxRequestBytes:            cfg.Sourcify.MaxRequestBytes,
+		MaxResponseBytes:           cfg.Sourcify.MaxResponseBytes,
+		Attempts:                   cfg.Sourcify.Attempts,
+		PollInterval:               cfg.Sourcify.PollInterval,
+		MaxPolls:                   cfg.Sourcify.MaxPolls,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("configure Sourcify client: %w", err)
 	}
 	return client, nil
+}
+
+func sourcifyCredentials(cfg config.Config) (*verify.SourcifyCredentials, error) {
+	if !cfg.Features.Sourcify || cfg.Security.APIKeyPepper == "" {
+		return nil, nil
+	}
+	return verify.NewSourcifyCredentials([]byte(cfg.Security.APIKeyPepper))
 }
 
 func runtimeWorkerID(kind string) string {

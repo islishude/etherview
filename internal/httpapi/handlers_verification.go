@@ -27,6 +27,15 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
+	h.submitAddressVerificationAuthorized(w, r)
+}
+
+func (h *Handler) submitAddressVerificationAuthorized(w http.ResponseWriter, r *http.Request) {
+	if h.verificationSubmitter == nil || h.verificationTargets == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
+		return
+	}
+
 	address := strings.ToLower(r.PathValue("address"))
 	if !addressPattern.MatchString(address) {
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
@@ -36,6 +45,10 @@ func (h *Handler) submitAddressVerification(w http.ResponseWriter, r *http.Reque
 	if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "address verification request is invalid") {
 		return
 	}
+	h.submitAddressVerificationInput(w, r, address, submission)
+}
+
+func (h *Handler) submitAddressVerificationInput(w http.ResponseWriter, r *http.Request, address string, submission verifierSubmission) {
 	if submission.Bytecodes != nil || submission.Contracts != nil {
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "address verification request is invalid", nil)
 		return
@@ -106,7 +119,16 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
-	if r.Pattern == "POST /api/v1/verifier/sourcify" {
+	h.submitVerifierAuthorized(w, r)
+}
+
+func (h *Handler) submitVerifierAuthorized(w http.ResponseWriter, r *http.Request) {
+	if h.verificationSubmitter == nil {
+		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
+		return
+	}
+
+	if r.Pattern == "POST /api/v1/verifier/sourcify" || r.Pattern == "POST /api/v1/verification-jobs/sourcify" {
 		var submission struct {
 			ChainID string            `json:"chain_id"`
 			Address string            `json:"address"`
@@ -121,17 +143,30 @@ func (h *Handler) submitVerifier(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	if r.Pattern == "POST /api/v1/verifier/sourcify/from-etherscan" {
+	if r.Pattern == "POST /api/v1/verifier/sourcify/from-etherscan" || r.Pattern == "POST /api/v1/verification-jobs/sourcify-from-etherscan" {
 		var submission struct {
-			ChainID string `json:"chain_id"`
-			Address string `json:"address"`
+			ChainID         string  `json:"chain_id"`
+			Address         string  `json:"address"`
+			EtherscanAPIKey *string `json:"etherscan_api_key,omitempty"`
 		}
 		if !h.decodeBoundedJSON(w, r, &submission, "invalid_verification_request", "Sourcify Etherscan request is invalid") {
 			return
 		}
-		encoded, _ := json.Marshal(submission)
+		var apiKey verify.SourcifyAPIKey
+		if submission.EtherscanAPIKey != nil {
+			if verify.ValidateSourcifyAPIKey(*submission.EtherscanAPIKey) != nil {
+				writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "Sourcify Etherscan request is invalid", nil)
+				return
+			}
+			apiKey = verify.SourcifyAPIKey(*submission.EtherscanAPIKey)
+		}
+		// Keep the transient secret out of the serialized task body.
+		encoded, _ := json.Marshal(struct {
+			ChainID string `json:"chain_id"`
+			Address string `json:"address"`
+		}{submission.ChainID, submission.Address})
 		h.submitV2(w, r, verify.SubmissionV2{
-			Kind: verify.JobSourcifyFromEtherscan, SourcifyRequest: encoded,
+			Kind: verify.JobSourcifyFromEtherscan, SourcifyRequest: encoded, SourcifyAPIKey: apiKey,
 		})
 		return
 	}
@@ -210,7 +245,7 @@ func (h *Handler) submitV2(w http.ResponseWriter, r *http.Request, request verif
 		h.handleVerificationError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, gen.VerificationJobResponse{Data: verificationJobModel(job), Meta: h.meta(r)})
+	h.writeVerificationJob(w, r, http.StatusAccepted, job)
 }
 
 func (h *Handler) verifierCompilers(w http.ResponseWriter, r *http.Request) {
@@ -288,6 +323,14 @@ func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAPIKey(w, r, auth.ScopeVerification) {
 		return
 	}
+	h.verificationJobAuthorized(w, r)
+}
+
+func (h *Handler) verificationJobAuthorized(w http.ResponseWriter, r *http.Request) {
+	if !h.verificationReadAvailable(w, r) {
+		return
+	}
+
 	job, found, err := h.verificationReader.Job(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.handleVerificationError(w, r, err)
@@ -297,7 +340,7 @@ func (h *Handler) verificationJob(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, "not_found", "verification job not found", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, gen.VerificationJobResponse{Data: verificationJobModel(job), Meta: h.meta(r)})
+	h.writeVerificationJob(w, r, http.StatusOK, job)
 }
 
 func (h *Handler) verifiedContract(w http.ResponseWriter, r *http.Request) {
@@ -539,7 +582,7 @@ func requiredAPIScope(operation string) auth.Scope {
 		"batchVerifySolidityMultipart", "batchVerifySolidityStandardJson",
 		"verifyVyperMultipart", "verifyVyperStandardJson",
 		"listVerifierCompilers", "lookupVerifierMethods",
-		"submitSourcifyVerification", "submitSourcifyFromEtherscan":
+		"submitSourcifyVerification", "submitSourcifyFromEtherscan", "importSourcifyContract":
 		return auth.ScopeVerification
 	default:
 		return auth.ScopeRead
@@ -548,7 +591,9 @@ func requiredAPIScope(operation string) auth.Scope {
 
 func operationUsesAPIKeyScope(operation string) bool {
 	switch operation {
-	case "listCurrentUserWatches", "createCurrentUserWatch", "updateCurrentUserWatch", "deleteCurrentUserWatch", "listCurrentUserPushSubscriptions", "saveCurrentUserPushSubscription", "deleteCurrentUserPushSubscription", "exportCurrentUserAddressActivity",
+	case "submitBrowserAddressVerification", "importBrowserSourcifyContract",
+		"submitBrowserSourcifyVerification", "submitBrowserSourcifyFromEtherscan", "getBrowserVerifierJob",
+		"listCurrentUserWatches", "createCurrentUserWatch", "updateCurrentUserWatch", "deleteCurrentUserWatch", "listCurrentUserPushSubscriptions", "saveCurrentUserPushSubscription", "deleteCurrentUserPushSubscription", "exportCurrentUserAddressActivity",
 		"createAuthChallenge", "verifyAuthChallenge", "getAuthSession",
 		"logoutAuthSession", "updateCurrentUser", "listCurrentUserAPIKeys",
 		"createCurrentUserAPIKey", "rotateCurrentUserAPIKey",

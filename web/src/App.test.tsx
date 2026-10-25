@@ -1,3 +1,5 @@
+import { withVerificationSession } from "../test/verificationSession";
+import { uploadFiles } from "@/test/verificationUpload";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { act, fireEvent, render, screen } from "@testing-library/react";
@@ -646,9 +648,7 @@ describe("embedded explorer shell", () => {
     vi.stubGlobal("fetch", fetcher);
 
     renderExplorer("/verify");
-    fireEvent.change(await screen.findByLabelText(/^Standard JSON input/), {
-      target: { value: "{" },
-    });
+    await uploadFiles(await screen.findByLabelText(/^Standard JSON input/), { "input.json": "{" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -680,7 +680,7 @@ describe("embedded explorer shell", () => {
     ).toBeVisible();
   });
 
-  it("submits and polls a verification job without persisting or routing the API key", async () => {
+  it("submits and polls a session verification job without an API key", async () => {
     const address = `0x${"12".repeat(20)}`;
     const secret = "ev_live_component-memory-only";
     const jobID = "018f3b52-0b3d-7bf1-b65f-6f214827cb41";
@@ -712,7 +712,7 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
-      if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
+      if (path === "/api/v1/verification-jobs/local" && init?.method === "POST") {
         submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Response.json(
           {
@@ -728,7 +728,7 @@ describe("embedded explorer shell", () => {
           { status: 202 },
         );
       }
-      if (path === `/api/v1/verifier/jobs/${jobID}`) {
+      if (path === `/api/v1/verification-jobs/${jobID}`) {
         return Response.json({
           data: {
             id: jobID,
@@ -739,7 +739,7 @@ describe("embedded explorer shell", () => {
               file_name: "src/Test.sol",
               contract_name: "Test",
               language: "solidity",
-              compiler_version: "0.8.3+commit.8d00100c",
+              compiler_version: "0.8.20+commit.a1b79de6",
               settings: {},
               sources: {},
               compilation_artifacts: {},
@@ -761,23 +761,32 @@ describe("embedded explorer shell", () => {
     renderExplorer(`/verify?address=${address}`);
 
     expect(await screen.findByLabelText("Address")).toHaveValue(address);
-    const compilerVersion = (await screen.findByLabelText("Compiler version")) as HTMLSelectElement;
-    expect(Array.from(compilerVersion.options, (option) => option.value)).toEqual([
-      "0.8.3+commit.8d00100c",
-      "0.8.20+commit.a1b79de6",
-      "0.8.30+commit.73712a01",
-    ]);
-    expect(compilerVersion).toHaveValue("0.8.3+commit.8d00100c");
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: secret } });
+    const compilerVersion = await screen.findByDisplayValue("0.8.30+commit.73712a01");
+    await userEvent.setup().click(compilerVersion);
+    expect(
+      screen
+        .getAllByRole("option")
+        .filter((option) => option.parentElement?.getAttribute("role") === "listbox")
+        .map((option) => option.textContent),
+    ).toEqual(["0.8.30+commit.73712a01", "0.8.20+commit.a1b79de6", "0.8.3+commit.8d00100c"]);
+    await userEvent.setup().click(screen.getByRole("option", { name: "0.8.20+commit.a1b79de6" }));
+    expect(compilerVersion).toHaveValue("0.8.20+commit.a1b79de6");
+    await uploadFiles(screen.getByLabelText("Standard JSON input"), {
+      "input.json": JSON.stringify({
+        language: "Solidity",
+        sources: { "src/Test.sol": { content: "contract Test {}" } },
+        settings: {},
+      }),
+    });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(screen.getAllByText("full").length).toBeGreaterThan(0);
     expect(submittedBody).toMatchObject({
-      compiler_version: "0.8.3+commit.8d00100c",
+      compiler_version: "0.8.20+commit.a1b79de6",
       input_kind: "standard_json",
     });
-    expect(submittedBody).not.toHaveProperty("address");
+    expect(submittedBody).toHaveProperty("address", address);
     expect(submittedBody).not.toHaveProperty("code_hash");
     expect(submittedBody).not.toHaveProperty("at_block_hash");
     expect(submittedBody).not.toHaveProperty("creation_bytecode");
@@ -789,7 +798,7 @@ describe("embedded explorer shell", () => {
     expect(protectedCalls).toHaveLength(2);
     for (const [url, init] of protectedCalls) {
       expect(String(url)).not.toContain(secret);
-      expect(new Headers(init?.headers).get("X-API-Key")).toBe(secret);
+      expect(new Headers(init?.headers).get("X-API-Key")).toBeNull();
     }
     expect(window.location.href).not.toContain(secret);
     expect(storageSpy.mock.calls.every(([, value]) => !String(value).includes(secret))).toBe(true);
@@ -824,7 +833,7 @@ describe("embedded explorer shell", () => {
       if (path === "/api/v1/verifier/compilers?language=geas") {
         return Response.json({ data: { language: "geas", versions: ["0.3.3"] }, meta });
       }
-      if (path === `/api/v1/contracts/${address}/verification` && init?.method === "POST") {
+      if (path === "/api/v1/verification-jobs/local" && init?.method === "POST") {
         submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Response.json(
           {
@@ -840,7 +849,7 @@ describe("embedded explorer shell", () => {
           { status: 202 },
         );
       }
-      if (path === `/api/v1/verifier/jobs/${jobID}`) {
+      if (path === `/api/v1/verification-jobs/${jobID}`) {
         return Response.json({
           data: {
             id: jobID,
@@ -892,20 +901,16 @@ describe("embedded explorer shell", () => {
     fireEvent.change(screen.getByLabelText("Contract name (optional)"), {
       target: { value: "Withdrawals" },
     });
-    fireEvent.change(screen.getByLabelText(/^Geas source files/), {
-      target: {
-        value: JSON.stringify({
-          "system/main.eas": '#include "../common/value.eas"\npush VALUE\n',
-          "system/ctor.eas": '#bytes code: assemble("main.eas")\n',
-          "common/value.eas": "#define VALUE = 1\n",
-        }),
-      },
+    await uploadFiles(screen.getByLabelText(/^Geas source files/), {
+      "system/main.eas": '#include "../common/value.eas"\npush VALUE\n',
+      "system/ctor.eas": '#bytes code: assemble("main.eas")\n',
+      "common/value.eas": "#define VALUE = 1\n",
     });
-    fireEvent.change(screen.getByLabelText(/^API key/), { target: { value: "ev_geas_test" } });
     await user.click(screen.getByRole("button", { name: "Submit verification" }));
 
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(submittedBody).toEqual({
+      address,
       compiler_version: "0.3.3",
       contract_name_hint: "Withdrawals",
       creation_entrypoint: "system/ctor.eas",
@@ -1015,11 +1020,12 @@ describe("embedded explorer shell", () => {
     expect(editor).toHaveTextContent(malicious);
     expect(document.querySelector(".contract-code-view img")).toBeNull();
     expect(document.querySelector(".contract-code-view script")).toBeNull();
-    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Etherview API Key(?!\s*[(（])/)).not.toBeInTheDocument();
   });
 });
 
 function renderExplorer(path: string) {
+  if (path.startsWith("/verify")) vi.stubGlobal("fetch", withVerificationSession(fetch));
   const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

@@ -472,8 +472,21 @@ config:
       - https://binaries.soliditylang.org
     catalog_refresh_interval: 1h
     catalog_max_staleness: 24h
+  bytecode_db:
+    enabled: false
+    base_url: https://eth-bytecode-db.services.blockscout.com
+    # Local Fake-IP/private-network development only; TLS verification stays enabled.
+    unsafe_allow_private_networks: false
+    timeout: 20s
+    max_response_bytes: 33554432
+    max_concurrency: 2
+    request_interval: 1s
+    cooldown: 24h
+
   sourcify:
     base_url: https://sourcify.dev/server
+    # Local Fake-IP/private-network development only; TLS verification stays enabled.
+    unsafe_allow_private_networks: false
     timeout: 20s
     max_request_bytes: 5242880
     max_response_bytes: 33554432

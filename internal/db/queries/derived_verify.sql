@@ -621,7 +621,7 @@ GROUP BY exact.id, exact.creator_address, exact.created_address,
 HAVING count(*) = 1;
 
 -- name: DerivedVerifyArtifactJobKind :one
-SELECT kind
+SELECT CASE WHEN EXISTS(SELECT 1 FROM bytecode_db_attempts a WHERE a.job_id=verification_jobs.id) THEN 'eth_bytecode_db' ELSE kind END::text AS kind
 FROM verification_jobs
 WHERE id = sqlc.arg('job_id')::uuid
   AND status = 'succeeded';

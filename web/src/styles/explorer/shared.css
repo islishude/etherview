@@ -97,6 +97,22 @@
   border-radius: var(--radius-md);
 }
 
+.query-loading-spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: query-loading-spin 1s linear infinite;
+}
+
+@keyframes query-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .query-notice.compact {
   min-height: 58px;
   margin-block: 0.4rem;

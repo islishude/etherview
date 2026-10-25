@@ -318,6 +318,9 @@ func validateVerificationConfig(c Config) error {
 	if err := validateCompilerCatalogConfig(c.Verification); err != nil {
 		errs = append(errs, err)
 	}
+	if err := validateBytecodeDB(c.BytecodeDB, c.Features.Verification); err != nil {
+		errs = append(errs, err)
+	}
 	if c.Features.Sourcify && (!c.Features.Verification || !c.Security.PublicVerification) {
 		errs = append(errs, errors.New("features.sourcify requires public verification"))
 	}

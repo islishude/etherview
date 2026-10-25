@@ -1,82 +1,89 @@
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 
 import { usePublicConfig } from "@/api/publicConfig";
-import { useSubmitVerification, useCompilerCatalog, useVerificationJob } from "@/api/hooks";
-import type {
-  VerificationJob,
-  VerificationMatchDetails,
-  VerificationSuccess,
-  VerificationSubmission,
-} from "@/api/types";
+import { useCompilerCatalog } from "@/api/hooks";
+import { useSubmitVerification } from "@/api/browserVerification";
+import { useAuth } from "@/auth/AuthProvider";
+import { VerificationLogin, VerificationResults } from "./VerificationResults";
+import type { BrowserVerificationJob, VerificationSubmission } from "@/api/types";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
   DuplicateJSONKeyError,
   JSONStructureLimitError,
   Page,
-  TextArtifact,
   UnsafeJSONNumberError,
   assertNoDuplicateJSONKeys,
   errorMessage,
-  verificationJobStatusLabel,
-  verificationMatchLabel,
 } from "./pages";
 
-const MAX_STANDARD_JSON_BYTES = 5 * 1024 * 1024;
-const UUID_PATTERN =
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+import { VerificationFileUpload } from "./VerificationFileUpload";
+import { CompilerVersionSelect } from "./CompilerVersionSelect";
+import {
+  byteLength,
+  fileMap,
+  MAX_UPLOAD_BYTES,
+  sourceExtensions,
+  useVerificationFiles,
+} from "./verificationFiles";
 
-export function VerifyPage({ initialAddress = "" }: { initialAddress?: string }) {
+import { SourcifyWorkspace } from "./SourcifyWorkspace";
+import { VerificationProviderPicker } from "./VerificationProviderPicker";
+import "./VerificationWorkflow.css";
+
+export function VerifyPage({
+  initialAddress = "",
+  initialJob = "",
+  onJobChange,
+}: {
+  initialAddress?: string;
+  initialJob?: string;
+  onJobChange?: (id: string) => void;
+}) {
   const { t } = useTranslation();
   const publicConfig = usePublicConfig();
-  const [apiKey, setAPIKey] = useState("");
-  const [submittedAPIKey, setSubmittedAPIKey] = useState("");
+  const [provider, setProvider] = useState("local");
+  const auth = useAuth();
+  const [jobID, setJobID] = useState(initialJob);
+  useEffect(() => setJobID(initialJob), [initialJob]);
+  const selectJob = (id: string) => {
+    setJobID(id);
+    onJobChange?.(id);
+  };
+  const accepted = (job: BrowserVerificationJob) => selectJob(job.id);
   const [address, setAddress] = useState(initialAddress);
   const [language, setLanguage] = useState<VerificationSubmission["language"]>("solidity");
   const [inputKind, setInputKind] = useState<VerificationSubmission["input_kind"]>("standard_json");
   const [compilerVersion, setCompilerVersion] = useState("");
-  const [standardJSON, setStandardJSON] = useState(
-    '{\n  "language": "Solidity",\n  "sources": {},\n  "settings": {}\n}',
-  );
-  const [multipartSources, setMultipartSources] = useState(
-    '{\n  "Contract.sol": "contract Contract {}"\n}',
-  );
-  const [geasSources, setGeasSources] = useState('{\n  "main.eas": "push 1"\n}');
   const [targetFile, setTargetFile] = useState("A.vy");
   const [optimizationMode, setOptimizationMode] = useState<"" | "none" | "gas" | "codesize">("");
-  const [vyperJSON, setVyperJSON] = useState(
-    '{\n  "language": "Vyper",\n  "sources": {"A.vy": {"content": "@external\\ndef value() -> uint256:\\n    return 42\\n"}},\n  "settings": {}\n}',
-  );
-  const [vyperSources, setVyperSources] = useState(
-    '{"A.vy": "@external\\ndef value() -> uint256:\\n    return 42\\n"}',
-  );
   const [runtimeEntrypoint, setRuntimeEntrypoint] = useState("main.eas");
   const [creationEntrypoint, setCreationEntrypoint] = useState("");
   const [contractName, setContractName] = useState("");
   const [formError, setFormError] = useState<string>();
   const submissionEnabled =
     publicConfig.isSuccess && publicConfig.data.features.verification === true;
-  const compilerCatalog = useCompilerCatalog(language, submissionEnabled);
-  const submission = useSubmitVerification(address, apiKey);
-  const job = useVerificationJob(
-    submission.data?.id ?? "",
-    submittedAPIKey,
-    submission.data ? 1 : 0,
-    Boolean(submission.data),
-  );
-  const currentJob = job.data ?? submission.data;
+  const sourcifyEnabled =
+    submissionEnabled && publicConfig.isSuccess && publicConfig.data.features.sourcify === true;
+  const showSourcify = sourcifyEnabled && provider === "sourcify";
+  const compilerCatalog = useCompilerCatalog(language, submissionEnabled && !showSourcify);
+  // The API guarantees semantic ascending order; display newest releases first.
+  const compilerVersions = useMemo(() => {
+    const versions = [...(compilerCatalog.data?.versions ?? [])];
+    return language === "geas" ? versions : versions.reverse();
+  }, [compilerCatalog.data, language]);
+  const submission = useSubmitVerification(address, accepted);
 
   useEffect(() => {
     setAddress(initialAddress);
   }, [initialAddress]);
 
   useEffect(() => {
-    const versions = compilerCatalog.data?.versions ?? [];
-    if (versions.length > 0 && !versions.includes(compilerVersion)) {
-      setCompilerVersion(versions[0] ?? "");
+    if (!compilerVersions.includes(compilerVersion)) {
+      setCompilerVersion(compilerVersions[0] ?? "");
     }
-  }, [compilerCatalog.data, compilerVersion]);
+  }, [compilerVersions, compilerVersion]);
 
   const optimizationModes = useMemo(
     () => compilerCatalog.data?.capabilities?.[compilerVersion]?.optimization_modes ?? [],
@@ -86,37 +93,36 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
     if (optimizationMode && !optimizationModes.includes(optimizationMode)) setOptimizationMode("");
   }, [optimizationMode, optimizationModes]);
 
-  const activeStandardJSON = language === "vyper" ? vyperJSON : standardJSON;
-  const activeMultipartSources = language === "vyper" ? vyperSources : multipartSources;
-  const updateInput = (value: string) => {
-    if (language === "geas") setGeasSources(value);
-    else if (inputKind === "standard_json") {
-      if (language === "vyper") setVyperJSON(value);
-      else setStandardJSON(value);
-    } else if (language === "vyper") setVyperSources(value);
-    else setMultipartSources(value);
-  };
+  const standardInput = language !== "geas" && inputKind === "standard_json";
+  const extensions = standardInput ? [".json"] : sourceExtensions[language];
+  const upload = useVerificationFiles({
+    extensions,
+    single: standardInput,
+    onChange: () => setFormError(undefined),
+  });
+  const busy = upload.reading || submission.isPending;
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!submissionEnabled || !auth.session.authenticated || !auth.enabled || busy) return;
     setFormError(undefined);
     submission.reset();
-    if (!submissionEnabled) return;
-
+    if (upload.error || !upload.files.length) {
+      setFormError(upload.error ?? t("verificationUpload.required"));
+      return;
+    }
     const isGeas = language === "geas";
-    const rawInput = isGeas
-      ? geasSources
-      : inputKind === "standard_json"
-        ? activeStandardJSON
-        : activeMultipartSources;
-    if (new TextEncoder().encode(rawInput).byteLength > MAX_STANDARD_JSON_BYTES) {
-      setFormError(t("verification.inputTooLarge"));
+    const rawInput = standardInput
+      ? upload.files[0]!.content
+      : JSON.stringify(fileMap(upload.files));
+    if (byteLength(rawInput) > MAX_UPLOAD_BYTES) {
+      setFormError(t("verificationUpload.limit"));
       return;
     }
 
     let parsed: unknown;
     try {
-      assertNoDuplicateJSONKeys(rawInput);
+      if (standardInput) assertNoDuplicateJSONKeys(rawInput);
       parsed = JSON.parse(rawInput) as unknown;
     } catch (cause) {
       if (cause instanceof DuplicateJSONKeyError) {
@@ -139,8 +145,8 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
       return;
     }
     if (
-      !apiKey ||
       !isAddress(address) ||
+      !compilerVersions.includes(compilerVersion) ||
       !compilerVersion.trim() ||
       (isGeas && !runtimeEntrypoint.trim()) ||
       (language === "vyper" && !targetFile.trim())
@@ -148,16 +154,6 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
       setFormError(t("verification.invalidFields"));
       return;
     }
-    if (
-      (inputKind === "multipart" || isGeas) &&
-      (Object.keys(parsed).length === 0 ||
-        Object.values(parsed).some((value) => typeof value !== "string"))
-    ) {
-      setFormError(t(isGeas ? "verification.invalidGeasSources" : "verification.invalidMultipart"));
-      return;
-    }
-
-    setSubmittedAPIKey(apiKey);
     const request: VerificationSubmission = {
       compiler_version: compilerVersion.trim(),
       input_kind: isGeas ? "geas_sources" : inputKind,
@@ -178,6 +174,10 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
       if (inputKind === "multipart" && optimizationMode)
         request.optimization_mode = optimizationMode;
     }
+    if (byteLength(JSON.stringify(request)) > MAX_UPLOAD_BYTES) {
+      setFormError(t("verificationUpload.limit"));
+      return;
+    }
     submission.mutate(request);
   };
 
@@ -190,253 +190,199 @@ export function VerifyPage({ initialAddress = "" }: { initialAddress?: string })
           detail={t("verification.unavailableDetail")}
         />
       )}
-      {submissionEnabled && (
-        <div className="verification-layout">
-          <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
-            <h2>{t("verification.request")}</h2>
-            <p className="quiet">{t("verification.securityNotice")}</p>
-            <div className="form-grid">
-              <FormField
-                id="verification-address"
-                label={t("page.address")}
-                value={address}
-                onChange={setAddress}
-              />
-              <label className="field-control" htmlFor="verification-language">
-                <span>{t("verification.language")}</span>
-                <select
-                  id="verification-language"
-                  value={language}
-                  onChange={(event) => {
-                    const nextLanguage = event.target.value as VerificationSubmission["language"];
-                    setLanguage(nextLanguage);
-                    setInputKind((current) =>
-                      nextLanguage === "geas"
-                        ? "geas_sources"
-                        : current === "geas_sources"
-                          ? "standard_json"
-                          : current,
-                    );
-                  }}
-                >
-                  <option value="solidity">{t("verificationLanguage.solidity")}</option>
-                  <option value="yul">{t("verificationLanguage.yul")}</option>
-                  <option value="geas">{t("verificationLanguage.geas")}</option>
-                  <option value="vyper">{t("verificationLanguage.vyper")}</option>
-                </select>
-              </label>
-              <label className="field-control" htmlFor="verification-input-kind">
-                <span>{t("verification.inputKind")}</span>
-                <select
-                  disabled={language === "geas"}
-                  id="verification-input-kind"
-                  value={inputKind}
-                  onChange={(event) =>
-                    setInputKind(event.target.value as VerificationSubmission["input_kind"])
-                  }
-                >
-                  {language === "geas" ? (
-                    <option value="geas_sources">{t("verification.geasSources")}</option>
-                  ) : (
-                    <>
-                      <option value="standard_json">{t("verification.standardJSON")}</option>
-                      <option value="multipart">{t("verification.multipart")}</option>
-                    </>
-                  )}
-                </select>
-              </label>
-              <label className="field-control" htmlFor="verification-compiler">
-                <span>{t("verification.compilerVersion")}</span>
-                <select
-                  disabled={compilerCatalog.isPending || !compilerCatalog.data}
-                  id="verification-compiler"
-                  onChange={(event) => setCompilerVersion(event.target.value)}
-                  value={compilerVersion}
-                >
-                  {(compilerCatalog.data?.versions ?? []).map((version) => (
-                    <option key={version} value={version}>
-                      {version}
-                    </option>
-                  ))}
-                </select>
-                <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
-              </label>
-              {language === "vyper" && (
-                <>
-                  <FormField
-                    id="verification-target-file"
-                    label={t("verification.targetFile")}
-                    value={targetFile}
-                    onChange={setTargetFile}
-                  />
-                  {inputKind === "multipart" && (
-                    <label className="field-control" htmlFor="verification-optimization-mode">
-                      <span>{t("verification.optimizationMode")}</span>
-                      <select
-                        id="verification-optimization-mode"
-                        value={optimizationMode}
-                        onChange={(event) =>
-                          setOptimizationMode(
-                            event.target.value as "" | "none" | "gas" | "codesize",
-                          )
-                        }
-                      >
-                        <option value="">{t("verification.compilerDefault")}</option>
-                        {optimizationModes.map((mode) => (
-                          <option key={mode} value={mode}>
-                            {mode}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                </>
-              )}
-              {language === "geas" ? (
-                <>
-                  <FormField
-                    id="verification-runtime-entrypoint"
-                    label={t("verification.runtimeEntrypoint")}
-                    onChange={setRuntimeEntrypoint}
-                    value={runtimeEntrypoint}
-                  />
-                  <FormField
-                    id="verification-creation-entrypoint"
-                    label={t("verification.creationEntrypoint")}
-                    onChange={setCreationEntrypoint}
-                    value={creationEntrypoint}
-                  />
-                  <FormField
-                    id="verification-contract-name"
-                    label={t("verification.contractName")}
-                    onChange={setContractName}
-                    value={contractName}
-                  />
-                </>
-              ) : null}
-              <label className="field-control wide" htmlFor="verification-input">
-                <span>
-                  {language === "geas"
-                    ? t("verification.geasSources")
-                    : inputKind === "standard_json"
-                      ? t("verification.standardJSON")
-                      : t("verification.multipartSources")}
-                </span>
-                <textarea
-                  id="verification-input"
-                  spellCheck={false}
-                  value={
-                    language === "geas"
-                      ? geasSources
-                      : inputKind === "standard_json"
-                        ? activeStandardJSON
-                        : activeMultipartSources
-                  }
-                  onChange={(event) => updateInput(event.target.value)}
-                />
-                <small>{t("verification.sizeLimit")}</small>
-              </label>
-              <label className="field-control wide" htmlFor="verification-api-key">
-                <span>{t("verification.apiKey")}</span>
-                <input
-                  autoComplete="off"
-                  id="verification-api-key"
-                  name="verification-api-key"
-                  onChange={(event) => setAPIKey(event.target.value)}
-                  spellCheck={false}
-                  type="password"
-                  value={apiKey}
-                />
-                <small>{t("verification.apiKeyNotice")}</small>
-              </label>
-            </div>
-            {(formError || submission.error) && (
-              <p className="form-error" role="alert">
-                {formError ?? errorMessage(submission.error, t("verification.submitFailed"))}
-              </p>
-            )}
-            <button className="button primary" disabled={submission.isPending} type="submit">
-              {submission.isPending ? t("verification.submitting") : t("verification.submit")}
-            </button>
-          </form>
-          <VerificationJobPanel
-            job={currentJob}
-            loading={job.isPending && Boolean(submission.data)}
-            error={job.error}
+      <VerificationLogin />
+      <div hidden={Boolean(jobID)}>
+        {sourcifyEnabled && <VerificationProviderPicker value={provider} onChange={setProvider} />}
+        {showSourcify && (
+          <SourcifyWorkspace
+            onSubmitted={accepted}
+            initialAddress={address}
+            onAddressChange={setAddress}
+            chainID={publicConfig.data!.chain_id}
           />
-        </div>
-      )}
-      <VerificationJobLookup />
-    </Page>
-  );
-}
-
-function VerificationJobLookup() {
-  const { t } = useTranslation();
-  const [jobID, setJobID] = useState("");
-  const [apiKey, setAPIKey] = useState("");
-  const [submittedJobID, setSubmittedJobID] = useState("");
-  const [submittedAPIKey, setSubmittedAPIKey] = useState("");
-  const [requestRevision, setRequestRevision] = useState(0);
-  const [formError, setFormError] = useState<string>();
-  const job = useVerificationJob(
-    submittedJobID,
-    submittedAPIKey,
-    requestRevision,
-    requestRevision > 0,
-  );
-
-  const load = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setFormError(undefined);
-    if (!UUID_PATTERN.test(jobID) || !apiKey) {
-      setFormError(t("verification.invalidJobLookup"));
-      return;
-    }
-    setSubmittedJobID(jobID.toLowerCase());
-    setSubmittedAPIKey(apiKey);
-    setRequestRevision((current) => current + 1);
-  };
-
-  return (
-    <div className="verification-read-layout">
-      <form className="panel verification-job-lookup" autoComplete="off" onSubmit={load}>
-        <h2>{t("verification.openJob")}</h2>
-        <p className="quiet">{t("verification.readNotice")}</p>
-        <FormField
-          id="verification-job-lookup-id"
-          label={t("verification.jobID")}
-          onChange={setJobID}
-          value={jobID}
-        />
-        <label className="field-control" htmlFor="verification-job-lookup-api-key">
-          <span>{t("verification.jobAPIKey")}</span>
-          <input
-            autoComplete="off"
-            id="verification-job-lookup-api-key"
-            name="verification-job-lookup-api-key"
-            onChange={(event) => setAPIKey(event.target.value)}
-            spellCheck={false}
-            type="password"
-            value={apiKey}
-          />
-        </label>
-        {formError && (
-          <p className="form-error" role="alert">
-            {formError}
-          </p>
         )}
-        <button className="button primary" type="submit">
-          {t("verification.loadJob")}
-        </button>
-      </form>
-      <VerificationJobPanel
-        emptyMessage={t("verification.lookupEmpty")}
-        error={job.error}
-        job={job.data}
-        loading={job.isPending && requestRevision > 0}
-      />
-    </div>
+        {submissionEnabled && !showSourcify && (
+          <div className="verification-layout">
+            <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
+              <h2>{t("verification.request")}</h2>
+              <p className="quiet">{t("verification.securityNotice")}</p>
+              <div className="form-grid">
+                <FormField
+                  id="verification-address"
+                  label={t("page.address")}
+                  value={address}
+                  onChange={setAddress}
+                />
+                <label className="field-control" htmlFor="verification-language">
+                  <span>{t("verification.language")}</span>
+                  <select
+                    id="verification-language"
+                    value={language}
+                    onChange={(event) => {
+                      const nextLanguage = event.target.value as VerificationSubmission["language"];
+                      upload.clear();
+                      setCompilerVersion("");
+                      setLanguage(nextLanguage);
+                      setInputKind((current) =>
+                        nextLanguage === "geas"
+                          ? "geas_sources"
+                          : current === "geas_sources"
+                            ? "standard_json"
+                            : current,
+                      );
+                    }}
+                  >
+                    <option value="solidity">{t("verificationLanguage.solidity")}</option>
+                    <option value="yul">{t("verificationLanguage.yul")}</option>
+                    <option value="geas">{t("verificationLanguage.geas")}</option>
+                    <option value="vyper">{t("verificationLanguage.vyper")}</option>
+                  </select>
+                </label>
+                <label className="field-control" htmlFor="verification-input-kind">
+                  <span>{t("verification.inputKind")}</span>
+                  <select
+                    disabled={language === "geas"}
+                    id="verification-input-kind"
+                    value={inputKind}
+                    onChange={(event) => {
+                      upload.clear();
+                      setInputKind(event.target.value as VerificationSubmission["input_kind"]);
+                    }}
+                  >
+                    {language === "geas" ? (
+                      <option value="geas_sources">{t("verification.geasSources")}</option>
+                    ) : (
+                      <>
+                        <option value="standard_json">{t("verification.standardJSON")}</option>
+                        <option value="multipart">{t("verification.multipart")}</option>
+                      </>
+                    )}
+                  </select>
+                </label>
+                <div className="field-control">
+                  <label htmlFor="verification-compiler">{t("verification.compilerVersion")}</label>
+                  {language === "geas" ? (
+                    <select
+                      disabled={compilerCatalog.isPending || !compilerCatalog.data}
+                      id="verification-compiler"
+                      onChange={(event) => setCompilerVersion(event.target.value)}
+                      value={compilerVersion}
+                    >
+                      {compilerVersions.map((version) => (
+                        <option key={version} value={version}>
+                          {version}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <CompilerVersionSelect
+                      key={language}
+                      id="verification-compiler"
+                      versions={compilerVersions}
+                      value={compilerVersion}
+                      onChange={setCompilerVersion}
+                      disabled={compilerCatalog.isPending || !compilerVersions.length}
+                    />
+                  )}
+                  <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
+                </div>
+                {language === "vyper" && (
+                  <>
+                    <FormField
+                      id="verification-target-file"
+                      label={t("verification.targetFile")}
+                      value={targetFile}
+                      onChange={setTargetFile}
+                    />
+                    {inputKind === "multipart" && (
+                      <label className="field-control" htmlFor="verification-optimization-mode">
+                        <span>{t("verification.optimizationMode")}</span>
+                        <select
+                          id="verification-optimization-mode"
+                          value={optimizationMode}
+                          onChange={(event) =>
+                            setOptimizationMode(
+                              event.target.value as "" | "none" | "gas" | "codesize",
+                            )
+                          }
+                        >
+                          <option value="">{t("verification.compilerDefault")}</option>
+                          {optimizationModes.map((mode) => (
+                            <option key={mode} value={mode}>
+                              {mode}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </>
+                )}
+                {language === "geas" ? (
+                  <>
+                    <FormField
+                      id="verification-runtime-entrypoint"
+                      label={t("verification.runtimeEntrypoint")}
+                      onChange={setRuntimeEntrypoint}
+                      value={runtimeEntrypoint}
+                    />
+                    <FormField
+                      id="verification-creation-entrypoint"
+                      label={t("verification.creationEntrypoint")}
+                      onChange={setCreationEntrypoint}
+                      value={creationEntrypoint}
+                    />
+                    <FormField
+                      id="verification-contract-name"
+                      label={t("verification.contractName")}
+                      onChange={setContractName}
+                      value={contractName}
+                    />
+                  </>
+                ) : null}
+                <div className="wide">
+                  <VerificationFileUpload
+                    id="verification-input"
+                    label={t(verificationInputLabel(language, standardInput))}
+                    files={upload.files}
+                    extensions={extensions}
+                    single={standardInput}
+                    editablePaths={!standardInput}
+                    disabled={busy}
+                    onSelect={(files) => {
+                      void upload.select(files);
+                    }}
+                    onRemove={upload.remove}
+                    onRename={upload.rename}
+                  />
+                  <small>{t("verificationUpload.help")}</small>
+                </div>
+              </div>
+              {(upload.error || formError || submission.error) && (
+                <p className="form-error" role="alert">
+                  {upload.error ??
+                    formError ??
+                    errorMessage(submission.error, t("verification.submitFailed"))}
+                </p>
+              )}
+              <button
+                className="button primary"
+                disabled={busy || !auth.enabled || !auth.session.authenticated}
+                type="submit"
+              >
+                {upload.reading
+                  ? t("sourcify.reading")
+                  : submission.isPending
+                    ? t("verification.submitting")
+                    : t("verification.submit")}
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+      {jobID && (
+        <VerificationResults jobID={jobID} onBack={() => selectJob("")} onSubmitted={accepted} />
+      )}
+    </Page>
   );
 }
 
@@ -466,124 +412,6 @@ function FormField({
   );
 }
 
-function VerificationJobPanel({
-  emptyMessage,
-  error,
-  job,
-  loading,
-}: {
-  emptyMessage?: string;
-  error: unknown;
-  job?: VerificationJob;
-  loading: boolean;
-}) {
-  const { t } = useTranslation();
-  const headingID = useId();
-  const success =
-    job?.outcome?.kind === "verification_success"
-      ? (job.outcome as VerificationSuccess)
-      : undefined;
-  return (
-    <section className="panel job-panel" aria-labelledby={headingID}>
-      <h2 id={headingID}>{t("verification.job")}</h2>
-      {!job && !loading && !error && (
-        <p className="quiet">{emptyMessage ?? t("verification.jobEmpty")}</p>
-      )}
-      <QueryNotice loading={loading} error={error} />
-      {job && (
-        <dl className="job-details" aria-live="polite">
-          <div>
-            <dt>{t("verification.jobID")}</dt>
-            <dd>
-              <code>{job.id}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.jobKind")}</dt>
-            <dd>
-              <code>{job.kind}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("table.status")}</dt>
-            <dd>
-              <span className={`job-status ${job.status}`}>
-                {verificationJobStatusLabel(job.status, t)}
-              </span>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.result")}</dt>
-            <dd>
-              <code>{job.outcome?.kind ?? "—"}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.runtimeMatch")}</dt>
-            <dd>{verificationMatchLabel(success?.runtime_match?.match_type, t)}</dd>
-          </div>
-          <div>
-            <dt>{t("verification.creationMatch")}</dt>
-            <dd>{verificationMatchLabel(success?.creation_match?.match_type, t)}</dd>
-          </div>
-          <div>
-            <dt>{t("verification.errorCode")}</dt>
-            <dd>
-              <code>{job.error_code ?? "—"}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("verification.updated")}</dt>
-            <dd>{job.updated_at}</dd>
-          </div>
-        </dl>
-      )}
-      {success?.creation_match && (
-        <VerificationMatchView
-          title={t("verification.creationTransformations")}
-          match={success.creation_match}
-        />
-      )}
-      {success?.runtime_match && (
-        <VerificationMatchView
-          title={t("verification.runtimeTransformations")}
-          match={success.runtime_match}
-        />
-      )}
-      {job?.outcome?.kind === "batch_results" && (
-        <TextArtifact title={t("verification.batchResults")} value={job.outcome.results} />
-      )}
-    </section>
-  );
-}
-
-function VerificationMatchView({
-  title,
-  match,
-}: {
-  title: string;
-  match: VerificationMatchDetails;
-}) {
-  return (
-    <section className="artifact-panel">
-      <h3>{title}</h3>
-      <p>
-        <code>{match.match_type}</code>
-      </p>
-      <pre tabIndex={0}>
-        {JSON.stringify(
-          {
-            transformations: match.transformations,
-            values: match.values,
-          },
-          null,
-          2,
-        )}
-      </pre>
-    </section>
-  );
-}
-
 function UnavailablePanel({ title, detail }: { title: string; detail: string }) {
   return (
     <section className="capability-panel" role="status">
@@ -596,4 +424,12 @@ function UnavailablePanel({ title, detail }: { title: string; detail: string }) 
       </div>
     </section>
   );
+}
+
+function verificationInputLabel(language: string, standardInput: boolean) {
+  return language === "geas"
+    ? "verification.geasSources"
+    : standardInput
+      ? "verification.standardJSON"
+      : "verification.multipartSources";
 }

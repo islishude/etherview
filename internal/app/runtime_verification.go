@@ -66,6 +66,21 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 		); err != nil {
 			return err
 		}
+		if cfg.BytecodeDB.Enabled {
+			client, err := verify.NewBytecodeDBClient(verify.BytecodeDBOptions{
+				BaseURL: cfg.BytecodeDB.BaseURL, Timeout: cfg.BytecodeDB.Timeout,
+				MaxResponseBytes: cfg.BytecodeDB.MaxResponseBytes, MaxInputBytes: cfg.Verification.MaxInputBytes,
+				UnsafeAllowPrivateNetworks: cfg.BytecodeDB.UnsafeAllowPrivateNetworks,
+			})
+			if err != nil {
+				return err
+			}
+			if err = registerWorkerPool(componentRegistry, components.RoleAPI, "43-bytecode-db", "bytecode-db-worker", cfg.BytecodeDB.MaxConcurrency, func(_ int, name string) (components.Service, error) {
+				return verify.NewBytecodeDBWorker(verificationRepository, client, compiler, verify.BytecodeDBWorkerOptions{Name: name, ChainID: cfg.Chain.ID, MaxConcurrency: cfg.BytecodeDB.MaxConcurrency, RequestInterval: cfg.BytecodeDB.RequestInterval, Cooldown: cfg.BytecodeDB.Cooldown, MaxInputBytes: cfg.Verification.MaxInputBytes, Observer: assembly.registry, Logger: logger})
+			}); err != nil {
+				return err
+			}
+		}
 		if cfg.Verification.DerivedEnabled {
 			if err := registerWorkerPool(
 				componentRegistry,

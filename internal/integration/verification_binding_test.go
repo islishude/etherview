@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
@@ -479,6 +480,15 @@ func TestVerifierV2CatalogOutageLeavesCompilerQueuedAndClaimsProxy(t *testing.T)
 }
 
 func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.T) {
+	for _, representation := range []string{"omitted", "null"} {
+		t.Run(representation, func(t *testing.T) {
+			testGeasRuntimePublication(t, representation)
+		})
+	}
+}
+
+func testGeasRuntimePublication(t *testing.T, representation string) {
+	t.Helper()
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -602,11 +612,40 @@ func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.
 	if err := repository.CompleteV2(ctx, lease, "verification_success", tamperedOutcome); err == nil {
 		t.Fatal("Geas publication accepted source content that disagreed with its durable request")
 	}
-	missingCreationMatch := json.RawMessage(strings.Replace(
-		string(outcome), `"creation_match":null,`, "", 1,
-	))
-	if err := repository.CompleteV2(ctx, lease, "verification_success", missingCreationMatch); err == nil {
-		t.Fatal("Geas publication accepted a missing creation_match field")
+	// The worker omits creation_match when no creation entrypoint was supplied.
+	// An explicit JSON null also represents no creation-match evidence.
+	if representation == "omitted" {
+		outcome = json.RawMessage(strings.Replace(string(outcome), `"creation_match":null,`, "", 1))
+	}
+	for _, test := range []struct {
+		name string
+		edit func(map[string]json.RawMessage)
+	}{
+		{"invented creation match", func(fields map[string]json.RawMessage) {
+			fields["creation_match"] = json.RawMessage(`{"match_type":"full","transformations":[],"values":{}}`)
+		}},
+		{"creation entrypoint without match", func(fields map[string]json.RawMessage) {
+			fields["settings"] = json.RawMessage(`{"runtime_entrypoint":"system/main.eas","creation_entrypoint":"system/main.eas","stack_check":true}`)
+			delete(fields, "creation_match")
+		}},
+		{"partial runtime", func(fields map[string]json.RawMessage) {
+			fields["runtime_match"] = json.RawMessage(`{"match_type":"partial","transformations":[],"values":{}}`)
+		}},
+	} {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(outcome, &fields); err != nil {
+			t.Fatal(err)
+		}
+		test.edit(fields)
+		invalid, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = repository.CompleteV2(ctx, lease, "verification_success", invalid)
+		var databaseError *pgconn.PgError
+		if !errors.As(err, &databaseError) || databaseError.Code != "23514" || databaseError.ConstraintName != "verification_results_success_shape_check" {
+			t.Fatalf("%s: expected result shape rejection, got %v", test.name, err)
+		}
 	}
 	if err := repository.CompleteV2(ctx, lease, "verification_success", outcome); err != nil {
 		t.Fatalf("complete Geas verification: %v", err)
@@ -616,6 +655,14 @@ func TestGeasVerificationBindsWithoutCatalogAndPublishesExactRuntime(t *testing.
 		WHERE verification_job_id = $1::uuid AND language = 'geas'
 		  AND compiler_version = '0.3.3' AND match_type = 'full'
 		  AND abi = '[]'::jsonb AND libraries = '{}'::jsonb`, 1, job.ID)
+	stored, found, err := repository.Job(ctx, job.ID)
+	if err != nil || !found || stored.Status != verify.JobSucceeded {
+		t.Fatalf("stored runtime-only job: found=%t status=%s error=%v", found, stored.Status, err)
+	}
+	verified, found, err := repository.VerifiedContract(ctx, 1, "0x"+hex.EncodeToString(address))
+	if err != nil || !found || verified.CreationMatch != nil || verified.RuntimeMatch == nil || verified.RuntimeMatch.MatchType != verify.VerificationMatchFull {
+		t.Fatalf("runtime-only artifact: found=%t artifact=%+v error=%v", found, verified, err)
+	}
 	queued, found, err := repository.Job(ctx, solc.ID)
 	if err != nil || !found || queued.Status != verify.JobQueued || queued.AttemptCount != 0 {
 		t.Fatalf("solc job during Geas-only availability: job=%+v found=%t error=%v", queued, found, err)

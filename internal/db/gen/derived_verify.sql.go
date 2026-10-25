@@ -63,7 +63,7 @@ func (q *Queries) DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerif
 }
 
 const derivedVerifyArtifactJobKind = `-- name: DerivedVerifyArtifactJobKind :one
-SELECT kind
+SELECT CASE WHEN EXISTS(SELECT 1 FROM bytecode_db_attempts a WHERE a.job_id=verification_jobs.id) THEN 'eth_bytecode_db' ELSE kind END::text AS kind
 FROM verification_jobs
 WHERE id = $1::uuid
   AND status = 'succeeded'

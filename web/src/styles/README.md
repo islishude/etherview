@@ -14,6 +14,10 @@ in cascade order:
 8. `responsive.css` — footer/network-picker additions, animations, and shared
    responsive overrides.
 
+The lazy contract page imports `../pages/ContractPage.css` for its proxy summary
+and facts; these rules do not enter the initial shell stylesheet. Shared loading
+indicators stay in `explorer/shared.css`.
+
 Keep feature rules in their owning module. Put a component's narrow-layout
 rule beside the component when it is self-contained; reserve `responsive.css`
 for overrides that coordinate several modules. Add reusable colors, radii,

@@ -81,6 +81,13 @@ export type Hash = string;
  */
 export type Address = string;
 
+export type SourcifySourceImportRequest = {
+    /**
+     * Positive uint64 source chain ID on Sourcify, encoded as a canonical decimal string. The local verification target remains on the deployment's chain and must have identical runtime bytecode.
+     */
+    chain_id: Quantity;
+};
+
 /**
  * A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
  */
@@ -1585,7 +1592,7 @@ export type VerifiedContract = VerificationSuccess & {
     derived_children: Array<DerivedContract>;
 };
 
-export type VerificationOrigin = 'submitted' | 'sourcify' | 'factory_derived';
+export type VerificationOrigin = 'submitted' | 'sourcify' | 'factory_derived' | 'eth_bytecode_db';
 
 export type DerivedVerificationProvenance = {
     creator_address: Address;
@@ -2265,6 +2272,81 @@ export type SearchResponse = {
     meta: Meta;
 };
 
+export type BrowserAddressVerificationSubmission = {
+    address: Address;
+    /**
+     * Required Vyper target .vy file in the inline source bundle.
+     */
+    target_file?: string;
+    /**
+     * Vyper multipart optimization mode; omit to use the selected compiler default.
+     */
+    optimization_mode?: 'none' | 'gas' | 'codesize';
+    /**
+     * Vyper multipart inline interfaces containing content or an ABI array.
+     */
+    interfaces?: {
+        [key: string]: {
+            [key: string]: unknown;
+        };
+    };
+    language: VerifierLanguage;
+    compiler_version: string;
+    input_kind: 'multipart' | 'standard_json' | 'geas_sources';
+    input?: {
+        [key: string]: unknown;
+    };
+    sources?: {
+        [key: string]: string;
+    };
+    evm_version?: string;
+    optimization_runs?: number;
+    libraries?: {
+        [key: string]: Address;
+    };
+    contract_name_hint?: string;
+    runtime_entrypoint?: string;
+    creation_entrypoint?: string;
+};
+
+export type BrowserSourcifySourceImportRequest = {
+    address: Address;
+    /**
+     * Positive uint64 source chain ID on Sourcify, encoded as a canonical decimal string. The local verification target remains on the deployment's chain and must have identical runtime bytecode.
+     */
+    chain_id: Quantity;
+};
+
+export type BrowserVerificationJob = {
+    id: string;
+    kind: 'address' | 'solidity_multipart' | 'solidity_standard_json' | 'vyper_standard_json' | 'vyper_multipart' | 'solidity_batch_multipart' | 'solidity_batch_standard_json' | 'sourcify' | 'sourcify_from_etherscan';
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    outcome?: BrowserVerificationOutcome;
+    error_code?: string;
+    created_at: string;
+    updated_at: string;
+    address?: Address;
+    /**
+     * Durable target chain ID; absent for standalone bytecode jobs.
+     */
+    chain_id?: string;
+};
+
+/**
+ * Status and match evidence only; source and compiler artifacts are excluded.
+ */
+export type BrowserVerificationOutcome = {
+    kind: 'compilation_failure' | 'verification_failure' | 'verification_success' | 'batch_results' | 'sourcify_success';
+    verification_id?: string;
+    runtime_match?: VerificationMatchDetails;
+    creation_match?: VerificationMatchDetails;
+};
+
+export type BrowserVerificationJobResponse = {
+    data: BrowserVerificationJob;
+    meta: Meta;
+};
+
 export type VerificationJobResponse = {
     data: VerificationJob;
     meta: Meta;
@@ -2445,6 +2527,15 @@ export type ConsensusResponse = {
 export type BlockBlobsResponse = {
     data: BlockBlobs;
     meta: Meta;
+};
+
+export type SourcifyFromEtherscanSubmissionWritable = {
+    chain_id: Quantity;
+    address: Address;
+    /**
+     * Optional Etherscan API key, separate from the Etherview X-API-Key. Sent to the configured Sourcify service only for this import. Encrypted before durable enqueue and never returned in job responses.
+     */
+    etherscan_api_key?: string;
 };
 
 export type Cursor = OpaqueCursor;
@@ -4884,6 +4975,145 @@ export type StreamHomeSnapshotsResponses = {
 
 export type StreamHomeSnapshotsResponse = StreamHomeSnapshotsResponses[keyof StreamHomeSnapshotsResponses];
 
+export type SubmitBrowserAddressVerificationData = {
+    body: BrowserAddressVerificationSubmission;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/verification-jobs/local';
+};
+
+export type SubmitBrowserAddressVerificationErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type SubmitBrowserAddressVerificationError = SubmitBrowserAddressVerificationErrors[keyof SubmitBrowserAddressVerificationErrors];
+
+export type SubmitBrowserAddressVerificationResponses = {
+    /**
+     * Verification accepted for asynchronous execution.
+     */
+    202: BrowserVerificationJobResponse;
+};
+
+export type SubmitBrowserAddressVerificationResponse = SubmitBrowserAddressVerificationResponses[keyof SubmitBrowserAddressVerificationResponses];
+
+export type ImportBrowserSourcifyContractData = {
+    body: BrowserSourcifySourceImportRequest;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/verification-jobs/sourcify-import';
+};
+
+export type ImportBrowserSourcifyContractErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ImportBrowserSourcifyContractError = ImportBrowserSourcifyContractErrors[keyof ImportBrowserSourcifyContractErrors];
+
+export type ImportBrowserSourcifyContractResponses = {
+    /**
+     * Verification accepted for asynchronous execution.
+     */
+    202: BrowserVerificationJobResponse;
+};
+
+export type ImportBrowserSourcifyContractResponse = ImportBrowserSourcifyContractResponses[keyof ImportBrowserSourcifyContractResponses];
+
+export type SubmitBrowserSourcifyVerificationData = {
+    body: SourcifySubmission;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/verification-jobs/sourcify';
+};
+
+export type SubmitBrowserSourcifyVerificationErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type SubmitBrowserSourcifyVerificationError = SubmitBrowserSourcifyVerificationErrors[keyof SubmitBrowserSourcifyVerificationErrors];
+
+export type SubmitBrowserSourcifyVerificationResponses = {
+    /**
+     * Verification accepted for asynchronous execution.
+     */
+    202: BrowserVerificationJobResponse;
+};
+
+export type SubmitBrowserSourcifyVerificationResponse = SubmitBrowserSourcifyVerificationResponses[keyof SubmitBrowserSourcifyVerificationResponses];
+
+export type SubmitBrowserSourcifyFromEtherscanData = {
+    body: SourcifyFromEtherscanSubmissionWritable;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/verification-jobs/sourcify-from-etherscan';
+};
+
+export type SubmitBrowserSourcifyFromEtherscanErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type SubmitBrowserSourcifyFromEtherscanError = SubmitBrowserSourcifyFromEtherscanErrors[keyof SubmitBrowserSourcifyFromEtherscanErrors];
+
+export type SubmitBrowserSourcifyFromEtherscanResponses = {
+    /**
+     * Verification accepted for asynchronous execution.
+     */
+    202: BrowserVerificationJobResponse;
+};
+
+export type SubmitBrowserSourcifyFromEtherscanResponse = SubmitBrowserSourcifyFromEtherscanResponses[keyof SubmitBrowserSourcifyFromEtherscanResponses];
+
+export type GetBrowserVerifierJobData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/verification-jobs/{id}';
+};
+
+export type GetBrowserVerifierJobErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetBrowserVerifierJobError = GetBrowserVerifierJobErrors[keyof GetBrowserVerifierJobErrors];
+
+export type GetBrowserVerifierJobResponses = {
+    /**
+     * Current verification status and durable target identity.
+     */
+    200: BrowserVerificationJobResponse;
+};
+
+export type GetBrowserVerifierJobResponse = GetBrowserVerifierJobResponses[keyof GetBrowserVerifierJobResponses];
+
 export type GetVerifiedContractData = {
     body?: never;
     path: {
@@ -4937,6 +5167,33 @@ export type SubmitAddressVerificationResponses = {
 };
 
 export type SubmitAddressVerificationResponse = SubmitAddressVerificationResponses[keyof SubmitAddressVerificationResponses];
+
+export type ImportSourcifyContractData = {
+    body: SourcifySourceImportRequest;
+    path: {
+        address: Address;
+    };
+    query?: never;
+    url: '/contracts/{address}/verification/sourcify';
+};
+
+export type ImportSourcifyContractErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ImportSourcifyContractError = ImportSourcifyContractErrors[keyof ImportSourcifyContractErrors];
+
+export type ImportSourcifyContractResponses = {
+    /**
+     * Sources retrieved and local verification queued.
+     */
+    202: VerificationJobResponse;
+};
+
+export type ImportSourcifyContractResponse = ImportSourcifyContractResponses[keyof ImportSourcifyContractResponses];
 
 export type GetContractProxyData = {
     body?: never;
@@ -5310,7 +5567,7 @@ export type SubmitSourcifyVerificationResponses = {
 export type SubmitSourcifyVerificationResponse = SubmitSourcifyVerificationResponses[keyof SubmitSourcifyVerificationResponses];
 
 export type SubmitSourcifyFromEtherscanData = {
-    body: SourcifyFromEtherscanSubmission;
+    body: SourcifyFromEtherscanSubmissionWritable;
     path?: never;
     query?: never;
     url: '/verifier/sourcify/from-etherscan';

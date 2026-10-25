@@ -1,3 +1,4 @@
+import { installVerificationSession } from "./verification-session";
 import { expect, test } from "@playwright/test";
 
 test("Vyper submission preserves its target, sources and optimization mode", async ({ page }) => {
@@ -16,7 +17,7 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
       json: {
         data: {
           language,
-          versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"],
+          versions: language === "vyper" ? ["0.3.2", "0.4.0", "0.4.3"] : ["0.8.30"],
           capabilities:
             language === "vyper"
               ? {
@@ -36,6 +37,8 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
   });
   const job = {
     id,
+    address,
+    chain_id: "1",
     kind: "address",
     status: "succeeded",
     created_at: "2026-09-08T00:00:00Z",
@@ -56,7 +59,7 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
       runtime_match: { match_type: "partial", transformations: [], values: {} },
     },
   };
-  await page.route(`**/api/v1/contracts/${address}/verification`, async (route) => {
+  await page.route("**/api/v1/verification-jobs/local", async (route) => {
     expect(route.request().postDataJSON()).toMatchObject({
       language: "vyper",
       compiler_version: "0.4.3",
@@ -68,20 +71,44 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
     expect(route.request().postDataJSON()).not.toHaveProperty("optimization_runs");
     await route.fulfill({ status: 202, json: { data: job, meta } });
   });
-  await page.route(`**/api/v1/verifier/jobs/${id}`, (route) =>
+  await page.route(`**/api/v1/verification-jobs/${id}`, (route) =>
     route.fulfill({ json: { data: job, meta } }),
   );
+  await installVerificationSession(page);
   await page.goto("/verify");
   await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("vyper");
   await expect(page.getByRole("combobox", { name: "Compiler version", exact: true })).toHaveValue(
     "0.4.3",
   );
+  const compiler = page.getByRole("combobox", { name: "Compiler version", exact: true });
+  await compiler.click();
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([
+    "0.4.3",
+    "0.4.0",
+    "0.3.2",
+  ]);
+  await compiler.fill("0.4");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText(["0.4.3", "0.4.0"]);
+  await page.getByRole("option", { name: "0.4.3", exact: true }).click();
   await page.getByRole("combobox", { name: "Input format", exact: true }).selectOption("multipart");
+  await page.getByLabel("Source files", { exact: true }).setInputFiles({
+    name: "A.vy",
+    mimeType: "text/plain",
+    buffer: Buffer.from("@external\ndef value() -> uint256:\n    return 42\n"),
+  });
   await page.getByLabel("Address", { exact: true }).fill(address);
-  await page.getByLabel(/^API key/).fill("browser-only-test-key");
   await page
     .getByRole("combobox", { name: "Optimization mode", exact: true })
     .selectOption("codesize");
   await page.getByRole("button", { name: "Submit verification", exact: true }).click();
+  await page.getByText("Technical details", { exact: true }).click();
   await expect(page.getByText("partial", { exact: true }).first()).toBeVisible();
+  await expect(page).toHaveURL(`/verify?job=${id}`);
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "View verified contract", exact: true }),
+  ).toHaveAttribute("href", `/address/${address}#code`);
+  await expect(page.getByRole("button", { name: "Submit verification", exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Back to form", exact: true }).click();
+  await expect(page.getByLabel("Source files", { exact: true })).toHaveCount(0);
 });

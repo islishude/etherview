@@ -164,7 +164,12 @@ const nftRoute = createRoute({
 const verifyRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/verify",
-  validateSearch: (search: Record<string, unknown>): { address?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { address?: string; job?: string } => ({
+    job:
+      typeof search.job === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(search.job)
+        ? search.job.toLowerCase()
+        : undefined,
     address:
       typeof search.address === "string" && isAddress(search.address)
         ? getAddress(search.address)
@@ -313,8 +318,15 @@ function AccountRoutePage() {
 }
 
 function VerifyRoutePage() {
-  const { address } = verifyRoute.useSearch();
-  return <VerifyPage initialAddress={address} />;
+  const { address, job } = verifyRoute.useSearch();
+  const navigate = verifyRoute.useNavigate();
+  return (
+    <VerifyPage
+      initialAddress={address}
+      initialJob={job}
+      onJobChange={(id) => void navigate({ search: { address, job: id || undefined } })}
+    />
+  );
 }
 
 function SearchRoutePage() {

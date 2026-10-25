@@ -27,6 +27,21 @@ func (repository *PostgresRepository) SubmitV2(
 	ctx context.Context,
 	request SubmissionV2,
 ) (VerificationJob, bool, error) {
+	if request.BytecodeDB != nil {
+		return VerificationJob{}, false, errors.New("internal source provenance is not accepted")
+	}
+	return repository.submitV2(ctx, dbgen.New(repository.db), request)
+}
+
+func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbgen.Queries, request SubmissionV2) (VerificationJob, bool, error) {
+	if request.SourcifyAPIKey != "" {
+		return VerificationJob{}, false, errSourcifyCredential
+	}
+	if request.Kind == JobSourcify || request.Kind == JobSourcifyFromEtherscan {
+		if err := ValidateSourcifyV2Request(request.Kind, request.SourcifyRequest, repository.options.MaxRequestBytes); err != nil {
+			return VerificationJob{}, false, err
+		}
+	}
 	normalizeSolidityAnalysisVersion(&request)
 	if request.Language == LanguageVyper {
 		recipe, err := vyper.Lookup(request.CompilerVersion)
@@ -42,7 +57,11 @@ func (repository *PostgresRepository) SubmitV2(
 	if err != nil || len(encoded) > repository.options.MaxRequestBytes {
 		return VerificationJob{}, false, errors.New("v2 verification request exceeds configured bounds")
 	}
-	digest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), encoded...))
+	digestPayload, err := sourcifyDigestPayload(request, encoded)
+	if err != nil {
+		return VerificationJob{}, false, err
+	}
+	digest := sha256.Sum256(append([]byte("etherview:verification-request:v2\x00"), digestPayload...))
 	id, err := randomUUID(repository.random)
 	if err != nil {
 		return VerificationJob{}, false, err
@@ -87,7 +106,7 @@ func (repository *PostgresRepository) SubmitV2(
 		if repository.options.MaxAttempts < -2147483648 || repository.options.MaxAttempts > 2147483647 {
 			return VerificationJob{}, errors.New("invalid stored query value")
 		}
-		row, err := dbgen.New(repository.db).VerifyV2SubmitJob(ctx, dbgen.VerifyV2SubmitJobParams{ID: queryValue0, Kind: string(request.Kind), Language: language, CatalogLanguage: catalogLanguage, CompilerVersion: version, CompilerPlatform: platform, CatalogGenerationID: generation, CompilerDigest: compilerDigest, ChainID: queryValue1, Address: address, CodeHash: codeHash, BlockHash: blockHash, Request: []byte(string(encoded)), RequestPayload: encoded, RequestDigest: digest[:], MaxAttempts: int32(repository.options.MaxAttempts)})
+		row, err := queries.VerifyV2SubmitJob(ctx, dbgen.VerifyV2SubmitJobParams{ID: queryValue0, Kind: string(request.Kind), Language: language, CatalogLanguage: catalogLanguage, CompilerVersion: version, CompilerPlatform: platform, CatalogGenerationID: generation, CompilerDigest: compilerDigest, ChainID: queryValue1, Address: address, CodeHash: codeHash, BlockHash: blockHash, Request: []byte(string(encoded)), RequestPayload: encoded, RequestDigest: digest[:], MaxAttempts: int32(repository.options.MaxAttempts)})
 		if err != nil {
 			return VerificationJob{}, err
 		}
@@ -97,7 +116,7 @@ func (repository *PostgresRepository) SubmitV2(
 	if errors.Is(err, pgx.ErrNoRows) {
 		job, err = func() (VerificationJob, error) {
 
-			row, err := dbgen.New(repository.db).VerifyV2FindActiveJobByDigest(ctx, digest[:])
+			row, err := queries.VerifyV2FindActiveJobByDigest(ctx, digest[:])
 			if err != nil {
 				return VerificationJob{}, err
 			}
@@ -156,18 +175,32 @@ func (repository *PostgresRepository) claimRunnable(
 	if err != nil {
 		return VerificationLease{}, false, err
 	}
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return VerificationLease{}, false, err
+	}
+	defer dbaccess.Rollback(ctx, tx)
+	if err = dbgen.New(tx).VerifyLockClaimGate(ctx); err != nil {
+		return VerificationLease{}, false, err
+	}
 	job, err := func() (VerificationJob, error) {
 
-		row, err := dbgen.New(repository.db).VerifyV2ClaimRunnable(ctx, dbgen.VerifyV2ClaimRunnableParams{LeasedBy: new(workerID), LeaseToken: new(token), LeaseMicroseconds: microseconds, SolidityEnabled: availability.SolcJS, GeasEnabled: availability.Geas, VyperEnabled: availability.Vyper, VyperPreparedEnabled: availability.VyperBound})
+		row, err := dbgen.New(tx).VerifyV2ClaimRunnable(ctx, dbgen.VerifyV2ClaimRunnableParams{LeasedBy: new(workerID), LeaseToken: new(token), LeaseMicroseconds: microseconds, SolidityEnabled: availability.SolcJS, GeasEnabled: availability.Geas, VyperEnabled: availability.Vyper, VyperPreparedEnabled: availability.VyperBound})
 		if err != nil {
 			return VerificationJob{}, err
 		}
 		return repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
 	}()
 	if errors.Is(err, pgx.ErrNoRows) {
+		if err = tx.Commit(ctx); err != nil {
+			return VerificationLease{}, false, err
+		}
 		return VerificationLease{}, false, nil
 	}
 	if err != nil {
+		return VerificationLease{}, false, err
+	}
+	if err = tx.Commit(ctx); err != nil {
 		return VerificationLease{}, false, err
 	}
 	return VerificationLease{Job: job, Token: token}, true, nil
@@ -493,6 +526,22 @@ func (repository *PostgresRepository) publishVerifiedContractTx(
 	publication verifiedPublication,
 ) error {
 	job, fields := publication.Job, publication.Fields
+	if err := dbgen.New(tx).VerifyLockPublication(ctx, strconv.FormatUint(job.RequestV2.Target.ChainID, 10), publication.Address); err != nil {
+		return err
+	}
+	if job.RequestV2.BytecodeDB != nil {
+		var chain pgtype.Numeric
+		if err := chain.Scan(strconv.FormatUint(job.RequestV2.Target.ChainID, 10)); err != nil {
+			return err
+		}
+		exists, err := dbgen.New(tx).BytecodeDBHasPublication(ctx, dbgen.BytecodeDBHasPublicationParams{ChainID: chain, Address: publication.Address, CodeHash: publication.CodeHash, BlockHash: common.FromHex(job.RequestV2.Target.AtBlockHash)})
+		if err != nil {
+			return err
+		}
+		if exists {
+			return nil
+		}
+	}
 	chainID := strconv.FormatUint(job.RequestV2.Target.ChainID, 10)
 	blockNumber := strconv.FormatUint(publication.BlockNumber, 10)
 	if err := func() error {

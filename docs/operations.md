@@ -243,6 +243,58 @@ holding `contract:verify`, then poll `GET /api/v1/verifier/jobs/{id}`. Check
 `outcome.kind` for `sourcify_success`; job completion alone does not mean
 verification succeeded. Sourcify results remain external verification results.
 
+For `POST /api/v1/verifier/sourcify/from-etherscan`, send `chain_id`, `address`
+and optionally `etherscan_api_key` in the JSON body. `X-API-Key` is the separate
+Etherview API Key; the optional body field is forwarded as `apiKey` to the
+configured Sourcify service for that import. Omitting it leaves credential
+selection to that service, which may reject an import without an available
+Etherscan key. The Web form explains external publication and credential
+sharing before confirmation and clears the Etherscan field after submission.
+Do not place either key in URLs, shell history, diagnostic payload dumps or
+request-body logging at reverse proxies.
+
+The API encrypts Etherscan credentials before PostgreSQL enqueue using
+purpose-separated keys derived from `security.api_key_pepper`; database rows
+and backups contain ciphertext only, and job reads never return it. Use the
+same pepper on every API/all-role replica. Before rotating it, stop accepting
+new imports and drain pending/running Sourcify imports that carry credentials.
+Restoring those jobs requires the original pepper from a separately secured
+secret backup. A missing or mismatched pepper fails decryption; it never falls
+back to plaintext or an unauthenticated import. Rotation does not re-encrypt
+historical ciphertext. Normal no-key imports need no credential decryption.
+
+To import an already verified contract into Etherview, POST `{"chain_id":"1"}`
+with an Etherview `X-API-Key` scoped to `contract:verify` to
+`/api/v1/contracts/{address}/verification/sourcify`. Both public verification and
+Sourcify must be enabled. `chain_id` selects the Sourcify source chain as a positive
+decimal uint64 string; it defaults to the deployment's chain in the Web form.
+It may differ from the local chain, but the same address must have identical
+runtime bytecode on both chains. The local target chain always comes from the
+deployment; the address needs canonical local runtime and creation facts (or
+authenticated Genesis provenance).
+The API fetches Sourcify's existing sources and returns a local address job to
+poll at `/api/v1/verifier/jobs/{id}`. Only `verification_success` establishes
+local verification and publishes the source/ABI. `sourcify_success` belongs to
+the separate external publication workflow. No Etherscan key, file upload or
+external publication consent is needed for direct retrieval. A missing upstream
+contract returns `sourcify_not_found`; mismatched runtime returns
+`sourcify_target_mismatch`; unsupported/invalid input returns
+`sourcify_invalid_source`. Unavailable upstreams return `sourcify_unavailable`
+without their diagnostic body. The Web offers direct import first and a
+separate local import action after external publication.
+
+Outside Preview, Sourcify rejects DNS answers containing private, loopback or
+special-purpose addresses by default. For local Fake-IP development, set
+`sourcify.unsafe_allow_private_networks: true` or
+`ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS=true`. The switch affects only
+Sourcify and defaults to `false` outside Preview. Preview enables it by default. HTTPS, certificate
+verification, checked-IP dialing, redirect rejection and request limits remain
+enforced; environment HTTP proxies remain disabled. It does not enable automatic
+source publication or change the separate metadata, bytecode database or compiler
+download policies. Add the override to `.local/preview-push.env` (or the file
+selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it;
+set it back to `false` to restore public-network checks.
+
 Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
 `https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
 hosts file to open gateway links in a browser; containers resolve the same name
@@ -1683,3 +1735,112 @@ blob objects are retained; there is no automatic archive garbage collection.
 `/status` and `/home` expose the last successful consensus observation and its
 freshness. Consensus-node or archive outages affect their own collection and
 read capability without changing execution finality or core readiness.
+
+## Automatic bytecode database source discovery
+
+Set `features.verification: true` and `bytecode_db.enabled: true` to search the
+remote Ethereum Bytecode Database for indexed contracts. The feature defaults
+to disabled outside Preview; Preview enables both settings by default. Set
+`ETHERVIEW_BYTECODE_DB_ENABLED=false` to disable discovery in Preview.
+`bytecode_db.base_url` defaults to
+`https://eth-bytecode-db.services.blockscout.com`; HTTPS search endpoints use
+public-network address checks by default. No source is uploaded and no remote compiler
+is invoked. Solidity, Yul and locally supported Vyper sources are compiled and
+matched locally before source, ABI or verification status is published.
+
+The API/all role owns discovery, search and local verification. Keep the same
+configuration on all API replicas. Environment overrides use
+`ETHERVIEW_BYTECODE_DB_ENABLED`, `BASE_URL`, `TIMEOUT`, `MAX_RESPONSE_BYTES`,
+`MAX_CONCURRENCY`, `REQUEST_INTERVAL` and `COOLDOWN` with the same
+`ETHERVIEW_BYTECODE_DB_` prefix. Defaults are 20 seconds, 32 MiB, two concurrent
+searches, one request per second across replicas and a 24-hour cooldown.
+The existing `verification.max_input_bytes` also limits each candidate.
+
+For local Fake-IP or private-network development, explicitly set
+`bytecode_db.unsafe_allow_private_networks: true` or
+`ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS=true`. This independent
+escape hatch defaults to `false` outside Preview. Preview enables it by default.
+It allows the bytecode
+search client's resolved private, loopback and special-purpose addresses
+(including `198.18.0.0/15`); it does not change metadata or compiler-download
+policy. HTTPS, certificate verification, redirect rejection, checked-IP dialing
+and request/response bounds remain enforced; environment HTTP proxies remain
+disabled. In Preview, add the environment override to `.local/preview-push.env`
+(or the file selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it. Use `false` to restore public-network checks.
+
+Repeated bounded address sweeps cover old contracts, late creation facts and
+reorgs. Ordinary contracts wait for canonical creation facts; authenticated
+Genesis predeploys may verify runtime alone. A search hit is not proof: remote
+ABI, match labels and artifacts are never published as local evidence. Unknown
+compiler versions remain unavailable until local support changes. Vyper release
+labels such as `v0.4.3+commit.bff19ea2` select the application-locked `0.4.3`
+release; upstream commit labels are not compiler provenance. Automatic
+work has lower queue priority than submitted jobs and only one automatic
+compilation can run at a time. Successful artifacts retain
+`verification_origin: eth_bytecode_db` in the native API and display that
+source origin in both locales.
+
+Monitor `etherview_bytecode_db_total{result=...}` and
+`etherview_bytecode_db_pending`. `hit` means a candidate was retrieved;
+`verified` means a locally verified artifact is available. `waiting_facts`,
+`compiler_unavailable`, `candidate_limited`, `rate_limited` and
+`verification_failed` explain incomplete coverage without leaking source,
+provider URLs or nested upstream errors. Remote failure does not block core
+readiness. PostgreSQL owns cooldowns, lookup cache, leases and immutable
+candidate/job associations; restarting workers does not erase them.
+
+Compiler artifact downloads retry transport errors, timeouts, HTTP 408/429 and
+5xx responses at most three times per compiler resolution or compilation pair, with 1/2-second backoff
+and `Retry-After` bounded to 30 seconds. Failed jobs distinguish
+`compiler_download_unavailable`, `compiler_download_timeout`,
+`compiler_download_rate_limited`, `compiler_download_rejected`,
+`compiler_checksum_mismatch` and `compiler_artifact_too_large` without exposing
+upstream diagnostics. The first three and `compiler_unavailable` may requeue
+after `bytecode_db.cooldown`, retaining the job, source association and bound
+compiler identity. Each wave resets the lease attempt budget. Rejected,
+checksum, size and deterministic compilation/match failures remain terminal.
+
+For an explicit operator retry of cached searches, use the writer database in
+an audited maintenance session. Select the provider by its stored service ID
+(`encode(id, 'hex')` from `bytecode_db_services`), then reset only that service's
+unleased lookups:
+
+```sql
+UPDATE bytecode_db_lookups
+SET next_attempt_at = clock_timestamp(), failures = 0, requested = true
+WHERE service_id = decode('<service-id-hex>', 'hex') AND lease_token IS NULL;
+```
+
+This retries remote discovery; it does not erase deterministic local compilation
+failures or alter published verification. Changing the compiler/executor
+identity permits a new local attempt. Disable the feature to stop new discovery;
+previously queued local verification jobs keep their ordinary durable lifecycle.
+This fresh-database baseline requires recreation of older development databases,
+as described in the fresh-database initialization procedure.
+
+## Browser contract verification
+
+The More → Verify contract page requires `features.user_auth`,
+`features.verification` and `security.public_verification` for submission.
+Configure the existing session pepper and canonical `server.public_url` as for
+Account login. The API-key pepper remains required by the existing verifier
+configuration and encrypted upstream imports; do not distribute it or an
+operator API key to the SPA. Browser submission uses the existing SIWE Cookie
+and session-bound CSRF token. When user authentication is disabled, the page
+explains that browser submission is unavailable; it has no API-key fallback.
+
+The session endpoints are POST `/api/v1/verification-jobs/local`,
+`/api/v1/verification-jobs/sourcify-import`,
+`/api/v1/verification-jobs/sourcify`, and
+`/api/v1/verification-jobs/sourcify-from-etherscan`, plus
+GET `/api/v1/verification-jobs/{id}`. The first two POST bodies include
+`address`; source import additionally requires the source `chain_id`.
+Existing native and Etherscan clients continue to use scoped API keys.
+
+Users can save `/verify?job=<UUID>` to reopen results after login. Switching
+back to the form does not cancel a durable task. Refreshing restores the task
+result, not the uploaded files. Disabling new submissions leaves authenticated
+reads available. Job IDs are not an ownership boundary: any authorized user
+with a known ID can read its redacted status and match evidence. There is no
+personal job list or schema migration. Sourcify publication remains explicit;
+its external success is separate from local compilation and publication.
