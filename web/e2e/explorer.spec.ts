@@ -183,8 +183,8 @@ test("ERC-4337 UserOperations browse globally and from transaction and address a
   await assertA11yAndNoOverflow(page, "ERC-4337 address activity at 390px");
 });
 
-test("verification compiler versions preserve semantic order", async ({ page }) => {
-  const versions = ["0.8.3+commit.8d00100c", "0.8.20+commit.a1b79de6", "0.8.30+commit.73712a01"];
+test("verification compiler versions descend and support accessible search", async ({ page }) => {
+  const versions = ["0.8.9+commit.e5eed63a", "0.8.10+commit.fc410830", "0.8.30+commit.73712a01"];
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
     const payload = (await response.json()) as {
@@ -199,10 +199,49 @@ test("verification compiler versions preserve semantic order", async ({ page }) 
 
   const response = await page.goto("/verify");
   expect(response?.status()).toBe(200);
-  const compilerVersion = page.getByLabel("Compiler version");
-  await expect(compilerVersion).toHaveValue(versions[0]);
-  expect(await compilerVersion.locator("option").allTextContents()).toEqual(versions);
-  await assertA11yAndNoOverflow(page, "semantic compiler version order");
+  const compilerVersion = page.getByRole("combobox", { name: "Compiler version", exact: true });
+  await expect(compilerVersion).toHaveValue(versions[2]);
+  await compilerVersion.click();
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([...versions].reverse());
+  await assertA11yAndNoOverflow(page, "descending compiler versions with open search");
+  await page.screenshot({ path: test.info().outputPath("compiler-search-en.png"), fullPage: true });
+  await compilerVersion.fill("  COMMIT.FC410830  ");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([versions[1]]);
+  await compilerVersion.press("Enter");
+  await expect(compilerVersion).toHaveValue(versions[1]);
+  await compilerVersion.pressSequentially("0.8.9");
+  await expect(compilerVersion).toHaveValue("0.8.9");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([versions[0]]);
+  await compilerVersion.press("Escape");
+  await expect(compilerVersion).toHaveValue(versions[1]);
+  await compilerVersion.pressSequentially("0.8.30");
+  await expect(compilerVersion).toHaveValue("0.8.30");
+  await compilerVersion.press("Escape");
+  await compilerVersion.press("ArrowDown");
+  await compilerVersion.fill("missing");
+  await expect(page.getByText("No matching versions", { exact: true })).toBeVisible();
+  await compilerVersion.press("Escape");
+  await expect(compilerVersion).toHaveValue(versions[1]);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await activateInView(page.getByRole("button", { name: "切换到中文" }));
+  const chineseCompiler = page.getByRole("combobox", { name: "编译器版本", exact: true });
+  await chineseCompiler.click();
+  await expect(chineseCompiler).toHaveAttribute("placeholder", "搜索版本…");
+  await assertA11yAndNoOverflow(page, "compiler search in Chinese at 390px");
+  await page.screenshot({
+    path: test.info().outputPath("compiler-search-zh-390.png"),
+    fullPage: true,
+  });
+  await chineseCompiler.fill("missing");
+  await expect(page.getByText("没有匹配的版本", { exact: true })).toBeVisible();
+  await chineseCompiler.fill("");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([...versions].reverse());
+  await chineseCompiler.press("ArrowDown");
+  await chineseCompiler.press("Enter");
+  await expect(chineseCompiler).toHaveValue(versions[1]);
+  await chineseCompiler.click();
+  await chineseCompiler.press("Tab");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 });
 
 test("ENS primary names stay snapshot-stable, disclose addresses, and normalize search", async ({

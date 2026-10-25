@@ -31,7 +31,7 @@ async function setup() {
       </VerificationTestSession>
     </QueryClientProvider>,
   );
-  await screen.findByRole("option", { name: "0.8.30" });
+  await screen.findByDisplayValue("0.8.30");
   return { fetcher, ...view };
 }
 const posts = (fetcher: Awaited<ReturnType<typeof setup>>["fetcher"]) =>

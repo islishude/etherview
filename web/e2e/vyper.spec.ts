@@ -17,7 +17,7 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
       json: {
         data: {
           language,
-          versions: language === "vyper" ? ["0.4.3"] : ["0.8.30"],
+          versions: language === "vyper" ? ["0.3.2", "0.4.0", "0.4.3"] : ["0.8.30"],
           capabilities:
             language === "vyper"
               ? {
@@ -80,6 +80,16 @@ test("Vyper submission preserves its target, sources and optimization mode", asy
   await expect(page.getByRole("combobox", { name: "Compiler version", exact: true })).toHaveValue(
     "0.4.3",
   );
+  const compiler = page.getByRole("combobox", { name: "Compiler version", exact: true });
+  await compiler.click();
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText([
+    "0.4.3",
+    "0.4.0",
+    "0.3.2",
+  ]);
+  await compiler.fill("0.4");
+  await expect(page.getByRole("listbox").getByRole("option")).toHaveText(["0.4.3", "0.4.0"]);
+  await page.getByRole("option", { name: "0.4.3", exact: true }).click();
   await page.getByRole("combobox", { name: "Input format", exact: true }).selectOption("multipart");
   await page.getByLabel("Source files", { exact: true }).setInputFiles({
     name: "A.vy",

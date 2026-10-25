@@ -66,9 +66,63 @@ afterEach(() => {
 });
 
 describe("browser verification flow", () => {
+  it("shows descending catalogs, preserves valid choices on refresh and resets search on language changes", async () => {
+    const { client } = setup();
+    const user = userEvent.setup();
+    await screen.findByDisplayValue("0.8.30");
+    const versions = ["0.8.9", "0.8.10"];
+    act(() => {
+      client.setQueryData(["verifier-compilers", "solidity"], { language: "solidity", versions });
+      client.setQueryData(["verifier-compilers", "vyper"], {
+        language: "vyper",
+        versions: ["v0.3.2", "v0.4.0"],
+      });
+      client.setQueryData(["verifier-compilers", "yul"], { language: "yul", versions });
+    });
+    const input = await screen.findByDisplayValue("0.8.10");
+    await user.click(input);
+    expect(
+      screen
+        .getAllByRole("option")
+        .filter((option) => option.parentElement?.getAttribute("role") === "listbox")
+        .map((option) => option.textContent),
+    ).toEqual(["0.8.10", "0.8.9"]);
+    expect(versions).toEqual(["0.8.9", "0.8.10"]);
+    await user.click(screen.getByRole("option", { name: "0.8.9" }));
+    act(() => {
+      client.setQueryData(["verifier-compilers", "solidity"], {
+        language: "solidity",
+        versions: [...versions, "0.8.30"],
+      });
+    });
+    expect(input).toHaveValue("0.8.9");
+    await user.click(input);
+    await user.type(input, "0.8.9");
+    await user.selectOptions(screen.getByLabelText("Language"), "vyper");
+    const vyper = await screen.findByDisplayValue("v0.4.0");
+    await user.click(vyper);
+    expect(screen.getByRole("option", { name: "v0.4.0" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "v0.3.2" })).toBeVisible();
+    await user.type(vyper, "0.3");
+    await user.keyboard("{Enter}");
+    expect(vyper).toHaveValue("v0.3.2");
+    await user.selectOptions(screen.getByLabelText("Language"), "yul");
+    expect(await screen.findByDisplayValue("0.8.10")).toBeVisible();
+    await user.selectOptions(screen.getByLabelText("Language"), "solidity");
+    expect(await screen.findByDisplayValue("0.8.30")).toBeVisible();
+    act(() => {
+      client.setQueryData(["verifier-compilers", "solidity"], {
+        language: "solidity",
+        versions: [],
+      });
+    });
+    await waitFor(() => expect(screen.getByLabelText("Compiler version")).toHaveValue(""));
+    expect(screen.getByLabelText("Compiler version")).toBeDisabled();
+  });
+
   it("clears completed submission results from the cache on logout", async () => {
     const view = setup();
-    await screen.findByRole("option", { name: "0.8.30" });
+    await screen.findByDisplayValue("0.8.30");
     await uploadFiles(screen.getByLabelText("Standard JSON input"), { "input.json": "{}" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Submit verification" }));
     await screen.findByText("Contract verification succeeded.");
@@ -102,7 +156,7 @@ describe("browser verification flow", () => {
     auth.enabled = false;
     auth.session = { authenticated: false };
     const view = setup();
-    await screen.findByRole("option", { name: "0.8.30" });
+    await screen.findByDisplayValue("0.8.30");
     expect(screen.getByText(/user sign-in, which is disabled on this deployment/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Submit verification" })).toBeDisabled();
     expect(screen.queryByLabelText(/API Key/)).toBeNull();
@@ -142,7 +196,7 @@ describe("browser verification flow", () => {
   it("keeps the draft through login and back navigation, and submits only on an explicit click", async () => {
     auth.session = { authenticated: false };
     const view = setup();
-    await screen.findByRole("option", { name: "0.8.30" });
+    await screen.findByDisplayValue("0.8.30");
     expect(screen.queryByRole("heading", { name: "Verification job" })).toBeNull();
     expect(screen.queryByLabelText(/Etherview API Key/)).toBeNull();
     expect(screen.queryByText("Open a durable verification job")).toBeNull();
@@ -246,7 +300,7 @@ describe("browser verification flow", () => {
 
   it("aborts submission on account change and ignores a late response", async () => {
     const view = setup();
-    await screen.findByRole("option", { name: "0.8.30" });
+    await screen.findByDisplayValue("0.8.30");
     await uploadFiles(screen.getByLabelText("Standard JSON input"), { "input.json": "{}" });
     let resolve: ((value: Response) => void) | undefined;
     let signal: AbortSignal | null | undefined;

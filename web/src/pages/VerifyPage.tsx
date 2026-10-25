@@ -19,6 +19,7 @@ import {
 } from "./pages";
 
 import { VerificationFileUpload } from "./VerificationFileUpload";
+import { CompilerVersionSelect } from "./CompilerVersionSelect";
 import {
   byteLength,
   fileMap,
@@ -67,6 +68,11 @@ export function VerifyPage({
     submissionEnabled && publicConfig.isSuccess && publicConfig.data.features.sourcify === true;
   const showSourcify = sourcifyEnabled && provider === "sourcify";
   const compilerCatalog = useCompilerCatalog(language, submissionEnabled && !showSourcify);
+  // The API guarantees semantic ascending order; display newest releases first.
+  const compilerVersions = useMemo(() => {
+    const versions = [...(compilerCatalog.data?.versions ?? [])];
+    return language === "geas" ? versions : versions.reverse();
+  }, [compilerCatalog.data, language]);
   const submission = useSubmitVerification(address, accepted);
 
   useEffect(() => {
@@ -74,11 +80,10 @@ export function VerifyPage({
   }, [initialAddress]);
 
   useEffect(() => {
-    const versions = compilerCatalog.data?.versions ?? [];
-    if (versions.length > 0 && !versions.includes(compilerVersion)) {
-      setCompilerVersion(versions[0] ?? "");
+    if (!compilerVersions.includes(compilerVersion)) {
+      setCompilerVersion(compilerVersions[0] ?? "");
     }
-  }, [compilerCatalog.data, compilerVersion]);
+  }, [compilerVersions, compilerVersion]);
 
   const optimizationModes = useMemo(
     () => compilerCatalog.data?.capabilities?.[compilerVersion]?.optimization_modes ?? [],
@@ -141,6 +146,7 @@ export function VerifyPage({
     }
     if (
       !isAddress(address) ||
+      !compilerVersions.includes(compilerVersion) ||
       !compilerVersion.trim() ||
       (isGeas && !runtimeEntrypoint.trim()) ||
       (language === "vyper" && !targetFile.trim())
@@ -215,6 +221,7 @@ export function VerifyPage({
                     onChange={(event) => {
                       const nextLanguage = event.target.value as VerificationSubmission["language"];
                       upload.clear();
+                      setCompilerVersion("");
                       setLanguage(nextLanguage);
                       setInputKind((current) =>
                         nextLanguage === "geas"
@@ -252,22 +259,33 @@ export function VerifyPage({
                     )}
                   </select>
                 </label>
-                <label className="field-control" htmlFor="verification-compiler">
-                  <span>{t("verification.compilerVersion")}</span>
-                  <select
-                    disabled={compilerCatalog.isPending || !compilerCatalog.data}
-                    id="verification-compiler"
-                    onChange={(event) => setCompilerVersion(event.target.value)}
-                    value={compilerVersion}
-                  >
-                    {(compilerCatalog.data?.versions ?? []).map((version) => (
-                      <option key={version} value={version}>
-                        {version}
-                      </option>
-                    ))}
-                  </select>
+                <div className="field-control">
+                  <label htmlFor="verification-compiler">{t("verification.compilerVersion")}</label>
+                  {language === "geas" ? (
+                    <select
+                      disabled={compilerCatalog.isPending || !compilerCatalog.data}
+                      id="verification-compiler"
+                      onChange={(event) => setCompilerVersion(event.target.value)}
+                      value={compilerVersion}
+                    >
+                      {compilerVersions.map((version) => (
+                        <option key={version} value={version}>
+                          {version}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <CompilerVersionSelect
+                      key={language}
+                      id="verification-compiler"
+                      versions={compilerVersions}
+                      value={compilerVersion}
+                      onChange={setCompilerVersion}
+                      disabled={compilerCatalog.isPending || !compilerVersions.length}
+                    />
+                  )}
                   <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
-                </label>
+                </div>
                 {language === "vyper" && (
                   <>
                     <FormField

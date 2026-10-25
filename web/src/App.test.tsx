@@ -739,7 +739,7 @@ describe("embedded explorer shell", () => {
               file_name: "src/Test.sol",
               contract_name: "Test",
               language: "solidity",
-              compiler_version: "0.8.3+commit.8d00100c",
+              compiler_version: "0.8.20+commit.a1b79de6",
               settings: {},
               sources: {},
               compilation_artifacts: {},
@@ -761,13 +761,16 @@ describe("embedded explorer shell", () => {
     renderExplorer(`/verify?address=${address}`);
 
     expect(await screen.findByLabelText("Address")).toHaveValue(address);
-    const compilerVersion = (await screen.findByLabelText("Compiler version")) as HTMLSelectElement;
-    expect(Array.from(compilerVersion.options, (option) => option.value)).toEqual([
-      "0.8.3+commit.8d00100c",
-      "0.8.20+commit.a1b79de6",
-      "0.8.30+commit.73712a01",
-    ]);
-    expect(compilerVersion).toHaveValue("0.8.3+commit.8d00100c");
+    const compilerVersion = await screen.findByDisplayValue("0.8.30+commit.73712a01");
+    await userEvent.setup().click(compilerVersion);
+    expect(
+      screen
+        .getAllByRole("option")
+        .filter((option) => option.parentElement?.getAttribute("role") === "listbox")
+        .map((option) => option.textContent),
+    ).toEqual(["0.8.30+commit.73712a01", "0.8.20+commit.a1b79de6", "0.8.3+commit.8d00100c"]);
+    await userEvent.setup().click(screen.getByRole("option", { name: "0.8.20+commit.a1b79de6" }));
+    expect(compilerVersion).toHaveValue("0.8.20+commit.a1b79de6");
     await uploadFiles(screen.getByLabelText("Standard JSON input"), {
       "input.json": JSON.stringify({
         language: "Solidity",
@@ -780,7 +783,7 @@ describe("embedded explorer shell", () => {
     expect(await screen.findByText("succeeded")).toBeVisible();
     expect(screen.getAllByText("full").length).toBeGreaterThan(0);
     expect(submittedBody).toMatchObject({
-      compiler_version: "0.8.3+commit.8d00100c",
+      compiler_version: "0.8.20+commit.a1b79de6",
       input_kind: "standard_json",
     });
     expect(submittedBody).toHaveProperty("address", address);

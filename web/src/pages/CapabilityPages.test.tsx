@@ -694,7 +694,7 @@ describe("P50 capability pages", () => {
     vi.stubGlobal("fetch", fetcher);
     renderExplorer("/verify");
     fireEvent.change(await screen.findByLabelText("Language"), { target: { value: "vyper" } });
-    expect(await screen.findByRole("option", { name: "0.4.3" })).toBeVisible();
+    expect(await screen.findByDisplayValue("0.4.3")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "multipart" } });
     fireEvent.change(screen.getByLabelText("Address"), { target: { value: address } });
     fireEvent.change(screen.getByLabelText("Optimization mode"), { target: { value: "codesize" } });
