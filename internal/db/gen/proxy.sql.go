@@ -718,6 +718,7 @@ WITH tip AS (
           AND receipt.block_hash = first_cut.block_hash
           AND lower(receipt.raw->>'contractAddress') =
               lower('0x' || encode($4::bytea, 'hex'))
+          AND receipt.raw->>'status' IS DISTINCT FROM '0x0'
         UNION ALL
         SELECT 1
         FROM normalized_traces AS trace

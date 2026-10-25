@@ -124,8 +124,7 @@ func New(options Options) (chainbundle.Bundle, error) {
 				err,
 			)
 		}
-		if transaction.To() == nil &&
-			status == types.ReceiptStatusSuccessful {
+		if transaction.To() == nil {
 			receipt.ContractAddress = crypto.CreateAddress(
 				sender,
 				transaction.Nonce(),

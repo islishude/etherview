@@ -329,6 +329,7 @@ WITH candidates AS (
      AND block.hash = receipt.block_hash
     WHERE receipt.chain_id = $1::numeric
       AND lower(receipt.raw->>'contractAddress') = lower('0x' || encode($2, 'hex'))
+      AND receipt.raw->>'status' IS DISTINCT FROM '0x0'
 
     UNION ALL
 
@@ -1267,6 +1268,7 @@ LEFT JOIN LATERAL (
          AND inclusion.tx_index = receipt.tx_index
         WHERE receipt.chain_id = $2::numeric
           AND lower(receipt.raw->>'contractAddress') = $3::text
+          AND receipt.raw->>'status' IS DISTINCT FROM '0x0'
           AND receipt.block_number <= current_code.block_number
           AND inclusion.raw->>'input' IS NOT NULL
 

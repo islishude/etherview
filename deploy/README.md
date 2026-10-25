@@ -127,6 +127,13 @@ verification, Sourcify and NFT metadata while leaving pricing, prepaid billing,
 and x402 top-ups disabled. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
 
+To enable UserOperations on an existing Preview, set
+`ETHERVIEW_FEATURE_USER_OPERATIONS=true` and `ETHERVIEW_ERC4337_ENTRY_POINTS`
+in `.local/preview-push.env`. Use the deployed EntryPoint's address, version and
+deployment block, then run `make recreate-preview` and the
+[bounded UserOperation reindex](../docs/operations.md#erc-4337-useroperation-indexing).
+All Preview roles receive the same registry.
+
 The Preview Geth container mounts `deploy/geth-entrypoint.sh` and initializes
 the read-only Genesis file into the persistent `geth-data` volume before every
 start, then `exec`s Geth with Lighthouse driving block production. Override the

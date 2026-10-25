@@ -242,7 +242,8 @@ func (processor *PostgresProxyProcessor) loadReceiptCandidates(ctx context.Conte
 		if err := validateProxyReceipt(wire, job, uint64(index), hash); err != nil {
 			return Permanent(err)
 		}
-		if wire.ContractAddress != (common.Address{}) {
+		if wire.ContractAddress != (common.Address{}) &&
+			(len(wire.PostState) > 0 || wire.Status == types.ReceiptStatusSuccessful) {
 			if err := add(wire.ContractAddress, proxySourceReceipt, true); err != nil {
 				return err
 			}

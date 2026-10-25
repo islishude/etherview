@@ -450,6 +450,70 @@ func TestReceiptExecutionDerivedFieldsAreAuthenticated(t *testing.T) {
 	}
 }
 
+func TestFailedCreationAcceptsOnlyAuthenticatedAttemptedAddress(t *testing.T) {
+	t.Parallel()
+	for _, transactionType := range []uint8{types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType} {
+		t.Run(fmt.Sprintf("type %d", transactionType), func(t *testing.T) {
+			t.Parallel()
+			bundle, err := testfixture.New(testfixture.Options{
+				Number: 3, TransactionTypes: []uint8{transactionType},
+				ContractCreations: []bool{true}, FailedTransactions: []bool{true},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			attempted := bundle.Receipts[0].ContractAddress
+			if attempted == (common.Address{}) || bundle.Receipts[0].Status != types.ReceiptStatusFailed {
+				t.Fatal("fixture must retain Geth's attempted address on failure")
+			}
+			for _, test := range []struct {
+				name    string
+				address any
+				valid   bool
+			}{
+				{"attempted", attempted, true},
+				{"null", nil, true},
+				{"zero", common.Address{}, true},
+				{"forged", common.Address{19: 0xff}, false},
+			} {
+				t.Run(test.name, func(t *testing.T) {
+					raw := mutateObject(t, bundle.RawReceipts[0], func(fields map[string]json.RawMessage) {
+						fields["contractAddress"] = mustJSON(t, test.address)
+					})
+					block, err := chainbundle.DecodeBlock(bundle.RawBlock, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					decoded, err := block.WithReceipts([]json.RawMessage{raw})
+					if !test.valid {
+						if err == nil || decoded.Block != nil {
+							t.Fatal("accepted forged failed CREATE address")
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(decoded.RawReceipts[0], raw) {
+						t.Fatal("receipt wire data changed")
+					}
+					stored, err := chainbundle.EncodeStoredBlock(decoded)
+					if err != nil {
+						t.Fatal(err)
+					}
+					restored, err := chainbundle.DecodeStoredBlock(stored)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := restored.WithStoredReceipts([]json.RawMessage{raw}); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestReceiptEffectiveGasPriceIsAuthenticatedForTransactionTypesZeroThroughFour(t *testing.T) {
 	t.Parallel()
 	baseFee := big.NewInt(0)

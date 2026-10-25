@@ -129,7 +129,7 @@ export function UserOperationDetailPage({ hash }: { hash: string }) {
               }
             />
             <Detail
-              label={t("detail.timestamp")}
+              label={t("table.age")}
               value={formatTimestamp(operation.data.block_timestamp, locale)}
             />
             <Detail
@@ -288,7 +288,10 @@ function UserOperationEvents({ operation }: { operation: UserOperationDetail }) 
           <article className="transaction-log" key={`${event.log_index}:${event.kind}`}>
             <h3>{t(`userOperation.eventKind.${event.kind}`)}</h3>
             <dl className="detail-grid compact-grid">
-              <Detail label={t("detail.logIndex")} value={formatInteger(event.log_index, locale)} />
+              <Detail
+                label={t("userOperation.logIndex")}
+                value={formatInteger(event.log_index, locale)}
+              />
               <Detail
                 label={t("userOperation.sender")}
                 value={<AddressIdentity address={event.sender} />}
@@ -305,9 +308,9 @@ function UserOperationEvents({ operation }: { operation: UserOperationDetail }) 
                 value={event.paymaster ? <AddressIdentity address={event.paymaster} /> : "—"}
               />
               {event.reason ? (
-                <Detail label={t("detail.reason")} value={event.reason} wide />
+                <Detail label={t("userOperation.reason")} value={event.reason} wide />
               ) : null}
-              <RawDetail label={t("detail.rawData")} value={event.raw_data} />
+              <RawDetail label={t("userOperation.rawData")} value={event.raw_data} />
             </dl>
           </article>
         ))}
