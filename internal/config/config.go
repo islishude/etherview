@@ -55,6 +55,7 @@ type Config struct {
 	Features      FeatureConfig       `yaml:"features"`
 	Security      SecurityConfig      `yaml:"security"`
 	Verification  VerificationConfig  `yaml:"verification"`
+	BytecodeDB    BytecodeDBConfig    `yaml:"bytecode_db"`
 	Sourcify      SourcifyConfig      `yaml:"sourcify"`
 	UserAuth      UserAuthConfig      `yaml:"user_auth"`
 	Billing       BillingConfig       `yaml:"billing"`
@@ -288,6 +289,17 @@ type SourcifyConfig struct {
 	MaxPolls         int           `yaml:"max_polls"`
 }
 
+// BytecodeDBConfig controls optional automatic source discovery.
+type BytecodeDBConfig struct {
+	Enabled          bool          `yaml:"enabled"`
+	BaseURL          string        `yaml:"base_url"`
+	Timeout          time.Duration `yaml:"timeout"`
+	MaxResponseBytes int64         `yaml:"max_response_bytes"`
+	MaxConcurrency   int           `yaml:"max_concurrency"`
+	RequestInterval  time.Duration `yaml:"request_interval"`
+	Cooldown         time.Duration `yaml:"cooldown"`
+}
+
 // UserAuthConfig bounds server-created EIP-4361 challenges and absolute,
 // non-sliding Cookie sessions. SessionPepper is populated only from the
 // API-role Secret environment and is intentionally not a YAML field.
@@ -473,6 +485,7 @@ func Default() Config {
 			CatalogRefreshInterval: time.Hour,
 			CatalogMaxStaleness:    24 * time.Hour,
 		},
+		BytecodeDB: BytecodeDBConfig{BaseURL: "https://eth-bytecode-db.services.blockscout.com", Timeout: 20 * time.Second, MaxResponseBytes: 32 << 20, MaxConcurrency: 2, RequestInterval: time.Second, Cooldown: 24 * time.Hour},
 		Sourcify: SourcifyConfig{
 			BaseURL:          "https://sourcify.dev/server",
 			Timeout:          20 * time.Second,

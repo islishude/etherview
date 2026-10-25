@@ -1075,3 +1075,18 @@ reorg replay and runtime parity follow the existing optional consensus lifecycle
 The generated API pages requests within a repeatable-read snapshot. The block
 Requests tab loads by execution hash, provides type filters and expandable exact
 fields, and loads its bilingual resources with the feature page.
+
+## Automatic external source discovery
+
+The optional eth-bytecode-db adapter is search-only and disabled by default.
+API/all workers repeatedly scan canonical contract addresses using durable
+per-chain cursors, fetch bounded candidates through a public-network-only HTTPS client,
+and enqueue low-priority local verification. PostgreSQL owns provider/bytecode
+lookup identity, global request admission, cooldowns, leases and candidate/job
+provenance. At most one automatic compilation runs concurrently. Local
+compiler identity, dual compilation, exact target and publication fences remain
+mandatory; an external FULL label or ABI never grants local verification.
+Ordinary contracts wait for creation facts, while authenticated Genesis
+predeploys retain their existing exception. Successful source origin is exposed
+as `eth_bytecode_db`. See [ADR-0056](../decisions/ADR-0056-bytecode-db-source-discovery.md)
+and the [operator procedure](../operations.md#automatic-bytecode-database-source-discovery).

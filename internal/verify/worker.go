@@ -3,6 +3,7 @@ package verify
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -555,6 +556,9 @@ func (worker *Worker) resolveCompilerV2(
 				return worker.compiler.Provenance(request.Language, request.CompilerVersion)
 			},
 		)
+		if err == nil && request.BytecodeDB != nil && hex.EncodeToString(bytecodeDBSupportDigest(provenance)) != request.BytecodeDB.Support {
+			return CompilerProvenance{}, ErrCompilerProvenanceConflict
+		}
 		if !transientCompilerError(err) {
 			return provenance, err
 		}

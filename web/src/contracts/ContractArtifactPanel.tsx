@@ -292,6 +292,11 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
 
   return (
     <div className="contract-code-view">
+      {verificationOrigin === "eth_bytecode_db" ? (
+        <p className="context-note" role="status">
+          {t("contracts.artifact.bytecodeDBOrigin")}
+        </p>
+      ) : null}
       {artifact.resolution === "exact_address" && artifact.derived_from ? (
         <p className="context-note" role="status">
           {t(

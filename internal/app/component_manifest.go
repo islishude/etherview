@@ -34,6 +34,9 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				addWorkerComponentKeys(
 					add, "40-contract-verification", cfg.Verification.WorkerCount,
 				)
+				if cfg.BytecodeDB.Enabled {
+					addWorkerComponentKeys(add, "43-bytecode-db", cfg.BytecodeDB.MaxConcurrency)
+				}
 				if cfg.Verification.DerivedEnabled {
 					addWorkerComponentKeys(
 						add, "41-factory-derived-verification",

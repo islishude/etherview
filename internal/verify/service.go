@@ -71,6 +71,9 @@ func (service *Service) SubmitV2(ctx context.Context, request SubmissionV2) (Ver
 }
 
 func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) error {
+	if request != nil && request.BytecodeDB != nil {
+		return errors.New("internal source provenance is not accepted")
+	}
 	if request == nil {
 		return errors.New("verification request is required")
 	}

@@ -153,6 +153,7 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	if value, ok := lookup(envPrefix + "VERIFICATION_ALLOWED_DOWNLOAD_ORIGINS"); ok {
 		cfg.Verification.AllowedDownloadOrigins = splitCSV(value)
 	}
+	setString(lookup, "BYTECODE_DB_BASE_URL", &cfg.BytecodeDB.BaseURL)
 	setString(lookup, "SOURCIFY_BASE_URL", &cfg.Sourcify.BaseURL)
 	setString(lookup, "OBSERVABILITY_ENVIRONMENT", &cfg.Observability.Environment)
 	setExactString(lookup, "LOG_LEVEL", &cfg.Observability.LogLevel)
@@ -239,6 +240,12 @@ func parseERC4337EntryPoints(value string) ([]ERC4337EntryPointConfig, error) {
 }
 
 func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) error {
+	if err := setInt(lookup, "BYTECODE_DB_MAX_CONCURRENCY", &cfg.BytecodeDB.MaxConcurrency); err != nil {
+		return err
+	}
+	if err := setInt64(lookup, "BYTECODE_DB_MAX_RESPONSE_BYTES", &cfg.BytecodeDB.MaxResponseBytes); err != nil {
+		return err
+	}
 	if err := setUint64(lookup, "CHAIN_ID", &cfg.Chain.ID); err != nil {
 		return err
 	}
@@ -436,6 +443,9 @@ func applyDurationEnvironment(cfg *Config, lookup func(string) (string, bool)) e
 		"ENS_FAILURE_TTL":               &cfg.ENS.FailureTTL,
 		"ENS_REQUEST_TIMEOUT":           &cfg.ENS.RequestTimeout,
 		"VERIFICATION_TIMEOUT":          &cfg.Verification.Timeout,
+		"BYTECODE_DB_TIMEOUT":           &cfg.BytecodeDB.Timeout,
+		"BYTECODE_DB_REQUEST_INTERVAL":  &cfg.BytecodeDB.RequestInterval,
+		"BYTECODE_DB_COOLDOWN":          &cfg.BytecodeDB.Cooldown,
 		"SOURCIFY_TIMEOUT":              &cfg.Sourcify.Timeout,
 		"SOURCIFY_POLL_INTERVAL":        &cfg.Sourcify.PollInterval,
 		"TRACE_EXPORT_TIMEOUT":          &cfg.Observability.TraceExportTimeout,
@@ -463,6 +473,7 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 		"FEATURE_MEMPOOL":                                     &cfg.Features.Mempool,
 		"FEATURE_HISTORICAL_STATE":                            &cfg.Features.HistoricalState,
 		"FEATURE_VERIFICATION":                                &cfg.Features.Verification,
+		"BYTECODE_DB_ENABLED":                                 &cfg.BytecodeDB.Enabled,
 		"FEATURE_SOURCIFY":                                    &cfg.Features.Sourcify,
 		"FEATURE_NFT_METADATA":                                &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":                                     &cfg.Features.Pricing,

@@ -956,7 +956,7 @@ func writeRuntimeTLSKeyPair(t *testing.T) (string, string, *x509.CertPool) {
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:              []string{"localhost", "push.example"},
+		DNSNames:              []string{"localhost", "push.example", "bytecode.example"},
 	}
 	certificateDER, err := x509.CreateCertificate(
 		rand.Reader,

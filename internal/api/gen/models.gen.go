@@ -3266,6 +3266,7 @@ func (e VerificationMatchType) Valid() bool {
 
 // Defines values for VerificationOrigin.
 const (
+	VerificationOriginEthBytecodeDb  VerificationOrigin = "eth_bytecode_db"
 	VerificationOriginFactoryDerived VerificationOrigin = "factory_derived"
 	VerificationOriginSourcify       VerificationOrigin = "sourcify"
 	VerificationOriginSubmitted      VerificationOrigin = "submitted"
@@ -3274,6 +3275,8 @@ const (
 // Valid indicates whether the value is a known member of the VerificationOrigin enum.
 func (e VerificationOrigin) Valid() bool {
 	switch e {
+	case VerificationOriginEthBytecodeDb:
+		return true
 	case VerificationOriginFactoryDerived:
 		return true
 	case VerificationOriginSourcify:

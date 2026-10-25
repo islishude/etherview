@@ -1683,3 +1683,60 @@ blob objects are retained; there is no automatic archive garbage collection.
 `/status` and `/home` expose the last successful consensus observation and its
 freshness. Consensus-node or archive outages affect their own collection and
 read capability without changing execution finality or core readiness.
+
+## Automatic bytecode database source discovery
+
+Set `features.verification: true` and `bytecode_db.enabled: true` to search the
+remote Ethereum Bytecode Database for indexed contracts. The feature and
+Preview default to disabled. `bytecode_db.base_url` defaults to
+`https://eth-bytecode-db.services.blockscout.com`; only HTTPS public-network
+search endpoints are supported. No source is uploaded and no remote compiler
+is invoked. Solidity, Yul and locally supported Vyper sources are compiled and
+matched locally before source, ABI or verification status is published.
+
+The API/all role owns discovery, search and local verification. Keep the same
+configuration on all API replicas. Environment overrides use
+`ETHERVIEW_BYTECODE_DB_ENABLED`, `BASE_URL`, `TIMEOUT`, `MAX_RESPONSE_BYTES`,
+`MAX_CONCURRENCY`, `REQUEST_INTERVAL` and `COOLDOWN` with the same
+`ETHERVIEW_BYTECODE_DB_` prefix. Defaults are 20 seconds, 32 MiB, two concurrent
+searches, one request per second across replicas and a 24-hour cooldown.
+The existing `verification.max_input_bytes` also limits each candidate.
+
+Repeated bounded address sweeps cover old contracts, late creation facts and
+reorgs. Ordinary contracts wait for canonical creation facts; authenticated
+Genesis predeploys may verify runtime alone. A search hit is not proof: remote
+ABI, match labels and artifacts are never published as local evidence. Unknown
+compiler versions remain unavailable until local support changes. Vyper release
+labels such as `v0.4.3+commit.bff19ea2` select the application-locked `0.4.3`
+release; upstream commit labels are not compiler provenance. Automatic
+work has lower queue priority than submitted jobs and only one automatic
+compilation can run at a time. Successful artifacts retain
+`verification_origin: eth_bytecode_db` in the native API and display that
+source origin in both locales.
+
+Monitor `etherview_bytecode_db_total{result=...}` and
+`etherview_bytecode_db_pending`. `hit` means a candidate was retrieved;
+`verified` means a locally verified artifact is available. `waiting_facts`,
+`compiler_unavailable`, `candidate_limited`, `rate_limited` and
+`verification_failed` explain incomplete coverage without leaking source,
+provider URLs or nested upstream errors. Remote failure does not block core
+readiness. PostgreSQL owns cooldowns, lookup cache, leases and immutable
+candidate/job associations; restarting workers does not erase them.
+
+For an explicit operator retry of cached searches, use the writer database in
+an audited maintenance session. Select the provider by its stored service ID
+(`encode(id, 'hex')` from `bytecode_db_services`), then reset only that service's
+unleased lookups:
+
+```sql
+UPDATE bytecode_db_lookups
+SET next_attempt_at = clock_timestamp(), failures = 0, requested = true
+WHERE service_id = decode('<service-id-hex>', 'hex') AND lease_token IS NULL;
+```
+
+This retries remote discovery; it does not erase deterministic local compilation
+failures or alter published verification. Changing the compiler/executor
+identity permits a new local attempt. Disable the feature to stop new discovery;
+previously queued local verification jobs keep their ordinary durable lifecycle.
+This fresh-database baseline requires recreation of older development databases,
+as described in the fresh-database initialization procedure.

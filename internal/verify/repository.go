@@ -145,6 +145,7 @@ type VerificationOrigin string
 
 const (
 	VerificationOriginSubmitted      VerificationOrigin = "submitted"
+	VerificationOriginBytecodeDB     VerificationOrigin = "eth_bytecode_db"
 	VerificationOriginSourcify       VerificationOrigin = "sourcify"
 	VerificationOriginFactoryDerived VerificationOrigin = "factory_derived"
 )

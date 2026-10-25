@@ -1585,7 +1585,7 @@ export type VerifiedContract = VerificationSuccess & {
     derived_children: Array<DerivedContract>;
 };
 
-export type VerificationOrigin = 'submitted' | 'sourcify' | 'factory_derived';
+export type VerificationOrigin = 'submitted' | 'sourcify' | 'factory_derived' | 'eth_bytecode_db';
 
 export type DerivedVerificationProvenance = {
     creator_address: Address;

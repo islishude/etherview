@@ -641,3 +641,58 @@ CREATE CONSTRAINT TRIGGER verification_results_v2_terminal_job AFTER INSERT ON v
 CREATE TRIGGER verified_contract_proxy_artifacts_source_guard BEFORE INSERT ON verified_contract_proxy_artifacts FOR EACH ROW EXECUTE FUNCTION enforce_verified_contract_proxy_artifact();
 
 CREATE TRIGGER verified_contracts_v2_source_guard BEFORE INSERT OR UPDATE ON verified_contracts FOR EACH ROW EXECUTE FUNCTION enforce_verifier_v2_publication();
+
+-- Optional source discovery is PostgreSQL-owned and never an external trust root.
+CREATE TABLE bytecode_db_services (
+    id bytea PRIMARY KEY CHECK (octet_length(id) = 32),
+    next_request_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE bytecode_db_scans (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    cursor_address bytea NOT NULL DEFAULT ''::bytea CHECK (octet_length(cursor_address) IN (0,20)),
+    scan_after timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (service_id,chain_id)
+);
+CREATE TABLE bytecode_db_targets (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    address bytea NOT NULL CHECK (octet_length(address) = 20),
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    outcome text NOT NULL DEFAULT 'pending' CHECK (length(outcome) BETWEEN 1 AND 64),
+    lease_token text,
+    lease_expires_at timestamptz,
+    PRIMARY KEY (service_id, chain_id, address),
+    CHECK ((lease_token IS NULL) = (lease_expires_at IS NULL))
+);
+CREATE INDEX bytecode_db_targets_due_idx ON bytecode_db_targets(service_id,next_attempt_at);
+CREATE TABLE bytecode_db_lookups (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    bytecode_type text NOT NULL CHECK (bytecode_type IN ('DEPLOYED_BYTECODE','CREATION_INPUT')),
+    digest bytea NOT NULL CHECK (octet_length(digest) = 32),
+    bytecode bytea NOT NULL CHECK (octet_length(bytecode) BETWEEN 1 AND 67108864),
+    sources jsonb,
+    requested boolean NOT NULL DEFAULT true,
+    limited boolean NOT NULL DEFAULT false,
+    outcome text NOT NULL DEFAULT 'pending' CHECK (length(outcome) BETWEEN 1 AND 64),
+    failures integer NOT NULL DEFAULT 0 CHECK (failures BETWEEN 0 AND 3),
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    lease_token text,
+    lease_expires_at timestamptz,
+    PRIMARY KEY (service_id,bytecode_type,digest),
+    CHECK (digest = sha256(bytecode)),
+    CHECK (sources IS NULL OR (jsonb_typeof(sources) = 'array' AND octet_length(sources::text) <= 67108864)),
+    CHECK ((lease_token IS NULL) = (lease_expires_at IS NULL))
+);
+CREATE INDEX bytecode_db_lookups_due_idx ON bytecode_db_lookups(service_id,next_attempt_at);
+CREATE TABLE bytecode_db_attempts (
+    service_id bytea NOT NULL REFERENCES bytecode_db_services(id),
+    target_digest bytea NOT NULL CHECK (octet_length(target_digest) = 32),
+    candidate_digest bytea NOT NULL CHECK (octet_length(candidate_digest) = 32),
+    support_digest bytea NOT NULL CHECK (octet_length(support_digest) = 32),
+    job_id uuid NOT NULL UNIQUE REFERENCES verification_jobs(id),
+    PRIMARY KEY (service_id,target_digest,candidate_digest,support_digest)
+);
+-- Serialize claim decisions so automatic work cannot occupy two compiler slots.
+CREATE TABLE verification_claim_gate (singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton));
+INSERT INTO verification_claim_gate (singleton) VALUES (true);

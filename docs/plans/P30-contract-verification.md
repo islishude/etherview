@@ -13,7 +13,8 @@ the maintained Solidity/Yul, pinned Geas and pinned Vyper verification paths, au
 artifact reuse, standard/Safe/Diamond/CWIA proxy evidence, trace-bound ABI and
 failure decoding, EIP-7702 execution identity, factory-derived verification,
 and the PostgreSQL-authoritative monolith/split runtime, deployment, telemetry,
-and disposable accelerator boundaries.
+and disposable accelerator boundaries. Optional eth-bytecode-db discovery uses
+external source candidates only after local compilation and verification.
 
 Runtime operations also owns the real Lighthouse PoS Preview and role-scoped
 durable blob archive deployment. Optional Beacon/archive failures remain isolated
@@ -24,6 +25,7 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 
 ## References
 
+- [ADR-0056](../decisions/ADR-0056-bytecode-db-source-discovery.md)
 - [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
 - [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md)
 - [Architecture](../architecture/overview.md)
@@ -85,6 +87,7 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 | P30-T79  | done   | P30-T15, P30-T20                                              | Authenticated compilation units and candidates, historical CREATE/CREATE2 unique creation/runtime matching, transitive forward discovery, exact-epoch provenance, bounded backfill and generated API/Web                | generation/heartbeat fences, short publication transactions, fork rewind, retry/pagination, A-to-B-to-A and direct-child provenance, PostgreSQL/race and topology tests |
 | P30-T97  | done   | P30-T14, P30-T79                                              | Native/Etherscan/Web Vyper verification, dual Pyodide runtime routing, application-locked PyPI archives/recipe provenance, supported-version policy and reviewed updater                                                | package equivalence/isolation, fresh-process version matrices, PostgreSQL, identity-bound aggregation, native AMD64/ARM64 and monolith/split acceptance                 |
 | P30-T138 | done   | P20-T19, P20-T20, P40-T22, P50-T75, P30-T35, P30-T36, P30-T34 | Real Lighthouse PoS Preview, role-scoped durable archive deployment, explicit initialization, and outage/recovery parity with documented deferred writer IAM enforcement                                                | Preview consensus/metadata, RustFS, schema/runtime, finality, permissions, restart, and common gates                                                                    |
+| P30-T139 | done   | P30-T10, P30-T14, P30-T15, P30-T97                            | Bounded remote eth-bytecode-db discovery, durable scheduling and locally verified source publication with provenance and role parity                                                                                    | Protocol/PG race, creation fallback/Yul, source provenance, common/browser/schema/runtime gates and production Solidity/Vyper topology parity                           |
 
 ## Acceptance
 
@@ -216,9 +219,17 @@ application acceptance tool. PR #148 records timings: recovery 13m50s / 122.27
 runner-minutes, full rerun 16m43s / 125.60 versus baseline 18m40s / 119.18.
 Recovery excludes reused jobs; these samples do not establish a stable speedup.
 
+P30-T139 passed protocol and PostgreSQL race regressions, `make check`, browser,
+fresh-schema and runtime gates, plus the Hardhat/Vyper production suites. The
+final discovery image passed controlled HTTPS source import and real local
+Solidity/Vyper compilation in both topologies; Yul creation fallback and
+cross-address/chain isolation passed PostgreSQL regressions. These are local
+ARM64/Docker results. Public search from this host returned HTTP 403 on
+2026-10-25, so public-source coverage and new remote CI acceptance remain unproven.
+
 Retained completed milestones: P30-T10, P30-T14, P30-T15, P30-T16, P30-T20, P30-T24,
 P30-T33, P30-T34, P30-T35, P30-T36, P30-T37, P30-T43, P30-T59, P30-T64, P30-T68,
-P30-T79, P30-T97, P30-T138.
+P30-T79, P30-T97, P30-T138, P30-T139.
 
 Contract matching, compiler provenance, ABI/proxy/trace decoding and
 canonical publication passed focused unit/fuzz/race and PostgreSQL regressions.

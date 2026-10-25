@@ -190,6 +190,24 @@ describe("contract artifact view models", () => {
 });
 
 describe("ContractArtifactPanel", () => {
+  it("identifies externally discovered source as locally verified", () => {
+    const rootRoute = createRootRoute();
+    const router = createRouter({
+      history: createMemoryHistory({ initialEntries: ["/"] }),
+      routeTree: rootRoute,
+    });
+    render(
+      <RouterContextProvider router={router}>
+        <ContractArtifactPanel
+          artifact={fixtureArtifact({ verification_origin: "eth_bytecode_db" })}
+        />
+      </RouterContextProvider>,
+    );
+    expect(
+      screen.getByText("Source retrieved from eth-bytecode-db and verified locally."),
+    ).toBeInTheDocument();
+  });
+
   it("explains factory-derived verification and lists bounded created contracts", () => {
     const creator = "0x2222222222222222222222222222222222222222";
     const child = "0x3333333333333333333333333333333333333333";

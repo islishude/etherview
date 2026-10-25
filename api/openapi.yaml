@@ -5963,7 +5963,7 @@ components:
                 $ref: "#/components/schemas/DerivedContract"
     VerificationOrigin:
       type: string
-      enum: [submitted, sourcify, factory_derived]
+      enum: [submitted, sourcify, factory_derived, eth_bytecode_db]
     DerivedVerificationProvenance:
       type: object
       additionalProperties: false

@@ -50,6 +50,9 @@ func (repository *PostgresRepository) loadDerivedArtifactDetails(
 	if kind == JobDerived {
 		contract.VerificationOrigin = VerificationOriginFactoryDerived
 	}
+	if kind == "eth_bytecode_db" {
+		contract.VerificationOrigin = VerificationOriginBytecodeDB
+	}
 	contract.DerivedChildren = make([]DerivedContract, 0)
 	if resolved.Resolution != contractartifact.ResolutionExactAddress {
 		return nil

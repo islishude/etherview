@@ -1145,3 +1145,22 @@ then `make check`, `make test-integration-race`, `make test-e2e`,
 payload envelopes and compares the request commitment with the execution header
 and public API in both split and all-role layouts. Synthetic nonempty five-type
 fixtures do not establish real builder transactions or public historical retention.
+
+## Bytecode database source discovery acceptance
+
+Run `go test ./internal/verify ./internal/config -run TestBytecodeDB` for
+search-only transport, hostile response, candidate and configuration regressions.
+The integration-tagged `TestBytecodeDB` cases exercise real PostgreSQL discovery,
+per-chain cursor isolation, request admission, retry/cooldown, lease fencing,
+local dual-compilation flow,
+creation-input fallback, Yul import, source origin, manual priority and the
+single automatic compiler slot. The controlled client fixture never grants source publication directly.
+
+Changes require `make check`, `make test-integration-race`, `make test-e2e`,
+`make test-schema-e2e`, `make test-runtime-e2e` and affected Hardhat/Vyper
+production suites. `make test-hardhat3-e2e` also runs `TestBytecodeDBProductionE2E`: a
+test-owned HTTPS provider on an isolated Docker network supplies Solidity and
+Vyper fixtures to both production topologies without relaxing network policy;
+the production SEA compiles and publishes each source locally. Public remote
+health, actual public-source coverage, production compiler execution and native
+CI acceptance are separate evidence.

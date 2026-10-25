@@ -33,6 +33,33 @@ type Querier interface {
 	AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error
 	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
 	BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error)
+	BytecodeDBActiveLookups(ctx context.Context, serviceID []byte) (int64, error)
+	BytecodeDBAddAttempt(ctx context.Context, arg BytecodeDBAddAttemptParams) error
+	BytecodeDBAdmitRequest(ctx context.Context, intervalUs int64, iD []byte) error
+	BytecodeDBAdvance(ctx context.Context, arg BytecodeDBAdvanceParams) error
+	BytecodeDBAttempt(ctx context.Context, arg BytecodeDBAttemptParams) (BytecodeDBAttemptRow, error)
+	BytecodeDBBacklog(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) (int64, error)
+	BytecodeDBBackoffService(ctx context.Context, delayUs int64, iD []byte) error
+	BytecodeDBClaimLookup(ctx context.Context, token *string, serviceID []byte) (BytecodeDbLookup, error)
+	BytecodeDBClaimTarget(ctx context.Context, token *string, serviceID []byte, chainID pgtype.Numeric) (BytecodeDbTarget, error)
+	BytecodeDBDiscover(ctx context.Context, chainID pgtype.Numeric, address []byte) ([][]byte, error)
+	BytecodeDBEnqueueLookup(ctx context.Context, arg BytecodeDBEnqueueLookupParams) error
+	BytecodeDBEnqueueTarget(ctx context.Context, serviceID []byte, chainID pgtype.Numeric, address []byte) error
+	BytecodeDBFinishLookup(ctx context.Context, arg BytecodeDBFinishLookupParams) (int64, error)
+	BytecodeDBFinishTarget(ctx context.Context, arg BytecodeDBFinishTargetParams) (int64, error)
+	BytecodeDBGetLookup(ctx context.Context, serviceID []byte, bytecodeType string, digest []byte) (BytecodeDbLookup, error)
+	BytecodeDBHasPublication(ctx context.Context, arg BytecodeDBHasPublicationParams) (bool, error)
+	BytecodeDBInit(ctx context.Context, id []byte) error
+	BytecodeDBInitScan(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) error
+	BytecodeDBLockScan(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) (BytecodeDbScan, error)
+	BytecodeDBLockService(ctx context.Context, id []byte) (BytecodeDbService, error)
+	BytecodeDBLockTarget(ctx context.Context, arg BytecodeDBLockTargetParams) (BytecodeDbTarget, error)
+	BytecodeDBOrigin(ctx context.Context, jobID pgtype.UUID) (bool, error)
+	BytecodeDBRenewLookup(ctx context.Context, arg BytecodeDBRenewLookupParams) (int64, error)
+	BytecodeDBRenewTarget(ctx context.Context, arg BytecodeDBRenewTargetParams) (int64, error)
+	BytecodeDBRequestReady(ctx context.Context, id []byte) (bool, error)
+	BytecodeDBResetCooldowns(ctx context.Context, serviceID []byte) error
+	BytecodeDBScanReady(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) (bool, error)
 	CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error)
 	CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error)
 	CatalogAddressTokenTransfers(ctx context.Context, arg CatalogAddressTokenTransfersParams) ([]CatalogAddressTokenTransfersRow, error)
@@ -313,7 +340,6 @@ type Querier interface {
 	EtherscanTokenTransfers(ctx context.Context, arg EtherscanTokenTransfersParams) ([]EtherscanTokenTransfersRow, error)
 	EtherscanTokenTransfersAdvanced(ctx context.Context, arg EtherscanTokenTransfersAdvancedParams) ([]EtherscanTokenTransfersAdvancedRow, error)
 	EtherscanTransactionStatus(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (EtherscanTransactionStatusRow, error)
-	EtherscanVerificationTarget(ctx context.Context, address []byte, chainID pgtype.Numeric, contractAddressHex string) (EtherscanVerificationTargetRow, error)
 	EtherscanVerifiedProxy(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte, proxyCodeHash []byte) ([]byte, error)
 	EventsWriteRecordStatusStatement1(ctx context.Context, chainID *string) error
 	EventsWriteRecordStatusStatement2(ctx context.Context, arg EventsWriteRecordStatusStatement2Params) (string, error)
@@ -677,6 +703,9 @@ type Querier interface {
 	VerifyLegacyVerificationCanonicalGenesisTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalGenesisTargetParams) (string, error)
 	VerifyLegacyVerificationCanonicalTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalTargetParams) (string, error)
 	VerifyLegacyVerificationProxyReplayTarget(ctx context.Context, arg VerifyLegacyVerificationProxyReplayTargetParams) error
+	VerifyLockClaimGate(ctx context.Context) error
+	VerifyLockPublication(ctx context.Context, chainID string, address []byte) error
+	VerifyResolveTarget(ctx context.Context, address []byte, chainID pgtype.Numeric, contractAddressHex string) (VerifyResolveTargetRow, error)
 	VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) (VerifyV2ClaimRunnableRow, error)
 	VerifyV2FindActiveJobByDigest(ctx context.Context, requestDigest []byte) (VerifyV2FindActiveJobByDigestRow, error)
 	VerifyV2GetJob(ctx context.Context, jobID pgtype.UUID) (VerifyV2GetJobRow, error)

@@ -3,6 +3,7 @@ package verify
 import "encoding/json"
 
 type SubmissionV2 struct {
+	BytecodeDB           *BytecodeDBProvenance    `json:"bytecode_db,omitempty"`
 	VyperLockDigest      string                   `json:"vyper_lock_digest,omitempty"`
 	TargetFile           string                   `json:"target_file,omitempty"`
 	VyperMultipart       *VyperMultipartRequest   `json:"-"`
@@ -64,4 +65,11 @@ type ProxyVerificationTarget struct {
 	BeaconGenerationID           string `json:"beacon_generation_id,omitempty"`
 	UUPSGenerationID             string `json:"uups_generation_id,omitempty"`
 	ExpectedImplementation       string `json:"expected_implementation"`
+}
+
+// BytecodeDBProvenance is internal-only and included in the durable request digest.
+type BytecodeDBProvenance struct {
+	Provider  string `json:"provider"`
+	Candidate string `json:"candidate"`
+	Support   string `json:"support"`
 }
