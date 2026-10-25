@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
@@ -163,7 +164,8 @@ func scanAccountTransaction(scanner dbgen.EtherscanAccountTransactionsRow) (acco
 		}
 	}
 	contractAddress := ""
-	if receipt.ContractAddress != (common.Address{}) {
+	if receipt.ContractAddress != (common.Address{}) &&
+		(len(receipt.PostState) > 0 || receipt.Status == types.ReceiptStatusSuccessful) {
 		contractAddress, err = checksumAddress(receipt.ContractAddress)
 		if err != nil {
 			return accountTransaction{}, fmt.Errorf("checksum created contract: %w", err)

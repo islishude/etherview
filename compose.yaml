@@ -14,6 +14,8 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
   ETHERVIEW_LOG_FORMAT: text
   ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL:
+  ETHERVIEW_FEATURE_USER_OPERATIONS:
+  ETHERVIEW_ERC4337_ENTRY_POINTS:
   # A value-less override preserves the checked-in gateway unless the caller
   # explicitly selects another HTTPS endpoint.
   ETHERVIEW_METADATA_IPFS_GATEWAY:

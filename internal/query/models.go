@@ -352,7 +352,8 @@ func (r *PostgresReader) transactionModel(
 		}
 	}
 	model.Status = &status
-	if wire.To() == nil && receipt.ContractAddress != (common.Address{}) {
+	if wire.To() == nil && receipt.ContractAddress != (common.Address{}) &&
+		(len(receipt.PostState) > 0 || receipt.Status == types.ReceiptStatusSuccessful) {
 		contractAddress, err := ChecksumAddress(receipt.ContractAddress.Hex())
 		if err != nil {
 			return gen.Transaction{}, fmt.Errorf("checksum created contract address: %w", err)

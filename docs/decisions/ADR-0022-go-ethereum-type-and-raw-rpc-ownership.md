@@ -56,6 +56,10 @@ RPC ingestion is raw-first:
   cross-object checks. Transaction and block identity, transaction type,
   per-receipt gas use, top-level contract creation address, and effective gas
   price must agree with the authenticated transaction order and block header.
+  Failed top-level creation receipts may report null, zero, or the exact
+  sender-and-nonce-derived attempted CREATE address, as Geth does. Preserve
+  that raw field, but never treat a failed receipt as successful creation
+  evidence in public projections, verification targets, or proxy discovery.
   For transaction types 0 and 1, effective gas price equals the transaction gas
   price; for types 2 through 4 it is derived from the fee cap, tip cap, and
   block base fee. A freshly fetched receipt must carry the exact derived value.

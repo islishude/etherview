@@ -127,6 +127,32 @@ test("default Compose selects Preview and retains its project and volumes", () =
   }
 });
 
+test("Preview shares the local UserOperation registry across application roles", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-userop-compose-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "preview.env");
+  const entries = [
+    { address: "0x1111111111111111111111111111111111111111", version: "0.9", from_block: 42 },
+  ];
+  fs.writeFileSync(
+    file,
+    `ETHERVIEW_FEATURE_USER_OPERATIONS=true\nETHERVIEW_ERC4337_ENTRY_POINTS='${JSON.stringify(entries)}'\n`,
+  );
+  const config = render(
+    [],
+    { ETHERVIEW_FEATURE_USER_OPERATIONS: undefined, ETHERVIEW_ERC4337_ENTRY_POINTS: undefined },
+    file,
+  );
+  for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) {
+    assert.equal(config.services[role].environment.ETHERVIEW_FEATURE_USER_OPERATIONS, "true", role);
+    assert.deepEqual(
+      JSON.parse(config.services[role].environment.ETHERVIEW_ERC4337_ENTRY_POINTS),
+      entries,
+      role,
+    );
+  }
+});
+
 for (const mode of ["monolith", "distributed"]) {
   test(`deployment ${mode} retains root-relative paths and separate data`, () => {
     const args = ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", mode];

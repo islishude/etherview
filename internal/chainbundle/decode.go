@@ -867,10 +867,10 @@ func validateReceiptContractAddress(
 					"does not match the top-level CREATE address",
 				)
 			}
-		} else if receipt.ContractAddress != zero {
+		} else if receipt.ContractAddress != zero && receipt.ContractAddress != expected {
 			return validation(
 				path+".contractAddress",
-				"must be null or zero for a failed creation",
+				"must be null, zero, or the attempted CREATE address for a failed creation",
 			)
 		}
 	} else if receipt.ContractAddress != zero &&

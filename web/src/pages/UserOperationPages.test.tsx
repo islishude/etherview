@@ -28,6 +28,35 @@ describe("ERC-4337 UserOperation pages", () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([
+    ["en", "Timestamp", "Log index", "Revert reason", "Raw data"],
+    ["zh", "时间戳", "日志序号", "回滚原因", "原始数据"],
+  ])("localizes detail and protocol event labels in %s", async (language, ...labels) => {
+    await i18n.changeLanguage(language);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), "http://etherview.test");
+        if (url.pathname === "/api/v1/config") return configResponse();
+        if (url.pathname === `/api/v1/user-operations/${userOpHash}`) {
+          return Response.json({
+            data: detail(),
+            meta: { request_id: "userop-detail-test", chain_id: "1" },
+          });
+        }
+        return notFound();
+      }),
+    );
+
+    const { container } = renderExplorer(`/user-op/${userOpHash}`);
+    for (const label of labels) {
+      expect(await screen.findByText(label, { exact: true })).toBeVisible();
+    }
+    const logRow = screen.getByText(labels[1], { exact: true }).closest("div");
+    expect(logRow).toHaveTextContent("3");
+    expect(container.textContent).not.toMatch(/\{\{|\b(?:detail|userOperation)\./u);
+  });
+
   it("renders the continuous list and exact failure detail through generated API routes", async () => {
     vi.stubGlobal(
       "fetch",

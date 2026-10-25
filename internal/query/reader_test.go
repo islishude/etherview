@@ -1108,9 +1108,6 @@ func testContractCreationReceiptRaw(
 		transactionIndex,
 		status,
 	)
-	if status != "0x1" {
-		return data
-	}
 	var value map[string]any
 	if err := json.Unmarshal(data, &value); err != nil {
 		panic(err)
