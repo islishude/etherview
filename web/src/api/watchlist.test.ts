@@ -13,29 +13,49 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("generated CSV client", () => {
-  it("downloads only successful CSV and revokes its URL", async () => {
-    vi.useFakeTimers();
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response("amount\r\n12345678901234567890\r\n", {
-        headers: { "Content-Type": "text/csv" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetcher);
-    const create = vi.fn(() => "blob:download");
-    const revoke = vi.fn();
-    vi.stubGlobal(
-      "URL",
-      Object.assign(class extends URL {}, { createObjectURL: create, revokeObjectURL: revoke }),
-    );
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    await downloadAddressCSV(request, "csrf", new AbortController().signal);
-    expect(click).toHaveBeenCalledOnce();
-    expect(create).toHaveBeenCalledOnce();
-    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/users/me/exports/address-activity");
-    expect(fetcher.mock.calls[0]?.[1].headers.get("X-CSRF-Token")).toBe("csrf");
-    await vi.runAllTimersAsync();
-    expect(revoke).toHaveBeenCalledWith("blob:download");
-  });
+  it.each(["transaction", "erc20", "nft"] as const)(
+    "downloads %s CSV with the selected address and UTC range and revokes its URL",
+    async (kind) => {
+      vi.useFakeTimers();
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response("amount\r\n12345678901234567890\r\n", {
+          headers: { "Content-Type": "text/csv" },
+        }),
+      );
+      vi.stubGlobal("fetch", fetcher);
+      const create = vi.fn(() => "blob:download");
+      const revoke = vi.fn();
+      vi.stubGlobal(
+        "URL",
+        Object.assign(class extends URL {}, { createObjectURL: create, revokeObjectURL: revoke }),
+      );
+      let filename = "";
+      const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        filename = this.download;
+      });
+      await downloadAddressCSV(
+        {
+          ...request,
+          kind,
+          address: "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          from: "2026-09-01T08:00:00+08:00",
+        },
+        "csrf",
+        new AbortController().signal,
+      );
+      expect(filename).toBe(
+        `0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2026-09-01T00-00-00Z-2026-09-02T00-00-00Z-${kind}.csv`,
+      );
+      expect(click).toHaveBeenCalledOnce();
+      expect(create).toHaveBeenCalledOnce();
+      expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/users/me/exports/address-activity");
+      expect(fetcher.mock.calls[0]?.[1].headers.get("X-CSRF-Token")).toBe("csrf");
+      await vi.runAllTimersAsync();
+      expect(revoke).toHaveBeenCalledWith("blob:download");
+    },
+  );
   it.each([{ status: 204 }, { status: 200, headers: { "Content-Length": "0" } }])(
     "rejects explicitly empty export responses: %j",
     async (init) => {

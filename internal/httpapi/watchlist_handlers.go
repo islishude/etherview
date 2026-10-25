@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/watchlist"
@@ -132,6 +134,9 @@ func (h *Handler) exportAddressActivity(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if !h.requireTurnstile(w, r, "csv_export") {
+		return
+	}
 	var input gen.AddressExportRequest
 	if !decodeAuthJSON(w, r, &input) {
 		return
@@ -142,7 +147,9 @@ func (h *Handler) exportAddressActivity(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="address-activity.csv"`)
+	const filenameTime = "2006-01-02T15-04-05Z"
+	filename := strings.ToLower(input.Address) + "-" + input.From.UTC().Format(filenameTime) + "-" + input.To.UTC().Format(filenameTime) + "-" + string(input.Kind) + ".csv"
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 	w.Header().Set("X-Snapshot-Block-Number", result.BlockNumber)
 	w.Header().Set("X-Snapshot-Block-Hash", result.BlockHash)
 	w.WriteHeader(200)

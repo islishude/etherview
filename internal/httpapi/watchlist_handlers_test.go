@@ -6,6 +6,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/userauth"
 	"github.com/islishude/etherview/internal/watchlist"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,6 +86,13 @@ func TestWatchlistSessionCSRFAndCSVBoundary(t *testing.T) {
 			}
 			if test.name == "export" && !strings.HasPrefix(response.Header().Get("Content-Type"), "text/csv") {
 				t.Fatal("not csv")
+			}
+			if test.name == "export" {
+				mediaType, params, err := mime.ParseMediaType(response.Header().Get("Content-Disposition"))
+				want := strings.ToLower(testAddress) + "-2026-09-01T00-00-00Z-2026-09-02T00-00-00Z-transaction.csv"
+				if err != nil || mediaType != "attachment" || params["filename"] != want {
+					t.Fatalf("incorrect CSV filename: %q", response.Header().Get("Content-Disposition"))
+				}
 			}
 		})
 	}

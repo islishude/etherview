@@ -116,3 +116,28 @@ spec:
         - protocol: TCP
           port: 443
 {{- end }}
+
+{{- if and .Values.networkPolicy.enabled (or .Values.config.turnstile.verification_enabled .Values.config.turnstile.csv_export_enabled) }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "etherview.fullname" . }}-turnstile
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "etherview.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: {{ ternary "all" "api" (eq .Values.mode "monolith") }}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - ports:
+        - protocol: TCP
+          port: 443
+{{- end }}

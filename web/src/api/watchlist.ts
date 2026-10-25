@@ -64,11 +64,15 @@ export async function downloadAddressCSV(
   body: AddressExportRequest,
   csrf: string,
   signal: AbortSignal,
+  turnstileToken?: string,
 ) {
   const result = await sdk.exportCurrentUserAddressActivity({
     client: apiClient,
     body,
-    headers: { "X-CSRF-Token": csrf },
+    headers: {
+      "X-CSRF-Token": csrf,
+      ...(turnstileToken ? { "X-Turnstile-Token": turnstileToken } : {}),
+    },
     parseAs: "stream",
     signal,
   });
@@ -81,7 +85,9 @@ export async function downloadAddressCSV(
   const url = URL.createObjectURL(data);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "address-activity.csv";
+  const timestamp = (value: string) =>
+    new Date(value).toISOString().slice(0, 19).replaceAll(":", "-") + "Z";
+  anchor.download = `${body.address.toLowerCase()}-${timestamp(body.from)}-${timestamp(body.to)}-${body.kind}.csv`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTurnstile } from "@/components/TurnstileChallenge";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/auth/AuthProvider";
 import { usePrivateIdentity } from "./privateAccount";
 import { ApiError, apiClient, requireEnvelope } from "./client";
@@ -14,7 +16,7 @@ import type {
 type Accepted = (job: BrowserVerificationJob) => void;
 type RequestOptions = {
   signal: AbortSignal;
-  headers: { "X-CSRF-Token": string };
+  headers: { "X-CSRF-Token": string; "X-Turnstile-Token"?: string };
   client: typeof apiClient;
 };
 
@@ -30,6 +32,8 @@ function useBrowserMutation<T>(
   accepted: Accepted,
 ) {
   const auth = useAuth();
+  const challenge = useTurnstile("verification");
+  const { t } = useTranslation();
   const identity = usePrivateIdentity();
   const current = useRef(identity);
   current.current = identity;
@@ -42,7 +46,14 @@ function useBrowserMutation<T>(
     };
   }, [identity]);
   const mutation = useMutation({
-    mutationFn: async ({ input, owner }: { input: T; owner: string; onAccepted: Accepted }) => {
+    mutationFn: async (variables: {
+      input: T;
+      owner: string;
+      onAccepted: Accepted;
+      token?: string;
+    }) => {
+      const { input, owner, token } = variables;
+      delete variables.token;
       if (!owner || owner !== current.current || !auth.session.csrf_token)
         throw new Error("Authentication required");
       const controller = new AbortController();
@@ -51,7 +62,10 @@ function useBrowserMutation<T>(
         const result = await send(input, {
           client: apiClient,
           signal: controller.signal,
-          headers: { "X-CSRF-Token": auth.session.csrf_token },
+          headers: {
+            "X-CSRF-Token": auth.session.csrf_token,
+            ...(token ? { "X-Turnstile-Token": token } : {}),
+          },
         });
         if (controller.signal.aborted || owner !== current.current)
           throw new DOMException("Session changed", "AbortError");
@@ -78,10 +92,21 @@ function useBrowserMutation<T>(
     reset();
   }, [identity, reset]);
   return {
-    mutate: (input: T) => mutation.mutate({ input, owner: identity, onAccepted: accepted }),
+    mutate: (input: T) => {
+      if (!challenge.ready || mutation.isPending) return;
+      mutation.mutate({ input, owner: identity, onAccepted: accepted, token: challenge.consume() });
+    },
+    ready: challenge.ready,
+    challenge: challenge.challenge,
     reset: mutation.reset,
     isPending: mutation.isPending && mutation.variables?.owner === identity,
-    error: mutation.variables?.owner === identity ? mutation.error : null,
+    error:
+      mutation.variables?.owner === identity
+        ? mutation.error instanceof ApiError &&
+          ["turnstile_invalid", "turnstile_unavailable"].includes(mutation.error.code)
+          ? new Error(t(`turnstile.${mutation.error.code}`))
+          : mutation.error
+        : null,
   };
 }
 

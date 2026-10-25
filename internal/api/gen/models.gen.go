@@ -6036,19 +6036,27 @@ type ProxyVerificationState string
 // PublicConfig defines model for PublicConfig.
 type PublicConfig struct {
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	ChainId        Quantity              `json:"chain_id"`
-	ChainName      string                `json:"chain_name"`
-	Features       map[string]bool       `json:"features"`
-	NativeDecimals int                   `json:"native_decimals"`
-	NativeName     string                `json:"native_name"`
-	NativeSymbol   string                `json:"native_symbol"`
-	WalletAddChain *WalletAddChainConfig `json:"wallet_add_chain,omitempty"`
+	ChainId        Quantity               `json:"chain_id"`
+	ChainName      string                 `json:"chain_name"`
+	Features       map[string]bool        `json:"features"`
+	NativeDecimals int                    `json:"native_decimals"`
+	NativeName     string                 `json:"native_name"`
+	NativeSymbol   string                 `json:"native_symbol"`
+	Turnstile      *PublicTurnstileConfig `json:"turnstile,omitempty"`
+	WalletAddChain *WalletAddChainConfig  `json:"wallet_add_chain,omitempty"`
 }
 
 // PublicConfigResponse defines model for PublicConfigResponse.
 type PublicConfigResponse struct {
 	Data PublicConfig `json:"data"`
 	Meta Meta         `json:"meta"`
+}
+
+// PublicTurnstileConfig defines model for PublicTurnstileConfig.
+type PublicTurnstileConfig struct {
+	CsvExportEnabled    bool   `json:"csv_export_enabled"`
+	SiteKey             string `json:"site_key"`
+	VerificationEnabled bool   `json:"verification_enabled"`
 }
 
 // PushSubscriptionInput defines model for PushSubscriptionInput.
@@ -7676,6 +7684,9 @@ type SearchLimit = int
 // TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
 type TransactionHash = Hash
 
+// TurnstileToken defines model for TurnstileToken.
+type TurnstileToken = string
+
 // UserID defines model for UserID.
 type UserID = openapi_types.UUID
 
@@ -8052,6 +8063,9 @@ type RotateCurrentUserAPIKeyParams struct {
 // ExportCurrentUserAddressActivityParams defines parameters for ExportCurrentUserAddressActivity.
 type ExportCurrentUserAddressActivityParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // SaveCurrentUserPushSubscriptionParams defines parameters for SaveCurrentUserPushSubscription.
@@ -8082,21 +8096,33 @@ type UpdateCurrentUserWatchParams struct {
 // SubmitBrowserAddressVerificationParams defines parameters for SubmitBrowserAddressVerification.
 type SubmitBrowserAddressVerificationParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // SubmitBrowserSourcifyVerificationParams defines parameters for SubmitBrowserSourcifyVerification.
 type SubmitBrowserSourcifyVerificationParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // SubmitBrowserSourcifyFromEtherscanParams defines parameters for SubmitBrowserSourcifyFromEtherscan.
 type SubmitBrowserSourcifyFromEtherscanParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // ImportBrowserSourcifyContractParams defines parameters for ImportBrowserSourcifyContract.
 type ImportBrowserSourcifyContractParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // ListVerifierCompilersParams defines parameters for ListVerifierCompilers.

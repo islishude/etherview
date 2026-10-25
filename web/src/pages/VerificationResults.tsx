@@ -88,10 +88,11 @@ export function VerificationResults({
             <section className="panel verification-login">
               <h3>{t("sourcify.importTitle")}</h3>
               <p>{t("sourcify.afterPublish")}</p>
+              {submission.challenge}
               <button
                 className="button primary"
                 type="button"
-                disabled={submission.isPending}
+                disabled={submission.isPending || !submission.ready}
                 onClick={() =>
                   submission.mutate({ address: current.address!, chainID: current.chain_id! })
                 }

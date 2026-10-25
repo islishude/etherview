@@ -981,3 +981,19 @@ for role in sync trace metadata maintenance; do
 done
 expect_render_failure inline-beacon-url --set-string config.consensus.url=http://private-beacon:5052
 expect_render_failure inline-beacon-header --set-string config.consensus.headers.Authorization=secret
+
+# Turnstile secrets and provider egress belong only to the API-capable process.
+for mode in monolith distributed; do
+  turnstile_render="$temporary_dir/turnstile-$mode.yaml"
+  "$helm_bin" template etherview "$chart_dir" --set mode="$mode" \
+    --set config.features.user_auth=true --set-string config.server.public_url=https://explorer.example.com \
+    --set config.turnstile.csv_export_enabled=true --set-string config.turnstile.site_key=public-widget > "$turnstile_render"
+  owner=api
+  if [ "$mode" = monolith ]; then owner=all; fi
+  assert_occurrences "$turnstile_render" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 1
+  assert_component_occurrences "$turnstile_render" "$owner" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 1
+  for role in sync enrich trace metadata maintenance; do
+    assert_component_occurrences "$turnstile_render" "$role" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 0
+  done
+done
+expect_render_failure inline-turnstile-secret --set-string config.turnstile.secret_key=secret

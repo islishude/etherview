@@ -612,3 +612,26 @@ func TestEmbeddedPushWorkerBoundary(t *testing.T) {
 		t.Fatal("missing worker received SPA fallback")
 	}
 }
+
+func TestTurnstileShellPolicy(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		h := NewHandler(Options{TurnstileEnabled: enabled})
+		for _, target := range []string{"/", "/address/0x123", "/verify", "/missing.js"} {
+			req := httptest.NewRequest("GET", target, nil)
+			req.Header.Set("Accept", "text/html")
+			out := httptest.NewRecorder()
+			h.ServeHTTP(out, req)
+			policy := out.Header().Get("Content-Security-Policy")
+			allowed := enabled && target != "/missing.js"
+			if strings.Contains(policy, "https://challenges.cloudflare.com") != allowed {
+				t.Fatalf("enabled=%v path=%s CSP=%s", enabled, target, policy)
+			}
+			if allowed && (!strings.Contains(policy, "script-src 'self' https://challenges.cloudflare.com") || !strings.Contains(policy, "frame-src https://challenges.cloudflare.com")) {
+				t.Fatal(policy)
+			}
+			if strings.Contains(policy, "unsafe-inline") || strings.Contains(policy, "unsafe-eval") || strings.Contains(policy, "connect-src 'self' https:") {
+				t.Fatal(policy)
+			}
+		}
+	}
+}

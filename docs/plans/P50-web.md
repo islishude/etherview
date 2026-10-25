@@ -5,14 +5,15 @@ Status: `done`
 ## Outcome
 
 A responsive Chinese/English React SPA covers the core explorer workflows,
-communicates only with versioned APIs, is embedded in the Go binary, and uses an
+uses versioned same-origin explorer APIs, is embedded in the Go binary, and uses an
 injected EIP-1193 wallet for all contract reads and writes.
 
 The generated-client explorer includes UserOperation global/detail and bundle
 activity, authoritative Token holder pages, and optional consensus/blob views.
 The account workspace adds private watches, browser push, and CSV downloads
 with session-isolated browser state. Verify uses session-authenticated
-submission and independent, recoverable result steps.
+submission and independent, recoverable result steps. Optional Turnstile guards
+protect browser verification and CSV downloads; address actions use a compact toolbar.
 
 ## References
 
@@ -57,8 +58,15 @@ submission and independent, recoverable result steps.
 | P50-T76 | done   | P50-T01, P40                       | Pinned Hey API Fetch SDK with explicit same-origin client, exact types, error/stream preservation and explicit generation ([#169](https://github.com/islishude/etherview/issues/169))                  | type/runtime regressions, deterministic directory generation, Web/build/browser and common gates                               |
 | P50-T77 | done   | P40-T24                            | Bilingual Requests tab with five request types, filtering, details and pagination                                                                                                                      | 545 frontend tests and 105 embedded browser scenarios; bilingual 390px accessibility                                           |
 | P50-T78 | done   | P50-T03, P60-T03, P60-T05          | Session-authenticated browser verification with two-step submission/results and recoverable result links; API-key protocol isolation                                                                   | authentication matrix, frontend/browser, PostgreSQL, production all/split and common gates                                     |
+| P50-T79 | done   | P50-T74, P50-T78                   | Optional runtime Turnstile guards for browser verification and CSV; compact address actions                                                                                                            | transport/auth/CSP, bilingual browser, deployment and all/split regressions                                                    |
 
 ## Acceptance
+
+- [x] Independent default-off Turnstile switches protect browser verification
+      (including all Sourcify paths) and CSV exports with server-side validation,
+      session-bound widget lifecycle and narrowly scoped shell CSP. Native
+      API-key clients are unchanged; address actions are compact, bilingual,
+      keyboard accessible and responsive in both themes.
 
 - [x] Verify lives under More and preserves address-prefilled entries and file
       uploads. SIWE-authenticated submission opens a separate result step;
@@ -96,7 +104,7 @@ submission and independent, recoverable result steps.
       states, show source/freshness, and load preview/download only on demand.
 - [x] ERC-721 retains exact owner state while ERC-1155 never invents a unique
       owner, and both standards share the same metadata detail route.
-- [x] The SPA renders no NFT image and performs no media or external request
+- [x] The SPA renders no NFT image and performs no NFT media or NFT-related external request
       before the user confirms each navigation.
 - [x] Every external navigation is bilingual, keyboard accessible, opener-free,
       and no-referrer, with the target host visible before confirmation.
@@ -126,6 +134,15 @@ submission and independent, recoverable result steps.
 None. P60/P70 retain independent release blockers.
 
 ## Evidence
+
+P50-T79 passed local `make check`, 712 frontend tests, all 134 embedded Chromium
+scenarios, `make test-integration-race` and `make test-runtime-e2e`. Tests cover
+bounded Siteverify transport, authentication ordering, secret role isolation,
+CSP, expiry/retry/account changes, CSV failures and bilingual toolbar screenshots.
+Production all/split tests enable both guards after real SIWE, reject missing
+tokens on all five protected POSTs and still accept native API-key submissions.
+Mock widgets and transports do not establish live Cloudflare domain/secret
+correctness or remote CI acceptance.
 
 P50-T78 passed local `make check`, 699 frontend tests, all 131 embedded Chromium
 scenarios, `make test-integration-race` and `make test-runtime-e2e`. Production
@@ -169,7 +186,7 @@ P30-T138.
 
 Retained completed milestones: P50-T01, P50-T02, P50-T03, P50-T04, P50-T05, P50-T06,
 P50-T10, P50-T11, P50-T14, P50-T16, P50-T72, P50-T73, P50-T74, P50-T75, P50-T76,
-P50-T77, P50-T78.
+P50-T77, P50-T78, P50-T79.
 
 Frontend unit, generated-client, embedded Chromium, responsive and
 accessibility checks passed at the feature revisions. Coverage includes

@@ -50,7 +50,11 @@ export function AccountActionError({ code }: { code: string }) {
   ];
   return code ? (
     <p className="form-error" role="alert">
-      {t(`watchlist.errors.${known.includes(code) ? code : "activity_unavailable"}`)}
+      {t(
+        code === "turnstile_invalid" || code === "turnstile_unavailable"
+          ? `turnstile.${code}`
+          : `watchlist.errors.${known.includes(code) ? code : "activity_unavailable"}`,
+      )}
     </p>
   ) : null;
 }

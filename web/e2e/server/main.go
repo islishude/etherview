@@ -70,7 +70,16 @@ func main() {
 	registerResourceHandlers(mux)
 	registerNativeTransferHandlers(mux)
 	registerContractHandlers(mux)
-	mux.Handle("/", webui.NewHandler())
+	baselineWeb := webui.NewHandler()
+	protectedWeb := webui.NewHandler(webui.Options{TurnstileEnabled: true})
+	// Test-only selector exercises both production shell policies in one harness.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("turnstile") == "1" {
+			protectedWeb.ServeHTTP(w, r)
+			return
+		}
+		baselineWeb.ServeHTTP(w, r)
+	})
 
 	server := &http.Server{
 		Addr:              "127.0.0.1:4173",

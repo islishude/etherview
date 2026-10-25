@@ -1,3 +1,6 @@
+import { Bell, BellRing, Download, ChevronDown } from "lucide-react";
+import { useTurnstile } from "./TurnstileChallenge";
+import "./AddressAccountActions.css";
 import { type FormEvent, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -18,7 +21,7 @@ export function AddressAccountActions({ address }: { address: string }) {
   if (!auth.enabled) return null;
   if (!identity)
     return (
-      <p>
+      <p className="address-actions-login">
         <Link to="/account">{t("watchlist.loginHint")}</Link>
       </p>
     );
@@ -28,6 +31,7 @@ function AddressActions({ address }: { address: string }) {
   const { t } = useTranslation();
   const query = useWatches();
   const action = useAccountAction();
+  const challenge = useTurnstile("csv_export");
   const watch = query.data?.find((item) => item.address.toLowerCase() === address.toLowerCase());
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<AddressExportRequest["kind"]>("transaction");
@@ -38,19 +42,33 @@ function AddressActions({ address }: { address: string }) {
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 16));
   function download(event: FormEvent) {
     event.preventDefault();
-    void action.run((csrf, signal) =>
-      downloadAddressCSV(
-        { address, kind, direction, from: `${from}:00Z`, to: `${to}:00Z` },
-        csrf,
-        signal,
-      ),
-    );
+    if (!challenge.ready || action.pending) return;
+    const token = challenge.consume({ deferRefresh: true });
+    void action
+      .run((csrf, signal) =>
+        downloadAddressCSV(
+          { address, kind, direction, from: `${from}:00Z`, to: `${to}:00Z` },
+          csrf,
+          signal,
+          token,
+        ),
+      )
+      .finally(challenge.refresh);
   }
   return (
-    <section className="panel watchlist-panel" aria-label={t("watchlist.actions")}>
-      <div>
+    <section
+      className="address-actions"
+      aria-label={t("watchlist.actions")}
+      aria-busy={action.pending}
+    >
+      <div className="address-actions-toolbar">
         <button
-          className="button secondary"
+          className="address-action"
+          aria-pressed={Boolean(watch)}
+          aria-label={
+            watch ? `${t("watchlist.watching")}: ${t("watchlist.remove")}` : t("watchlist.add")
+          }
+          title={t(watch ? "watchlist.remove" : "watchlist.add")}
           disabled={action.pending || !query.data}
           onClick={() =>
             void action.run((csrf, signal) =>
@@ -70,17 +88,29 @@ function AddressActions({ address }: { address: string }) {
             )
           }
         >
-          {t(watch ? "watchlist.remove" : "watchlist.add")}
+          {watch ? <BellRing aria-hidden="true" /> : <Bell aria-hidden="true" />}
+          {t(watch ? "watchlist.watching" : "watchlist.add")}
         </button>
-        <button className="button secondary" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button
+          className="address-action"
+          aria-expanded={open}
+          aria-controls={open ? "address-csv-export" : undefined}
+          onClick={() => setOpen(!open)}
+        >
+          <Download aria-hidden="true" />
           {t("watchlist.export")}
+          <ChevronDown className="address-action-chevron" aria-hidden="true" />
         </button>
       </div>
       {open && (
-        <form className="profile-form" onSubmit={download}>
+        <form
+          id="address-csv-export"
+          className="profile-form address-export-form"
+          onSubmit={download}
+        >
           <p>{t("watchlist.exportHint")}</p>
-          <label>
-            {t("watchlist.kinds")}
+          <label className="field-control">
+            <span>{t("watchlist.kinds")}</span>
             <select
               value={kind}
               onChange={(e) => setKind(e.target.value as AddressExportRequest["kind"])}
@@ -90,8 +120,8 @@ function AddressActions({ address }: { address: string }) {
               <option value="nft">NFT (ERC-721 / ERC-1155)</option>
             </select>
           </label>
-          <label>
-            {t("watchlist.fromUTC")}
+          <label className="field-control">
+            <span>{t("watchlist.fromUTC")}</span>
             <input
               required
               type="datetime-local"
@@ -99,8 +129,8 @@ function AddressActions({ address }: { address: string }) {
               onChange={(e) => setFrom(e.target.value)}
             />
           </label>
-          <label>
-            {t("watchlist.toUTC")}
+          <label className="field-control">
+            <span>{t("watchlist.toUTC")}</span>
             <input
               required
               type="datetime-local"
@@ -108,8 +138,8 @@ function AddressActions({ address }: { address: string }) {
               onChange={(e) => setTo(e.target.value)}
             />
           </label>
-          <label>
-            {t("watchlist.direction")}
+          <label className="field-control">
+            <span>{t("watchlist.direction")}</span>
             <select
               value={direction}
               onChange={(e) => setDirection(e.target.value as AddressExportRequest["direction"])}
@@ -121,7 +151,8 @@ function AddressActions({ address }: { address: string }) {
               ))}
             </select>
           </label>
-          <button className="button primary" disabled={action.pending}>
+          {challenge.challenge}
+          <button className="button primary" disabled={action.pending || !challenge.ready}>
             {t(action.pending ? "watchlist.loading" : "watchlist.download")}
           </button>
         </form>

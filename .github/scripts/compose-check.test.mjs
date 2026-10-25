@@ -17,6 +17,9 @@ const applicationKeys = [
 ];
 const observedKeys = [
   ...applicationKeys,
+  "ETHERVIEW_TURNSTILE_SITE_KEY",
+  "ETHERVIEW_TURNSTILE_SECRET_KEY",
+  "ETHERVIEW_TURNSTILE_SECRET_KEY_FILE",
   "DOCKER",
   "AWS_ACCESS_KEY_ID",
   "ETHERVIEW_VERIFICATION_EXECUTOR_PATH",
@@ -70,6 +73,13 @@ if (command === "node") {
   environment.ETHERVIEW_METADATA_IPFS_GATEWAY = process.env.BAD_GATEWAY ? "wrong" : process.env.ETHERVIEW_METADATA_IPFS_GATEWAY;
   if (process.env.BAD_OVERRIDE && environment.ETHERVIEW_LOG_LEVEL === "debug") environment.ETHERVIEW_LOG_LEVEL = "wrong";
   const services = Object.fromEntries(["etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance"].map((role) => [role, { environment }]));
+  if (process.env.ETHERVIEW_TURNSTILE_SITE_KEY) {
+    for (const role of ["etherview", "api"]) services[role].environment = { ...environment,
+      ETHERVIEW_TURNSTILE_SITE_KEY: process.env.ETHERVIEW_TURNSTILE_SITE_KEY,
+      ETHERVIEW_TURNSTILE_SECRET_KEY: process.env.ETHERVIEW_TURNSTILE_SECRET_KEY,
+      ETHERVIEW_TURNSTILE_SECRET_KEY_FILE: process.env.ETHERVIEW_TURNSTILE_SECRET_KEY_FILE,
+    };
+  }
   if (args.includes("--format")) console.log(process.env.BAD_JSON ? "invalid JSON" : JSON.stringify({ fixture: true, services }));
   if (count === Number(process.env.FAIL_COMPOSE_AT)) {
     console.error("render diagnostic"); process.exit(23);
@@ -113,8 +123,14 @@ test("Compose matrix retains every layout and isolates renderer and validator en
   const result = fixture(t).run();
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const compose = result.events.filter((e) => e.command === "compose");
-  assert.equal(compose.length, 24); // Version probe plus the 23 original config renders.
-  const renders = compose.slice(1);
+  assert.equal(compose.length, 27); // Version probe, 23 original renders and 3 Turnstile layouts.
+  const renders = compose
+    .slice(1)
+    .filter((event) => event.env.ETHERVIEW_TURNSTILE_SITE_KEY !== "public-widget");
+  assert.equal(
+    compose.filter((event) => event.env.ETHERVIEW_TURNSTILE_SITE_KEY === "public-widget").length,
+    3,
+  );
   const profiles = (e) => e.args.flatMap((arg, i) => (arg === "--profile" ? [e.args[i + 1]] : []));
   assert.deepEqual(renders.map(profiles), [
     ["monolith"],

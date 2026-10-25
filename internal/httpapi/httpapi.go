@@ -28,6 +28,7 @@ import (
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/observability"
 	"github.com/islishude/etherview/internal/publicquery"
+	"github.com/islishude/etherview/internal/turnstile"
 	"github.com/islishude/etherview/internal/userauth"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -136,6 +137,7 @@ type UserAPIKeyAdministration interface {
 }
 
 type Options struct {
+	Turnstile             TurnstileValidator
 	ConsensusReader       publicquery.ConsensusReader
 	RequestsReader        publicquery.RequestsReader
 	Config                config.Config
@@ -184,6 +186,7 @@ type Options struct {
 }
 
 type Handler struct {
+	turnstile             TurnstileValidator
 	streamAdmission       *streamAdmission
 	consensusReader       publicquery.ConsensusReader
 	requestsReader        publicquery.RequestsReader
@@ -237,6 +240,9 @@ type Handler struct {
 }
 
 func New(options Options) (*Handler, error) {
+	if options.Turnstile == nil && options.Config.Turnstile.Enabled() {
+		options.Turnstile = turnstile.New(options.Config.Turnstile.SecretKey, options.Config.Server.PublicURL)
+	}
 	if options.Reader == nil {
 		return nil, errors.New("httpapi reader is required")
 	}
@@ -253,6 +259,7 @@ func New(options Options) (*Handler, error) {
 		options.RuntimeReady = func() bool { return true }
 	}
 	h := &Handler{
+		turnstile:             options.Turnstile,
 		consensusReader:       options.ConsensusReader,
 		requestsReader:        options.RequestsReader,
 		cfg:                   options.Config,

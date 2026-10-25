@@ -217,6 +217,38 @@ function main() {
         `Compose ${key} override was not preserved`,
       );
   });
+  for (const [label, files, owner] of [
+    ["preview", preview, "api"],
+    ["monolith", [...deployment, "--profile", "monolith"], "etherview"],
+    ["distributed", [...deployment, "--profile", "distributed"], "api"],
+  ]) {
+    config(
+      `Turnstile ${label}`,
+      files,
+      {
+        ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED: "true",
+        ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED: "true",
+        ETHERVIEW_TURNSTILE_SITE_KEY: "public-widget",
+        ETHERVIEW_TURNSTILE_SECRET_KEY: "private-widget",
+        ETHERVIEW_TURNSTILE_SECRET_KEY_FILE: "/run/secrets/turnstile",
+      },
+      ({ services }) => {
+        assert.equal(services[owner].environment.ETHERVIEW_TURNSTILE_SITE_KEY, "public-widget");
+        assert.equal(services[owner].environment.ETHERVIEW_TURNSTILE_SECRET_KEY, "private-widget");
+        for (const [name, service] of Object.entries(services)) {
+          if (["api", "etherview"].includes(name)) continue;
+          assert.ok(
+            !Object.hasOwn(service.environment ?? {}, "ETHERVIEW_TURNSTILE_SECRET_KEY"),
+            `Turnstile secret leaked to ${name}`,
+          );
+          assert.ok(
+            !Object.hasOwn(service.environment ?? {}, "ETHERVIEW_TURNSTILE_SECRET_KEY_FILE"),
+            `Turnstile file leaked to ${name}`,
+          );
+        }
+      },
+    );
+  }
 }
 
 try {

@@ -17,7 +17,8 @@ worker dependencies.
 - Vite writes the complete production distribution under
   `web/dist`, and `go:embed` packages that directory into the Go
   binary. `index.html` may reference only same-origin, content-hashed build
-  assets; production has no CDN or frontend runtime service.
+  assets; production has no CDN or frontend runtime service. Optional Turnstile is
+  the narrowly scoped external challenge exception described below.
 - Route components are dynamic imports. Feature pages, ECharts, verified-source
   rendering, and CodeMirror are absent from the initial shell graph; the source
   editor loads only after an exact verified artifact is displayed. The checked
@@ -47,7 +48,7 @@ worker dependencies.
   permissions policy, and the repository browser-security headers. The CSP
   starts with `default-src 'none'`, enumerates only required same-origin
   resource types, permits `data:` only for wallet-provided images, and contains
-  neither `unsafe-inline`, `unsafe-eval`, nor an external network origin.
+  neither `unsafe-inline`, `unsafe-eval`, nor an external network origin while Turnstile is disabled.
 - Each `GET` or `HEAD` response that serves the SPA shell (the root or an HTML
   navigation fallback) generates a fresh, unpredictable
   32-byte CSPRNG nonce encoded with base64url. The handler injects that raw
@@ -73,6 +74,20 @@ It never intercepts fetches or caches private responses. No external script or
 connect origin is added. Push permission requires a user gesture, and notification
 clicks accept only same-origin transaction paths. The embedded build includes
 the worker and tests its MIME, cache, CSP and missing-file behavior.
+
+### Optional browser human verification
+
+Turnstile is an explicit runtime-controlled external script/iframe exception.
+Independent default-off verification and CSV switches enable only the fixed
+`https://challenges.cloudflare.com` script and frame sources on SPA shell
+responses, including navigation fallbacks. Other responses retain the baseline
+policy; connect-src stays same-origin, with no unsafe-inline/eval or wildcard.
+The app loads the official explicit-render script only for a mounted protected
+form belonging to an authenticated session. Tokens remain in memory, are cleared
+on consumption, expiry, account changes and unmount, and never enter URLs,
+logs, durable requests or browser storage. All application API calls still use
+the generated same-origin client. Siteverify is mandatory on the server;
+client success alone grants no permission. See ADR-0024 and ADR-0051.
 
 ### Verified ABI normalization
 

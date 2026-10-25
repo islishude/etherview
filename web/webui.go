@@ -43,17 +43,22 @@ type RouteHandler interface {
 	RoutePattern(*http.Request) string
 }
 
+// Options controls explicit external-resource exceptions on shell responses.
+type Options struct{ TurnstileEnabled bool }
+
 // NewHandler returns a handler for the embedded SPA. API and operational paths
 // intentionally never receive the index fallback, so a missing backend route
 // cannot be disguised as a successful HTML response.
-func NewHandler() RouteHandler {
+func NewHandler(options ...Options) RouteHandler {
+	turnstileEnabled := len(options) > 0 && options[0].TurnstileEnabled
 	metadata, err := loadAssetManifest(distribution)
 	if err != nil {
 		panic(fmt.Sprintf("load embedded Web asset manifest: %v", err))
 	}
 	return &handler{
 		assets: distribution, metadata: metadata,
-		nonceGenerator: generateCSPNonce,
+		turnstileEnabled: turnstileEnabled,
+		nonceGenerator:   generateCSPNonce,
 	}
 }
 
@@ -63,9 +68,10 @@ func Assets() fs.FS {
 }
 
 type handler struct {
-	assets         fs.FS
-	metadata       map[string]assetMetadata
-	nonceGenerator func() (string, error)
+	turnstileEnabled bool
+	assets           fs.FS
+	metadata         map[string]assetMetadata
+	nonceGenerator   func() (string, error)
 }
 
 type assetRepresentation struct {
@@ -185,7 +191,12 @@ func (h *handler) serveShell(
 	response.Header().Set("Cache-Control", noStoreCache)
 	response.Header().Del("ETag")
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	response.Header().Set("Content-Security-Policy", contentSecurityPolicyWithNonce(nonce))
+	policy := contentSecurityPolicyWithNonce(nonce)
+	if h.turnstileEnabled {
+		policy = strings.Replace(policy, "script-src 'self'", "script-src 'self' https://challenges.cloudflare.com", 1)
+		policy = strings.Replace(policy, "frame-src 'none'", "frame-src https://challenges.cloudflare.com", 1)
+	}
+	response.Header().Set("Content-Security-Policy", policy)
 	http.ServeContent(response, request, "index.html", time.Time{}, bytes.NewReader(contents))
 }
 

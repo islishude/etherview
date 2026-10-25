@@ -50,6 +50,8 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 		session.cookie, session.csrf = response.Cookies()[0], *login.Data.CsrfToken
 
 		var statuses []string
+		var nativeTarget, nativeKey string
+		var nativeInput []byte
 		for _, runtimeOnly := range []bool{false, true} {
 			t.Logf("verify Geas runtime-only=%t", runtimeOnly)
 			hash := h.sendTransaction(ctx, map[string]any{"from": h.fixture.accounts[0], "data": "0x60028060095f395ff36001", "gas": "0x100000"})
@@ -129,8 +131,63 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 			if accepted.StatusCode != 202 {
 				t.Fatalf("native API status=%d body=%s", accepted.StatusCode, nativeBody)
 			}
+			nativeTarget, nativeKey, nativeInput = target, apiKey, encoded
 			statuses = append(statuses, string(result.Data.Status))
 		}
+		h.assertTurnstileProtection(ctx, session, nativeTarget, nativeKey, nativeInput)
 		return strings.Join(statuses, ",")
 	})
+}
+
+// Enable both guards on the production API/all process after proving the default
+// paths. No real provider request or production widget secret is needed to prove
+// admission rejects missing tokens and native authentication remains independent.
+func (h *harness) assertTurnstileProtection(ctx context.Context, session runtimeWatchSession, target, apiKey string, input []byte) {
+	h.t.Helper()
+	h.project.Env["ETHERVIEW_RUNTIME_SOURCIFY"] = "true"
+	h.project.Env["ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED"] = "true"
+	h.project.Env["ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED"] = "true"
+	h.project.Env["ETHERVIEW_TURNSTILE_SITE_KEY"] = "runtime-public-key"
+	h.project.Env["ETHERVIEW_TURNSTILE_SECRET_KEY"] = "runtime-private-key"
+	h.secrets = append(h.secrets, "runtime-private-key")
+	h.compose(ctx, "up", "-d", "--no-deps", "--force-recreate", h.apiService)
+	h.resolveAPI(ctx)
+	h.waitReady(ctx)
+	for _, path := range []string{"/verification-jobs/local", "/verification-jobs/sourcify-import", "/verification-jobs/sourcify", "/verification-jobs/sourcify-from-etherscan", "/users/me/exports/address-activity"} {
+		req, _ := http.NewRequestWithContext(ctx, "POST", h.baseURL+"/api/v1"+path, strings.NewReader("{}"))
+		req.Header.Set("Origin", "https://explorer.example.com")
+		req.Header.Set("X-CSRF-Token", session.csrf)
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(session.cookie)
+		res, err := h.http.Do(req)
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+		_ = res.Body.Close()
+		if res.StatusCode != 403 || !bytes.Contains(body, []byte("turnstile_invalid")) || res.Header.Get("Content-Disposition") != "" {
+			h.t.Fatalf("Turnstile %s status=%d body=%s", path, res.StatusCode, body)
+		}
+	}
+	req, _ := http.NewRequestWithContext(ctx, "POST", h.baseURL+"/api/v1/contracts/"+target+"/verification", bytes.NewReader(input))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	res, err := h.http.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	body, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	_ = res.Body.Close()
+	if res.StatusCode != 202 || bytes.Contains(body, []byte("turnstile")) {
+		h.t.Fatalf("native validation changed: %d %s", res.StatusCode, body)
+	}
+	req, _ = http.NewRequestWithContext(ctx, "GET", h.baseURL+"/verify", nil)
+	res, err = h.http.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if !strings.Contains(res.Header.Get("Content-Security-Policy"), "frame-src https://challenges.cloudflare.com") {
+		h.t.Fatal("production shell lacks Turnstile policy")
+	}
 }

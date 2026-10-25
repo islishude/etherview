@@ -36,6 +36,9 @@ func (h *Handler) browserVerification(next http.HandlerFunc) http.HandlerFunc {
 				writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "contract verification submission is unavailable", nil)
 				return
 			}
+			if !h.requireTurnstile(w, r, "verification") {
+				return
+			}
 		} else if id, err := uuid.Parse(r.PathValue("id")); err != nil || id.String() != r.PathValue("id") {
 			writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "verification job ID is invalid", nil)
 			return

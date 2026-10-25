@@ -39,6 +39,7 @@ func (c Config) Validate() error {
 		validateVerificationConfig(c),
 		validateUserAuthConfig(c),
 		validatePushConfig(c),
+		validateTurnstileConfig(c),
 		validateBillingConfig(c),
 		validateAdapterConfig(c),
 	)
@@ -182,6 +183,9 @@ func (c Config) ValidateForRoles(roles []string) error {
 	}
 	if needsAPI && c.Features.UserAuth && len(c.UserAuth.SessionPepper) < 32 {
 		errs = append(errs, errors.New("API role user authentication requires a session pepper of at least 32 bytes"))
+	}
+	if needsAPI && c.Turnstile.Enabled() && c.Turnstile.SecretKey == "" {
+		errs = append(errs, errors.New("API role Turnstile requires a secret key"))
 	}
 	if needsAPI && c.Features.X402Topups {
 		if len(c.Billing.FingerprintPepper) < 32 {

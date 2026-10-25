@@ -56,7 +56,7 @@ The Service Worker handles push and same-origin transaction navigation only;
 it has no fetch handler, offline cache or notification history. Visible alerts
 contain a label or abbreviated address, activity kind and direction, never an
 amount. Logout/account changes unsubscribe and close displayed notifications.
-Browser support and OS delivery remain external capabilities. CSV is unchanged.
+Browser support and OS delivery remain external capabilities. CSV retains the export contract below.
 
 CSV is a documented exception to ADR-0003's successful JSON envelope: the
 spec-first authenticated POST returns text/csv on success and the ordinary JSON
@@ -73,6 +73,8 @@ active export per account and four per deployment. Expiring reservations recover
 crashes; completion releases only its own token. Every error is returned before
 CSV headers or bytes; partial files are never reported as successful. The SPA
 uses its generated same-origin client and releases download object URLs.
+Download filenames use `<address>-<start>-<end>-<type>.csv`, with the lowercase
+address, UTC `YYYY-MM-DDTHH-mm-ssZ` timestamps and the requested activity kind.
 
 ## Consequences
 
@@ -82,3 +84,17 @@ Watches, browser subscriptions and admission state remain writer-owned; optional
 NATS and object storage do not participate. Limits do not charge prepaid API
 balances. P60 owns watch/notification implementation evidence, P40 owns CSV
 exports, P50 owns the private Web workspace, and P70 owns release acceptance.
+
+## Optional CSV challenge
+
+`turnstile.csv_export_enabled` defaults off independently of verification.
+Enabled exports require `X-Turnstile-Token` with Siteverify action `csv_export`
+and the configured public hostname. Validation follows SIWE/Origin/CSRF checks
+and precedes export admission and the writer snapshot. Invalid challenges
+return JSON 403 `turnstile_invalid`; upstream failures return JSON 503
+`turnstile_unavailable`, before any CSV headers or bytes. The bounded transport,
+secret isolation and non-persistence rules are shared with ADR-0024. Watch
+operations are unaffected. The address toolbar opens the existing export form;
+a challenge is mounted only while that authenticated form is open.
+Submitting consumes the token immediately; the widget refreshes after the CSV
+request finishes, on either success or failure, before another download.

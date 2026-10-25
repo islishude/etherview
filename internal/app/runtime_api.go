@@ -291,7 +291,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		proxyReader := newProxyReaderAdapter(
 			writerReader, cfg.Chain.ID,
 		)
-		webHandler := webui.NewHandler()
+		webHandler := webui.NewHandler(webui.Options{TurnstileEnabled: cfg.Turnstile.Enabled()})
 		handler, err := httpapi.New(httpapi.Options{
 			ConsensusReader: writerReader,
 			RequestsReader:  writerReader,

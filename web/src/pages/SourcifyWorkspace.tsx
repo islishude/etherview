@@ -6,11 +6,13 @@ import { SourcifyImportForm } from "./SourcifyImportForm";
 import { SourcifyVerificationForm } from "./SourcifyVerificationForm";
 
 export function SourcifyWorkspace({
+  active = true,
   onSubmitted,
   initialAddress,
   chainID,
   onAddressChange,
 }: {
+  active?: boolean;
   onSubmitted: (job: BrowserVerificationJob) => void;
   initialAddress: string;
   chainID: string;
@@ -32,6 +34,7 @@ export function SourcifyWorkspace({
       </div>
       {mode === "import" ? (
         <SourcifyImportForm
+          active={active}
           onSubmitted={onSubmitted}
           initialAddress={initialAddress}
           onAddressChange={onAddressChange}
@@ -40,6 +43,7 @@ export function SourcifyWorkspace({
         />
       ) : (
         <SourcifyVerificationForm
+          active={active}
           onSubmitted={onSubmitted}
           initialAddress={initialAddress}
           onAddressChange={onAddressChange}
