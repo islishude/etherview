@@ -74,6 +74,37 @@ connect origin is added. Push permission requires a user gesture, and notificati
 clicks accept only same-origin transaction paths. The embedded build includes
 the worker and tests its MIME, cache, CSP and missing-file behavior.
 
+### Verified ABI normalization
+
+The browser accepts historical Solidity ABI field shapes within its existing
+bounded parser. The [Solidity 0.4.15 JSON specification](https://docs.soliditylang.org/en/v0.4.15/abi-spec.html#json)
+and [0.5.3 specification](https://docs.soliditylang.org/en/v0.5.3/abi-spec.html#json)
+define the historical flags and omissions. Normalization affects only the
+detached browser ABI, never the published artifact or its identity:
+
+- An absent entry `type` means `function`; only functions may omit `outputs`,
+  which becomes an empty list. Explicit null, undefined, or malformed fields
+  remain invalid. Parameters still require a type, and functions still require
+  a name and inputs. Constructor/fallback/receive field restrictions remain.
+- Optional `constant` and `payable` are strict booleans. When `stateMutability`
+  is present it must be valid for the entry, and each supplied flag must agree:
+  `constant` is true exactly for view/pure; `payable` exactly for payable.
+- Without `stateMutability`, function/constructor/fallback entries use the
+  historical false defaults for omitted flags. Constant means view, never
+  inferred pure; payable means payable; otherwise the entry is nonpayable.
+  Constant plus payable is contradictory. Constructors and fallbacks cannot
+  be view/pure. Receive is a modern entry and still requires explicit payable
+  state mutability; it cannot acquire a historical default.
+- The normalized ABI retains only `stateMutability`. `internalType` remains
+  optional, with tuple components recursively validated. Unknown keys,
+  accessors, custom prototypes, sparse arrays, duplicate function signatures,
+  unsupported types, and all byte/depth/entry/parameter/node limits still fail
+  closed before a form or decoded result is exposed.
+
+Normalization has no compiler-version side channel: absent fields are accepted
+only through these explicit historical rules. Raw provenance and server-side
+signature-only output-availability semantics remain unchanged.
+
 ## Consequences
 
 Adding an inline bootstrap, external resource, worker, iframe, or new browser

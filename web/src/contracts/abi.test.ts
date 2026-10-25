@@ -8,6 +8,8 @@ import {
 } from "viem";
 import { describe, expect, it, vi } from "vitest";
 
+import erc1820RegistryABI from "./testdata/erc1820-registry-abi.json";
+
 import {
   ABI_LIMITS,
   AbiFormError,
@@ -94,6 +96,123 @@ describe("verified ABI parsing", () => {
     expect(() => parseVerifiedABI([simpleFunction("unsupported", "function")])).toThrowError(
       expect.objectContaining({ code: "INVALID_ABI" }),
     );
+  });
+
+  it("parses the Solidity 0.5.3 ERC1820Registry ABI without losing read/write semantics", () => {
+    // Published at 0x1820a4B7618BdE71Dce8cdc73aAB6C95905faD24.
+    const original = JSON.stringify(erc1820RegistryABI);
+    const abi = parseVerifiedABI(original);
+    const functions = partitionAbiFunctions(abi);
+    expect(functions.read.map((entry) => entry.signature)).toEqual([
+      "getManager(address)",
+      "interfaceHash(string)",
+      "getInterfaceImplementer(address,bytes32)",
+      "implementsERC165InterfaceNoCache(address,bytes4)",
+      "implementsERC165Interface(address,bytes4)",
+    ]);
+    expect(functions.write.map((entry) => [entry.signature, entry.payable])).toEqual([
+      ["setInterfaceImplementer(address,bytes32,address)", false],
+      ["setManager(address,address)", false],
+      ["updateERC165Cache(address,bytes4)", false],
+    ]);
+    expect(abi.filter((item) => item.type === "event")).toHaveLength(2);
+    expect(parseVerifiedABI(erc1820RegistryABI)).toEqual(abi);
+    expect(JSON.stringify(erc1820RegistryABI)).toBe(original);
+    expect(Object.isFrozen(abi)).toBe(true);
+    for (const item of abi) {
+      expect(Object.isFrozen(item)).toBe(true);
+      expect(item).not.toHaveProperty("constant");
+      expect(item).not.toHaveProperty("payable");
+    }
+  });
+
+  describe.each([
+    { type: "function", stateMutability: "pure", constant: true, payable: false },
+    { type: "function", stateMutability: "view", constant: true, payable: false },
+    { type: "function", stateMutability: "nonpayable", constant: false, payable: false },
+    { type: "function", stateMutability: "payable", constant: false, payable: true },
+    { type: "constructor", stateMutability: "nonpayable", constant: false, payable: false },
+    { type: "constructor", stateMutability: "payable", constant: false, payable: true },
+    { type: "fallback", stateMutability: "nonpayable", constant: false, payable: false },
+    { type: "fallback", stateMutability: "payable", constant: false, payable: true },
+    { type: "receive", stateMutability: "payable", constant: false, payable: true },
+  ])("$type/$stateMutability mutability flags", ({ type, stateMutability, constant, payable }) => {
+    const item = {
+      type,
+      stateMutability,
+      ...(type === "function" ? { name: "f", inputs: [], outputs: [] } : {}),
+      ...(type === "constructor" ? { inputs: [] } : {}),
+    };
+
+    it("accepts absent or consistent flags and returns the same normalized ABI", () => {
+      for (const flags of [{}, { constant }, { payable }, { constant, payable }]) {
+        expect(parseVerifiedABI([{ ...item, ...flags }])).toEqual([item]);
+      }
+      if (type === "function") {
+        const functions = partitionAbiFunctions(parseVerifiedABI([{ ...item, constant, payable }]));
+        expect(functions.read).toHaveLength(constant ? 1 : 0);
+        expect(functions.write).toHaveLength(constant ? 0 : 1);
+        expect((functions.read[0] ?? functions.write[0])?.payable).toBe(payable);
+      }
+    });
+
+    it.each(["constant", "payable"] as const)("rejects conflicting or non-boolean %s", (key) => {
+      const matching = { constant, payable };
+      for (const invalid of [!matching[key], null, undefined, 0, 1, "false", "true", {}, []]) {
+        expect(() => parseVerifiedABI([{ ...item, ...matching, [key]: invalid }])).toThrowError(
+          expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
+        );
+      }
+    });
+
+    it("rejects invalid explicit mutability and normalizes only historical omissions", () => {
+      for (const invalid of [undefined, null, "constant", ""]) {
+        expect(() =>
+          parseVerifiedABI([{ ...item, stateMutability: invalid, constant, payable }]),
+        ).toThrowError(
+          expect.objectContaining({ code: "INVALID_ABI", path: "$[0].stateMutability" }),
+        );
+      }
+      const { stateMutability: _stateMutability, ...missing } = item;
+      if (type === "receive") {
+        expect(() => parseVerifiedABI([{ ...missing, constant, payable }])).toThrowError(
+          expect.objectContaining({ code: "INVALID_ABI", path: "$[0].stateMutability" }),
+        );
+      } else {
+        expect(parseVerifiedABI([{ ...missing, constant, payable }])).toEqual([
+          { ...item, stateMutability: stateMutability === "pure" ? "view" : stateMutability },
+        ]);
+      }
+    });
+  });
+
+  it.each(["constant", "payable"] as const)("retains shape and resource guards with %s", (key) => {
+    const getter = vi.fn(() => true);
+    const item = { ...simpleFunction("f", "uint256"), constant: true, payable: false };
+    const accessor = Object.defineProperty({ ...item }, key, { enumerable: true, get: getter });
+    expect(() => parseVerifiedABI([accessor])).toThrowError(
+      expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
+    );
+    expect(getter).not.toHaveBeenCalled();
+    expect(() => parseVerifiedABI([{ ...item, extra: false }])).toThrowError(
+      expect.objectContaining({ code: "INVALID_ABI", path: "$[0].extra" }),
+    );
+    for (const type of ["event", "error"]) {
+      expect(() => parseVerifiedABI([{ type, name: "E", inputs: [], [key]: false }])).toThrowError(
+        expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
+      );
+    }
+    expect(() =>
+      parseVerifiedABI(Array.from({ length: ABI_LIMITS.items + 1 }, () => item)),
+    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    for (const type of [
+      `uint256[${ABI_LIMITS.fixedArrayLength + 1}]`,
+      `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`,
+    ]) {
+      expect(() => parseVerifiedABI([{ ...item, inputs: [{ type }] }])).toThrowError(
+        expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
+      );
+    }
   });
 
   it("normalizes canonical overload signatures and rejects canonical duplicates", () => {

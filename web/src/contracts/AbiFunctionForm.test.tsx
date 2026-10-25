@@ -33,6 +33,8 @@ import { WalletBoundaryError } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 
 import { AbiFunctionExplorer } from "./AbiFunctionForm";
+import erc1820RegistryABI from "./testdata/erc1820-registry-abi.json";
+import historicalABIs from "./testdata/historical-solidity-abi.json";
 
 vi.mock("@/api/publicConfig", () => ({
   usePublicConfig: vi.fn(),
@@ -270,6 +272,100 @@ describe("AbiFunctionExplorer", () => {
     } as ReturnType<typeof usePublicConfig>);
     vi.mocked(getContractProxyResponse).mockResolvedValue(proxyResponse());
   });
+
+  it("renders and reads the published ERC1820Registry ABI with constant/payable flags", async () => {
+    const managerABI = [
+      {
+        type: "function",
+        name: "getManager",
+        stateMutability: "view",
+        inputs: [{ type: "address" }],
+        outputs: [{ type: "address" }],
+      },
+    ] as const;
+    const readContract = vi.fn().mockResolvedValue(
+      encodeFunctionResult({
+        abi: managerABI,
+        functionName: "getManager",
+        result: OTHER,
+      }),
+    );
+    mockWallet({ readContract });
+    renderExplorer(erc1820RegistryABI, "read", directTargets());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("interfaceHash(string)", { selector: "code" })).toBeVisible();
+    expect(
+      screen.queryByText("setManager(address,address)", { selector: "code" }),
+    ).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    const card = await openFunctionCard(user, "getManager(address)");
+    await user.type(card.getByLabelText(/^_addr/u), ACCOUNT);
+    await user.click(card.getByRole("button", { name: "Read contract" }));
+    expect(await card.findByText(OTHER)).toBeVisible();
+    expect(readContract).toHaveBeenCalledTimes(1);
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: PROXY,
+        data: encodeFunctionData({
+          abi: managerABI,
+          functionName: "getManager",
+          args: [ACCOUNT],
+        }),
+      }),
+      "31337",
+    );
+  });
+
+  it("renders writes from the published ERC1820Registry ABI", async () => {
+    mockWallet();
+    renderExplorer(erc1820RegistryABI, "write", directTargets());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("getManager(address)", { selector: "code" })).not.toBeInTheDocument();
+    const card = await openFunctionCard(userEvent.setup(), "setManager(address,address)");
+    expect(card.getByLabelText(/^_addr/u)).toBeVisible();
+    expect(card.getByLabelText(/^_newManager/u)).toBeVisible();
+  });
+
+  it("reads a pre-stateMutability ABI and renders historical defaulted write forms", async () => {
+    const readContract = vi.fn().mockResolvedValue(`0x${"7".padStart(64, "0")}`);
+    mockWallet({ readContract });
+    renderExplorer(
+      [
+        ...historicalABIs.find((fixture) => fixture.version === "0.4.15")!.abi,
+        { name: "legacyWrite", inputs: [] },
+      ],
+      "all",
+      directTargets(),
+    );
+    const user = userEvent.setup();
+    const read = await openFunctionCard(user, "read()");
+    await user.click(read.getByRole("button", { name: "Read contract" }));
+    expect(await read.findByText("7")).toBeVisible();
+    expect(readContract).toHaveBeenCalledTimes(1);
+    const write = await openFunctionCard(user, "legacyWrite()");
+    expect(write.queryByRole("button", { name: "Read contract" })).not.toBeInTheDocument();
+    expect(screen.getByText("deposit()", { selector: "code" })).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each([{ constant: true }, { payable: true }])(
+    "does not generate any forms for conflicting mutability flags %j",
+    (flags) => {
+      mockWallet();
+      renderExplorer(
+        erc1820RegistryABI.map((item, index) => (index === 0 ? { ...item, ...flags } : item)),
+        "all",
+        directTargets(),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent("The published ABI is malformed");
+      expect(
+        screen.queryByText("getManager(address)", { selector: "code" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("setManager(address,address)", { selector: "code" }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it("keeps overload signatures separate and submits viem-encoded calldata for each", async () => {
     const uintCall = encodeFunctionData({
@@ -836,7 +932,7 @@ describe("AbiFunctionExplorer", () => {
 });
 
 function renderExplorer(
-  abi: Abi,
+  abi: unknown,
   mode: "read" | "write" | "all",
   targets: readonly ContractInteractionTarget[],
   onBindingChanged?: () => void,

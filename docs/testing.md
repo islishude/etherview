@@ -218,6 +218,16 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   Tailwind-class, or package-key sorting. `make web-test` includes executable
   tooling-policy regressions for limits, exclusions, hooks, and idempotence.
 - `make test`: Go and frontend unit tests.
+  Browser ABI regressions include the published Solidity 0.5.3 ERC1820Registry
+  ABI and unmodified native Standard JSON ABI output from official solc-js
+  0.4.15, 0.4.16, 0.5.11 and 0.6.0. The historical fixture in
+  `web/src/contracts/testdata/historical-solidity-abi.json` records each compiler
+  URL, manifest-verified SHA-256, exact version and source. Reproduce with
+  `Historical.sol`, language `Solidity`, and `outputSelection: {"*":{"*":["abi"]}}`
+  through the compiler's native Standard JSON entry point; no wrapper ABI
+  translation is applied. Tests consume checked-in fixtures without downloads
+  and cover historical defaults, conflicting flags, entry boundaries,
+  recursive tuples, resource limits, read/write classification and forms.
 - `make test-race`: Go tests with the race detector.
 - `make test-e2e`: build the embedded SPA and a temporary Go E2E binary, then
   run Playwright against that embedded distribution. Local runs use installed

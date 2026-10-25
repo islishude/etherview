@@ -1,0 +1,267 @@
+[
+  {
+    "version": "0.4.15",
+    "compilerVersion": "0.4.15+commit.bbb8e64f.Emscripten.clang",
+    "compilerURL": "https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/bin/soljson-v0.4.15+commit.bbb8e64f.js",
+    "compilerSHA256": "0x6e81a09fdf1c630b51a3d7ede35a828f02be2e3ed53d97d361267bc915d774ff",
+    "source": "pragma solidity 0.4.15;\ncontract Historical {\nfunction Historical() public payable {}\nfunction read() public constant returns (uint256) { return 7; }\nfunction write(uint256 value) public {}\nfunction deposit() public payable {}\nfunction() external payable {}\n}",
+    "abi": [
+      {
+        "constant": false,
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "write",
+        "outputs": [],
+        "payable": false,
+        "type": "function"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "read",
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "type": "function"
+      },
+      {
+        "constant": false,
+        "inputs": [],
+        "name": "deposit",
+        "outputs": [],
+        "payable": true,
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "payable": true,
+        "type": "constructor"
+      },
+      {
+        "payable": true,
+        "type": "fallback"
+      }
+    ]
+  },
+  {
+    "version": "0.4.16",
+    "compilerVersion": "0.4.16+commit.d7661dd9.Emscripten.clang",
+    "compilerURL": "https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/bin/soljson-v0.4.16+commit.d7661dd9.js",
+    "compilerSHA256": "0x6ebd370d42785bf3a3523b798d85b53711a0f7766c82a465420f67bf403bdd38",
+    "source": "pragma solidity 0.4.16;\ncontract Historical {\nfunction Historical() public payable {}\nfunction read() public view returns (uint256) { return 7; }\nfunction pureRead() public pure returns (uint256) { return 8; }\nfunction write(uint256 value) public {}\nfunction deposit() public payable {}\nfunction() external payable {}\n}",
+    "abi": [
+      {
+        "constant": false,
+        "inputs": [
+          {
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "write",
+        "outputs": [],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "pureRead",
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "pure",
+        "type": "function"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "read",
+        "outputs": [
+          {
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "constant": false,
+        "inputs": [],
+        "name": "deposit",
+        "outputs": [],
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "constructor"
+      },
+      {
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "fallback"
+      }
+    ]
+  },
+  {
+    "version": "0.5.11",
+    "compilerVersion": "0.5.11+commit.c082d0b4.Emscripten.clang",
+    "compilerURL": "https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/bin/soljson-v0.5.11+commit.c082d0b4.js",
+    "compilerSHA256": "0xb6012fb777a7f842a6e7efe8c50cb2eba3b3997c72b761810823e796d4390d44",
+    "source": "pragma solidity 0.5.11;\ncontract Historical {\nconstructor() public payable {}\nfunction read() public view returns (uint256) { return 7; }\nfunction pureRead() public pure returns (uint256) { return 8; }\nfunction write(uint256 value) public {}\nfunction deposit() public payable {}\nfunction() external payable {}\n}",
+    "abi": [
+      {
+        "constant": false,
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "write",
+        "outputs": [],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "pureRead",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "pure",
+        "type": "function"
+      },
+      {
+        "constant": true,
+        "inputs": [],
+        "name": "read",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "constant": false,
+        "inputs": [],
+        "name": "deposit",
+        "outputs": [],
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "constructor"
+      },
+      {
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "fallback"
+      }
+    ]
+  },
+  {
+    "version": "0.6.0",
+    "compilerVersion": "0.6.0+commit.26b70077.Emscripten.clang",
+    "compilerURL": "https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/bin/soljson-v0.6.0+commit.26b70077.js",
+    "compilerSHA256": "0x4a9223dc645e2600d5e250420ed50f77b6f5180b1519711195b9d5bae8e643de",
+    "source": "pragma solidity 0.6.0;\ncontract Historical {\nconstructor() public payable {}\nfunction read() public view returns (uint256) { return 7; }\nfunction pureRead() public pure returns (uint256) { return 8; }\nfunction write(uint256 value) public {}\nfunction deposit() public payable {}\nfallback() external payable {}\nreceive() external payable {}\n}",
+    "abi": [
+      {
+        "inputs": [],
+        "stateMutability": "payable",
+        "type": "constructor"
+      },
+      {
+        "stateMutability": "payable",
+        "type": "fallback"
+      },
+      {
+        "inputs": [],
+        "name": "deposit",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "pureRead",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "pure",
+        "type": "function"
+      },
+      {
+        "inputs": [],
+        "name": "read",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      },
+      {
+        "inputs": [
+          {
+            "internalType": "uint256",
+            "name": "value",
+            "type": "uint256"
+          }
+        ],
+        "name": "write",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+      },
+      {
+        "stateMutability": "payable",
+        "type": "receive"
+      }
+    ]
+  }
+]
