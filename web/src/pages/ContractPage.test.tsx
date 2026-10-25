@@ -297,10 +297,10 @@ describe("contract proxy route", () => {
     renderContractRoute();
 
     await screen.findByRole("heading", { name: "Proxy identity" });
-    const summary = document.querySelector("details.proxy-summary");
+    const summary = document.querySelector<HTMLElement>("details.proxy-summary");
     expect(summary).not.toBeNull();
     summary!.setAttribute("open", "");
-    expect(await screen.findByText("Safe Proxy")).toBeVisible();
+    expect(within(summary!).getByText("Proxy family").nextElementSibling).toHaveTextContent("safe");
     expect(screen.getAllByText("Confirmed").length).toBeGreaterThan(0);
     expect(screen.getByText(implementationAddress)).toBeVisible();
     expect(
@@ -314,7 +314,7 @@ describe("contract proxy route", () => {
     renderContractRoute();
 
     await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
-    expect(await screen.findByText("ERC-2535 Diamond")).toBeVisible();
+    expect(screen.getByText("Proxy family").nextElementSibling).toHaveTextContent("erc2535");
     expect(screen.getByText("Full cross-check")).toBeVisible();
     expect(screen.getByText("Not detected")).toBeVisible();
 
@@ -355,6 +355,9 @@ describe("contract proxy route", () => {
       await within(codePanel!).findByRole("heading", { name: "Proxy identity" });
       expect(codePanel!.querySelector("details.proxy-summary")).not.toHaveAttribute("open");
       expect(within(codePanel!).getByRole("heading", { name: "Proxy identity" })).toBeVisible();
+      const proxyHeading = codePanel!.querySelector<HTMLElement>("details.proxy-summary > summary");
+      expect(proxyHeading!.querySelector(".eyebrow")).toBeNull();
+      expect(within(proxyHeading!).getByText("Verified")).toBeVisible();
       const tabs = await screen.findByRole("tablist", {
         name: "Contract interaction sections",
       });

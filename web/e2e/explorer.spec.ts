@@ -1895,7 +1895,12 @@ test("ERC-2535 pages preserve selector-scoped facets and ordered DiamondCut hist
   await page.goto(`/address/${diamondAddress}#code`);
   await expect(page.getByRole("heading", { name: "DiamondRouter", level: 2 })).toBeVisible();
   await page.getByRole("heading", { name: "Proxy identity" }).click();
-  await expect(page.getByText("ERC-2535 Diamond", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .locator(".proxy-facts dt")
+      .filter({ hasText: /^Proxy family$/ })
+      .locator("+ dd"),
+  ).toHaveText("erc2535");
   await expect(page.getByText("Full cross-check", { exact: true })).toBeVisible();
   await expect(page.getByText("Not detected", { exact: true })).toBeVisible();
   await expect(page.locator(".proxy-facts")).toContainText(diamondWriteFacet);
