@@ -92,27 +92,59 @@ it("settles simultaneous calldata and failure identity retries independently", a
   expect(reads).toEqual({ calldata: 2, failure: 2 });
 });
 
-it("pins a height route's transaction requests to the resolved block across a reorg", async () => {
-  const requests: string[] = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const path = requestURL(input).pathname;
-      requests.push(path);
-      if (path === "/api/v1/config") return configResponse();
-      if (path === "/api/v1/blocks/12") return blockResponse();
-      if (path === `/api/v1/blocks/${blockHash}/transactions`) return envelope([transaction]);
-      if (path === "/api/v1/blocks/12/transactions") {
-        return envelope([{ ...transaction, hash: replacementHash, block_hash: replacementHash }]);
-      }
-      return notFound();
-    }),
-  );
-  renderExplorer("/blocks/12?tab=transactions");
-  await screen.findByRole("tab", { name: "Transactions" });
-  await waitFor(() => expect(requests).toContain(`/api/v1/blocks/${blockHash}/transactions`));
-  expect(requests).not.toContain("/api/v1/blocks/12/transactions");
-});
+it.each(["/blocks/12", "/block/12"])(
+  "pins %s transaction requests to the resolved block across a reorg",
+  async (path) => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        requests.push(path);
+        if (path === "/api/v1/config") return configResponse();
+        if (path === "/api/v1/blocks/12") return blockResponse();
+        if (path === `/api/v1/blocks/${blockHash}/transactions`) return envelope([transaction]);
+        if (path === "/api/v1/blocks/12/transactions") {
+          return envelope([{ ...transaction, hash: replacementHash, block_hash: replacementHash }]);
+        }
+        return notFound();
+      }),
+    );
+    renderExplorer(`${path}?tab=transactions`);
+    await screen.findByRole("tab", { name: "Transactions" });
+    await waitFor(() => expect(requests).toContain(`/api/v1/blocks/${blockHash}/transactions`));
+    expect(requests).not.toContain("/api/v1/blocks/12/transactions");
+  },
+);
+
+it.each([
+  ["invalid", 400, "invalid_block_id", "The explorer identifier is invalid"],
+  ["999999", 404, "not_found", "Indexed entity not found"],
+] as const)(
+  "preserves API errors through the block alias for %s",
+  async (id, status, code, message) => {
+    const requests: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestURL(input).pathname;
+        requests.push(path);
+        if (path === "/api/v1/config") return configResponse();
+        if (path === `/api/v1/blocks/${id}`) {
+          return Response.json(
+            { error: { code, message: "Invalid or missing block", request_id: "alias-test" } },
+            { status },
+          );
+        }
+        return notFound();
+      }),
+    );
+    renderExplorer(`/block/${id}`);
+    expect(await screen.findByText(message, { exact: true })).toBeVisible();
+    expect(requests).toContain(`/api/v1/blocks/${id}`);
+    expect(requests.some((path) => path.endsWith("/transactions"))).toBe(false);
+  },
+);
 
 it("restarts invalid block cursors with a fresh first page even while its cache is fresh", async () => {
   let firstPages = 0;

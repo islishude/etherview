@@ -84,6 +84,7 @@ func TestIndexAndDeepLinks(t *testing.T) {
 	}{
 		{name: "root", path: "/", method: http.MethodGet},
 		{name: "nested route", path: "/blocks/123456", method: http.MethodGet},
+		{name: "block height alias", path: "/block/123456", method: http.MethodGet},
 		{name: "dotted entity", path: "/address/vitalik.eth", method: http.MethodGet},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -2,6 +2,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  redirect,
   type RouterHistory,
 } from "@tanstack/react-router";
 import { getAddress, isAddress } from "viem";
@@ -74,6 +75,20 @@ const blockRoute = createRoute({
         : undefined,
   }),
   component: BlockRoutePage,
+});
+const blockAliasRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/block/$blockID",
+  validateSearch: blockRoute.options.validateSearch,
+  beforeLoad: ({ params, search, location }) => {
+    throw redirect({
+      to: "/blocks/$blockID",
+      params,
+      search,
+      hash: location.hash,
+      replace: true,
+    });
+  },
 });
 const blobRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -251,6 +266,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   blocksRoute,
   blockRoute,
+  blockAliasRoute,
   blobRoute,
   genesisRoute,
   transactionsRoute,
