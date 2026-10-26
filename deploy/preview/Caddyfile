@@ -1,0 +1,189 @@
+{
+	admin off
+	auto_https off
+	grace_period 10s
+	# Request URLs, headers and upstream errors must not enter runtime logs.
+	log default {
+		output discard
+	}
+	servers {
+		protocols h1 h2
+		max_header_size 32KB
+		timeouts {
+			read_header 5s
+			# Hard response deadline also caps SSE; stream_timeout caps WSS.
+			write 24h
+			read_body 30s
+			read_body_idle -1s
+			write_idle -1s
+			idle 60s
+		}
+	}
+}
+
+(tls_boundary) {
+	tls /run/preview-tls/gateway.crt /run/preview-tls/gateway.key
+	handle_errors {
+		@invalidBody expression `{http.request.host} == 'ipfs.etherview.localhost' && {http.error.status_code} == 413`
+		respond @invalidBody "invalid_request" 400
+		@tooLarge expression `{http.error.status_code} == 413`
+		respond @tooLarge "request_too_large" 413
+		respond "upstream_unavailable
+" 502
+	}
+}
+
+(transport) {
+	transport http {
+		compression off
+		dial_timeout 5s
+		response_header_timeout 30s
+		max_conns_per_host 64
+		max_response_header 1MB
+	}
+	# No retries: a failed write may already have reached the node.
+	lb_retries 0
+	header_up -Forwarded
+	header_up -X-Forwarded-For
+	header_up -X-Forwarded-Host
+	header_up -X-Forwarded-Proto
+}
+
+(node_origin) {
+	header +Vary Origin
+	@deniedOrigin expression `{http.request.header.Origin} == 'null' || ({http.request.header.Origin} != '' && !({http.request.header.Origin} in {env.PREVIEW_NODE_ALLOWED_ORIGINS}.split(' ')))`
+	respond @deniedOrigin "origin_forbidden
+" 403
+	@allowedOrigin expression `{http.request.header.Origin} != '' && {http.request.header.Origin} in {env.PREVIEW_NODE_ALLOWED_ORIGINS}.split(' ')`
+	header @allowedOrigin {
+		Access-Control-Allow-Origin {http.request.header.Origin}
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type, Accept, Eth-Consensus-Version"
+		Access-Control-Expose-Headers "Eth-Consensus-Version, Eth-Execution-Optimistic, Eth-Finalized"
+	}
+	@preflight method OPTIONS
+	respond @preflight 204
+	request_body {
+		max_size 32MiB
+	}
+}
+
+(node_response) {
+	# The gateway owns browser policy; upstream CORS must not override it.
+	header_down -Access-Control-Allow-Origin
+	header_down -Access-Control-Allow-Credentials
+	header_down -Access-Control-Allow-Methods
+	header_down -Access-Control-Allow-Headers
+	header_down -Access-Control-Expose-Headers
+	# Origin was checked at the gateway, including WebSocket requests.
+	header_up -Origin
+	stream_timeout 24h
+}
+
+https://app.etherview.localhost {
+	import tls_boundary
+	reverse_proxy {$PREVIEW_APP_UPSTREAM:api:8080} {
+		import transport
+	}
+}
+
+https://geth.etherview.localhost {
+	import tls_boundary
+	route {
+		import node_origin
+		@websocket {
+			method GET
+			header_regexp Connection "(?i)(^|,)[[:blank:]]*upgrade[[:blank:]]*(,|$)"
+			header_regexp Upgrade "(?i)^websocket$"
+			path /
+		}
+		reverse_proxy @websocket {$PREVIEW_GETH_WS_UPSTREAM:geth:8546} {
+			import transport
+			import node_response
+		}
+		@rpc {
+			method POST
+			path /
+		}
+		reverse_proxy @rpc {$PREVIEW_GETH_UPSTREAM:geth:8545} {
+			import transport
+			import node_response
+		}
+		respond "not_found
+" 404
+	}
+}
+
+https://beacon.etherview.localhost {
+	import tls_boundary
+	route {
+		import node_origin
+		@beacon {
+			method GET POST
+			path /eth/*
+		}
+		reverse_proxy @beacon {$PREVIEW_BEACON_UPSTREAM:lighthouse:5052} {
+			import transport
+			import node_response
+		}
+		respond "not_found
+" 404
+	}
+}
+
+https://ipfs.etherview.localhost {
+	import tls_boundary
+	route {
+		# Inspect the original escaped path, before Caddy's path matcher cleans it.
+		# Reject nested escapes, including mixed forms such as %25%32%65; keep literal % names.
+		@invalidPath expression `!{http.request.orig_uri}.split('?')[0].startsWith('/ipfs/') || {http.request.orig_uri}.split('?')[0].matches('(?i)(^|/)([.]|%(25)*2e){1,2}(/|$)|%(25)*(2f|5c|00|0d|0a)|%25([0-9a-f]|%[0-9a-f]{2}){2}|[\\\\]')`
+		respond @invalidPath "not_found
+" 404
+		@write not method GET HEAD
+		respond @write "method_forbidden
+" 403
+		# Bounded inspection also rejects unknown-length HTTP/2 and chunked bodies.
+		request_body {
+			max_size 1
+		}
+		vars ipfs_body {http.request.body}
+		@body expression `({http.request.header.Content-Length} != '' && {http.request.header.Content-Length} != '0') || {http.request.header.Transfer-Encoding} != '' || {http.request.header.Upgrade} != '' || {http.vars.ipfs_body} != ''`
+		respond @body "invalid_request
+" 400
+		timeouts {
+			write_timeout 30s
+		}
+		reverse_proxy {$PREVIEW_IPFS_UPSTREAM:ipfs:8080} {
+			# Immediate streaming with cancellation propagation (not flush_interval -1).
+			flush_interval 1ms
+			header_up Host ipfs.etherview.localhost
+			header_up -Forwarded
+			header_up -X-Forwarded-For
+			header_up -X-Forwarded-Host
+			header_up -X-Forwarded-Proto
+			transport http {
+				compression off
+				dial_timeout 5s
+				response_header_timeout 30s
+				read_timeout 30s
+				write_timeout 30s
+				max_conns_per_host 64
+				max_response_header 1MB
+			}
+		}
+	}
+}
+
+http://127.0.0.1:8081 {
+	bind 127.0.0.1
+	@health path /health
+	respond @health "ready
+" 200
+	respond 404
+}
+
+# An unknown Host never reaches one of the fixed upstreams.
+https://:443 {
+	import tls_boundary
+	respond "not_found" 404
+}

@@ -37,3 +37,11 @@ targetRules = ["generic-api-key"]
 paths = ['''^internal/chainbundle/testdata/amsterdam-block\.json$''']
 regexTarget = "match"
 regexes = ['''^blockAccessListHash"[ \t]*:[ \t]*"0x[0-9a-f]{64}"$''']
+
+[[allowlists]]
+description = "Public WebSocket sample nonce in the Preview gateway handshake fixture"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^e2e/previewgateway/gateway_test\.go$''']
+regexTarget = "match"
+regexes = ['''^nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r$''']

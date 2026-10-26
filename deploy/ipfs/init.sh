@@ -4,7 +4,7 @@ set -eu
 # Runs before each daemon start, including against an existing Preview repo.
 ipfs config --json Gateway.NoFetch "${IPFS_GATEWAY_NO_FETCH:-false}"
 ipfs config --json Gateway.NoDNSLink true
-ipfs config --json Gateway.PublicGateways '{"ipfs.preview.test":{"Paths":["/ipfs"],"UseSubdomains":false,"NoDNSLink":true}}'
+ipfs config --json Gateway.PublicGateways '{"ipfs.etherview.localhost":{"Paths":["/ipfs"],"UseSubdomains":false,"NoDNSLink":true}}'
 
 expected=bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym
 test "$(wc -c </fixtures/metadata.json | tr -d ' ')" = 205

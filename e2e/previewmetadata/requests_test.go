@@ -24,14 +24,10 @@ func (h *harness) assertExecutionRequests(ctx context.Context, receipt rpcReceip
 		}
 		return response.Data.State == gen.ConsensusStateComplete, fmt.Sprintf("requests=%s code=%v", response.Data.State, response.Data.Code), nil
 	})
-	binding, err := h.project.Port(ctx, "lighthouse", 5052)
-	if err != nil {
-		h.t.Fatal(err)
-	}
 	var envelope struct {
 		Data *gloas.SignedExecutionPayloadEnvelope `json:"data"`
 	}
-	if err := h.getJSON(ctx, "http://"+binding+"/eth/v1/beacon/execution_payload_envelopes/"+root, &envelope); err != nil {
+	if err := h.getJSON(ctx, "https://beacon.etherview.localhost/eth/v1/beacon/execution_payload_envelopes/"+root, &envelope); err != nil {
 		h.t.Fatal(err)
 	}
 	if envelope.Data == nil || envelope.Data.Message == nil || envelope.Data.Message.ExecutionRequests == nil {

@@ -95,27 +95,32 @@ services:
       retries: 20
     restart: unless-stopped
 
-  ipfs-gateway:
-    image: ${IPFS_GATEWAY_IMAGE:-etherview-ipfs-gateway:local}
-    build:
-      context: .
-      dockerfile: deploy/ipfs/Dockerfile
+  preview-gateway:
+    image: ${PREVIEW_GATEWAY_IMAGE:-caddy:2.11.7-alpine}
+    environment:
+      PREVIEW_NODE_ALLOWED_ORIGINS: ${PREVIEW_NODE_ALLOWED_ORIGINS:-https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173}
     volumes:
-      - ./.local/preview-tls/ipfs.crt:/run/ipfs-tls/tls.crt:ro
-      - ./.local/preview-tls/ipfs.key:/run/ipfs-tls/tls.key:ro
+      - ./deploy/preview/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.local/preview-tls/gateway.crt:/run/preview-tls/gateway.crt:ro
+      - ./.local/preview-tls/gateway.key:/run/preview-tls/gateway.key:ro
     ports:
-      - "127.0.0.1:${IPFS_GATEWAY_PORT:-8443}:8443"
+      - "127.0.0.1:${PREVIEW_HTTPS_PORT:-443}:443"
     networks:
       default:
-        aliases: [ipfs.preview.test]
-    depends_on:
-      ipfs:
-        condition: service_healthy
+        aliases:
+          [
+            app.etherview.localhost,
+            ipfs.etherview.localhost,
+            geth.etherview.localhost,
+            beacon.etherview.localhost,
+          ]
     healthcheck:
-      test: ["CMD", "/ipfs-gateway", "healthcheck"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
       interval: 5s
       timeout: 3s
       retries: 20
+    tmpfs: [/config, /data]
+    stop_grace_period: 15s
     restart: unless-stopped
 
   postgres:
@@ -150,21 +155,19 @@ services:
       - --http.addr=0.0.0.0
       - --http.port=8545
       - --http.api=eth,net,web3,debug,txpool
-      - --http.corsdomain=*
       - --http.vhosts=*
       - --ws
       - --ws.addr=0.0.0.0
       - --ws.port=8546
       - --ws.api=eth,net,web3,debug,txpool
-      - --ws.origins=*
     volumes:
       - geth-data:/gethdata
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/jwt.hex:/run/engine/jwt.hex:ro
       - ./deploy/geth-entrypoint.sh:/usr/local/bin/etherview-geth-entrypoint.sh:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
     ports:
-      - "${GETH_HTTP_PORT:-8545}:8545"
-      - "${GETH_WS_PORT:-8546}:8546"
+      - "127.0.0.1:${GETH_HTTP_PORT:-8545}:8545"
+      - "127.0.0.1:${GETH_WS_PORT:-8546}:8546"
     restart: unless-stopped
 
   lighthouse:
@@ -261,21 +264,16 @@ services:
       ETHERVIEW_ROLES: api
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-reader
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_READ_SECRET:-preview-read-dev-only}
-      ETHERVIEW_SERVER_TLS_CERT_FILE: /run/etherview-tls/tls.crt
-      ETHERVIEW_SERVER_TLS_KEY_FILE: /run/etherview-tls/tls.key
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-      - ./.local/preview-tls/tls.crt:/run/etherview-tls/tls.crt:ro
-      - ./.local/preview-tls/tls.key:/run/etherview-tls/tls.key:ro
       - compiler-cache:/var/lib/etherview/compilers
     tmpfs:
       - /tmp:size=64m,mode=1777
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck
     ports:
-      - "${ETHERVIEW_PORT:-8080}:8080"
-      - "${ETHERVIEW_METRICS_PORT:-9090}:9090"
+      - "127.0.0.1:${ETHERVIEW_METRICS_PORT:-9090}:9090"
     restart: unless-stopped
 
   sync:
@@ -326,7 +324,7 @@ services:
       - ./.local/preview-tls/rootCA.pem:/run/ipfs-ca/rootCA.pem:ro
     depends_on:
       <<: *etherview-runtime-depends-on
-      ipfs-gateway:
+      preview-gateway:
         condition: service_healthy
     healthcheck: *etherview-healthcheck
     restart: unless-stopped

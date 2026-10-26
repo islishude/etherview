@@ -141,8 +141,8 @@ affected-row condition and `:exec` when only execution errors matter.
 ## License inventory
 
 Keep maintained project and dependency notices in `licenses/`; the root
-`LICENSE` is a symlink for license discovery. Production and Preview gateway
-images copy that directory directly. Builds verify npm/Node, WASM and private
+`LICENSE` is a symlink for license discovery. Production images copy that directory directly. Preview uses the official
+Caddy image and its upstream distribution notices. Builds verify npm/Node, WASM and private
 ELF notices without collecting or downloading license texts. When upgrading
 dependencies, review and update the corresponding texts alongside their locks.
 Run `make license-check`; image builds additionally compare the actual Linux

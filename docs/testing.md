@@ -85,7 +85,7 @@ remain independent.
 The reusable [runtime workflow](../.github/workflows/ci-runtime.yml) consumes
 only the AMD64 image, without waiting for compiler packages or verification.
 Its schema/runtime job uses the prebuilt targets. Its Preview job prepares
-certificates, the gateway image and external images once, then runs metadata
+certificates and pulls the official Caddy and external images once, then runs metadata
 and consensus/blob acceptance in separate sequential steps. All image consumers
 use the common load action with an exact producer artifact ID and validate
 source revision, architecture and image ID; none rebuilds a missing image.
@@ -594,19 +594,18 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   holdings/inventory, source/document/job history, and restart-stable database
   persistence. Every connected/resolved IP must belong to the owned gateway;
   `policy_bypassed=true` is mandatory. A reused connection may omit new DNS
-  results. Reports record application/Kubo/Go-gateway image identities, offline mode,
+  results. Reports record application/Kubo/Caddy image identities, offline mode,
   CID, content digest and network evidence. Success and failure artifacts are
   retained and their directory is printed. Run `make preview-cert` first (also
-  after upgrading a Preview that lacks the dedicated IPFS certificate).
+  after upgrading a Preview that lacks the wildcard gateway certificate).
   CI runs the same test through `make test-preview-metadata-prebuilt` in the
   independent `Preview metadata, consensus, and blobs E2E` job on Ubuntu AMD64
   for pull requests, main pushes and the daily schedule.
   The job installs pinned mkcert 1.4.4 and uses `make preview-cert` with an
-  ephemeral runner-local CA and system trust. The temporary API key grants
-  read access to container group 65532 (0640) for Linux bind mounts; the gateway
-  key remains 0600, and only its owning service mounts each key. It builds both images through
-  the canonical target and uploads reports/diagnostics on success or failure
-  for seven days; certificate and CA private keys are never uploaded.
+  ephemeral runner-local CA and system trust. The wildcard gateway key remains
+  0600 and only Caddy mounts it. The job loads the production application image,
+  pulls official Caddy and node images, and uploads reports/diagnostics on success
+  or failure for seven days; certificate and CA private keys are never uploaded.
   This gate remains outside `make check` and does not establish public IPFS
   availability. Image pulls/builds require normal registry/toolchain access.
 - `go test -race ./cmd/ipfs`: streaming upload/download regressions for binary
@@ -974,12 +973,28 @@ that one exported file stays on its original canonical view.
 
 ### Preview gateway regressions
 
-`go test -race ./cmd/ipfs-gateway` covers the independent HTTPS proxy, TLS trust,
-path/method restrictions, streaming, cancellation, timeout and lifecycle behavior.
-`make preview-gateway-build` builds its standalone scratch image. The Preview
-metadata gate builds both current application and gateway images before running
-its real offline-Kubo acceptance; the gateway is not a production application
-role. `make compose-check` validates the image/build/healthcheck and key isolation.
+`make test-preview-gateway` runs the shipped Caddyfile against the pinned
+`caddy:2.11.7-alpine` image with isolated upstreams and a test-only trusted CA.
+It covers domain routing, raw IPFS paths, CORS, TLS, request limits, streaming,
+cancellation, deadlines and WSS/SSE idle connections. The official image is
+pulled through `make preview-images`; no custom gateway binary is built.
+`make compose-check` validates loopback publication, Caddy-only key mounts and
+absence of optional-upstream/core dependency coupling.
+
+Preview browser acceptance requires the locked pnpm workspace and Chrome, or
+`PLAYWRIGHT_USE_BUNDLED=1` with `pnpm --dir web exec playwright install chromium`.
+The metadata gate runs real SIWE, CSRF, wallet URL and node CORS/WSS/SSE browser
+checks only after the first mined transaction, beyond the genesis waiting period.
+Metadata acceptance requires the `.localhost` image projection to remain `unsafe`
+without a navigation URL while the metadata worker successfully fetches its text.
+It trusts only the test certificate SPKI and explicitly grants local-network
+permission to its test pages; it never disables general TLS verification.
+
+Full acceptance runs both `make test-preview-metadata` and
+`make test-preview-consensus`, plus `make check`, `make test-e2e`,
+`make test-runtime-e2e`, and `make test-rustfs`. Preview clients use the trusted
+HTTPS virtual hosts with test-owned ephemeral port mappings. The actual app
+still owns same-origin browser security and session checks.
 
 `go test ./e2e/previewmetadata -run TestPreviewGenesisSystemContracts` checks
 the Preview template against the pinned Geth system contract allocations in the

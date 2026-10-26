@@ -16,4 +16,4 @@ for (const [name, service] of Object.entries(services)) {
   }
 }
 assert.equal(services.ipfs.ports[0].target, 5001);
-assert.equal(services["ipfs-gateway"].ports[0].target, 8443);
+assert.equal(services["preview-gateway"].ports[0].target, 443);

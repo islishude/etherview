@@ -47,13 +47,16 @@ jobs:
     name: Preview metadata, consensus, and blobs E2E
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      PLAYWRIGHT_USE_BUNDLED: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - uses: actions/setup-go@v7
-        with:
-          go-version: stable
-          cache: true
+      - uses: ./.github/actions/setup-toolchain
+      - name: Install Preview browser dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir web exec playwright install --with-deps chromium
       - uses: ./.github/actions/load-production-image
         with:
           arch: amd64
@@ -66,7 +69,9 @@ jobs:
           TRUST_STORES: system
         run: bash .github/scripts/preview-ci-certificates.sh
       - name: Prepare Preview gateway and external images once
-        run: make preview-gateway-build preview-images
+        run: make preview-images
+      - name: Validate Caddy gateway boundaries
+        run: make test-preview-gateway
       - name: Run full Preview metadata acceptance
         id: preview-metadata
         env:

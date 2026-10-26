@@ -143,7 +143,7 @@ perform client trust-chain and hostname checks at the public origin; the
 application does not issue, renew, or hot-reload certificates.
 
 The `deploy/compose.yaml` deployment remains HTTP and expects production TLS
-to terminate externally. For a locally trusted process-native HTTPS example,
+to terminate externally. For a locally trusted Caddy HTTPS example,
 initialize and start the full-stack Preview:
 
 ```sh
@@ -162,13 +162,12 @@ described in the [deployment guide](../deploy/README.md#docker-compose).
 The project names and volume identities are unchanged; this file relocation
 does not require stopping, deleting or migrating either environment's data.
 
-The explicit certificate target runs `mkcert -install` and generates an
-ignored pair for `etherview.localhost`, `localhost`, `127.0.0.1`, and `::1`.
-Preview mounts that API pair read-only only into the API service. Its public
-listener is `https://etherview.localhost:8080`, while
-`http://localhost:9090` remains the plain HTTP operations listener. The start
-target prints the browser URL after successful startup, using `ETHERVIEW_PORT`
-when set (default `8080`). After building the application and gateway images,
+The explicit certificate target installs mkcert trust and generates an ignored
+`*.etherview.localhost` pair mounted read-only only into Caddy. The public app is
+`https://app.etherview.localhost`; `http://localhost:9090` remains the operations
+listener. See name resolution in [Preview Caddy gateway](#preview-caddy-gateway).
+The gateway uses loopback port 443 (`PREVIEW_HTTPS_PORT` overrides it). After
+building the application and pulling the official Caddy image,
 it prepares `.local/preview-network/` using the pinned
 `ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
@@ -324,23 +323,22 @@ download policies. Add the override to `.local/preview-push.env` (or the file
 selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it;
 set it back to `false` to restore public-network checks.
 
-Preview includes Kubo `v0.43.1` and an independent Go HTTPS gateway at
-`https://ipfs.preview.test:8443`. Add `127.0.0.1 ipfs.preview.test` to the local
-hosts file to open gateway links in a browser; containers resolve the same name
-through a Compose network alias. `make preview-cert` also creates the separate
-`ipfs.crt`/`ipfs.key` pair. Only the gateway proxy mounts this private key; only
-metadata mounts the public root CA. Existing installations must rerun this
-explicit certificate target before starting the updated Preview.
+Preview includes Kubo `v0.43.1` behind Caddy at `https://ipfs.etherview.localhost`.
+The shared wildcard pair is mounted only into Caddy; metadata receives only the
+public CA. Existing installations rerun `make preview-cert` before recreation.
+Metadata text remains available, but images resolved through this `.localhost`
+gateway have display state `unsafe` and no external navigation URL. The public
+image policy and authenticated media proxy keep their existing local-host protections.
 
 Daily Preview retrieves uncached content over IPFS and retains it in the
 project-scoped `ipfs-data` volume. The reviewed metadata fixture is imported and
 pinned idempotently at every Kubo start. `make recreate-preview` replaces Kubo
 and its proxy along with the application containers while preserving their
 volumes; `make stop-preview` deletes all Preview volumes, including IPFS data.
-`IPFS_GATEWAY_PORT` and `IPFS_API_PORT` override the loopback-only host ports
-(defaults 8443 and 5001). The gateway's container address stays at port 8443;
-when overriding its host port, open it using that port in the browser. Generated
-image links continue using the configured gateway URL.
+`PREVIEW_HTTPS_PORT` and `IPFS_API_PORT` override the loopback-only host ports
+(defaults 443 and 5001). The gateway's container address stays at port 443;
+when overriding its host port, open it using that port in the browser. Configured
+public URLs must also be updated when changing the browser-facing port.
 
 Preview keeps `metadata.unsafe_allow_private_networks=false` in its mounted
 YAML and overrides it only in the split metadata worker for this controlled
@@ -1508,7 +1506,7 @@ to the current login and stop on logout, session expiry/revocation or user
 disablement. Closing the page does not end the login. Unsupported browsers and
 permission denial are shown in the UI; this does not provide email or Webhooks.
 
-For Preview at `https://etherview.localhost:8080`, the root Compose entry point
+For Preview at `https://app.etherview.localhost`, the root Compose entry point
 uses one ignored `.local/preview-push.env` for all local settings, including the
 VAPID key pair.
 `make start-preview` and `make recreate-preview` run `make preview-env` first:
@@ -1609,20 +1607,60 @@ Failures return JSON before any CSV bytes. Files are generated in memory and
 not retained. Crash reservations expire after 20 seconds and maintenance prunes
 old admission records. Existing HTTP write limits still bound file delivery.
 
-### Preview Go gateway
+### Preview Caddy gateway
 
-`make start-preview`, `make recreate-preview`, and `make test-preview-metadata`
-build the independent gateway from current source before their `--no-build`
-Compose startup. `make preview-gateway-build` builds it separately;
-`IPFS_GATEWAY_IMAGE` overrides its default `etherview-ipfs-gateway:local` tag.
-The image contains only the Go executable and runs as root to read the existing
-0600 certificate key bind mount. Keep the key permissions unchanged.
+Preview uses `caddy:2.11.7-alpine` directly, configurable with
+`PREVIEW_GATEWAY_IMAGE`. `make preview-images` pulls it; lifecycle commands and
+CI no longer build a gateway binary. `make test-preview-gateway` exercises the
+shipped Caddyfile in real containers before full Preview acceptance.
 
-The executable accepts `serve --listen :8443 --upstream http://ipfs:8080
---tls-cert /run/ipfs-tls/tls.crt --tls-key /run/ipfs-tls/tls.key` (these are the
-defaults). Its `healthcheck` command checks only the container-local readiness
-listener. TLS certificates load at startup; recreate the gateway after rotation.
-Invalid certificates fail startup, and upstream failures return a redacted 502.
+Run `make preview-cert` to install mkcert trust and create
+`.local/preview-tls/gateway.crt`, `gateway.key` and the public `rootCA.pem`.
+Only Caddy mounts the wildcard private key, which remains 0600. If a host client
+does not resolve these names to loopback, configure these explicit mappings
+(`hosts` does not implement wildcards):
+
+```text
+127.0.0.1 app.etherview.localhost
+127.0.0.1 ipfs.etherview.localhost
+127.0.0.1 geth.etherview.localhost
+127.0.0.1 beacon.etherview.localhost
+```
+
+Docker uses explicit network aliases so container clients reach Caddy rather
+than their own loopback interface. Tests use isolated address mapping and never
+edit system hosts.
+
+| URL                                           | Upstream                            |
+| --------------------------------------------- | ----------------------------------- |
+| `https://app.etherview.localhost`             | API and embedded SPA, internal HTTP |
+| `https://ipfs.etherview.localhost/ipfs/<cid>` | Kubo read-only content              |
+| `https://geth.etherview.localhost`            | Geth JSON-RPC POST                  |
+| `wss://geth.etherview.localhost`              | Geth subscriptions                  |
+| `https://beacon.etherview.localhost/eth/…`    | Beacon REST and SSE                 |
+
+`PREVIEW_HTTPS_PORT` defaults to 443 on 127.0.0.1; ephemeral ports are used by
+tests. Nondefault browser ports require matching public URL, wallet URLs and
+allowed Origins in an operator config. The gateway does not open port 80,
+automatically issue certificates, or expose an administration API. Its internal
+loopback health check reports serving readiness independently of upstreams.
+
+`PREVIEW_NODE_ALLOWED_ORIGINS` replaces the complete space-separated list;
+defaults are `https://app.etherview.localhost http://localhost:5173
+http://127.0.0.1:5173`. Unlisted/null Origins are rejected for REST and WSS;
+CLI clients without Origin are accepted. Browsers may separately prompt for
+local-network access; grant it for the trusted local development page. Node CORS does not grant application
+sessions or relax the app's CSP. Node request bodies are limited to 32 MiB;
+subscriptions end after 24 hours and should reconnect. No writes are retried.
+Engine, validator and Kubo administration routes are not exposed.
+
+Recreate Preview after updating certificates or configuration. Caddy is the
+only TLS terminator in this topology; process-native TLS remains available for
+other deployments. Migration removes the old gateway container through
+Compose's orphan cleanup and preserves chain/database/IPFS/archive volumes.
+Old local certificate files can be removed manually after migration; they are
+no longer mounted. Browser users must log in again on the new app domain.
+Do not use `stop-preview` for migration because that command deletes volumes.
 
 Preview genesis predeploys the system contracts from the pinned Geth developer
 allocation, including withdrawal, consolidation and builder request queues.
@@ -1632,9 +1670,9 @@ Compose project for validation, and do not initialize existing chain volumes
 with a different genesis. `recreate-preview` preserves the same runtime genesis
 and volumes; it is not a genesis migration procedure.
 
-The CI `Preview IPFS metadata E2E` job runs the full offline-Kubo acceptance
+The CI `Preview metadata, consensus, and blobs E2E` job runs the full offline-Kubo acceptance
 on pull requests, main pushes and the daily schedule. It creates a temporary
-runner CA and dedicated API/gateway certificates through `make preview-cert`;
+runner CA and wildcard gateway certificate through `make preview-cert`;
 no operator certificates or secrets are required. Its seven-day artifact
 contains only acceptance reports and diagnostic logs, not certificate keys.
 
@@ -1923,8 +1961,10 @@ establish live widget/domain correctness or remote provider availability.
 
 ## Image license inventory
 
-Production and Preview IPFS gateway images carry reviewed project and third-party
-notices under `/licenses`, including `/licenses/LICENSE` and
+Production application images carry reviewed project and third-party notices
+under `/licenses`, including `/licenses/LICENSE` and
 `/licenses/THIRD_PARTY_NOTICES.md`. This directory is copied from the repository
 without build-time notice downloads or collection. Dependency upgrades that
 change a notice require updating the repository inventory before rebuilding.
+Preview uses the official Caddy image directly; its upstream image owns its
+license inventory, rather than the application image build.

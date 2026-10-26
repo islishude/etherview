@@ -16,10 +16,10 @@ function fixture(t) {
   );
   mkdirSync(join(dir, "bin"));
   mkdirSync(join(dir, ".local/preview-tls"), { recursive: true });
-  for (const file of ["tls.crt", "tls.key", "rootCA.pem", "ipfs.crt", "ipfs.key"])
+  for (const file of ["gateway.crt", "gateway.key", "rootCA.pem"])
     writeFileSync(join(dir, ".local/preview-tls", file), "fixture");
   const log = join(dir, "commands.jsonl");
-  for (const name of ["docker", "go", "buildx", "compose"])
+  for (const name of ["docker", "go", "buildx", "compose", "pnpm"])
     writeFileSync(
       join(dir, "bin", `stub-${name}`),
       `#!${process.execPath}
@@ -42,11 +42,12 @@ if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAI
           "--no-print-directory",
           target,
           "GO=stub-go",
+          "PNPM=stub-pnpm",
           "DOCKER=stub-docker",
           "BUILDX=stub-buildx",
           "COMPOSE=stub-compose",
           "IMAGE=etherview:local",
-          "IPFS_GATEWAY_IMAGE=etherview-ipfs-gateway:local",
+          "PREVIEW_GATEWAY_IMAGE=caddy:2.11.7-alpine",
           "HARDHAT3_IMAGE=etherview-hardhat3:local",
           "FOUNDRY_IMAGE=etherview-foundry:local",
           ...overrides,
@@ -83,16 +84,12 @@ for (const suite of ["schema-e2e", "runtime-e2e", "preview-metadata", "preview-c
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
-      assert.deepEqual(prebuilt.commands[1].args, [
-        "image",
-        "inspect",
-        "etherview-ipfs-gateway:local",
-      ]);
+      assert.deepEqual(prebuilt.commands[1].args, ["image", "inspect", "caddy:2.11.7-alpine"]);
     const ordinary = f.run(target);
     assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
     assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), preview);
     const builds = ordinary.commands.filter((c) => c.command === "buildx");
-    assert.equal(builds.length, preview ? 2 : 1);
+    assert.equal(builds.length, 1);
     assert(builds[0].args.includes("production"));
     assert.deepEqual(ordinary.commands.slice(-prebuilt.commands.length), prebuilt.commands);
     assert.equal(ordinary.commands.filter((c) => c.command === "compose").length, preview ? 1 : 0);
@@ -101,7 +98,7 @@ for (const suite of ["schema-e2e", "runtime-e2e", "preview-metadata", "preview-c
   test(`${target}: missing images and failed tests stop the command`, (t) => {
     const f = fixture(t);
     for (const missing of preview
-      ? ["etherview:local", "etherview-ipfs-gateway:local"]
+      ? ["etherview:local", "caddy:2.11.7-alpine"]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });
       assert.notEqual(result.status, 0);
@@ -121,7 +118,7 @@ for (const suite of ["schema-e2e", "runtime-e2e", "preview-metadata", "preview-c
   if (preview)
     test(`${target}: missing certificates fail without preparation or test execution`, (t) => {
       const f = fixture(t);
-      rmSync(join(f.dir, ".local/preview-tls/ipfs.key"));
+      rmSync(join(f.dir, ".local/preview-tls/gateway.key"));
       const result = f.run(`${target}-prebuilt`);
       assert.notEqual(result.status, 0);
       assert.deepEqual(result.commands, []);

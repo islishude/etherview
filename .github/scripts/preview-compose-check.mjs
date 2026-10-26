@@ -70,13 +70,11 @@ assert.deepEqual(
     "--http.addr=0.0.0.0",
     "--http.port=8545",
     "--http.api=eth,net,web3,debug,txpool",
-    "--http.corsdomain=*",
     "--http.vhosts=*",
     "--ws",
     "--ws.addr=0.0.0.0",
     "--ws.port=8546",
     "--ws.api=eth,net,web3,debug,txpool",
-    "--ws.origins=*",
   ],
   "Preview Geth command",
 );
@@ -173,28 +171,44 @@ for (const role of roles) {
 
 const api = requireService("api");
 const ipfs = requireService("ipfs");
-const gateway = requireService("ipfs-gateway");
+const gateway = requireService("preview-gateway");
 assert.equal(ipfs.image, "ipfs/kubo:v0.43.1", "pinned Kubo image");
 assert.equal(
   gateway.image,
-  process.env.IPFS_GATEWAY_IMAGE ?? "etherview-ipfs-gateway:local",
-  "Go gateway image",
+  process.env.PREVIEW_GATEWAY_IMAGE ?? "caddy:2.11.7-alpine",
+  "official Caddy gateway image",
 );
-assert.equal(gateway.build.dockerfile, "deploy/ipfs/Dockerfile", "standalone gateway build");
-assert.deepEqual(gateway.healthcheck.test, ["CMD", "/ipfs-gateway", "healthcheck"]);
-assert.ok(!(gateway.volumes ?? []).some((mount) => mount.target.includes("nginx")));
+assert.equal(gateway.build, undefined, "official Caddy image");
+assert.deepEqual(gateway.healthcheck.test, [
+  "CMD",
+  "wget",
+  "-q",
+  "-O",
+  "/dev/null",
+  "http://127.0.0.1:8081/health",
+]);
+assert.equal(services["ipfs-gateway"], undefined, "old gateway removed");
 assert.equal(ipfs.environment.IPFS_GATEWAY_NO_FETCH, "false", "daily Preview retrieval");
 assert.ok(!ipfs.command.includes("--offline"), "daily Preview must be online");
 assert.equal(ipfs.ports.length, 1, "only Kubo RPC is published");
 assert.equal(ipfs.ports[0].target, 5001);
 assert.equal(ipfs.ports[0].host_ip, "127.0.0.1");
 assert.equal(gateway.ports.length, 1);
-assert.equal(gateway.ports[0].target, 8443);
+assert.equal(gateway.ports[0].target, 443);
 assert.equal(gateway.ports[0].host_ip, "127.0.0.1");
-assert.ok(gateway.networks.default.aliases.includes("ipfs.preview.test"));
-assert.equal(gateway.depends_on.ipfs.condition, "service_healthy");
-assert.equal(services.metadata.depends_on["ipfs-gateway"].condition, "service_healthy");
-assert.match(previewConfig, /ipfs_gateway: https:\/\/ipfs\.preview\.test:8443/u);
+assert.deepEqual(gateway.networks.default.aliases.toSorted(), [
+  "app.etherview.localhost",
+  "beacon.etherview.localhost",
+  "geth.etherview.localhost",
+  "ipfs.etherview.localhost",
+]);
+for (const name of ["geth", "lighthouse", "api"]) {
+  for (const port of services[name].ports ?? [])
+    assert.equal(port.host_ip, "127.0.0.1", `${name} loopback diagnostic ports`);
+}
+assert.equal(gateway.depends_on, undefined, "upstream outages do not gate Caddy");
+assert.equal(services.metadata.depends_on["preview-gateway"].condition, "service_healthy");
+assert.match(previewConfig, /ipfs_gateway: https:\/\/ipfs\.etherview\.localhost/u);
 for (const [name, service] of Object.entries(services)) {
   const mounts = service.volumes ?? [];
   assert.equal(
@@ -207,23 +221,23 @@ for (const [name, service] of Object.entries(services)) {
     name === "metadata",
     `${name} IPFS public CA scope`,
   );
-  for (const target of ["/run/ipfs-tls/tls.crt", "/run/ipfs-tls/tls.key"]) {
+  for (const target of ["/run/preview-tls/gateway.crt", "/run/preview-tls/gateway.key"]) {
     assert.equal(
       mounts.some((v) => v.target === target && v.read_only),
-      name === "ipfs-gateway",
-      `${name} IPFS certificate scope`,
+      name === "preview-gateway",
+      `${name} gateway certificate scope`,
     );
   }
 }
 const apiTargets = new Set((api.ports ?? []).map((port) => port.target));
-assert.deepEqual(apiTargets, new Set([8080, 9090]), "Preview API published ports");
+assert.deepEqual(apiTargets, new Set([9090]), "Preview API published ports");
 assert.ok(api.environment.ETHERVIEW_SESSION_PEPPER, "Preview API session pepper");
 for (const key of tlsKeys) {
-  assert.ok(api.environment[key], `Preview API TLS environment ${key}`);
+  assert.equal(api.environment[key], undefined, `Preview API TLS environment ${key}`);
 }
 for (const target of tlsTargets) {
   assert.ok(
-    (api.volumes ?? []).some((volume) => volume.target === target && volume.read_only),
+    !(api.volumes ?? []).some((volume) => volume.target === target),
     `Preview API read-only TLS mount ${target}`,
   );
 }

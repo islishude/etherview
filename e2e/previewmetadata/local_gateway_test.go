@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -45,13 +46,14 @@ func (h *harness) assertLocalGateway(ctx context.Context) {
 	h.assertGatewayTLS(ctx)
 	// Initialization and seeding must work again against the same repo. Restart
 	// the proxy too so its upstream DNS is refreshed after any container change.
-	if _, err := h.project.Run(ctx, "restart", "ipfs", "ipfs-gateway"); err != nil {
+	if _, err := h.project.Run(ctx, "restart", "ipfs", "preview-gateway"); err != nil {
 		h.t.Fatal(err)
 	}
-	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "ipfs", "ipfs-gateway"); err != nil {
+	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "120", "ipfs", "preview-gateway"); err != nil {
 		h.t.Fatal(err)
 	}
 	// Docker may assign new ephemeral host ports when restarting a container.
+	h.connect(ctx)
 	api, err = h.project.Port(ctx, "ipfs", 5001)
 	if err != nil {
 		h.t.Fatal(err)
@@ -105,12 +107,15 @@ func (h *harness) assertToolRoundtrip(ctx context.Context) {
 
 func (h *harness) assertGatewayTLS(ctx context.Context) {
 	h.t.Helper()
-	binding, err := h.project.Port(ctx, "ipfs-gateway", 8443)
+	binding, err := h.project.Port(ctx, "preview-gateway", 443)
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	transport := h.http.Transport.(*http.Transport).Clone()
-	transport.TLSClientConfig.ServerName = "ipfs.preview.test"
+	transport.TLSClientConfig.ServerName = "ipfs.etherview.localhost"
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: time.Second}).DialContext(ctx, network, binding)
+	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 10 * time.Second}
 	path := strings.TrimPrefix(resolvedMetadataURL, metadataGateway)
@@ -122,7 +127,7 @@ func (h *harness) assertGatewayTLS(ctx context.Context) {
 		if err != nil {
 			h.t.Fatal(err)
 		}
-		request.Host = "ipfs.preview.test"
+		request.Host = "ipfs.etherview.localhost"
 		response, err := client.Do(request)
 		if err != nil {
 			h.t.Fatal(err)
@@ -137,7 +142,7 @@ func (h *harness) assertGatewayTLS(ctx context.Context) {
 		}
 	}
 	untrusted := transport.Clone()
-	untrusted.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "ipfs.preview.test", RootCAs: x509.NewCertPool()}
+	untrusted.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "ipfs.etherview.localhost", RootCAs: x509.NewCertPool()}
 	defer untrusted.CloseIdleConnections()
 	untrustedClient := &http.Client{Transport: untrusted, Timeout: 5 * time.Second}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+binding+path, nil)
@@ -156,7 +161,7 @@ func (h *harness) assertGatewayTLS(ctx context.Context) {
 
 func (h *harness) captureGatewayIPs(ctx context.Context) {
 	h.t.Helper()
-	container := h.serviceContainer(ctx, "ipfs-gateway")
+	container := h.serviceContainer(ctx, "preview-gateway")
 	output := commandOutput(ctx, h.root, dockerCommand(), "inspect", "--format", "{{json .NetworkSettings.Networks}}", container)
 	var networks map[string]struct {
 		IPAddress         string
