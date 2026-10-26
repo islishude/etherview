@@ -26,7 +26,7 @@ func TestProjectNFTMetadataDocumentBoundsDisplayFields(t *testing.T) {
 		`","image":"ipfs://bafybeigdyrzt1234567890/image.png?download=1","attributes":[` +
 		strings.Join(attributes, ",") + `]}`
 
-	projection, err := projectNFTMetadataDocument([]byte(document), resolver)
+	projection, err := projectNFTMetadataDocument([]byte(document), resolver, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestProjectNFTMetadataImagePolicy(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := projectNFTMetadataImage(test.value, test.client)
+			got := projectNFTMetadataImage(test.value, test.client, nil)
 			if got.State != test.state || got.URL != test.url {
 				t.Fatalf("image=%#v want state=%s url=%q", got, test.state, test.url)
 			}
@@ -100,12 +100,59 @@ func TestProjectNFTMetadataDocumentRendersOnlyPlainFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	document := []byte(`{"name":"<img src=x onerror=alert(1)>","description":"**not markdown**","animation_url":"https://ignored.example/a","external_url":"https://ignored.example/e","attributes":[]}`)
-	projection, err := projectNFTMetadataDocument(document, resolver)
+	projection, err := projectNFTMetadataDocument(document, resolver, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if projection.Name != "<img src=x onerror=alert(1)>" || projection.Description != "**not markdown**" ||
 		len(projection.Attributes) != 0 || projection.Image.State != NFTMetadataImageMissing {
 		t.Fatalf("projection=%#v", projection)
+	}
+}
+
+func TestImageNavigationOriginExceptions(t *testing.T) {
+	resolver, err := New(Policy{IPFSGateway: "https://ipfs.etherview.localhost"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed, err := imageNavigationOrigins([]string{"https://IPFS.etherview.localhost.:443/", "https://127.0.0.1:8443", "https://[::1]"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		uri     string
+		allowed bool
+	}{
+		{"https://ipfs.etherview.localhost/image.png?download=1", true},
+		{"https://IPFS.etherview.localhost.:443/image.png", true},
+		{"ipfs://bafybeigdyrzt1234567890/image.png", true},
+		{"https://ipfs.etherview.localhost:8443/image.png", false},
+		{"https://other.etherview.localhost/image.png", false},
+		{"https://child.ipfs.etherview.localhost/image.png", false},
+		{"https://fakeipfs.etherview.localhost/image.png", false},
+		{"https://127.0.0.1:8443/image.png", true},
+		{"https://[::ffff:127.0.0.1]:8443/image.png", false},
+		{"https://127.0.0.1/image.png", false},
+		{"https://[::1]/image.png", true},
+		{"https://192.168.1.1/image.png", false},
+		{"https://media.example/image.png", true},
+		{"http://ipfs.etherview.localhost/image.png", false},
+		{"https://user:secret@ipfs.etherview.localhost/image.png", false},
+		{"https://ipfs.etherview.localhost/image.png#fragment", false},
+		{"https://ipfs.etherview.localhost/a\nb", false},
+		{"https://ipfs.etherview.localhost/../secret", false},
+	} {
+		t.Run(test.uri, func(t *testing.T) {
+			got := projectNFTMetadataImage(test.uri, resolver, allowed)
+			if (got.State == NFTMetadataImageAvailable) != test.allowed || (!test.allowed && got.URL != "") {
+				t.Fatalf("image = %+v", got)
+			}
+		})
+	}
+	if got := projectNFTMetadataImage("ipfs://bafybeigdyrzt1234567890/image.png", resolver, nil); got.State != NFTMetadataImageUnsafe || got.URL != "" {
+		t.Fatalf("default image = %+v", got)
+	}
+	if _, err := imageNavigationOrigins([]string{"https://*.localhost"}); err == nil {
+		t.Fatal("accepted wildcard")
 	}
 }

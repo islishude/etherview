@@ -183,11 +183,12 @@ type ObservabilityConfig struct {
 // gateway is optional; without it, ipfs:// resources become explicitly
 // unavailable while direct HTTPS metadata continues to work.
 type MetadataConfig struct {
-	FetchTimeout               time.Duration `yaml:"fetch_timeout"`
-	MaxDocumentBytes           int           `yaml:"max_document_bytes"`
-	MaxRedirects               int           `yaml:"max_redirects"`
-	IPFSGateway                string        `yaml:"ipfs_gateway"`
-	UnsafeAllowPrivateNetworks bool          `yaml:"unsafe_allow_private_networks"`
+	ImageNavigationAllowedOrigins []string      `yaml:"image_navigation_allowed_origins"`
+	FetchTimeout                  time.Duration `yaml:"fetch_timeout"`
+	MaxDocumentBytes              int           `yaml:"max_document_bytes"`
+	MaxRedirects                  int           `yaml:"max_redirects"`
+	IPFSGateway                   string        `yaml:"ipfs_gateway"`
+	UnsafeAllowPrivateNetworks    bool          `yaml:"unsafe_allow_private_networks"`
 }
 
 type FeatureConfig struct {

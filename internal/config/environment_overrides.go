@@ -220,6 +220,9 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "ENS_CUSTOM_UNIVERSAL_RESOLVER", &cfg.ENS.Custom.UniversalResolver)
 	setString(lookup, "ENS_CUSTOM_COIN_TYPE", &cfg.ENS.Custom.CoinType)
 	setString(lookup, "METADATA_IPFS_GATEWAY", &cfg.Metadata.IPFSGateway)
+	if value, ok := lookup(envPrefix + "METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS"); ok {
+		cfg.Metadata.ImageNavigationAllowedOrigins = splitCSV(value)
+	}
 	if value, ok := lookup(envPrefix + "ERC4337_ENTRY_POINTS"); ok && strings.TrimSpace(value) != "" {
 		entries, err := parseERC4337EntryPoints(value)
 		if err != nil {

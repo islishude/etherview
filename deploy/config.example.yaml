@@ -106,6 +106,7 @@ metadata:
   # Optional HTTPS gateway for ipfs:// resources. DNS/IP safety checks are
   # applied after every resolution and redirect; credentials are forbidden.
   ipfs_gateway: ""
+  image_navigation_allowed_origins: []
   # Unsafe development-only exception. Keep false in production; Preview
   # enables it only in the isolated metadata worker process.
   unsafe_allow_private_networks: false

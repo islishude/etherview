@@ -985,8 +985,13 @@ Preview browser acceptance requires the locked pnpm workspace and Chrome, or
 `PLAYWRIGHT_USE_BUNDLED=1` with `pnpm --dir web exec playwright install chromium`.
 The metadata gate runs real SIWE, CSRF, wallet URL and node CORS/WSS/SSE browser
 checks only after the first mined transaction, beyond the genesis waiting period.
-Metadata acceptance requires the `.localhost` image projection to remain `unsafe`
-without a navigation URL while the metadata worker successfully fetches its text.
+Metadata acceptance requires the explicitly allowlisted local IPFS image to
+project as `available` with its exact HTTPS navigation URL while the worker
+successfully fetches metadata text. Navigation regressions retain default-empty
+and unlisted-local-origin rejection, exact host/port matching, confirmation before
+requests, cancellation, and opener-free/no-referrer navigation. Config and app
+regressions prove that navigation exceptions never authorize media or metadata
+network fetches.
 It trusts only the test certificate SPKI and explicitly grants local-network
 permission to its test pages; it never disables general TLS verification.
 

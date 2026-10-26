@@ -63,7 +63,12 @@ with separate invalidation and content-moderation obligations.
   distinct.
 - A displayable `image` value is navigation data, not validated media. Absolute
   HTTPS values may be returned after rejecting credentials, fragments, control
-  characters, localhost, and non-public IP literals. Valid `ipfs://` values are
+  characters. Localhost and non-public IP literals are rejected unless their
+  exact HTTPS origin is explicitly configured in
+  `metadata.image_navigation_allowed_origins` (default empty). This navigation-only
+  exception matches normalized hostname and effective port, never wildcards or
+  subdomains, and applies equally to direct HTTPS and resolved IPFS images.
+  It grants no metadata or media fetch authority. Valid `ipfs://` values are
   converted through the configured HTTPS gateway; every other scheme is
   non-linkable. The SPA never embeds or prefetches the target. It reveals the
   target host, warns that the NFT author controls the destination, and requires
@@ -136,8 +141,11 @@ HTTP redirects and the admin API are disabled; rotation requires recreation.
 The app uses container-network HTTP while its HTTPS public origin remains the
 SIWE and Secure-cookie authority (ADR-0027). Metadata alone trusts the public CA
 and opts into its controlled private gateway; API media policy stays strict.
-Images resolved through the `.localhost` gateway remain `unsafe` in the public
-display projection, without a navigation URL, even when metadata text is available.
+Preview explicitly allowlists only `https://ipfs.etherview.localhost` for image
+navigation. Images resolved through that gateway are available as unverified,
+user-confirmed external links. Other local origins remain `unsafe` without a
+navigation URL; the API media proxy retains its strict network policy. The
+allowlist covers only the initial destination, not subsequent browser redirects.
 
 Node routes support Geth JSON-RPC/WSS and Beacon `/eth/` REST/SSE. The gateway
 owns the explicit space-separated Origin allowlist, strips upstream CORS and

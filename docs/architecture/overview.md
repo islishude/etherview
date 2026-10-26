@@ -1007,7 +1007,10 @@ size alone is not sufficient justification to weaken those invariants.
 - NFT metadata display is a separate canonical PostgreSQL projection. It
   returns bounded inert text and scalar traits plus, when syntactically safe, an
   unverified HTTPS navigation target derived from `image` (with `ipfs://`
-  converted through the configured HTTPS gateway). The embedded SPA never
+  converted through the configured HTTPS gateway). The default-empty
+  `metadata.image_navigation_allowed_origins` list permits exact HTTPS origins
+  to bypass only the navigation localhost/non-public-IP check. It does not enter
+  the metadata or media fetch policy. The embedded SPA never
   renders or prefetches that target and requires a bilingual confirmation before
   each opener-free, no-referrer external navigation. The authenticated media
   proxy remains the only server-side image retrieval path.
@@ -1022,6 +1025,8 @@ Caddy; API traffic inside the container network uses HTTP. The gateway is not
 an application role and its health does not depend on optional upstreams.
 Only Caddy holds its wildcard private key. Metadata trusts the public CA and
 explicitly permits its private IPFS host; API media policy remains strict.
+Preview separately allowlists the exact IPFS HTTPS origin for confirmed image
+navigation; production defaults to no navigation exceptions.
 Node CORS uses an exact configurable allowlist without credentials. The SPA
 continues using the generated same-origin client and injected wallet boundary.
 Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.

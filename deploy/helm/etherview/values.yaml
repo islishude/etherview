@@ -372,6 +372,7 @@ config:
     max_document_bytes: 2097152
     max_redirects: 3
     ipfs_gateway: ""
+    image_navigation_allowed_origins: []
     # Preview-only development escape hatch; the chart keeps it disabled.
     unsafe_allow_private_networks: false
   features:

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/islishude/etherview/internal/netpolicy"
 )
 
 func validateServerConfig(c Config) error {
@@ -221,6 +223,12 @@ func validateMempoolMaintenanceConfig(c Config) error {
 
 func validateMetadataConfig(c Config) error {
 	var errs []error
+	for _, origin := range c.Metadata.ImageNavigationAllowedOrigins {
+		if _, err := netpolicy.ParseHTTPSOrigin(origin); err != nil {
+			errs = append(errs, errors.New("metadata.image_navigation_allowed_origins must contain exact HTTPS origins without credentials, paths, queries, fragments, or wildcards"))
+			break
+		}
+	}
 	if c.Metadata.FetchTimeout < 100*time.Millisecond || c.Metadata.FetchTimeout > time.Minute {
 		errs = append(errs, errors.New("metadata.fetch_timeout must be between 100ms and 1m"))
 	}

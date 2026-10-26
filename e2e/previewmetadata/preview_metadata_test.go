@@ -695,10 +695,10 @@ func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt, con
 		!strings.EqualFold(data.ContentObservation.BlockHash, receipt.BlockHash.Hex()) || data.ContentStale {
 		h.t.Fatalf("metadata API payload = %#v", data)
 	}
-	// The metadata worker may fetch the local gateway, but the public display
-	// policy must still withhold browser navigation to any .localhost host.
-	if data.Image.State != "unsafe" || data.Image.URL != "" || data.Image.SourceScheme != "" {
-		h.t.Fatalf("local gateway image escaped the display policy: %#v", data.Image)
+	// Preview explicitly permits navigation to its exact local gateway origin.
+	// The authenticated media proxy remains subject to strict network policy.
+	if data.Image.State != "available" || data.Image.URL != resolvedImageURL || data.Image.SourceScheme != "ipfs" {
+		h.t.Fatalf("local gateway image navigation was not allowed: %#v", data.Image)
 	}
 
 	mediaRequest, err := http.NewRequestWithContext(

@@ -1230,6 +1230,47 @@ test("cleared delegated accounts open canonical history without loading current 
   await assertA11yAndNoOverflow(page, "cleared delegated account status in Chinese narrow mode");
 });
 
+test("allowlisted local NFT navigation still requires confirmation", async ({ page }) => {
+  const imageURL = "https://ipfs.etherview.localhost/ipfs/fixture/image.png";
+  const requests: { url: string; referer: string | undefined }[] = [];
+  await page.route("**/api/v1/nfts/*/1/metadata", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.data.image = { state: "available", url: imageURL, source_scheme: "ipfs" };
+    await route.fulfill({ response, json: payload });
+  });
+  await page.context().route("https://ipfs.etherview.localhost/**", async (route) => {
+    requests.push({ url: route.request().url(), referer: route.request().headers().referer });
+    await route.fulfill({ status: 200, contentType: "text/html", body: "local image fixture" });
+  });
+  await page.goto(`/nft/${address}/1`);
+  const review = page.getByRole("button", {
+    name: `Review unverified external image target ${imageURL}`,
+  });
+  await expect(review).toBeVisible();
+  expect(requests).toEqual([]);
+  await review.click();
+  const dialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
+  await expect(dialog).toBeVisible();
+  expect(requests).toEqual([]);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  expect(requests).toEqual([]);
+  await review.click();
+  const popupPromise = page.waitForEvent("popup");
+  await dialog.getByRole("link", { name: "Open in new tab" }).click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState("domcontentloaded");
+  expect(popup.url()).toBe(imageURL);
+  expect(await popup.evaluate(() => window.opener === null)).toBe(true);
+  expect(await popup.evaluate(() => document.referrer)).toBe("");
+  expect(requests).toEqual([{ url: imageURL, referer: undefined }]);
+  await popup.close();
+  await review.click();
+  await expect(dialog).toBeVisible();
+  expect(requests).toHaveLength(1);
+});
+
 test("capability pages survive the embedded binary boundary in both accessible themes and languages", async ({
   page,
 }) => {

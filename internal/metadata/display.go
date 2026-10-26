@@ -84,12 +84,13 @@ type NFTMetadataReader interface {
 // exact NFT metadata observation that is still canonical. It never returns the
 // metadata source URI, resolved document URI, raw JSON, or image bytes.
 type PostgresMetadataReader struct {
-	db           dbaccess.Database
-	chainID      string
-	linkResolver *Client
+	db                  dbaccess.Database
+	chainID             string
+	linkResolver        *Client
+	allowedImageOrigins map[string]struct{}
 }
 
-func NewPostgresMetadataReader(db dbaccess.Database, chainID, ipfsGateway string) (*PostgresMetadataReader, error) {
+func NewPostgresMetadataReader(db dbaccess.Database, chainID, ipfsGateway string, allowedOrigins []string) (*PostgresMetadataReader, error) {
 	if db == nil {
 		return nil, errors.New("NFT metadata reader requires a database")
 	}
@@ -100,7 +101,11 @@ func NewPostgresMetadataReader(db dbaccess.Database, chainID, ipfsGateway string
 	if err != nil {
 		return nil, fmt.Errorf("configure NFT metadata display links: %w", err)
 	}
-	return &PostgresMetadataReader{db: db, chainID: chainID, linkResolver: resolver}, nil
+	origins, err := imageNavigationOrigins(allowedOrigins)
+	if err != nil {
+		return nil, err
+	}
+	return &PostgresMetadataReader{db: db, chainID: chainID, linkResolver: resolver, allowedImageOrigins: origins}, nil
 }
 
 func (reader *PostgresMetadataReader) NFTMetadata(
@@ -229,7 +234,7 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 		if state == StateAvailable && contentObservation != result.Observation {
 			return NFTMetadata{}, errors.New("available NFT metadata display state differs from content identity")
 		}
-		projection, projectErr := projectNFTMetadataDocument(document, reader.linkResolver)
+		projection, projectErr := projectNFTMetadataDocument(document, reader.linkResolver, reader.allowedImageOrigins)
 		if projectErr != nil {
 			return NFTMetadata{}, projectErr
 		}
@@ -245,7 +250,7 @@ func (reader *PostgresMetadataReader) NFTMetadata(
 	return result, nil
 }
 
-func projectNFTMetadataDocument(document []byte, resolver *Client) (NFTMetadata, error) {
+func projectNFTMetadataDocument(document []byte, resolver *Client, allowedOrigins map[string]struct{}) (NFTMetadata, error) {
 	if err := validateDocument(document); err != nil {
 		return NFTMetadata{}, fmt.Errorf("validate stored NFT metadata display document: %w", err)
 	}
@@ -276,7 +281,7 @@ func projectNFTMetadataDocument(document []byte, resolver *Client) (NFTMetadata,
 		}
 	}
 	if image, ok := root["image"].(string); ok {
-		result.Image = projectNFTMetadataImage(image, resolver)
+		result.Image = projectNFTMetadataImage(image, resolver, allowedOrigins)
 	}
 	return result, nil
 }
@@ -324,7 +329,7 @@ func displayScalar(value any) (string, bool) {
 	}
 }
 
-func projectNFTMetadataImage(raw string, resolver *Client) NFTMetadataImage {
+func projectNFTMetadataImage(raw string, resolver *Client, allowedOrigins map[string]struct{}) NFTMetadataImage {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return NFTMetadataImage{State: NFTMetadataImageMissing}
@@ -351,12 +356,30 @@ func projectNFTMetadataImage(raw string, resolver *Client) NFTMetadataImage {
 		return NFTMetadataImage{State: NFTMetadataImageUnsafe}
 	}
 	target, err := resolver.resolveTarget(trimmed)
-	if err != nil || unsafeBrowserNavigationHost(target.URL) {
+	if err != nil {
+		return NFTMetadataImage{State: NFTMetadataImageUnsafe}
+	}
+	origin, originErr := netpolicy.HTTPSOrigin(target.URL)
+	_, allowed := allowedOrigins[origin]
+	if unsafeBrowserNavigationHost(target.URL) && (originErr != nil || !allowed) {
 		return NFTMetadataImage{State: NFTMetadataImageUnsafe}
 	}
 	return NFTMetadataImage{
 		State: NFTMetadataImageAvailable, URL: target.URL.String(), SourceScheme: scheme,
 	}
+}
+
+// Navigation exceptions are deliberately separate from Client.Policy.
+func imageNavigationOrigins(values []string) (map[string]struct{}, error) {
+	origins := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		origin, err := netpolicy.ParseHTTPSOrigin(value)
+		if err != nil {
+			return nil, errors.New("invalid NFT image navigation origin")
+		}
+		origins[origin] = struct{}{}
+	}
+	return origins, nil
 }
 
 func unsafeBrowserNavigationHost(target *url.URL) bool {

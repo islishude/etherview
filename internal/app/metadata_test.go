@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,5 +78,26 @@ func TestMetadataRoleRequiresRPCOnlyForEnabledSourceDiscovery(t *testing.T) {
 	cfg.Features.NFTMetadata = true
 	if !needsRPCForServe(roles, cfg) {
 		t.Fatal("enabled metadata source discovery did not require a state RPC")
+	}
+}
+
+func TestImageNavigationAllowlistDoesNotAuthorizeNetworkFetches(t *testing.T) {
+	for _, roles := range [][]string{{"all"}, {"api"}, {"metadata"}} {
+		t.Run(roles[0], func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Runtime.Roles = roles
+			cfg.Metadata.ImageNavigationAllowedOrigins = []string{"https://127.0.0.1"}
+			client, err := newMetadataClient(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, kind := range []metadata.Kind{metadata.KindJSON, metadata.KindImage} {
+				_, err := client.Fetch(t.Context(), "https://127.0.0.1/image.png", kind)
+				var failure *metadata.FetchError
+				if !errors.As(err, &failure) || failure.Kind != metadata.FailureUnsafeURL {
+					t.Fatalf("fetch kind %v: %v", kind, err)
+				}
+			}
+		})
 	}
 }
