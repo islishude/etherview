@@ -19,8 +19,10 @@ or stage replay.
 
 ### Source facts
 
-`stats@3` is the execution-statistics authority. It retains the existing
-`stats@2` facts and adds exact decimal-string source totals for:
+`stats@4` is the execution-statistics authority under
+[ADR-0052](ADR-0052-amsterdam-explorer-support.md). It retains the analytics
+introduced by `stats@3`, using receipt gas for execution fees and base-fee burn,
+and stores exact decimal-string source totals for:
 
 - confirmed execution gas fees, calculated for every authenticated receipt as
   `gas_used * effective_gas_price`;
@@ -32,7 +34,7 @@ or stage replay.
 Average transaction fees are always derived from the exact fee total and
 transaction count. No floating-point average is persisted. Blob gas fees
 remain separate from execution gas fees. Token transfer analytics continue to
-use published `token@1` facts.
+use published `token@2` facts.
 
 ### Persistent projection
 
@@ -41,8 +43,8 @@ counts. Day, ISO week beginning Monday 00:00 UTC, and calendar-month results
 are derived from those hourly rows. Empty time buckets are absent rather than
 invented as zero. The current UTC hour is marked partial.
 
-Canonical attach or detach and publication or withdrawal of `stats@3` or
-`token@1` mark every affected hour dirty in the same database transaction.
+Canonical attach or detach and publication or withdrawal of `stats@4` or
+`token@2` mark every affected hour dirty in the same database transaction.
 Dirty rows carry a monotonically increasing generation. The maintenance role
 uses a chain-scoped PostgreSQL advisory lock, copies a bounded source
 generation, recomputes from the exact canonical mapping and published stage
@@ -51,9 +53,9 @@ duplicate worker, or concurrent source change therefore leaves the hour dirty
 instead of publishing stale output.
 
 Backfill state is writer-owned and progresses from newest history toward the
-configured start. Existing `stats@2` rows remain intact and are ignored by the
-new projection. Reindexing `stats` schedules the current `stats@3` generation;
-rollback to an older binary leaves the additive tables and jobs untouched.
+configured start. Only current published stage versions satisfy the projection.
+Reindexing `stats` schedules `stats@4`. The current fresh-database baseline
+provides no legacy-schema conversion or older-binary rollback guarantee.
 
 ### Read contract
 

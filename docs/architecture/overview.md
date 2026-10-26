@@ -100,14 +100,17 @@ PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedd
 API verification workers -> approved solc-js catalogs/artifacts -> restricted Node SEA
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
-large blobs -> optional S3-compatible storage
+API normalized traces -> optional disposable S3 trace cache
+Beacon -> enrich consensus/requests/blob workers -> PostgreSQL publications
+blob worker -> durable blob object archive -> API exact-hash downloads
 ```
 
 The SPA keeps route dispatch in `router.tsx`, shared explorer primitives in
 `pages/pages.tsx`, and block, transaction, address, token/NFT, verification,
 and entity dispatch in separate page modules. English and Chinese resources
-are merged from the same seven domain modules, preventing one language from
-silently acquiring a different key layout. The pinned Oxlint and Oxfmt gates
+are merged from matching domain modules, with Requests and Sourcify resources
+loaded by their feature routes, preventing one language from silently acquiring
+a different key layout. The pinned Oxlint and Oxfmt gates
 are part of `web-lint`: TypeScript checking is followed by hooks, unused code,
 classic cyclomatic complexity, function/file size, and formatting checks.
 Transaction orchestration is separate from calldata, overview, logs, trace,
@@ -147,9 +150,10 @@ cache objects only. S3 uses an explicit static override or the refreshable AWS d
 chain only inside `all`/`api`; absence of usable credentials cannot withdraw
 readiness or turn object storage into a correctness dependency.
 
-PostgreSQL stores all correctness-critical facts, canonical mappings, stage
-state, jobs, leases, and outbox records. Optional systems may reduce latency or
-storage pressure but never become the only copy of required state.
+PostgreSQL stores chain identities, canonical mappings, stage state, jobs,
+leases, and outbox records. Disposable accelerators never become the only copy
+of required state. Optional raw blob bodies are durably owned by the separate
+archive, with PostgreSQL-owned manifests and publication fences under ADR-0055.
 
 Every process uses native pgxpool for its mandatory writer pool. An `api` or
 `all` process may additionally open a read-only pool for latency-tolerant
@@ -582,9 +586,12 @@ Block-scoped fact tables use fixed half-open ranges of 1,000,000 block
 numbers. The partition manager covers `transaction_inclusions`, `receipts`,
 `logs`, `withdrawals`, `token_events`, `token_balance_deltas`,
 `normalized_traces`, `trace_log_attributions`, `abi_decodings`,
-`transaction_effective_execution_identities`, and
-`address_activities`. Before a core bundle can write
-facts in a new range, its chain-locked database transaction takes the global
+`transaction_effective_execution_identities`, `transaction_state_changes`,
+`eip7702_authorizations`, `transaction_execution_code_resolutions`,
+`erc4337_user_operations`, `erc4337_user_operation_events`,
+`erc4337_user_operation_participants`, `erc20_holder_snapshots`,
+`erc20_holder_balances`, `native_transfers`, and `address_activities`. Before a
+core bundle can write facts in a new range, its chain-locked database transaction takes the global
 partition lifecycle lock, rechecks the PostgreSQL catalog, creates every table
 in a fixed dependency order, evacuates any matching DEFAULT rows child-first,
 and attaches the new partitions parent-first. That catalog recheck uses READ
@@ -1025,7 +1032,7 @@ database rechecks canonical identity and finality inside one chain-locked
 transaction. Refreshing a finalized height requires an explicit audited
 override and still cannot replace its hash or parent.
 
-`reindex --stage proxy|abi|token|stats|trace|state_diff|userop` schedules or
+`reindex --stage requests|consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` schedules or
 replays immutable block-hash-scoped jobs. Existing queued or leased jobs remain
 owned by their current worker; only terminal jobs may be reset. A proxy/ABI
 cutover is run in dependency order, `proxy` before `abi`. Repair does not

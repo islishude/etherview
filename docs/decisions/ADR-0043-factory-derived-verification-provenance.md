@@ -40,7 +40,7 @@ runtime similarity would not prove source provenance.
   does not overwrite an existing exact verification and never inherits a
   user's Sourcify submission consent.
 - Historical scans are enqueued after compilation-unit publication. Forward
-  work is an immutable event keyed by the exact successful `trace@3` or
+  work is an immutable event keyed by the exact successful `trace@4` or
   `proxy@2` durable publication job and generation. Trace generations request
   fork-aware rescan floors for CREATE/CREATE2 work; proxy generations wake
   pending-runtime attempts only after exact code publication. A newly derived

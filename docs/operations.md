@@ -1,9 +1,11 @@
 # Operations Runbook
 
 Etherview keeps correctness state in PostgreSQL. Logs, Prometheus, OTLP,
-NATS, Redis, and S3 are diagnostic or acceleration surfaces; losing any of
-them must not authorize a state transition or make a healthy database-backed
-request fail.
+NATS, Redis, and the S3 trace cache are diagnostic or acceleration surfaces;
+their loss does not authorize state transitions or prevent PostgreSQL-backed
+fallback. The separate durable blob archive owns raw blob bodies: its loss
+affects blob retrieval and requires recovery, while PostgreSQL retains manifest
+and publication authority. See [optional consensus and blob archives](#optional-consensus-and-blob-archives).
 
 ## Repository build dependencies
 

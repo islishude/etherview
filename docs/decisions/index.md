@@ -6,6 +6,8 @@ merging distinct invariants.
 
 ## Core chain, persistence, and runtime correctness
 
+- [ADR-0055 — Consensus and Blob Archives](ADR-0055-consensus-and-blob-archives.md)
+
 - [ADR-0052 — Amsterdam Explorer Support](ADR-0052-amsterdam-explorer-support.md)
 
 - [ADR-0050 — Native pgx and Typed Queries](ADR-0050-native-pgx-and-typed-queries.md)
@@ -27,6 +29,8 @@ merging distinct invariants.
 - [ADR-0036 — Endpoint-Scoped Mempool Replacements](ADR-0036-endpoint-scoped-mempool-replacements.md)
 
 ## Contract verification and intelligence
+
+- [ADR-0054 — Application-Locked Vyper Distribution](ADR-0054-vyper-application-lock.md)
 
 - [ADR-0056 — Bytecode Database Source Discovery](ADR-0056-bytecode-db-source-discovery.md)
 - [ADR-0053 — Shared Python WASM Vyper Distribution](ADR-0053-vyper-wasm-distribution.md)
@@ -81,7 +85,3 @@ merging distinct invariants.
 Retired ADR identifiers are not reused. The current ADR files remain the
 authoritative decisions; this page is only their navigation and replacement
 register.
-
-- [ADR-0054 — Application-Locked Vyper Distribution](ADR-0054-vyper-application-lock.md)
-
-- [ADR-0055 — Consensus and Blob Archives](ADR-0055-consensus-and-blob-archives.md)

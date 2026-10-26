@@ -19,18 +19,20 @@ arbitrary executable SQL would create a second migration and security surface.
 
 ## Decision
 
-- Every successful or stale production `proxy@2`, `abi@4`, `token@1`,
-  `holder@1`, `stats@3`, `trace@3`, and `state_diff@3`
+- Every successful or stale production `requests@1`, `consensus@1`, `blob@1`,
+  `native_transfer@1`, `proxy@2`, `abi@5`, `token@2`, `holder@1`, `stats@4`,
+  `trace@4`, `state_diff@3`, and `userop@1`
   attempt upserts exactly one journal identified by chain, immutable block
   hash, full `stage@version`, and sequence `1`.
 - The journal, `block_stage_results` row, and all output written by that stage
   share one PostgreSQL transaction. A failure to encode or persist the journal
   rolls back the stage result and every derived write in that attempt.
-- Lease completion is a second, idempotent boundary around that output
-  transaction. It changes `durable_jobs` to a terminal state and upserts the
-  exact `block_stage_results` identity in one token-and-expiry-fenced
-  transaction. This is the only result-writing path for terminal `failed` and
-  `unavailable` attempts, which intentionally have no derived journal.
+- Under [ADR-0012](ADR-0012-lease-fenced-derived-publication.md), successful
+  production lease completion shares the output transaction. Its final
+  compare-and-set checks the token, expiry and exact generation; lost ownership
+  rolls back output. Terminal `failed` and `unavailable` attempts use the
+  queue completion path to commit job state and the exact stage result together,
+  intentionally without a derived journal.
 - A retry that reaches its durable maximum, or an expired crashed lease already
   at that maximum, records `failed` through the same stage-result contract
   before clearing lease ownership. A stage-result foreign-key or persistence
@@ -53,14 +55,13 @@ arbitrary executable SQL would create a second migration and security surface.
   hash already canonical again is acknowledged as stale.
 - The payload uses the versioned
   `etherview.derived-canonicality` schema. It contains only controlled
-  `set_canonical` rollback/replay descriptions and a fixed relation allowlist:
-  `contract_code_observations` plus `proxy_observations`, `contract_abis` plus
-  `abi_decodings` and `transaction_effective_execution_identities`, `token_events` plus
-  `token_balance_deltas`, `block_statistics`, `normalized_traces` plus
-  `trace_log_attributions`, or `transaction_state_changes` plus
-  `eip7702_authorizations` and `transaction_execution_code_resolutions`. It is
-  descriptive, not executable, and never includes
-  RPC/log/trace input or worker result details.
+  `set_canonical` rollback/replay descriptions and the stage-specific relation
+  allowlists in `internal/enrich/journal.go`. These cover proxy/code, Beacon
+  observations, request sets, blob manifests, native transfers, ABI/effective
+  identities, tokens, holder snapshots/balances, statistics, normalized traces
+  and log attribution, state differences/EIP-7702, and UserOperation facts.
+  Child request rows inherit manifest canonicality. The payload is descriptive,
+  not executable, and never includes RPC/log/trace input or worker result details.
 - Journal canonicality is calculated inside the upsert from the exact
   `canonical_blocks(chain_id, number, block_hash)` mapping. Workers do not
   supply a trusted boolean. Conflict updates refresh the same payload and
@@ -72,7 +73,7 @@ arbitrary executable SQL would create a second migration and security surface.
 - Public and aggregate readers continue to require both the canonical mapping
   and the derived row's canonical flag. A stage result on an orphan is not
   evidence that the replacement canonical block has enrichment output.
-- A `trace@3` completion for a block with transactions contains exactly one
+- A `trace@4` completion for a block with transactions contains exactly one
   normalized root per canonical transaction. The adapter binds trace API
   identity fields and the normalized root call to the stored core inclusion;
   an empty trace response is a failed source response, while a transaction
@@ -109,10 +110,9 @@ Proxy/code discovery and its ABI dependency follow
 - The journal is a durable description of the canonicality transition; the
   reorganization transaction remains the only code authorized to apply it.
 
-This replay-generation decision does not by itself merge a successful
-processor's output transaction with durable lease completion. Fencing that
-publication window, including a worker that continues after lease expiry, is
-the separate P20-T10 consistency boundary.
+[ADR-0012](ADR-0012-lease-fenced-derived-publication.md) supersedes the original
+two-transaction publication window. Production output and successful lease
+completion are atomic even when replay or lease expiry races the worker.
 
 The `state_diff@2` journal extension introduced authorization and
 transaction execution-code relations; `trace@3` journals normalized frames and

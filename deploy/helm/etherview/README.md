@@ -120,13 +120,48 @@ The chart intentionally does not compute a Secret checksum because it neither
 renders nor reads Secret contents. Its `checksum/config` annotation continues
 to roll Pods for ConfigMap changes.
 
+## Optional feature credentials
+
+Additional keys in `secrets.existingSecret` are selected through these values:
+
+| Value                                                                                 | Default Secret key                                                                    | Application roles and enablement                                              |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `ensRPCURLsKey`                                                                       | `ens-rpc-urls`                                                                        | `all`/`api`, when ENS is enabled                                              |
+| `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when either Turnstile guard is enabled                           |
+| `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                     |
+| `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`enrich`, when consensus is enabled                        |
+| `consensusHeadersKey`                                                                 | `consensus-headers`                                                                   | optional headers for the same Beacon roles                                    |
+| `blobArchiveReadAccessKey` / `blobArchiveReadSecretKey` / `blobArchiveReadSessionKey` | `blob-archive-read-access` / `blob-archive-read-secret` / `blob-archive-read-session` | optional read credentials for `api`, when blob archival is enabled            |
+| `blobArchiveAccessKey` / `blobArchiveSecretKey` / `blobArchiveSessionKey`             | `blob-archive-access` / `blob-archive-secret` / `blob-archive-session`                | optional writer credentials for `all`/`enrich`, when blob archival is enabled |
+
+External Secrets uses the corresponding `externalSecret.*RemoteKey` values in
+`values.yaml`. Enabled Turnstile requires `turnstileSecretRemoteKey`; enabled
+push requires `pushPrivateKeyRemoteKey`. ENS, Beacon and blob entries are
+materialized when their remote-key values are nonempty. Application injection
+remains feature- and role-scoped; migration and schema-init containers receive
+none of these optional credentials.
+
+Set public switches and policy under `config.turnstile`, `config.push`, and
+`config.consensus`. Consensus also enables execution-request collection. Blob
+archival additionally requires `config.consensus.blobs.enabled` and a separate
+durable bucket: it must not share the disposable trace cache's eviction policy.
+Without static archive keys, the SDK credential chain can use operator-owned
+accounts selected by `blobArchiveServiceAccounts.api`, `.enrich`, and `.all`.
+These override the trace-cache account on archive roles. Review nonstandard
+Beacon/object-store ports in `networkPolicy.additionalEgress`.
+
+See the runbook for [archive provisioning and recovery](../../../docs/operations.md#optional-consensus-and-blob-archives),
+[push setup](../../../docs/operations.md#private-watches-notifications-and-csv-exports),
+and [Turnstile configuration](../../../docs/operations.md#optional-turnstile-protection).
+
 ## S3 workload identity
 
 `config.adapters.s3_endpoint` and `s3_bucket` explicitly enable the disposable
 trace cache. A complete Secret-backed Etherview access/secret pair takes
 precedence; otherwise `all`/`api` discovers refreshable credentials through the
 AWS default chain. Non-API roles, migration Jobs, and schema init containers do
-not receive S3 keys or construct the client.
+not receive trace-cache S3 keys or construct that client. The independent
+archive credentials and clients follow the role rules above.
 
 Set `s3ServiceAccount.enabled=true` to isolate AWS identity from the chart's
 shared account. With `create=true`, the chart creates `<release>-s3`; set
@@ -253,7 +288,10 @@ Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
 fresh permission-restricted Node 26.12.1 SEA subprocess. The single SEA,
 canonical read-only runtime manifest, and automatically discovered private ELF
-libraries are part of the production image for its native architecture. There is no runner
+libraries are part of the production image for its native architecture. The
+image also contains both authenticated Python WASM runtimes for Vyper;
+application-locked PyPI packages are assembled into the compiler cache. Vyper
+uses the same SEA with explicit version-to-runtime routing. There is no runner
 Deployment, Service, image value, runtime class, native compiler fallback, or
 CPU-platform setting.
 

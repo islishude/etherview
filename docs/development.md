@@ -287,9 +287,10 @@ Preview metadata has its own `make test-preview-metadata` gate. Its accepted
 local Kubo replacement verifies exact content, two canonical metadata versions,
 one attempt per version and restart persistence. The prior public-gateway
 failure and replacement evidence belong to P30-T35 in
-[P30](plans/P30-contract-verification.md#production-acceptance-boundaries). This gate is separate
-from the CI workflow and does not establish public-IPFS availability. Live
-payment and reference-capacity acceptance remain separate release requirements.
+[P30](plans/P30-contract-verification.md#production-acceptance-boundaries).
+The current CI runtime workflow runs this gate; it does not establish
+public-IPFS availability. Live payment and reference-capacity acceptance remain
+separate release requirements.
 
 ### Core read/write benchmark
 

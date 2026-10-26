@@ -91,8 +91,9 @@ still expose state-backed capabilities without weakening their error contract.
   logged only with a stable code and retried with bounded backoff; it neither
   exits the component nor withdraws process readiness. PostgreSQL remains the
   only dependency of this cleanup path.
-- Statistics advance to `stats@3`; the earlier `stats@2` rows remain historical
-  and are not used by the current projection. Except for the exact configured
+- Statistics use `stats@4` under
+  [ADR-0052](ADR-0052-amsterdam-explorer-support.md); earlier stage versions
+  cannot satisfy the current projection. Except for the exact configured
   indexing start, a block requires its exact canonical parent and a strictly
   positive timestamp interval. Sparse canonical blocks wait in the durable queue
   until their exact canonical parent is indexed, without consuming attempts or

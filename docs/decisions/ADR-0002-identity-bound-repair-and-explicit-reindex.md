@@ -36,7 +36,7 @@ Core repair and derived reindex are separate operations:
 - A successful refresh removes replayable block-local output and rollback
   journals that directly depend on the replaced core facts. It does not guess
   how far downstream state must be rebuilt.
-- `reindex --stage proxy|abi|token|stats|trace|state_diff|userop` addresses the
+- `reindex --stage requests|consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` addresses the
   currently canonical hash at every selected height. It creates missing durable
   jobs and resets only terminal jobs. Queued jobs and active leases return a
   busy result and retain their current ownership. Versioned proxy/ABI cutovers

@@ -19,8 +19,9 @@ immutable block, stage version, result, and replay generation.
 
 ## Decision
 
-- Production `proxy`, `abi`, `token`, `holder`, `stats`, and `trace` processors execute
-  through a lease-aware path. The stage writer, exact stage result, controlled
+- All production derived stages in `internal/stagecontract/stage.go` execute
+  through a lease-aware path, including consensus, requests, blob archives,
+  native transfers, state differences and UserOperations. The stage writer, exact stage result, controlled
   journal, and successful durable-job transition commit in one PostgreSQL
   transaction. The final compare-and-set requires the exact job ID, lease
   token, unexpired lease, claimed and leased generation, no newer requested

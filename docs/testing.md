@@ -517,7 +517,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   underpriced same-sender/nonce transaction followed by its signed fee-bumped
   replacement, verifies the old hash as `replaced` and the new hash as
   `pending`, then mines and verifies the new hash as included `success`. It
-  also verifies contract creation and a failed call, all eight enabled stage
+  also verifies contract creation and a failed call, all nine enabled stage
   publications, a distinct competing-hash reorg with orphan/journal retention
   and changed hourly analytics, an orphaned delegation followed by canonical
   delegation, redelegation, ordinary delegated execution, and clearing, plus
@@ -664,9 +664,9 @@ configuration enters that shared overlay:
    starting any application service.
 3. Shared readiness and parity helpers derive expected stages and components
    from the effective feature set. A globally hardcoded stage count is invalid:
-   the always-on Holder stage makes the UserOperation runtime publish eight
-   stages, while feature-off Hardhat and Foundry verification topologies
-   publish seven.
+   the always-on Holder and native-transfer stages make the UserOperation
+   runtime publish nine stages, while feature-off Hardhat and Foundry
+   verification topologies publish eight.
 4. Extend both `.github/scripts/hardhat3-compose-check.mjs` and
    `.github/scripts/foundry-compose-check.mjs` to assert the feature-off value
    and absence or empty value of its companion configuration on every
@@ -840,7 +840,7 @@ and Helm configuration surfaces.
 
 ## Vyper verification gates
 
-`make compiler-install` builds the shared Python WASM runtime, Node SEA and
+`make compiler-install` builds both shared Python WASM runtimes, Node SEA and
 pinned 0.4.3 regression package. `make
 security-check` and `make license-check` retain their dependency and license
 checks. `make test-go` and `make test-race` exercise real compilation, manifest,
@@ -1052,12 +1052,11 @@ Wrong-Python identity rejection and a deliberately misrouted old compiler are
 negative controls. `report.json` contains the aggregate verdict; `results/`
 contains per-input evidence. Setup or compatibility failures return nonzero.
 
-This diagnostic preserves existing package-manifest production pins and records
-the candidate runtime separately. It does not claim that those manifests can
-be accepted by the current Go/SEA runtime or signed release catalog. Passing
-this test establishes local alias/routing feasibility only; production adoption
-requires explicit runtime selection, digest binding, packaging and native Linux
-acceptance changes under ADR-0053.
+This diagnostic preserves existing production pins and records its isolated
+runtime/package evidence separately. The dual-runtime policy is now implemented
+under ADR-0053, with application-locked distribution under ADR-0054. Passing
+this diagnostic establishes local alias/routing feasibility only; it does not
+replace the current native Linux matrix or production topology acceptance.
 
 ### Vyper update proposals
 

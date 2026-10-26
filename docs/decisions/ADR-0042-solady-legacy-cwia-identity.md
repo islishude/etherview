@@ -33,8 +33,9 @@ derive access offsets without retaining the complete AST or parsing source text.
 - Persist the relation through the existing `proxy@2` representation with
   mechanism `cwia`, pattern `clone`, no standard version, no admin/beacon, and
   no upgrade authority. This is an additive value in the existing immutable
-  singular-clone model, not a representation or rollback change, so `proxy@2`
-  and `abi@4` remain current.
+  singular-clone model, not a representation or rollback change; this addition
+  did not advance the stage versions. Current stages are `proxy@2` and `abi@5`
+  after [ADR-0052](ADR-0052-amsterdam-explorer-support.md).
 - Migration and startup never reinterpret or replay existing history. Blocks
   first processed after deployment use the new detector; any future historical
   coverage requires a separately approved bounded reindex.

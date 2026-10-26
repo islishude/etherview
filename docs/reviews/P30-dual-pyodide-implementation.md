@@ -3,6 +3,11 @@
 Date: 2026-10-13. Scope: dual-runtime Vyper verification. Decision:
 [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md).
 
+Historical evidence: ADR-0053 retired the custom advisory queries and approval
+records below; ADR-0054 replaced signed catalogs with the application lock and
+retired Vyper 0.2.0. The 26-version counts describe this review, not the current
+supported set.
+
 Status statements below describe the recorded review stages. Current completion
 and later native acceptance are maintained in
 [P30](../plans/P30-contract-verification.md#evidence).

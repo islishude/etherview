@@ -1,9 +1,10 @@
 # Etherview deployment assets
 
 All deployment shapes run the same `etherview` image and component packages.
-PostgreSQL is always the durable correctness source. Redis, NATS, and object
-storage are optional acceleration services and are never application startup
-dependencies.
+PostgreSQL owns identities and publication. Redis, NATS, and the trace object
+cache are optional accelerators. Optional blob bodies use a separate durable
+archive under [ADR-0055](../docs/decisions/ADR-0055-consensus-and-blob-archives.md);
+archive loss affects blob retrieval, while core readiness remains independent.
 
 ## Docker Compose
 
@@ -110,8 +111,9 @@ final API-role configuration before exposing the Account top-up endpoint.
 Existing credit consumption has no Facilitator dependency.
 
 ERC-4337 UserOperation browsing is also disabled by default. Set
-`config.features.user_operations=true` only together with a reviewed,
-chain-specific `config.erc4337.entry_points` list. Each entry binds one address
+`features.user_operations` to `true` in the mounted YAML only together with a
+reviewed, chain-specific `erc4337.entry_points` list (under `config` in Helm
+values). Each entry binds one address
 to version `0.6`, `0.7`, `0.8`, or `0.9` and an inclusive
 `from_block`/optional `to_block` range. The chart schema rejects an enabled
 feature without entries; application startup additionally rejects zero
@@ -227,11 +229,11 @@ Every long-lived application container has a Docker healthcheck that runs
 `/etherview healthcheck` against its own loopback operational readiness
 endpoint. The command loads no configuration or Secrets and needs no shell,
 Node process, `curl`, helper image, auxiliary container, or Docker socket.
-Compose's existing `--wait --wait-timeout 180` invocation is the sole health
-wait for `make start-preview` and `make recreate-preview`.
-There is no second Preview polling or checker command. Compose render
-regressions fix the healthcheck definition and role topology, while production
-image checks retain the non-root, native-architecture, and compiler-runtime
+Compose's `--wait --wait-timeout 180` invocation waits for container health.
+Both lifecycle targets then run `archive-init` and `preview-ready.mjs`, which
+checks successive real execution/Beacon blocks. Container readiness alone does
+not establish chain progress. Compose render regressions fix the healthcheck
+definition and role topology, while production image checks retain the non-root, native-architecture, and compiler-runtime
 boundaries.
 
 NFT metadata defaults to the local `https://ipfs.preview.test:8443` Kubo
@@ -262,12 +264,14 @@ acceptance. It owns fresh volumes and random loopback ports, disables external
 retrieval, validates CLI roundtrips and TLS, and preserves both exact metadata
 versions, single attempts, canonical holdings, and restart persistence. Its
 network assertions identify only the owned gateway; reports include immutable
-image identities and are retained on success too. It is not part of `make check`
-or CI and makes no public-IPFS availability claim.
+image identities and are retained on success too. It is outside `make check`;
+the CI runtime workflow runs the prebuilt target with its produced image.
+It makes no public-IPFS availability claim.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
-the six application containers plus Kubo and its gateway while preserving
-PostgreSQL, Geth, IPFS data, and the
+the six application containers, execution/Beacon/validator clients, object
+storage, Kubo and its gateway, and reruns migration while preserving
+PostgreSQL, chain state, validator slashing protection, blob/IPFS data, and the
 project-scoped `compiler-cache` named volume. Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They
 do not make an expired compiler catalog usable and do not belong in backups.
@@ -296,14 +300,16 @@ in monolith and six-application-role distributed layouts from a build-tagged
 Go test.
 The distributed layout starts two sync and enrichment replicas, stops one of
 each, and proves the survivors process a competing-hash reorg. Both layouts
-must publish all seven enabled stages, retain the orphan branch, update hourly
+must publish all nine enabled execution stages, retain the orphan branch, update hourly
 analytics, recover after RPC and PostgreSQL pauses plus an API restart, expose
 the same API/SSE/embedded-SPA behavior, pass bounded load, and finish with
 equivalent normalized durable and public state. Trace, mempool, historical
 state, NFT metadata, ENS, and a deterministic transaction-deployed ERC-4337
 v0.9 EntryPoint wire fixture are enabled. Verification, Sourcify, and pricing are explicitly
-disabled in this ordinary runtime suite because they require the official
-external compiler catalog or other external-service fixtures.
+disabled in that core-runtime scenario. The same runtime target also runs a
+separate browser-verification scenario with real SIWE and bundled Geas in both
+topologies, including native-key submission and optional Turnstile rejection.
+Solidity/Vyper compilation and Sourcify use their separate acceptance suites.
 
 The pinned Anvil fixture currently emits `blobGasPrice` without
 `blobGasUsed` on ordinary receipts. A bounded test-only Go RPC adapter removes
@@ -460,9 +466,11 @@ The Dockerfile builds the SPA and application/helper Go binaries, and assembles 
 distroless non-root image for BuildKit's target architecture. The production
 stage contains the application binary plus one read-only Node 26.12.1 SEA, its
 canonical runtime manifest and automatically discovered private ELF libraries,
-and the read-only Geas v0.3.3 helper. It contains no general Node executable,
-npm, wrapper source, package metadata, `node_modules`, npx, corepack, shell,
-native solc, Vyper, Go toolchain, or source tree.
+two authenticated Python WASM runtimes for Vyper, and the read-only Geas v0.3.3
+helper. Vyper compiler packages are assembled from application-locked PyPI inputs
+into the rebuildable cache. It contains no general Node executable,
+npm, wrapper source, npm package metadata, `node_modules`, npx, corepack, shell,
+native solc or native Python/Vyper executable, Go toolchain, or application source tree.
 
 `make docker-image-check` enforces that boundary by inspecting the configured
 user, executing the binary as UID/GID 65532 with a read-only filesystem,

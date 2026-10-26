@@ -2,6 +2,11 @@
 
 Status: accepted
 
+[ADR-0052](ADR-0052-amsterdam-explorer-support.md) advances the Trace stage to
+`trace@4`: protocol ETH-transfer logs are excluded from EVM-log attribution.
+References to `trace@3` below describe the prior attribution contract; current
+reads and reindex use `trace@4` and preserve these fences for ordinary logs.
+
 ## Context
 
 A receipt log names its emitter and storage context, not necessarily the
@@ -73,7 +78,7 @@ projected reliably.
   error text and omit the ABI signature, argument table, and raw revert-data
   disclosure.
 - Public Trace reads attach persisted-first, bounded PostgreSQL-only ABI
-  projection inside one repeatable-read snapshot. The schema-v2 S3 object
+  projection inside one repeatable-read snapshot. The schema-v3 S3 object
   contains only normalized raw call frames; it never contains ABI projection.
   Thus late verification changes the read projection without mutating the old
   trace generation or invalidating object storage.

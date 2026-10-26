@@ -3,20 +3,22 @@
 Etherview is a pre-release Ethereum execution-layer explorer with a Go backend
 and embedded bilingual React application. Run it as one process or independently
 scalable roles. PostgreSQL is the only required external service and the source
-of truth; Redis, NATS, and S3-compatible storage are optional accelerators.
+of truth for identities and publication. Redis, NATS, and the S3 trace cache are
+optional accelerators; optional blob bodies use a separate durable object archive.
 
 ## Capabilities
 
 - Reorg-safe block, transaction, receipt, log, withdrawal, and mempool indexing
 - Block-scoped traces, ABI/proxy decoding, tokens, NFTs, balances, and statistics
 - Optional ERC-4337 EntryPoint v0.6-v0.9 UserOperation browsing
-- Solidity/Yul and Geas contract verification, with optional Sourcify interoperability
+- Solidity/Yul, Vyper, and Geas contract verification, with optional Sourcify interoperability
+- Optional Beacon consensus observations, execution requests, and durable blob archives
 - Native REST/SSE APIs and an Etherscan V2 compatibility subset
 - API keys, SIWE sessions, optional x402 billing and API TLS, Prometheus metrics,
   Compose, and Helm deployments
 
-Consensus-layer browsing, archived blob bodies, MEV accounting, and L2-specific
-batch semantics are outside the v1 core scope. See [the release plan](PLAN.md)
+Validator browsing, MEV accounting, and L2-specific batch semantics are outside
+the v1 core scope. See [the release plan](PLAN.md)
 for current status and remaining gates.
 
 ## Quick start

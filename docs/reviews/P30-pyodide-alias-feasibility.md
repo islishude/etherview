@@ -1,7 +1,10 @@
 # Dual Pyodide npm alias feasibility
 
-Date: 2026-10-12. P30-T126 evaluates a candidate, without changing the accepted
-single-runtime decision in [ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md).
+Historical evidence, dated 2026-10-12. P30-T126 evaluated a candidate against
+the then-current single-runtime decision.
+[ADR-0053](../decisions/ADR-0053-vyper-wasm-distribution.md) now implements dual-runtime
+routing, and ADR-0054 owns application-locked distribution and the retirement of
+Vyper 0.2.0. Versions, counts and pending work below describe the original experiment.
 **The proposed split passes local compatibility and isolation diagnostics.**
 Production implementation and native release acceptance remain separate work.
 

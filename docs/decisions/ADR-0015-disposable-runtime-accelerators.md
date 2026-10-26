@@ -46,7 +46,7 @@ correctness implementation and break the PostgreSQL-only deployment.
   is open advance safely with the cache bypassed, and after backoff exactly one
   event probes the fence/invalidation path. A successful probe establishes a
   fresh generation before reads are re-enabled.
-- S3-compatible storage caches schema-v2 normalized transaction call frames
+- S3-compatible storage caches schema-v3 normalized transaction call frames
   only. ABI input/output/revert projections are never stored in the object. An
   object key binds chain ID, exact block hash, durable job ID, exact completed
   generation, and transaction hash. Reads are length- and SHA-256-bounded,

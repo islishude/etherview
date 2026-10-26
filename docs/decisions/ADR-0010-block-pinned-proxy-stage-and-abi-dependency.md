@@ -2,6 +2,12 @@
 
 Status: accepted
 
+Current replay targets are `proxy@2` and `abi@5`;
+[ADR-0034](ADR-0034-eip7702-execution-identity-and-constructor-decoding.md) and
+[ADR-0052](ADR-0052-amsterdam-explorer-support.md) extend the ABI representation.
+Earlier version numbers below describe the original decisions. The dependency
+and replay ordering apply to the current stages.
+
 ## Context
 
 Proxy identity is historical state, not a property of an address. EIP-1967

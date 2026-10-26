@@ -69,7 +69,7 @@ Adding another state-difference adapter, widening limits, changing the durable
 row identity, or changing publication semantics requires a new stage version
 and a reviewed update to this decision.
 
-ADR-0034 upgrades this stage to `state_diff@2`. Each exact transaction-bound
+ADR-0034 originally upgraded this stage to `state_diff@2`. Each exact transaction-bound
 item in the block-level pre/post response proves EIP-7702 tuple application and
 execution-code identity; absent evidence is unavailable and a nonce/code
 contradiction is permanent.

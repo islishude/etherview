@@ -2,6 +2,11 @@
 
 Status: accepted
 
+[ADR-0052](ADR-0052-amsterdam-explorer-support.md) advances the Trace and ABI
+versions described below to `trace@4` and `abi@5` for protocol-log handling.
+The EIP-7702 identities and provenance remain in force; the version numbers
+below record their introduction, not current replay targets.
+
 ## Context
 
 EIP-7702 keeps an account's address, balance, nonce, and storage context while

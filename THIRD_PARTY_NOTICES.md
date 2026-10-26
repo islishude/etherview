@@ -124,8 +124,10 @@ The notices also cover zlib 1.3.1, the Emscripten bzip2 1.0.6 port, Expat
 2.6.4 / 2.7.3, xz/liblzma 5.2.2, zstd 1.5.7, SQLite 3.39.0,
 libffi, hiwire, musl 1.2.5, LLVM compiler-rt/libc++/libc++abi,
 HACL* and CPython third-party components including libmpdec 2.5.1.
-The source commit inventory and vulnerability dispositions are recorded in
-`compiler/vyper/wasm/audit-review.json`.
+The source identities and notice digests are recorded in the license lock.
+The former custom advisory inventory and vulnerability-disposition records
+are retired; current integrity and license checks are described in
+`compiler/vyper/README.md`.
 
 Each locally assembled compiler package includes official Vyper source,
 its pure Python dependencies and their upstream notices, including setuptools
