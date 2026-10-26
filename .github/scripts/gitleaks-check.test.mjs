@@ -9,6 +9,56 @@ import test from "node:test";
 // Synthetic public values exercise scanner entropy checks without using credentials.
 const publicHash = createHash("sha256").update("etherview public scanner regression").digest("hex");
 
+test("WebSocket sample nonce exception retains path, header and value boundaries", () => {
+  const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-websocket-test-"));
+  const canonical = "e2e/previewgateway/gateway_test.go";
+  const sampleNonce = Buffer.from("the sample nonce").toString("base64");
+  const handshake = (nonce) => `"GET / HTTP/1.1\\r\\nSec-WebSocket-Key: ${nonce}\\r\\n\\r\\n"`;
+  const fixtures = {
+    [canonical]: `${handshake(sampleNonce)}\n${handshake(publicHash)}\napi_key = "${sampleNonce}"\n`,
+    "elsewhere.go": handshake(sampleNonce),
+    "nested/e2e/previewgateway/gateway_test.go": handshake(sampleNonce),
+    "e2e/previewgateway/gateway_test.go.bak": handshake(sampleNonce),
+  };
+  try {
+    for (const [path, source] of Object.entries(fixtures)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), source);
+    }
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        resolve(".gitleaks.toml"),
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1, "scanner must still reject other credential findings");
+    const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
+    assert.deepEqual(
+      findings.map(({ File, StartLine, RuleID }) => `${File}:${StartLine}:${RuleID}`).sort(),
+      [
+        `${canonical}:2:generic-api-key`,
+        `${canonical}:3:generic-api-key`,
+        "elsewhere.go:1:generic-api-key",
+        "nested/e2e/previewgateway/gateway_test.go:1:generic-api-key",
+        "e2e/previewgateway/gateway_test.go.bak:1:generic-api-key",
+      ].sort(),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("root .local artifacts are ignored while source exceptions retain path and field boundaries", () => {
   const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-test-"));
   const config = resolve(".gitleaks.toml");
