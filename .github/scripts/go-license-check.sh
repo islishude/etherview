@@ -23,7 +23,7 @@ EXPECTED_GEAS_VERSION="v0.3.3"
 EXPECTED_GEAS_SUM="h1:CtVkRXysF+1gf1L0MgisG4vcr/Zv/uf8ukq/uqiUEUs="
 EXPECTED_GEAS_LICENSE_SHA256="da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
 EXPECTED_SYS_ASM_LICENSE_SHA256="23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
-SYS_ASM_LICENSE_PATH="internal/verify/testdata/geas/sys-asm-eip7002/LICENSE"
+SYS_ASM_LICENSE_PATH="licenses/ethereum-sys-asm-MIT.txt"
 
 if [ "$#" -eq 0 ]; then
   set -- ./...
@@ -98,6 +98,14 @@ verify_sha256 "$module_dir/crypto/keccak/LICENSE" "$EXPECTED_KECCAK_LICENSE_SHA2
 verify_sha256 "$module_dir/crypto/secp256k1/LICENSE" "$EXPECTED_SECP256K1_LICENSE_SHA256" "crypto/secp256k1 license"
 verify_sha256 "$module_dir/crypto/secp256k1/libsecp256k1/COPYING" "$EXPECTED_LIBSECP256K1_LICENSE_SHA256" "bundled libsecp256k1 license"
 verify_sha256 "$module_dir/metrics/LICENSE" "$EXPECTED_METRICS_LICENSE_SHA256" "metrics license"
+
+verify_sha256 licenses/go-ethereum-LGPL-3.0-or-later.txt "$EXPECTED_LGPL_SHA256" "checked-in LGPL text"
+verify_sha256 licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt "$EXPECTED_BN256_LICENSE_SHA256" "checked-in bn256 license"
+verify_sha256 licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt "$EXPECTED_KECCAK_LICENSE_SHA256" "checked-in keccak license"
+verify_sha256 licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt "$EXPECTED_SECP256K1_LICENSE_SHA256" "checked-in secp256k1 license"
+verify_sha256 licenses/libsecp256k1-MIT.txt "$EXPECTED_LIBSECP256K1_LICENSE_SHA256" "checked-in libsecp256k1 license"
+verify_sha256 licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt "$EXPECTED_METRICS_LICENSE_SHA256" "checked-in metrics license"
+verify_sha256 licenses/geas-LGPL-3.0.txt "$EXPECTED_GEAS_LICENSE_SHA256" "checked-in Geas license"
 
 bloomfilter_version="$("$GO_BIN" list -m -f '{{.Version}}' github.com/holiman/bloomfilter/v2)"
 if [ "$bloomfilter_version" != "$EXPECTED_BLOOMFILTER_VERSION" ]; then

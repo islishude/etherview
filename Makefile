@@ -235,16 +235,12 @@ license-check: license-tool-check web-install compiler-install
 	$(NODE) compiler/vyper/wasm/packages.mjs
 	$(NODE) compiler/vyper/wasm/licenses.mjs
 	$(NODE) compiler/vyper/wasm/package-licenses.mjs
-	@test -f LICENSE || { echo "license-check: root LICENSE is missing"; exit 1; }
-	@grep -q "Apache License" LICENSE || { echo "license-check: root LICENSE is not Apache-2.0"; exit 1; }
-	@grep -Eq '^COPY .*LICENSE /LICENSE$$' Dockerfile || { echo "license-check: production image must include /LICENSE"; exit 1; }
-	@test -f THIRD_PARTY_NOTICES.md || { echo "license-check: third-party notices are missing"; exit 1; }
-	@grep -Eq '^COPY .*THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md$$' Dockerfile || { echo "license-check: production image must include third-party notices"; exit 1; }
-	@grep -Fq '## Node SEA and solc-js runtime' THIRD_PARTY_NOTICES.md || { echo "license-check: Node SEA notice is missing"; exit 1; }
-	@grep -Eq '^COPY --from=compiler-builder .* /opt/etherview/licenses/solcjs-runtime /licenses/solcjs-runtime$$' Dockerfile || { echo "license-check: production image must include SEA runtime licenses"; exit 1; }
-	@test -f licenses/holiman-bloomfilter-MIT.txt || { echo "license-check: checked-in bloomfilter license is missing"; exit 1; }
-	@grep -Eq '^COPY --from=go-builder .* /licenses /licenses$$' Dockerfile || { echo "license-check: production image must include reviewed geth licenses"; exit 1; }
-	@grep -Eq '^COPY .*licenses /licenses$$' Dockerfile || { echo "license-check: production image must include checked-in third-party licenses"; exit 1; }
+	$(NODE) --test compiler/check-licenses.test.mjs
+	$(NODE) compiler/check-licenses.mjs
+	@test -f licenses/LICENSE || { echo "license-check: project LICENSE is missing"; exit 1; }
+	@grep -q "Apache License" licenses/LICENSE || { echo "license-check: project LICENSE is not Apache-2.0"; exit 1; }
+	@grep -Fq '## Node SEA and solc-js runtime' licenses/THIRD_PARTY_NOTICES.md || { echo "license-check: Node SEA notice is missing"; exit 1; }
+	@grep -Eq '^COPY .*licenses /licenses$$' Dockerfile || { echo "license-check: production image must include checked-in licenses"; exit 1; }
 	GO="$(GO)" GO_LICENSES="$(GO_LICENSES)" sh .github/scripts/go-license-check.sh $(GO_PACKAGES)
 	$(PNPM) run check:licenses
 

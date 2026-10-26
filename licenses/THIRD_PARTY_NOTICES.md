@@ -5,6 +5,12 @@ files remain the authoritative inventory; this notice calls out dependencies
 whose redistribution terms require material beyond Etherview's Apache-2.0
 license.
 
+All maintained license texts and this notice live in `licenses/`. Images copy
+that directory directly; builds only verify the reviewed texts against pinned
+dependencies and never collect or download notices. The root `LICENSE` symlink
+keeps repository license discovery working. Dependency updates must update the
+corresponding checked-in notices in the same change.
+
 ## Node SEA and solc-js runtime
 
 - Runtime: Node.js 26.12.1 Single Executable Application
@@ -81,9 +87,8 @@ production image at `/licenses/geas-LGPL-3.0.txt`.
 - Upstream: <https://github.com/ethereum/sys-asm>
 
 Etherview retains the withdrawals contract sources and official bytecode only
-as an offline verification fixture. The exact upstream license is stored beside
-the fixture at
-`internal/verify/testdata/geas/sys-asm-eip7002/LICENSE`.
+as an offline verification fixture. The exact upstream license is retained at
+`licenses/ethereum-sys-asm-MIT.txt`.
 
 ## bloomfilter
 

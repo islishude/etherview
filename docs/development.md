@@ -138,6 +138,16 @@ bridges, exported-query scans, or compatibility adapters. Name query arguments
 and computed result columns in SQL. Use `:execrows` when callers enforce an
 affected-row condition and `:exec` when only execution errors matter.
 
+## License inventory
+
+Keep maintained project and dependency notices in `licenses/`; the root
+`LICENSE` is a symlink for license discovery. Production and Preview gateway
+images copy that directory directly. Builds verify npm/Node, WASM and private
+ELF notices without collecting or downloading license texts. When upgrading
+dependencies, review and update the corresponding texts alongside their locks.
+Run `make license-check`; image builds additionally compare the actual Linux
+builder Node and Debian notices against the checked-in inventory.
+
 ## Formatting and frontend tooling
 
 Use `make format` to format repository JavaScript, YAML, Markdown, and the

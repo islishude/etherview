@@ -1907,3 +1907,11 @@ Turning either flag off and restarting API/all rolls back that guard without
 schema changes. Public site keys are not secrets, but live secret rotation must
 be coordinated with Cloudflare. Automated mock transport/widget tests do not
 establish live widget/domain correctness or remote provider availability.
+
+## Image license inventory
+
+Production and Preview IPFS gateway images carry reviewed project and third-party
+notices under `/licenses`, including `/licenses/LICENSE` and
+`/licenses/THIRD_PARTY_NOTICES.md`. This directory is copied from the repository
+without build-time notice downloads or collection. Dependency upgrades that
+change a notice require updating the repository inventory before rebuilding.

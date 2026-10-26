@@ -108,7 +108,8 @@ container_created=true
 tar -tf "$temporary_directory/rootfs.tar" >"$temporary_directory/rootfs.txt"
 tar -xf "$temporary_directory/rootfs.tar" \
     -C "$temporary_directory" \
-    opt/etherview/solcjs licenses/solcjs-runtime
+    opt/etherview/solcjs licenses
+diff -r licenses "$temporary_directory/licenses"
 node .github/scripts/solcjs-runtime-image-check.mjs \
     "$temporary_directory/opt/etherview/solcjs" \
     "$temporary_directory/rootfs.txt" \
@@ -121,8 +122,8 @@ node .github/scripts/wasm-runtime-image-check.mjs \
     "$temporary_directory/licenses/python-wasm"
 
 for required_path in \
-    LICENSE \
-    THIRD_PARTY_NOTICES.md \
+    licenses/LICENSE \
+    licenses/THIRD_PARTY_NOTICES.md \
     etherview \
     usr/local/bin/etherview-geas-compiler \
     opt/etherview/solcjs/etherview-solcjs \

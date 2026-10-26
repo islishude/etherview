@@ -29,7 +29,6 @@
     "**/*.gen.*",
     "**/*_generated.*",
     "licenses/**",
-    "THIRD_PARTY_NOTICES.md",
     "internal/**/testdata/**",
     "deploy/helm/etherview/templates/**"
   ]

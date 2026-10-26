@@ -104,7 +104,7 @@ for (const dependency of manifest.dependencies) {
   }
   if (dependency.provider === "runtime") {
     assert.equal(dependency.path, `lib/${dependency.soname}`);
-    const licenseName = `${dependency.package.replaceAll(":", "_")}.copyright`;
+    const licenseName = `${dependency.package.split(":")[0]}.copyright`;
     assert.ok(
       rootfs.has(`licenses/solcjs-runtime/${licenseName}`),
       `rootfs lacks runtime license ${licenseName}`,

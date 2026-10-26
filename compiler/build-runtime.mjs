@@ -164,7 +164,6 @@ function targetPackageIdentity(path) {
 }
 
 mkdirSync(privateLibraryRoot, { recursive: true });
-mkdirSync(licensesRoot, { recursive: true });
 
 const interpreter = elfInterpreter(executor);
 const interpreterInTarget = join(targetRoot, interpreter.slice(1));
@@ -229,10 +228,11 @@ for (const sourcePath of closure.slice(1)) {
     runtimeSonames.set(soname, sha256(destination));
     resolvedPath = `lib/${soname}`;
 
-    const licenseName = `${identity.package.replaceAll(":", "_")}.copyright`;
-    const licenseDestination = join(licensesRoot, licenseName);
-    copyFileSync(identity.copyright, licenseDestination);
-    chmodSync(licenseDestination, 0o444);
+    const licenseName = `${identity.package.split(":")[0]}.copyright`;
+    const checkedInLicense = join(licensesRoot, licenseName);
+    if (sha256(checkedInLicense) !== sha256(identity.copyright)) {
+      throw new Error(`checked-in ELF dependency license differs: ${identity.package}`);
+    }
   }
   dependencies.push({
     soname,

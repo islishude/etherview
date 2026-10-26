@@ -3,6 +3,8 @@ FROM golang:1.27.3 AS builder
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/ipfs-gateway ./cmd/ipfs-gateway
+COPY licenses/Go-LICENSE /licenses/Go-LICENSE
+RUN cmp /usr/local/go/LICENSE /licenses/Go-LICENSE
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ipfs-gateway ./cmd/ipfs-gateway
 
@@ -11,8 +13,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
 FROM scratch
 LABEL org.opencontainers.image.title="Etherview IPFS Gateway" \
     org.opencontainers.image.licenses="Apache-2.0 AND BSD-3-Clause"
-COPY LICENSE /LICENSE
-COPY --from=builder /usr/local/go/LICENSE /licenses/Go-LICENSE
+COPY licenses /licenses
 COPY --from=builder /ipfs-gateway /ipfs-gateway
 EXPOSE 8443
 ENTRYPOINT ["/ipfs-gateway"]

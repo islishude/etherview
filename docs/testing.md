@@ -462,7 +462,9 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   pnpm installs do not run automatic audits. The security job runs the explicit
   root audit and fails if the audit cannot complete.
 - `make license-check`: Go, production frontend/compiler, all Vyper package
-  and pinned shared WASM component notice checks. The frontend and compiler gates
+  and pinned shared WASM component notice checks. Checked-in texts under
+  `licenses/` are verified read-only; missing or changed notices fail the gate.
+  The frontend and compiler gates
   resolve their installed production dependency closures from each owning module,
   follow pnpm symlinks, and require a license result for every selected package,
   including transitive dependencies and npm aliases. Missing required dependencies

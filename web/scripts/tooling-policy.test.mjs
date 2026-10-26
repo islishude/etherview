@@ -231,7 +231,7 @@ test("repository formatting preserves excluded fixtures, templates, generated an
       "internal/example/testdata/input.yaml",
       "deploy/helm/etherview/templates/service.yaml",
       "licenses/notice.md",
-      "THIRD_PARTY_NOTICES.md",
+      "licenses/THIRD_PARTY_NOTICES.md",
     ].map((name) => [name, "deliberately malformed {{{\n"]),
   );
   const root = repositoryFixture(t, { ...ignored, "script.js": "export const value = 1;\n" });

@@ -39,30 +39,23 @@ COPY e2e/hardhat3/package.json ./e2e/hardhat3/
 RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store \
     pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm/store
 WORKDIR /src/compiler
-COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
+COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/check-licenses.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
 COPY compiler/vyper/wasm ./vyper/wasm/
+COPY licenses /licenses
 COPY --from=production-base / /target-rootfs/
 RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
-    && install -d -m 0755 /opt/etherview/licenses/solcjs-runtime \
-    && test -f /usr/local/LICENSE \
-    && cp /usr/local/LICENSE /opt/etherview/licenses/solcjs-runtime/node-LICENSE.txt \
-    && cp "$(node -p 'require.resolve("solc/LICENSE")')" /opt/etherview/licenses/solcjs-runtime/solc-LICENSE \
-    && cp "$(node -p 'require.resolve("esbuild/LICENSE.md")')" /opt/etherview/licenses/solcjs-runtime/esbuild-LICENSE.md \
-    && install -d /opt/etherview/licenses/solcjs-runtime/dependencies \
-    && find /src -type f -path '*/node_modules/*' \
-       \( -iname 'license' -o -iname 'license.*' -o -iname 'copying' -o -iname 'copying.*' \) \
-       -exec sh -eu -c 'for path do name=$(printf "%s" "$path" | tr "/" "_"); destination="/opt/etherview/licenses/solcjs-runtime/dependencies/$name"; test ! -e "$destination"; cp "$path" "$destination"; done' _ {} + \
+    && node check-licenses.mjs /licenses/solcjs-runtime /usr/local/LICENSE \
     && node build-runtime.mjs \
        /opt/etherview/solcjs/etherview-solcjs \
        /target-rootfs \
-       /opt/etherview/licenses/solcjs-runtime \
+       /licenses/solcjs-runtime \
     && node test-elf-runtime.mjs /target-rootfs \
     && install -d -m 1777 /target-rootfs/tmp \
     && node test-sea.mjs /target-rootfs "$(node -p 'require.resolve("solc/soljson.js")')" \
     && install -d -m 0755 /solcjs-runtime-copy \
     && cp -a /opt/etherview/solcjs /solcjs-runtime-copy/ \
     && node vyper/wasm/prepare.mjs /solcjs-runtime-copy/python-wasm \
-    && node vyper/wasm/licenses.mjs /opt/etherview/licenses/python-wasm \
+    && node vyper/wasm/licenses.mjs /licenses/python-wasm \
     && find /solcjs-runtime-copy/python-wasm -type d -exec chmod 0555 {} + \
     && find /solcjs-runtime-copy/python-wasm -type f -exec chmod 0444 {} + \
     && install -d -m 0750 /var/lib/etherview/compilers/cache
@@ -83,18 +76,6 @@ COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     go install -trimpath -ldflags="-s -w" ./cmd/...
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
-    geth_module_dir="$(go list -m -f '{{.Dir}}' github.com/ethereum/go-ethereum)" \
-    && geas_module_dir="$(go list -m -f '{{.Dir}}' github.com/fjl/geas)" \
-    && mkdir -p /licenses \
-    && cp "$geth_module_dir/COPYING.LESSER" /licenses/go-ethereum-LGPL-3.0-or-later.txt \
-    && cp "$geth_module_dir/crypto/bn256/LICENSE" /licenses/go-ethereum-crypto-bn256-BSD-3-Clause.txt \
-    && cp "$geth_module_dir/crypto/keccak/LICENSE" /licenses/go-ethereum-crypto-keccak-BSD-3-Clause.txt \
-    && cp "$geth_module_dir/crypto/secp256k1/LICENSE" /licenses/go-ethereum-crypto-secp256k1-BSD-3-Clause.txt \
-    && cp "$geth_module_dir/crypto/secp256k1/libsecp256k1/COPYING" /licenses/libsecp256k1-MIT.txt \
-    && cp "$geth_module_dir/metrics/LICENSE" /licenses/go-ethereum-metrics-BSD-2-Clause-FreeBSD.txt \
-    && cp "$geas_module_dir/LICENSE" /licenses/geas-LGPL-3.0.txt
 
 FROM production-base AS production
 ARG VERSION=dev
@@ -107,15 +88,10 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.version="${VERSION}" \
     org.opencontainers.image.revision="${REVISION}" \
     org.opencontainers.image.created="${CREATED}"
-COPY --chown=nonroot:nonroot LICENSE /LICENSE
-COPY --chown=nonroot:nonroot THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
-COPY --from=go-builder --chown=nonroot:nonroot /licenses /licenses
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
 COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
-COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview/licenses/solcjs-runtime /licenses/solcjs-runtime
-COPY --from=compiler-builder --chown=nonroot:nonroot /opt/etherview/licenses/python-wasm /licenses/python-wasm
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers
 USER 65532:65532
 EXPOSE 8080 9090

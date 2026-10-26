@@ -97,4 +97,4 @@ before contributing.
 - [Operations runbook](docs/operations.md) and [Helm chart](deploy/helm/etherview/README.md)
 - [Plan catalog](docs/plans/index.md)
 
-Licensed under [Apache-2.0](LICENSE).
+Licensed under [Apache-2.0](licenses/LICENSE).
