@@ -1,3 +1,6 @@
+import { ChevronRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
+import { SelectControl } from "@/components/SelectControl";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TransactionLog } from "@/api/types";
@@ -74,7 +77,10 @@ export function TransactionLogCard({ log, locale }: { log: TransactionLog; local
       )}
 
       <details className="transaction-more-details transaction-log-details">
-        <summary>{t("detail.moreDetails")}</summary>
+        <summary>
+          <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+          {t("detail.moreDetails")}
+        </summary>
         <div className="transaction-log-details-content">
           <TransactionLogProvenance log={log} />
           <TransactionLogTopicsAndData
@@ -291,7 +297,7 @@ function TransactionLogTopicsAndData({
                     <label className="sr-only" htmlFor={`topic-mode-${logIndex}-${index}`}>
                       {t("detail.topicMode", { index })}
                     </label>
-                    <select
+                    <SelectControl
                       aria-label={t("detail.topicMode", { index })}
                       className="topic-mode-select"
                       id={`topic-mode-${logIndex}-${index}`}
@@ -304,7 +310,7 @@ function TransactionLogTopicsAndData({
                       <option value="address">{t("detail.topicModes.address")}</option>
                       <option value="text">{t("detail.topicModes.text")}</option>
                       <option value="number">{t("detail.topicModes.number")}</option>
-                    </select>
+                    </SelectControl>
                     <CopyableField value={value ?? topic}>
                       <code>{displayValue}</code>
                     </CopyableField>

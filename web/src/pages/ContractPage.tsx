@@ -1,3 +1,5 @@
+import { ChevronRight, ArrowRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import "./ContractPage.css";
 import { useCursorHistory } from "@/api/pagination";
 import {
@@ -537,6 +539,7 @@ function DiamondFacetCard({
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary className="history-card-heading">
+        <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
         <span>
           <strong>
             {facet.role === "immutable"
@@ -748,7 +751,7 @@ function UpgradeHistory({
             ) : (
               <code>—</code>
             )}
-            <span aria-hidden="true">→</span>
+            <UIIcon icon={ArrowRight} />
             <AddressIdentity address={item.new_implementation.address} compact={false} contract />
           </p>
           <HistoryIdentity

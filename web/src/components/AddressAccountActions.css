@@ -29,12 +29,6 @@
     border-color 150ms,
     color 150ms;
 }
-.address-action svg {
-  width: 1rem;
-  height: 1rem;
-  flex-shrink: 0;
-  stroke-width: 1.75;
-}
 .address-action:hover:not(:disabled),
 .address-action[aria-expanded="true"] {
   background: var(--surface-raised);

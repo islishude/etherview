@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { FileCode2, FileJson2, Upload, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { UploadedFile } from "./verificationFiles";
@@ -44,20 +45,20 @@ export function VerificationFileUpload({
           }}
         />
         <span className="sourcify-upload-icon">
-          <Icon aria-hidden="true" />
+          <UIIcon icon={Icon} size={24} />
         </span>
         <strong id={`${id}-title`}>{label}</strong>
         <span className="quiet" id={`${id}-help`}>
           {t("verificationUpload.allowed", { extensions: extensions.join(", ") })}
         </span>
         <span className="sourcify-upload-action">
-          <Upload aria-hidden="true" />
+          <UIIcon icon={Upload} />
           {t(files.length ? "sourcify.replaceFiles" : "sourcify.chooseFiles")}
         </span>
         <span className="sourcify-upload-status" role="status">
           {files.length ? (
             <>
-              <Check aria-hidden="true" />
+              <UIIcon icon={Check} />
               {t("verificationUpload.selected", { count: files.length })}
             </>
           ) : (

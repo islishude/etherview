@@ -107,6 +107,9 @@
 }
 
 .copyable-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   min-width: 0;
   padding: 0.2rem 0.38rem;
@@ -122,8 +125,10 @@
     color 0.18s ease;
 }
 
-.copyable-copy-button.copied {
-  color: var(--text);
+.copyable-copy-button.copied,
+.copyable-copy-button.copied:hover,
+.copyable-copy-button.copied:focus-visible {
+  color: var(--success);
 }
 
 .copyable-copy-button:hover,
@@ -137,7 +142,6 @@
 
 .address-header-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.55rem;
   align-items: center;
   max-width: 100%;
@@ -162,10 +166,11 @@
 }
 
 .address-qr-button {
+  flex: none;
   justify-content: center;
   padding: 0.2rem 0.38rem;
   border-radius: 0.35rem;
-  color: var(--text-soft);
+  color: var(--text);
   font-size: 0.82em;
   line-height: 1;
 }
@@ -180,7 +185,6 @@
   background: rgb(0 0 0 / 0.58);
 }
 
-.qr-dialog,
 .external-link-dialog {
   width: min(28rem, 100%);
   padding: 1.1rem;
@@ -212,16 +216,6 @@
   height: 2rem;
   padding: 0;
   font-size: 1.2rem;
-}
-
-.qr-code-surface {
-  display: grid;
-  place-items: center;
-  padding: 0.75rem;
-  margin-bottom: 0.9rem;
-  overflow: auto;
-  background: #fff;
-  border-radius: 0.5rem;
 }
 
 .nft-metadata-card .detail-grid {

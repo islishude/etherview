@@ -1,3 +1,5 @@
+import { ArrowRight, ArrowUpRight, Box } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { ConsensusOverview } from "./ConsensusPanels";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -105,7 +107,7 @@ function PanelHeading({
     <header className="panel-heading">
       <h2 id={id}>{title}</h2>
       <Link to={to} aria-label={title}>
-        <span aria-hidden="true">→</span>
+        <UIIcon icon={ArrowRight} />
       </Link>
     </header>
   );
@@ -116,7 +118,7 @@ function BlockRow({ block, locale, now }: { block: BlockSummary; locale: string;
   return (
     <div className="activity-row">
       <span className="block-cube" aria-hidden="true">
-        B
+        <UIIcon icon={Box} size={20} />
       </span>
       <span className="activity-primary">
         <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
@@ -141,14 +143,14 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
   return (
     <div className="activity-row transaction-row">
       <span className="tx-mark" aria-hidden="true">
-        ↗
+        <UIIcon icon={ArrowUpRight} size={20} />
       </span>
       <span className="activity-primary">
         <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
           {shorten(transaction.hash)}
         </Link>
         <small>
-          <AddressIdentity address={transaction.from} /> →{" "}
+          <AddressIdentity address={transaction.from} /> <UIIcon icon={ArrowRight} size={14} />{" "}
           {transaction.to ? <AddressIdentity address={transaction.to} /> : "∅"}
         </small>
       </span>

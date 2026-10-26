@@ -11,8 +11,6 @@
   right: 0.65rem;
   top: 50%;
   transform: translateY(-50%);
-  width: 1rem;
-  height: 1rem;
   pointer-events: none;
   color: var(--text-soft);
 }
@@ -109,10 +107,6 @@
   background: var(--surface-raised);
   color: var(--brand);
 }
-.verification-provider-icon svg {
-  width: 1.4rem;
-  height: 1.4rem;
-}
 .verification-provider-copy {
   display: grid;
   gap: 0.35rem;
@@ -141,10 +135,6 @@
   background: var(--brand);
   border-color: var(--brand);
   color: var(--on-brand, white);
-}
-.verification-provider-check svg {
-  width: 0.9rem;
-  height: 0.9rem;
 }
 .verification-workspace {
   display: grid;
@@ -178,12 +168,6 @@
   border-color: var(--line);
   box-shadow: 0 1px 3px #0000000a;
 }
-.verification-actions svg,
-.verification-flow-heading svg {
-  width: 1.15rem;
-  height: 1.15rem;
-  flex-shrink: 0;
-}
 .verification-flow-heading {
   display: flex;
   align-items: center;
@@ -202,10 +186,6 @@
   padding: 0.8rem 0;
   color: var(--text-soft);
   font-size: 0.78rem;
-}
-.verification-flow-steps svg {
-  width: 1rem;
-  height: 1rem;
 }
 .sourcify-import-result {
   display: grid;
@@ -254,10 +234,6 @@
 .sourcify-upload-icon {
   color: var(--brand);
 }
-.sourcify-upload-icon svg {
-  width: 1.6rem;
-  height: 1.6rem;
-}
 .sourcify-upload-card > .quiet {
   font-size: 0.8rem;
   line-height: 1.6;
@@ -281,12 +257,6 @@
   gap: 0.4rem;
   color: var(--text-soft);
   font-size: 0.8rem;
-}
-.sourcify-upload-action svg,
-.sourcify-upload-status svg {
-  width: 1rem;
-  height: 1rem;
-  flex-shrink: 0;
 }
 .sourcify-upload-names {
   max-width: 100%;

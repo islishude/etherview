@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { hexToBytes, type Hex } from "viem";
@@ -167,7 +169,10 @@ function CalldataValueNode({
         }}
       >
         <span className="calldata-row-index">{rowIndex}</span>
-        <span className="calldata-row-name">{label}</span>
+        <span className="calldata-row-name">
+          <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+          {label}
+        </span>
         <small className="calldata-row-type">{displayType}</small>
         <span className="calldata-row-data calldata-item-count">
           {value.kind === "array" ? itemCountLabel(itemCount) : ""}
@@ -501,7 +506,10 @@ export function TransactionFailureReason({
       )}
       {!builtin && resource.revert_data !== undefined && (
         <details className="transaction-more-details transaction-failure-raw">
-          <summary>{t("detail.revertData")}</summary>
+          <summary>
+            <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+            {t("detail.revertData")}
+          </summary>
           <CopyableField value={resource.revert_data}>
             <code>{resource.revert_data}</code>
           </CopyableField>

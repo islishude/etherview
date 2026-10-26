@@ -1,3 +1,5 @@
+import { CircleAlert, X } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -367,7 +369,7 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
       ) : null}
       {token.data && !isNFTStandard(token.data.standard) ? (
         <div className="query-notice degraded" role="status">
-          <span className="status-dot warning" aria-hidden="true" />
+          <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
           <span>
             <strong>{t("nftMetadata.notNFT")}</strong>
           </span>
@@ -439,7 +441,7 @@ function NFTMetadataPanel({
         <>
           {data.content_stale && data.content_observation ? (
             <div className="query-notice degraded compact" role="status">
-              <span className="status-dot warning" aria-hidden="true" />
+              <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
               <span>
                 <strong>{t("nftMetadata.staleTitle")}</strong>
                 <small>
@@ -453,7 +455,7 @@ function NFTMetadataPanel({
             </div>
           ) : data.state !== "available" ? (
             <div className="query-notice degraded compact" role="status">
-              <span className="status-dot warning" aria-hidden="true" />
+              <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
               <span>
                 <strong>{nftMetadataStateLabel(data.state, t)}</strong>
                 <small>{t("nftMetadata.stateDetail")}</small>
@@ -597,7 +599,7 @@ function NFTMetadataQueryNotice({ error, loading }: { error: unknown; loading: b
   if (!message) return <QueryNotice compact error={error} />;
   return (
     <div className="query-notice degraded compact" role="status">
-      <span className="status-dot warning" aria-hidden="true" />
+      <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
       <span>
         <strong>{message}</strong>
       </span>
@@ -671,7 +673,7 @@ function NFTExternalImageLink({ url }: { url: string }) {
                 onClick={() => setOpen(false)}
                 type="button"
               >
-                ×
+                <UIIcon icon={X} />
               </button>
             </div>
             <p className="external-link-warning" id="nft-external-link-warning" role="alert">

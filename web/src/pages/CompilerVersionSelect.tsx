@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -95,7 +96,7 @@ export function CompilerVersionSelect({
           } else if (event.key === "Tab") close();
         }}
       />
-      <ChevronDown className="compiler-version-chevron" aria-hidden="true" />
+      <UIIcon icon={ChevronDown} className="compiler-version-chevron" />
       {expanded && (
         <div className="compiler-version-popup">
           <ul

@@ -1,3 +1,5 @@
+import { ArrowRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useBlockBlobs } from "@/api/consensus";
@@ -72,7 +74,7 @@ export function BlobsPanel({
             params={{ blockID: hash }}
             search={{ tab: "blobs" }}
           >
-            {t("consensus.blockBlobs")} <span aria-hidden="true">→</span>
+            {t("consensus.blockBlobs")} <UIIcon icon={ArrowRight} />
           </Link>
         )}
       </div>
@@ -97,7 +99,7 @@ export function BlobsPanel({
                   {item.size !== undefined &&
                     t("consensus.sizeBytes", { size: formatInteger(item.size, locale) })}
                 </span>
-                <span aria-hidden="true">→</span>
+                <UIIcon icon={ArrowRight} />
               </Link>
               {!transaction && (
                 <Link

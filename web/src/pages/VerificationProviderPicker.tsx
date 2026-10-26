@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { Check, ShieldCheck, CloudDownload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -36,14 +37,14 @@ export function VerificationProviderPicker({
               onChange={() => onChange(id)}
             />
             <span className="verification-provider-icon">
-              <Icon aria-hidden="true" />
+              <UIIcon icon={Icon} size={24} />
             </span>
             <span className="verification-provider-copy">
               <strong>{t(title)}</strong>
               <span>{t(detail)}</span>
             </span>
             <span className="verification-provider-check" aria-hidden="true">
-              {value === id && <Check />}
+              {value === id && <UIIcon icon={Check} size={14} />}
             </span>
           </label>
         ))}

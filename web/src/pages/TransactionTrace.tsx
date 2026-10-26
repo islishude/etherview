@@ -1,3 +1,5 @@
+import { ChevronRight, ArrowRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useTransactionTrace } from "@/api/hooks";
 import { formatNativeAmount, shorten } from "@/components/format";
 import { QueryNotice } from "@/components/QueryNotice";
@@ -84,7 +86,7 @@ export function TransactionTracePanel({
                     </code>
                   </strong>
                   <code>
-                    {frame.from ? shorten(frame.from) : "—"} →{" "}
+                    {frame.from ? shorten(frame.from) : "—"} <UIIcon icon={ArrowRight} size={14} />{" "}
                     {frame.to
                       ? shorten(frame.to)
                       : frame.created_address
@@ -110,7 +112,10 @@ export function TransactionTracePanel({
                 </span>
               </div>
               <details className="transaction-more-details transaction-trace-details">
-                <summary>{t("detail.traceDetails")}</summary>
+                <summary>
+                  <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+                  {t("detail.traceDetails")}
+                </summary>
                 {frame.decoding && (
                   <>
                     <p className="quiet">

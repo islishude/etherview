@@ -1,3 +1,5 @@
+import { ChevronRight, ArrowUpRight, CircleAlert } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useTransactionCalldata, useTransactionFailure } from "@/api/hooks";
@@ -62,7 +64,7 @@ export function MempoolDetailExpired() {
   return (
     <section className="capability-panel pending-unavailable" role="status">
       <span className="capability-mark" aria-hidden="true">
-        !
+        <UIIcon icon={CircleAlert} size={24} />
       </span>
       <div>
         <h2>{t("pending.unavailable")}</h2>
@@ -445,7 +447,10 @@ export function TransactionOverviewPanel({
           </TransactionDetailRow>
         </dl>
         <details className="transaction-more-details">
-          <summary>{t("detail.moreDetails")}</summary>
+          <summary>
+            <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+            {t("detail.moreDetails")}
+          </summary>
           <dl className="transaction-detail-list advanced">
             <TransactionDetailRow label={t("detail.nonce")}>
               {formatInteger(transaction.data.nonce, locale)}
@@ -533,7 +538,7 @@ export function TransactionActionCard({
   return (
     <section className="panel transaction-action-card" aria-labelledby="transaction-action-title">
       <div className="transaction-action-icon" aria-hidden="true">
-        ↗
+        <UIIcon icon={ArrowUpRight} size={24} />
       </div>
       <div>
         <span id="transaction-action-title">{t("detail.transactionAction")}</span>

@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import "@/i18n/resources/sourcify";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
@@ -57,7 +59,10 @@ export function VerificationJobPanel({
       )}
       {job && (
         <details className="verification-technical-details">
-          <summary>{t("verification.technicalDetails")}</summary>
+          <summary>
+            <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+            {t("verification.technicalDetails")}
+          </summary>
           {job && (
             <dl className="job-details" aria-live="polite">
               <div>

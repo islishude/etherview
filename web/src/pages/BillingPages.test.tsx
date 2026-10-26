@@ -488,16 +488,20 @@ function registerProvider(provider: EIP1193Provider) {
 }
 
 async function connectTestWallet(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByText("Connect wallet", { selector: "summary" }));
+  await user.click(await screen.findByLabelText("Connect wallet", { selector: "summary" }));
   await user.click(await screen.findByRole("button", { name: /Billing Wallet/ }));
   await waitFor(() => {
     expect(document.querySelector(".wallet-summary")).toHaveTextContent("0x1111…1111");
   });
-  await user.click(screen.getByText("0x1111…1111", { selector: "summary" }));
+  await user.click(
+    screen.getByText("0x1111…1111", { selector: ".wallet-summary-label" }).closest("summary")!,
+  );
 }
 
 async function signInFromWalletMenu(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByText("0x1111…1111", { selector: "summary" }));
+  await user.click(
+    screen.getByText("0x1111…1111", { selector: ".wallet-summary-label" }).closest("summary")!,
+  );
   const section = document.querySelector<HTMLElement>(".wallet-auth-section");
   expect(section).not.toBeNull();
   const button = section?.querySelector<HTMLButtonElement>("button");

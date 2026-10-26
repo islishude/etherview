@@ -1,3 +1,5 @@
+import { UIIcon } from "@/components/UIIcon";
+import { SelectControl } from "@/components/SelectControl";
 import { Bell, BellRing, Download, ChevronDown } from "lucide-react";
 import { useTurnstile } from "./TurnstileChallenge";
 import "./AddressAccountActions.css";
@@ -88,7 +90,7 @@ function AddressActions({ address }: { address: string }) {
             )
           }
         >
-          {watch ? <BellRing aria-hidden="true" /> : <Bell aria-hidden="true" />}
+          {watch ? <UIIcon icon={BellRing} /> : <UIIcon icon={Bell} />}
           {t(watch ? "watchlist.watching" : "watchlist.add")}
         </button>
         <button
@@ -97,9 +99,9 @@ function AddressActions({ address }: { address: string }) {
           aria-controls={open ? "address-csv-export" : undefined}
           onClick={() => setOpen(!open)}
         >
-          <Download aria-hidden="true" />
+          <UIIcon icon={Download} />
           {t("watchlist.export")}
-          <ChevronDown className="address-action-chevron" aria-hidden="true" />
+          <UIIcon icon={ChevronDown} className="address-action-chevron" />
         </button>
       </div>
       {open && (
@@ -111,14 +113,14 @@ function AddressActions({ address }: { address: string }) {
           <p>{t("watchlist.exportHint")}</p>
           <label className="field-control">
             <span>{t("watchlist.kinds")}</span>
-            <select
+            <SelectControl
               value={kind}
               onChange={(e) => setKind(e.target.value as AddressExportRequest["kind"])}
             >
               <option value="transaction">{t("watchlist.transactions")}</option>
               <option value="erc20">ERC-20</option>
               <option value="nft">NFT (ERC-721 / ERC-1155)</option>
-            </select>
+            </SelectControl>
           </label>
           <label className="field-control">
             <span>{t("watchlist.fromUTC")}</span>
@@ -140,7 +142,7 @@ function AddressActions({ address }: { address: string }) {
           </label>
           <label className="field-control">
             <span>{t("watchlist.direction")}</span>
-            <select
+            <SelectControl
               value={direction}
               onChange={(e) => setDirection(e.target.value as AddressExportRequest["direction"])}
             >
@@ -149,7 +151,7 @@ function AddressActions({ address }: { address: string }) {
                   {t(`watchlist.${d}`)}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           {challenge.challenge}
           <button className="button primary" disabled={action.pending || !challenge.ready}>

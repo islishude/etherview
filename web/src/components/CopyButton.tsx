@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export async function copyTextToClipboard(value: string): Promise<void> {
@@ -28,15 +30,13 @@ export function CopyButton({
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const timeoutRef = useRef<number | undefined>(undefined);
+  const [copyRevision, setCopyRevision] = useState(0);
 
   useEffect(() => {
     if (!copied) return;
-    timeoutRef.current = window.setTimeout(() => setCopied(false), 1200);
-    return () => {
-      if (timeoutRef.current !== undefined) window.clearTimeout(timeoutRef.current);
-    };
-  }, [copied]);
+    const timeout = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [copied, copyRevision]);
 
   const copy = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -44,10 +44,10 @@ export function CopyButton({
     try {
       await copyTextToClipboard(value);
       setCopied(true);
+      setCopyRevision((revision) => revision + 1);
     } catch {
       setCopied(false);
     }
-    if (timeoutRef.current !== undefined) window.clearTimeout(timeoutRef.current);
   };
 
   return (
@@ -58,7 +58,7 @@ export function CopyButton({
       title={copied ? t("common.copied") : t("common.copy")}
       type="button"
     >
-      {copied ? "✓" : "⎘"}
+      <UIIcon icon={copied ? Check : Copy} />
     </button>
   );
 }

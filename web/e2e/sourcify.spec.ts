@@ -331,13 +331,14 @@ for (const language of ["en", "zh"] as const) {
     await expect(select).toHaveCSS("appearance", "none");
     const control = await select.evaluate((element) => {
       const style = getComputedStyle(element);
+      const icon = element.parentElement!.querySelector("svg.ui-icon")!;
       return {
-        size: parseFloat(style.backgroundSize),
+        size: icon.getBoundingClientRect().width,
         right: parseFloat(style.paddingRight),
         height: element.getBoundingClientRect().height,
       };
     });
-    expect(control.size).toBeGreaterThanOrEqual(18);
+    expect(control.size).toBe(16);
     expect(control.right).toBeGreaterThan(control.size + 12);
     expect(control.size / control.height).toBeGreaterThan(0.3);
     await page.screenshot({

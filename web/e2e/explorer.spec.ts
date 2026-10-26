@@ -990,7 +990,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await activateInView(page.getByRole("button", { name: "Show QR code" }));
   const qrDialog = page.getByRole("dialog", { name: "Address QR code" });
   await expect(qrDialog).toBeFocused();
-  await expect(qrDialog.getByText(`ethereum:${address}@1`, { exact: true })).toBeVisible();
+  await expect(qrDialog.getByText(address, { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(qrDialog).toHaveCount(0);
   await expect(page.getByText(/unavailable state is never displayed as zero/)).toBeVisible();
@@ -1926,7 +1926,8 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
   await expect(unverifiedTabs.getByRole("tab", { name: "Read contract" })).toHaveCount(0);
   await activateInView(unverifiedTabs.getByRole("tab", { name: "Read implementation (as proxy)" }));
   await expect(page.getByText("value()", { exact: true })).toBeVisible();
-  await activateInView(page.getByText("Connect wallet", { exact: true }).first());
+  await expect(page.locator(".wallet-summary")).toHaveAccessibleName("Connect wallet");
+  await activateInView(page.locator(".wallet-summary"));
   await activateInView(page.getByRole("button", { name: /CWIA E2E Wallet/u }));
   const readValue = page.getByRole("button", { name: "Read contract" });
   await activateInView(readValue);
@@ -2193,7 +2194,7 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
 
   const reducedMotion = await page.evaluate(() => {
     const probe = document.createElement("span");
-    probe.className = "pulse-dot";
+    probe.className = "live-icon";
     document.body.append(probe);
     const style = getComputedStyle(probe);
     const rawDuration = style.animationDuration;
@@ -3227,7 +3228,8 @@ test("EIP-6963 wallet discovery keeps reads and writes disabled on chain mismatc
   });
 
   await page.goto(`/address/${address}#code`);
-  await activateInView(page.getByText("Connect wallet", { exact: true }).first());
+  await expect(page.locator(".wallet-summary")).toHaveAccessibleName("Connect wallet");
+  await activateInView(page.locator(".wallet-summary"));
   await activateInView(page.getByRole("button", { name: /E2E Wallet/ }));
 
   await expect(page.locator(".wallet-summary")).toHaveAttribute(
@@ -3267,7 +3269,7 @@ async function assertAccessibleRoute(page: import("@playwright/test").Page, rout
   const response = await page.goto(route);
   expect(response?.status(), route).toBe(200);
   await expect(page.locator("main h1"), route).toBeVisible();
-  await expect(page.locator(".query-notice .pulse-dot"), route).toHaveCount(0);
+  await expect(page.locator(".query-notice .live-icon"), route).toHaveCount(0);
   await expect(page.locator(".chart-loading"), route).toHaveCount(0);
 
   const scan = await new AxeBuilder({ page })

@@ -1,3 +1,6 @@
+import { Activity, ArrowDown, ArrowRight, ArrowUp, CircleDot } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
+import { SelectControl } from "@/components/SelectControl";
 import { PageHeading } from "@/components/DesignPrimitives";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -105,7 +108,7 @@ export function ChartsPage() {
             </div>
             {overview.data.pending && (
               <div className="analytics-pending" role="status">
-                <span className="pulse-dot" aria-hidden="true" />
+                <UIIcon icon={Activity} size={14} className="live-icon" />
                 <div>
                   <strong>{t("charts.backfillPending")}</strong>
                   <p>
@@ -241,7 +244,7 @@ export function ChartMetricPage({
         </form>
         <label className="chart-interval">
           <span>{t("charts.intervalControl")}</span>
-          <select
+          <SelectControl
             value={search.interval}
             onChange={(event) =>
               updateSearch({
@@ -255,7 +258,7 @@ export function ChartMetricPage({
                 {t(`charts.intervals.${interval}`)}
               </option>
             ))}
-          </select>
+          </SelectControl>
         </label>
       </section>
       <QueryNotice
@@ -363,7 +366,7 @@ function PreviewCard({
         params={{ metric }}
         search={{ range: "7d", interval: "auto" }}
       >
-        {t("charts.viewChart")} <span aria-hidden="true">→</span>
+        {t("charts.viewChart")} <UIIcon icon={ArrowRight} />
       </Link>
     </article>
   );
@@ -396,7 +399,7 @@ function Change({ value }: { value?: string }) {
   const negative = value.startsWith("-");
   return (
     <small className={`chart-change ${negative ? "negative" : "positive"}`}>
-      <span aria-hidden="true">{negative ? "↓" : "↑"}</span> {value.replace("-", "")}%{" "}
+      <UIIcon icon={negative ? ArrowDown : ArrowUp} size={14} /> {value.replace("-", "")}%{" "}
       {t("charts.vsPrevious")}
     </small>
   );
@@ -406,7 +409,7 @@ function CoverageBadge({ coverage }: { coverage: ChartOverview["coverage"] }) {
   const { t } = useTranslation();
   return (
     <span className={`coverage-badge ${coverage.complete ? "complete" : "pending"}`}>
-      <span className="status-dot" aria-hidden="true" />
+      <UIIcon icon={CircleDot} size={14} className="status-icon" />
       {coverage.complete
         ? t("charts.backfillComplete")
         : `${t("charts.backfillInProgress")} · ${coverage.backfill_progress}%`}

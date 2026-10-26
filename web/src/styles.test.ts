@@ -21,9 +21,11 @@ describe("shared button layout", () => {
       "account.css",
       "analytics.css",
       "verification.css",
-      "artifacts.css",
       "responsive.css",
     ]);
+    expect(readStylesheet("contracts/ContractArtifactPanel.tsx")).toContain(
+      'import "@/styles/artifacts.css";',
+    );
   });
 
   it("loads shared explorer rules before transaction and execution overrides", () => {

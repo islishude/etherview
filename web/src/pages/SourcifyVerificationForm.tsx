@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/SelectControl";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
@@ -134,7 +135,7 @@ export function SourcifyVerificationForm({
         <div className="form-grid">
           <label className="field-control" htmlFor="sourcify-mode">
             <span>{t("sourcify.method")}</span>
-            <select
+            <SelectControl
               id="sourcify-mode"
               disabled={busy}
               value={mode}
@@ -147,7 +148,7 @@ export function SourcifyVerificationForm({
             >
               <option value="sources">{t("sourcify.sources")}</option>
               <option value="etherscan">{t("sourcify.etherscan")}</option>
-            </select>
+            </SelectControl>
           </label>
           <label className="field-control" htmlFor="sourcify-chain">
             <span>{t("sourcify.chainID")}</span>

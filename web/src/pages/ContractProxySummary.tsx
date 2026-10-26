@@ -1,3 +1,5 @@
+import { ChevronRight, Minus, Plus } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyableField } from "@/components/CopyButton";
@@ -50,7 +52,7 @@ export function ProxySummary({ detail }: { detail: ContractProxyDetails }) {
           type="button"
         >
           {t(expanded ? "contracts.proxy.hideDetails" : "contracts.proxy.viewDetails")}
-          <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+          <UIIcon icon={expanded ? Minus : Plus} />
         </button>
       </div>
       <section aria-label={t("contracts.proxy.title")} hidden={!expanded} id={detailsId}>
@@ -134,6 +136,7 @@ export function ProxySummary({ detail }: { detail: ContractProxyDetails }) {
             {detail && detail.evidence.length > 0 ? (
               <details className="proxy-evidence">
                 <summary>
+                  <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
                   {t("contracts.proxy.evidence", { count: detail.evidence.length })}
                 </summary>
                 <ul>

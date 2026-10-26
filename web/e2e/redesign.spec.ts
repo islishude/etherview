@@ -103,7 +103,30 @@ for (const { width, language, theme } of appearanceCases) {
       await page.goto(route.path);
       await expect(page.locator("main h1")).toBeVisible();
       await expect(page.locator(route.ready).first()).toBeVisible();
-      await expect(page.locator(".query-notice .pulse-dot")).toHaveCount(0);
+      const invalidIcons = await page.locator("svg.ui-icon").evaluateAll((icons) =>
+        icons.flatMap((icon) => {
+          const size = Number(icon.getAttribute("width"));
+          const style = getComputedStyle(icon);
+          return [14, 16, 20, 24].includes(size) &&
+            icon.getAttribute("height") === String(size) &&
+            style.width === `${size}px` &&
+            style.height === `${size}px` &&
+            style.strokeWidth === "2px" &&
+            icon.getAttribute("aria-hidden") === "true" &&
+            icon.getAttribute("focusable") === "false"
+            ? []
+            : [icon.outerHTML];
+        }),
+      );
+      expect(invalidIcons, route.name).toEqual([]);
+      const walletButton = page.locator(".wallet-summary");
+      const walletBox = await walletButton.boundingBox();
+      const walletIcon = await walletButton.locator("svg.ui-icon").boundingBox();
+      expect(walletIcon!.x, route.name).toBeGreaterThan(walletBox!.x + 4);
+      expect(walletIcon!.x + walletIcon!.width, route.name).toBeLessThan(
+        walletBox!.x + walletBox!.width - 4,
+      );
+      await expect(page.locator(".query-notice .live-icon")).toHaveCount(0);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator("html")).toHaveAttribute(
         "lang",

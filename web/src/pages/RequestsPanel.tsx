@@ -1,8 +1,10 @@
+import { UIIcon } from "@/components/UIIcon";
 import "@/styles/explorer/requests.css";
 import i18n from "@/i18n";
 import { requestsResources } from "@/i18n/resources/requests";
 import { useState } from "react";
 import {
+  ChevronRight,
   UserRoundPlus,
   UserRoundMinus,
   PackagePlus,
@@ -56,7 +58,7 @@ function RequestDetails({ item, locale }: { item: ExecutionRequest; locale: stri
     <article className="request-record">
       <header className="request-card-header">
         <span className="request-type-icon" aria-hidden="true">
-          <Icon size={20} />
+          <UIIcon icon={Icon} size={20} />
         </span>
         <div className="request-card-title">
           <h3>{t(`requests.types.${item.request_type}`)}</h3>
@@ -93,7 +95,7 @@ function RequestDetails({ item, locale }: { item: ExecutionRequest; locale: stri
               label={t("requests.fields.source_pubkey")}
               value={item.source_pubkey}
             />
-            <ArrowRight size={16} aria-hidden="true" />
+            <UIIcon icon={ArrowRight} size={16} />
             <PublicKeyPreview
               label={t("requests.fields.target_pubkey")}
               value={item.target_pubkey}
@@ -112,9 +114,9 @@ function RequestDetails({ item, locale }: { item: ExecutionRequest; locale: stri
       </div>
       <details className="request-disclosure">
         <summary>
-          <KeyRound size={14} aria-hidden="true" />
+          <UIIcon icon={KeyRound} size={14} />
           <span>{t("requests.details")}</span>
-          <ChevronDown className="request-chevron" size={16} aria-hidden="true" />
+          <UIIcon icon={ChevronDown} className="request-chevron" size={16} />
         </summary>
         <dl className="request-detail-grid">
           {Object.entries(item)
@@ -158,7 +160,7 @@ export function RequestsPanel({ hash }: { hash: string }) {
       <header className="requests-heading">
         <div className="requests-heading-title">
           <span className="requests-heading-icon" aria-hidden="true">
-            <Layers size={22} />
+            <UIIcon icon={Layers} size={24} />
           </span>
           <div>
             <h2>{t("requests.heading")}</h2>
@@ -195,12 +197,12 @@ export function RequestsPanel({ hash }: { hash: string }) {
                 </span>
               </div>
               <p className="requests-context">
-                <Info size={15} aria-hidden="true" />
+                <UIIcon icon={Info} size={16} />
                 {t("requests.description")}
               </p>
               {data.items.length === 0 ? (
                 <div className="requests-empty">
-                  <Layers size={28} aria-hidden="true" />
+                  <UIIcon icon={Layers} size={24} />
                   <p>{t("requests.empty")}</p>
                 </div>
               ) : (
@@ -224,7 +226,10 @@ export function RequestsPanel({ hash }: { hash: string }) {
                 page={pager.page}
               />
               <details className="block-consensus-details requests-technical">
-                <summary>{t("consensus.technicalDetails")}</summary>
+                <summary>
+                  <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+                  {t("consensus.technicalDetails")}
+                </summary>
                 <dl className="block-consensus-detail-list">
                   <Detail
                     label={t("requests.hash")}
