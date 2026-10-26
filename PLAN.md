@@ -11,7 +11,7 @@ only mandatory external service.
 
 Consensus enrichment, execution requests and blob archives are optional extensions owned by P20,
 with APIs in P40, browsing in P50, and deployment/Preview in P30. Preview writer
-IAM enforcement remains deferred until RustFS 1.0.4 is evaluated; P30 owns the
+IAM enforcement remains deferred until RustFS 1.0.5 is evaluated; P30 owns the
 clearing condition.
 Validator browsing, MEV accounting and L2-specific batch semantics are not core v1 scope.
 

@@ -48,7 +48,7 @@ for (const key of ["derived_enabled", "derived_backfill_enabled", "derived_forwa
 }
 
 const geth = requireService("geth");
-assert.equal(geth.image, "ethereum/client-go:v1.17.8", "Preview Geth image");
+assert.equal(geth.image, "ethereum/client-go:v1.17.10", "Preview Geth image");
 assert.deepEqual(
   geth.entrypoint,
   ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"],
@@ -300,7 +300,7 @@ function assertNoPlatform(value, path) {
 
 const beacon = requireService("lighthouse");
 const validator = requireService("validator");
-assert.equal(beacon.image, "sigp/lighthouse:v8.3.0");
+assert.equal(beacon.image, "sigp/lighthouse:v8.3.2");
 assert.equal(validator.image, beacon.image);
 assert.ok(beacon.command.includes("--supernode"));
 assert.ok(beacon.command.includes("--prune-blobs=false"));
@@ -308,7 +308,7 @@ assert.ok(beacon.command.includes("--execution-endpoint=http://geth:8551"));
 assert.equal(beacon.ports[0].host_ip, "127.0.0.1");
 assert.ok(!geth.ports.some((port) => port.target === 8551));
 assert.equal((validator.ports ?? []).length, 0);
-assert.equal(requireService("object-storage").image, "rustfs/rustfs:1.0.1");
+assert.equal(requireService("object-storage").image, "rustfs/rustfs:1.0.4");
 assert.equal(requireService("archive-init").image, "rustfs/rc:v0.1.36");
 assert.deepEqual(requireService("archive-init").profiles, ["archive-init"]);
 function assertCoreDependencies(name, visited = new Set()) {

@@ -172,11 +172,15 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 ## Current Blockers
 
 Preview storage-enforced conditional-write IAM permissions are deferred by
-operator decision until RustFS 1.0.4 is evaluated. RustFS 1.0.1 and 1.0.3 lack
-the required policy key; application conditional writes and API read-only access
-remain active. Clearing this requires a fixed release containing upstream
+operator decision until RustFS 1.0.5 is evaluated. The deployed RustFS 1.0.4
+still does not resolve this IAM limitation; application conditional writes and
+API read-only access remain active. The
+[runbook](../operations.md#preview-archive-iam-limitation) owns the issue details.
+Clearing this requires a fixed release containing upstream
 [PR #8615](https://github.com/rustfs/rustfs/pull/8615) and real-container rejection
-of unconditional writes and overwrites. This is a retained deployment limitation
+of unconditional writes and overwrites, with unchanged stored bytes after denial.
+The 1.0.5 target is an evaluation checkpoint, not a guarantee of a fix.
+This is a retained deployment limitation
 of P30-T138; its completed local acceptance does not establish writer IAM enforcement.
 P60/P70 release blockers remain independent.
 

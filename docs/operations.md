@@ -174,8 +174,8 @@ it prepares `.local/preview-network/` using the pinned
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
 validator keys. The checked-in `deploy/preview.genesis.json` template remains
 unchanged. Chain ID is 48815, slots take six seconds, and Amsterdam/Gloas are
-active at genesis. Geth v1.17.8 uses full sync and archive state; Lighthouse
-v8.3.0 runs both the Beacon node and validator client. These clients form an
+active at genesis. Geth v1.17.10 uses full sync and archive state; Lighthouse
+v8.3.2 runs both the Beacon node and validator client. These clients form an
 isolated local PoS network with no public bootnodes or external builders.
 
 `make start-preview` reuses an intact bundle, validating every file against its
@@ -206,7 +206,7 @@ supernode with blob pruning disabled. Its Beacon API is published only on
 mounted only into Geth and Lighthouse. Validator keys are isolated from
 application roles. Startup waits for successive real execution/Beacon blocks.
 
-RustFS 1.0.1 stores blobs in the persistent `blob-data` volume. The one-shot
+RustFS 1.0.4 stores blobs in the persistent `blob-data` volume. The one-shot
 `archive-init` service uses RustFS CLI v0.1.36 to provision the private
 `etherview-preview-blobs` bucket and scoped users idempotently. There is no
 expiry policy or trace-cache bucket reuse. API has GetObject permission;
@@ -226,11 +226,38 @@ existing objects. To recreate application roles during an archive outage, use
 `docker compose --env-file .local/preview-push.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
 
-The archive client sends `If-None-Match: *` on writes, but RustFS 1.0.1 cannot
-require that header in IAM policies. Writer credentials can still perform
-unconditional writes. Storage-enforced conditional-write permissions are
-deferred until RustFS 1.0.4 can be evaluated with the upstream policy fix;
-upgrading to 1.0.3 alone does not provide it.
+### Preview archive IAM limitation
+
+The archive client sends `If-None-Match: *` on writes, but upgrading to RustFS
+1.0.4 does not resolve storage-enforced conditional-write IAM permissions.
+The current writer policy grants GetObject/PutObject without requiring that
+header, so writer credentials can still issue unconditional writes and overwrite
+an existing key. API read-only permissions, application conditional creation,
+and independent archive integrity checks remain active; they do not establish
+storage-side protection against direct use of writer credentials.
+
+Upstream [PR #8615](https://github.com/rustfs/rustfs/pull/8615) addresses policies
+rejecting `s3:if-none-match` and `s3:if-match` with `invalid key name`. Its scope
+covers bucket, IAM and STS policies: values come from nonblank request headers,
+not identity claims that could fabricate a missing precondition. For writes,
+`If-None-Match` must be `*`; unsupported ETag values return `501 NotImplemented`,
+while an existing destination with `*` returns `412 PreconditionFailed`.
+The PR also checks raw headers and parsed inputs separately to prevent form
+uploads from bypassing validation. It does not itself provide
+`s3:ObjectCreationOperation` or full AWS conditional-policy parity.
+
+Storage-enforced permissions remain deferred until RustFS 1.0.5 is evaluated.
+This is the next evaluation target, not a promise that the release fixes IAM;
+a merged PR or release milestone is insufficient. Before clearing the limitation,
+verify the deployed image contains the fix and all nodes support the policy keys.
+Using the scoped writer credentials and the proposed policy, test successful
+conditional creation, denial of missing/blank conditions and unconditional
+writes, rejection of overwrites and unsupported ETag conditions, and unchanged
+stored bytes after every rejected operation. Retain the API read-only denial
+check separately. Do not claim IAM enforcement from the application archive
+regression alone.
+
+### Preview recovery
 
 If blocks stop advancing, inspect Geth/Beacon/validator logs and Engine JWT
 identity before changing data. An archive outage affects collection/downloads;
@@ -586,7 +613,7 @@ or SPA protocol change.
 
 ## RustFS trace-cache deployment
 
-The optional `accelerators` Compose profile uses `rustfs/rustfs:1.0.1` as
+The optional `accelerators` Compose profile uses `rustfs/rustfs:1.0.4` as
 `object-storage`. S3 listens on container port 9000 and the console on 9001;
 production Compose publishes neither port. RustFS runs as the image's default
 non-root user, with a new `rustfs-data` named volume. The `/health/ready` probe

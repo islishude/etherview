@@ -43,7 +43,7 @@ for (const serviceName of ["migration", "sync", "enrich", "trace", "metadata", "
 
 const storage = services["object-storage"];
 if (
-  storage?.image !== "rustfs/rustfs:1.0.1" ||
+  storage?.image !== "rustfs/rustfs:1.0.4" ||
   JSON.stringify(storage.command) !== JSON.stringify(["/data"])
 ) {
   throw new Error("object-storage must run the pinned RustFS image with /data");

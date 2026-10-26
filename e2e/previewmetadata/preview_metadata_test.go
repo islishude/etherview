@@ -186,7 +186,7 @@ func newHarness(t *testing.T) *harness {
 	project.Env = map[string]string{
 		"ETHERVIEW_IMAGE":                 image,
 		"ETHERVIEW_CONFIG_FILE":           filepath.Join(root, "deploy", "preview.config.yaml"),
-		"GETH_IMAGE":                      "ethereum/client-go:v1.17.8",
+		"GETH_IMAGE":                      "ethereum/client-go:v1.17.10",
 		"RUSTFS_ACCESS_KEY":               "etherview",
 		"RUSTFS_SECRET_KEY":               "etherview-dev-only",
 		"PREVIEW_BLOB_READ_SECRET":        "preview-read-dev-only",

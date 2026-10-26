@@ -1129,15 +1129,18 @@ restart, Amsterdam header and exact native-transfer acceptance in split and
 all-role layouts. Every test owns its generated network bundle, Compose project,
 volumes and ephemeral loopback ports; it never overwrites the daily Preview.
 
-`make test-preview-consensus` runs the fixed Geth v1.17.8 / Lighthouse v8.3.0
+`make test-preview-consensus` runs the fixed Geth v1.17.10 / Lighthouse v8.3.2
 combination with Gloas at genesis and the durable RustFS archive. It checks
 real blob transactions with cell proofs, exact Beacon/execution associations,
 consensus-first slots, independent Beacon/S3/API byte readback, checksum and
 commitment identity, read-only API credentials, client/object-store outages,
 core recreation during archive outages in both role layouts, failed and repeated
 archive initialization, container recreation and monolith publication.
-Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.1;
-the read-only denial check does not establish that property.
+Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.4;
+the read-only denial check does not establish that property. Reevaluate 1.0.5
+against the [IAM clearing conditions](operations.md#preview-archive-iam-limitation);
+a passing `make test-rustfs` establishes application conditional-create behavior,
+not writer-policy enforcement.
 The test waits for a nonzero
 finalized epoch rather than treating container readiness as consensus acceptance.
 It has a 22-minute scenario budget and a 25-minute test-process deadline.

@@ -156,7 +156,7 @@ under `.local/preview-tls/` for `etherview.localhost`, `localhost`,
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
 `make start-preview` builds images, then prepares or verifies an ignored
-`.local/preview-network/` bundle. It starts Geth v1.17.8, Lighthouse v8.3.0
+`.local/preview-network/` bundle. It starts Geth v1.17.10, Lighthouse v8.3.2
 Beacon/validator clients and a scoped RustFS blob archive. Chain ID remains
 48815 with Amsterdam/Gloas at genesis, 64 validators and six-second slots.
 The checked-in genesis template remains unchanged. Network files, Engine JWT

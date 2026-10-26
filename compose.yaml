@@ -135,7 +135,7 @@ services:
       - postgres-data:/var/lib/postgresql
 
   geth:
-    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.8}
+    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.10}
     entrypoint: ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"]
     command:
       - --networkid=48815
@@ -169,7 +169,7 @@ services:
     restart: unless-stopped
 
   lighthouse:
-    image: sigp/lighthouse:v8.3.0
+    image: sigp/lighthouse:v8.3.2
     command:
       - lighthouse
       - --testnet-dir=/network
@@ -198,7 +198,7 @@ services:
     restart: unless-stopped
 
   validator:
-    image: sigp/lighthouse:v8.3.0
+    image: sigp/lighthouse:v8.3.2
     entrypoint: ["/bin/sh", "/validator.sh"]
     volumes:
       - ./deploy/preview/validator.sh:/validator.sh:ro
@@ -211,7 +211,7 @@ services:
     restart: unless-stopped
 
   object-storage:
-    image: rustfs/rustfs:1.0.1
+    image: rustfs/rustfs:1.0.4
     command: ["/data"]
     environment:
       RUSTFS_ADDRESS: ":9000"

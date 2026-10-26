@@ -60,7 +60,7 @@ func TestPreviewConsensus(t *testing.T) {
 	h.assertConsensusBlob(ctx, recovered, recoveredBlob)
 	h.t.Log("real blob publication, permissions, restart and both roles passed; waiting for finality")
 	h.waitFinality(ctx)
-	report := map[string]any{"execution_hash": receipt.BlockHash.Hex(), "beacon_root": observation.Root, "slot": observation.Slot, "blob_sha256": refs[0].SHA256, "monolith_execution_hash": second.BlockHash.Hex(), "lighthouse": "v8.3.0", "geth": "v1.17.8", "roles": []string{"distributed", "all"}, "finality": true, "restart": true, "archive_permissions": true, "execution_requests": true}
+	report := map[string]any{"execution_hash": receipt.BlockHash.Hex(), "beacon_root": observation.Root, "slot": observation.Slot, "blob_sha256": refs[0].SHA256, "monolith_execution_hash": second.BlockHash.Hex(), "lighthouse": "v8.3.2", "geth": "v1.17.10", "roles": []string{"distributed", "all"}, "finality": true, "restart": true, "archive_permissions": true, "execution_requests": true}
 	raw, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		t.Fatal(err)

@@ -13,7 +13,7 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/coder/websocket v1.8.15
 	github.com/ensdomains/go-ens/v4 v4.0.0
-	github.com/ethereum/go-ethereum v1.17.8
+	github.com/ethereum/go-ethereum v1.17.10
 	github.com/fjl/geas v0.3.3
 	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/getkin/kin-openapi v0.149.0
@@ -121,8 +121,6 @@ require (
 	github.com/pk910/hashtree-bindings v0.2.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/protolambda/bls12-381-util v0.1.0 // indirect
-	github.com/protolambda/zrnt v0.34.1 // indirect
-	github.com/protolambda/ztyp v0.2.2 // indirect
 	github.com/riza-io/grpc-go v0.2.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
