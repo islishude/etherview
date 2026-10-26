@@ -37,18 +37,18 @@ afterEach(() => {
   delete window.turnstile;
   vi.unstubAllGlobals();
 });
-function wrap(node: React.ReactNode, enabled = true) {
+function wrap(node: React.ReactNode, enabled: boolean | null = true) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   client.setQueryData(["config"], {
     features: { user_auth: true },
-    turnstile: { verification_enabled: enabled, csv_export_enabled: enabled, site_key: "public" },
+    ...(enabled === null ? {} : { turnstile: { enabled, site_key: "public" } }),
   });
   return <QueryClientProvider client={client}>{node}</QueryClientProvider>;
 }
-function ChallengeForm() {
-  const gate = useTurnstile("csv_export");
+function ChallengeForm({ action = "csv_export" }: { action?: "csv_export" | "verification" }) {
+  const gate = useTurnstile(action);
   return (
     <>
       {gate.challenge}
@@ -176,5 +176,25 @@ for (const kind of ["local", "sourcify-import", "sourcify", "sourcify-from-ether
         "X-Turnstile-Token",
       ),
     ).toBe("token-two");
+  });
+}
+
+for (const action of ["csv_export", "verification"] as const) {
+  it.each([false, null])(
+    `allows ${action} without a token when protection is disabled or omitted (%s)`,
+    (enabled) => {
+      render(wrap(<ChallengeForm action={action} />, enabled));
+      expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
+      expect(callbacks).toHaveLength(0);
+      expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
+    },
+  );
+  it(`protects ${action} with the shared switch and preserves the widget action`, async () => {
+    render(wrap(<ChallengeForm action={action} />));
+    await waitFor(() => expect(callbacks).toHaveLength(1));
+    expect(callbacks[0]!.action).toBe(action);
+    expect(screen.getByRole("button", { name: "Download" })).toBeDisabled();
+    act(() => callbacks[0]!.callback("token"));
+    expect(screen.getByRole("button", { name: "Download" })).toBeEnabled();
   });
 }

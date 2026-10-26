@@ -2361,7 +2361,7 @@ components:
       in: header
       required: false
       description: >-
-        Required when runtime Turnstile protection is enabled for this operation.
+        Required when the shared runtime Turnstile switch is enabled.
         Single-use token; action must be verification for browser verification
         or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid;
         verification service failures return 503 turnstile_unavailable.
@@ -3386,14 +3386,13 @@ components:
             type: boolean
     PublicTurnstileConfig:
       type: object
-      required: [site_key, verification_enabled, csv_export_enabled]
+      required: [site_key, enabled]
       properties:
         site_key:
           type: string
-        verification_enabled:
+        enabled:
           type: boolean
-        csv_export_enabled:
-          type: boolean
+          description: Shared switch for all browser Turnstile-protected operations.
     WalletNativeCurrency:
       type: object
       required: [name, symbol, decimals]

@@ -62,7 +62,7 @@ protect browser verification and CSV downloads; address actions use a compact to
 
 ## Acceptance
 
-- [x] Independent default-off Turnstile switches protect browser verification
+- [x] One shared default-off Turnstile switch protects browser verification
       (including all Sourcify paths) and CSV exports with server-side validation,
       session-bound widget lifecycle and narrowly scoped shell CSP. Native
       API-key clients are unchanged; address actions are compact, bilingual,
@@ -139,7 +139,7 @@ P50-T79 passed local `make check`, 712 frontend tests, all 134 embedded Chromium
 scenarios, `make test-integration-race` and `make test-runtime-e2e`. Tests cover
 bounded Siteverify transport, authentication ordering, secret role isolation,
 CSP, expiry/retry/account changes, CSV failures and bilingual toolbar screenshots.
-Production all/split tests enable both guards after real SIWE, reject missing
+Production all/split tests enable the shared guard after real SIWE, reject missing
 tokens on all five protected POSTs and still accept native API-key submissions.
 Mock widgets and transports do not establish live Cloudflare domain/secret
 correctness or remote CI acceptance.

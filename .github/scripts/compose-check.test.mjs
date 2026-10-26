@@ -17,6 +17,7 @@ const applicationKeys = [
 ];
 const observedKeys = [
   ...applicationKeys,
+  "ETHERVIEW_TURNSTILE_ENABLED",
   "ETHERVIEW_TURNSTILE_SITE_KEY",
   "ETHERVIEW_TURNSTILE_SECRET_KEY",
   "ETHERVIEW_TURNSTILE_SECRET_KEY_FILE",
@@ -75,6 +76,7 @@ if (command === "node") {
   const services = Object.fromEntries(["etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance"].map((role) => [role, { environment }]));
   if (process.env.ETHERVIEW_TURNSTILE_SITE_KEY) {
     for (const role of ["etherview", "api"]) services[role].environment = { ...environment,
+      ETHERVIEW_TURNSTILE_ENABLED: process.env.ETHERVIEW_TURNSTILE_ENABLED,
       ETHERVIEW_TURNSTILE_SITE_KEY: process.env.ETHERVIEW_TURNSTILE_SITE_KEY,
       ETHERVIEW_TURNSTILE_SECRET_KEY: process.env.ETHERVIEW_TURNSTILE_SECRET_KEY,
       ETHERVIEW_TURNSTILE_SECRET_KEY_FILE: process.env.ETHERVIEW_TURNSTILE_SECRET_KEY_FILE,
@@ -131,6 +133,11 @@ test("Compose matrix retains every layout and isolates renderer and validator en
     compose.filter((event) => event.env.ETHERVIEW_TURNSTILE_SITE_KEY === "public-widget").length,
     3,
   );
+  for (const event of compose.filter(
+    (e) => e.env.ETHERVIEW_TURNSTILE_SITE_KEY === "public-widget",
+  )) {
+    assert.equal(event.env.ETHERVIEW_TURNSTILE_ENABLED, "true");
+  }
   const profiles = (e) => e.args.flatMap((arg, i) => (arg === "--profile" ? [e.args[i + 1]] : []));
   assert.deepEqual(renders.map(profiles), [
     ["monolith"],

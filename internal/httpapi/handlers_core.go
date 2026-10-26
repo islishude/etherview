@@ -72,8 +72,8 @@ func (h *Handler) publicConfig(w http.ResponseWriter, r *http.Request) {
 		NativeDecimals: int(h.cfg.Chain.NativeDecimals),
 		Features:       features,
 	}
-	if h.cfg.Turnstile.Enabled() {
-		data.Turnstile = &gen.PublicTurnstileConfig{SiteKey: h.cfg.Turnstile.SiteKey, VerificationEnabled: h.cfg.Turnstile.VerificationEnabled, CsvExportEnabled: h.cfg.Turnstile.CSVExportEnabled}
+	if h.cfg.Turnstile.Enabled {
+		data.Turnstile = &gen.PublicTurnstileConfig{SiteKey: h.cfg.Turnstile.SiteKey, Enabled: h.cfg.Turnstile.Enabled}
 	}
 	if len(h.cfg.Wallet.AddChain.RPCURLs) > 0 {
 		var blockExplorerURLs, iconURLs *[]string

@@ -139,14 +139,13 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 	})
 }
 
-// Enable both guards on the production API/all process after proving the default
+// Enable the shared guard on the production API/all process after proving the default
 // paths. No real provider request or production widget secret is needed to prove
 // admission rejects missing tokens and native authentication remains independent.
 func (h *harness) assertTurnstileProtection(ctx context.Context, session runtimeWatchSession, target, apiKey string, input []byte) {
 	h.t.Helper()
 	h.project.Env["ETHERVIEW_RUNTIME_SOURCIFY"] = "true"
-	h.project.Env["ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED"] = "true"
-	h.project.Env["ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED"] = "true"
+	h.project.Env["ETHERVIEW_TURNSTILE_ENABLED"] = "true"
 	h.project.Env["ETHERVIEW_TURNSTILE_SITE_KEY"] = "runtime-public-key"
 	h.project.Env["ETHERVIEW_TURNSTILE_SECRET_KEY"] = "runtime-private-key"
 	h.secrets = append(h.secrets, "runtime-private-key")

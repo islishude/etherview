@@ -78,7 +78,8 @@ the worker and tests its MIME, cache, CSP and missing-file behavior.
 ### Optional browser human verification
 
 Turnstile is an explicit runtime-controlled external script/iframe exception.
-Independent default-off verification and CSV switches enable only the fixed
+The shared default-off `turnstile.enabled` switch protects browser verification,
+CSV exports and future protected operations, and enables only the fixed
 `https://challenges.cloudflare.com` script and frame sources on SPA shell
 responses, including navigation fallbacks. Other responses retain the baseline
 policy; connect-src stays same-origin, with no unsafe-inline/eval or wildcard.

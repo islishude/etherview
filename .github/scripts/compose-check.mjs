@@ -226,13 +226,13 @@ function main() {
       `Turnstile ${label}`,
       files,
       {
-        ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED: "true",
-        ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED: "true",
+        ETHERVIEW_TURNSTILE_ENABLED: "true",
         ETHERVIEW_TURNSTILE_SITE_KEY: "public-widget",
         ETHERVIEW_TURNSTILE_SECRET_KEY: "private-widget",
         ETHERVIEW_TURNSTILE_SECRET_KEY_FILE: "/run/secrets/turnstile",
       },
       ({ services }) => {
+        assert.equal(services[owner].environment.ETHERVIEW_TURNSTILE_ENABLED, "true");
         assert.equal(services[owner].environment.ETHERVIEW_TURNSTILE_SITE_KEY, "public-widget");
         assert.equal(services[owner].environment.ETHERVIEW_TURNSTILE_SECRET_KEY, "private-widget");
         for (const [name, service] of Object.entries(services)) {

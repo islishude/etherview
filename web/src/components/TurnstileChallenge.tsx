@@ -62,8 +62,7 @@ export function useTurnstile(action: Action) {
   const config = usePublicConfig();
   const identity = usePrivateIdentity();
   const settings = config.data?.turnstile;
-  const enabled =
-    action === "verification" ? settings?.verification_enabled : settings?.csv_export_enabled;
+  const enabled = settings?.enabled;
   const [generation, setGeneration] = useState(0);
   const [token, setToken] = useState("");
   const current = useRef<{ owner: string; token: string } | null>(null);

@@ -13,6 +13,8 @@ import (
 func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), forcedRoles []string) (bool, error) {
 	for _, removed := range []string{
 		"COMPILER_SANDBOX",
+		"TURNSTILE_VERIFICATION_ENABLED",
+		"TURNSTILE_CSV_EXPORT_ENABLED",
 		"FEATURE_X402_BILLING",
 		"X402_COARSE_IP_RATE",
 		"X402_COARSE_IP_BURST",
@@ -51,15 +53,12 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 }
 
 func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error), apiRole bool) error {
-	if err := setBool(lookup, "TURNSTILE_VERIFICATION_ENABLED", &cfg.Turnstile.VerificationEnabled); err != nil {
-		return err
-	}
-	if err := setBool(lookup, "TURNSTILE_CSV_EXPORT_ENABLED", &cfg.Turnstile.CSVExportEnabled); err != nil {
+	if err := setBool(lookup, "TURNSTILE_ENABLED", &cfg.Turnstile.Enabled); err != nil {
 		return err
 	}
 	setString(lookup, "TURNSTILE_SITE_KEY", &cfg.Turnstile.SiteKey)
 	cfg.Turnstile.SecretKey = ""
-	if apiRole && cfg.Turnstile.Enabled() {
+	if apiRole && cfg.Turnstile.Enabled {
 		key, err := lookupValueOrFile("TURNSTILE_SECRET_KEY", lookup, readFile)
 		if err != nil {
 			return err

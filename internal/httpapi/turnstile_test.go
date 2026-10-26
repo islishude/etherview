@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -33,8 +34,7 @@ func TestTurnstileBeforeProtectedWork(t *testing.T) {
 		} {
 			t.Run(path+tc.name, func(t *testing.T) {
 				h, _, service := browserVerificationHandler(t)
-				h.cfg.Turnstile.VerificationEnabled = true
-				h.cfg.Turnstile.CSVExportEnabled = true
+				h.cfg.Turnstile.Enabled = true
 				watch := &fakeWatchlist{}
 				h.watchlist = watch
 				calls := 0
@@ -72,45 +72,42 @@ func TestTurnstileBeforeProtectedWork(t *testing.T) {
 	}
 }
 
-func TestTurnstileSwitchesAndAcceptedExport(t *testing.T) {
-	for _, verify := range []bool{false, true} {
-		for _, csv := range []bool{false, true} {
-			h, _, _ := browserVerificationHandler(t)
-			h.cfg.Turnstile.VerificationEnabled = verify
-			h.cfg.Turnstile.CSVExportEnabled = csv
-			watch := &fakeWatchlist{}
-			h.watchlist = watch
-			calls := 0
-			h.turnstile = challengeValidator(func(_ context.Context, token, action string) error {
-				calls++
-				if action != "csv_export" || token != "token" {
-					t.Fatal("incorrect validation")
-				}
-				return nil
-			})
-			req := httptest.NewRequest("POST", "/api/v1/users/me/exports/address-activity", strings.NewReader(`{"address":"`+testAddress+`","kind":"transaction","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`))
-			req.Header.Set("Origin", testAuthOrigin)
-			req.Header.Set("X-CSRF-Token", "csrf")
-			req.Header.Set("X-Turnstile-Token", "token")
+func TestTurnstileSharedSwitchAndAcceptedExport(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		h, _, _ := browserVerificationHandler(t)
+		h.cfg.Turnstile.Enabled = enabled
+		watch := &fakeWatchlist{}
+		h.watchlist = watch
+		calls := 0
+		h.turnstile = challengeValidator(func(_ context.Context, token, action string) error {
+			calls++
+			if action != "csv_export" || token != "token" {
+				t.Fatal("incorrect validation")
+			}
+			return nil
+		})
+		req := httptest.NewRequest("POST", "/api/v1/users/me/exports/address-activity", strings.NewReader(`{"address":"`+testAddress+`","kind":"transaction","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`))
+		req.Header.Set("Origin", testAuthOrigin)
+		req.Header.Set("X-CSRF-Token", "csrf")
+		req.Header.Set("X-Turnstile-Token", "token")
+		req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, req)
+		want := 0
+		if enabled {
+			want = 1
+		}
+		if out.Code != 200 || calls != want || len(watch.users) != 1 {
+			t.Fatalf("status=%d calls=%d %s", out.Code, calls, out.Body.String())
+		}
+		// Watch reads and job reads never consume a challenge.
+		for _, path := range []string{"/users/me/watchlist", "/verification-jobs/123e4567-e89b-42d3-a456-426614174000"} {
+			req = httptest.NewRequest("GET", "/api/v1"+path, nil)
 			req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
-			out := httptest.NewRecorder()
+			out = httptest.NewRecorder()
 			h.ServeHTTP(out, req)
-			want := 0
-			if csv {
-				want = 1
-			}
-			if out.Code != 200 || calls != want || len(watch.users) != 1 {
-				t.Fatalf("status=%d calls=%d %s", out.Code, calls, out.Body.String())
-			}
-			// Watch reads and job reads never consume a challenge.
-			for _, path := range []string{"/users/me/watchlist", "/verification-jobs/123e4567-e89b-42d3-a456-426614174000"} {
-				req = httptest.NewRequest("GET", "/api/v1"+path, nil)
-				req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
-				out = httptest.NewRecorder()
-				h.ServeHTTP(out, req)
-				if calls != want {
-					t.Fatal("read consumed token")
-				}
+			if calls != want {
+				t.Fatal("read consumed token")
 			}
 		}
 	}
@@ -118,7 +115,7 @@ func TestTurnstileSwitchesAndAcceptedExport(t *testing.T) {
 
 func TestAuthenticationPrecedesTurnstile(t *testing.T) {
 	h, _, _ := browserVerificationHandler(t)
-	h.cfg.Turnstile.VerificationEnabled = true
+	h.cfg.Turnstile.Enabled = true
 	h.turnstile = challengeValidator(func(context.Context, string, string) error { t.Fatal("authentication bypass"); return nil })
 	for _, cookie := range []bool{false, true} {
 		r := httptest.NewRequest("POST", "/api/v1/verification-jobs/local", unreadVerificationBody{t})
@@ -136,37 +133,85 @@ func TestAuthenticationPrecedesTurnstile(t *testing.T) {
 }
 
 func TestTurnstilePublicConfigRedaction(t *testing.T) {
-	h, _, _ := browserVerificationHandler(t)
-	h.cfg.Turnstile.VerificationEnabled = true
-	h.cfg.Turnstile.SiteKey = "public-widget"
-	h.cfg.Turnstile.SecretKey = "private-widget"
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/config", nil))
-	if !strings.Contains(w.Body.String(), "public-widget") || strings.Contains(w.Body.String(), "private-widget") {
-		t.Fatal(w.Body.String())
+	for _, enabled := range []bool{false, true} {
+		h, _, _ := browserVerificationHandler(t)
+		h.cfg.Turnstile.Enabled = enabled
+		h.cfg.Turnstile.SiteKey = "public-widget"
+		h.cfg.Turnstile.SecretKey = "private-widget"
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/config", nil))
+		var result struct{ Data map[string]json.RawMessage }
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		raw, present := result.Data["turnstile"]
+		if present != enabled || strings.Contains(w.Body.String(), "private-widget") {
+			t.Fatal(w.Body.String())
+		}
+		if enabled {
+			var settings map[string]any
+			if err := json.Unmarshal(raw, &settings); err != nil {
+				t.Fatal(err)
+			}
+			if len(settings) != 2 || settings["enabled"] != true || settings["site_key"] != "public-widget" {
+				t.Fatal(settings)
+			}
+		}
 	}
 }
 
 func TestTurnstileAcceptedBrowserSubmission(t *testing.T) {
-	h, _, service := browserVerificationHandler(t)
-	h.cfg.Turnstile.VerificationEnabled = true
-	calls := 0
-	h.turnstile = challengeValidator(func(_ context.Context, token, action string) error {
-		calls++
-		if token != "valid-token" || action != "verification" {
-			t.Fatal("incorrect challenge")
+	for _, enabled := range []bool{false, true} {
+		h, _, service := browserVerificationHandler(t)
+		h.cfg.Turnstile.Enabled = enabled
+		calls := 0
+		h.turnstile = challengeValidator(func(_ context.Context, token, action string) error {
+			calls++
+			if token != "valid-token" || action != "verification" {
+				t.Fatal("incorrect challenge")
+			}
+			return nil
+		})
+		body := `{"address":"` + testAddress + `","language":"solidity","compiler_version":"0.8.30","input_kind":"standard_json","input":{"sources":{"A.sol":{"content":"contract A {}"}}}}`
+		req := httptest.NewRequest("POST", "/api/v1/verification-jobs/local", strings.NewReader(body))
+		req.Header.Set("Origin", testAuthOrigin)
+		req.Header.Set("X-CSRF-Token", "csrf")
+		if enabled {
+			req.Header.Set("X-Turnstile-Token", "valid-token")
 		}
-		return nil
-	})
-	body := `{"address":"` + testAddress + `","language":"solidity","compiler_version":"0.8.30","input_kind":"standard_json","input":{"sources":{"A.sol":{"content":"contract A {}"}}}}`
-	req := httptest.NewRequest("POST", "/api/v1/verification-jobs/local", strings.NewReader(body))
-	req.Header.Set("Origin", testAuthOrigin)
-	req.Header.Set("X-CSRF-Token", "csrf")
-	req.Header.Set("X-Turnstile-Token", "valid-token")
-	req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
-	out := httptest.NewRecorder()
-	h.ServeHTTP(out, req)
-	if out.Code != 202 || calls != 1 || service.calls != 1 {
-		t.Fatalf("status=%d calls=%d jobs=%d body=%s", out.Code, calls, service.calls, out.Body.String())
+		req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, req)
+		want := 0
+		if enabled {
+			want = 1
+		}
+		if out.Code != 202 || calls != want || service.calls != 1 {
+			t.Fatalf("status=%d calls=%d jobs=%d body=%s", out.Code, calls, service.calls, out.Body.String())
+		}
+	}
+}
+
+func TestTurnstileSharedSwitchForNewActions(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		h, _, _ := browserVerificationHandler(t)
+		h.cfg.Turnstile.Enabled = enabled
+		for _, action := range []string{"verification", "csv_export", "future_action"} {
+			calls := 0
+			h.turnstile = challengeValidator(func(_ context.Context, token, got string) error {
+				calls++
+				if got != action || token != "token" {
+					t.Fatal("action was not preserved")
+				}
+				return turnstile.ErrInvalid
+			})
+			r := httptest.NewRequest("POST", "/", nil)
+			r.Header.Set("X-Turnstile-Token", "token")
+			w := httptest.NewRecorder()
+			accepted := h.requireTurnstile(w, r, action)
+			if enabled && (accepted || calls != 1 || w.Code != 403) || !enabled && (!accepted || calls != 0) {
+				t.Fatalf("action=%s enabled=%t accepted=%t calls=%d status=%d", action, enabled, accepted, calls, w.Code)
+			}
+		}
 	}
 }

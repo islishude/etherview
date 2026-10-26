@@ -87,7 +87,8 @@ exports, P50 owns the private Web workspace, and P70 owns release acceptance.
 
 ## Optional CSV challenge
 
-`turnstile.csv_export_enabled` defaults off independently of verification.
+`turnstile.enabled` defaults off and is shared with browser verification and
+future protected operations; there are no per-operation switches.
 Enabled exports require `X-Turnstile-Token` with Siteverify action `csv_export`
 and the configured public hostname. Validation follows SIWE/Origin/CSRF checks
 and precedes export admission and the writer snapshot. Invalid challenges

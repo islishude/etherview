@@ -240,7 +240,7 @@ type Handler struct {
 }
 
 func New(options Options) (*Handler, error) {
-	if options.Turnstile == nil && options.Config.Turnstile.Enabled() {
+	if options.Turnstile == nil && options.Config.Turnstile.Enabled {
 		options.Turnstile = turnstile.New(options.Config.Turnstile.SecretKey, options.Config.Server.PublicURL)
 	}
 	if options.Reader == nil {
