@@ -1,14 +1,59 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, cpSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  cpSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+  readlinkSync,
+  symlinkSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { allowedPath, validVersion, validateSets, assertAppendOnly } from "./update.mjs";
+import {
+  allowedPath,
+  validVersion,
+  validateSets,
+  assertAppendOnly,
+  copyUpdateInput,
+} from "./update.mjs";
 import { publishDiscovery } from "../../.github/scripts/vyper-discover.mjs";
 import { disposition, validateChanges } from "./update-pr.mjs";
 import { ROOT, readJSON } from "./wasm/tooling.mjs";
 
 const future = `${Math.max(...readJSON(join(ROOT, "compiler/vyper/versions/index.json")).versions.map((v) => Number(v.version.split(".")[0]))) + 1}.0.0`;
+
+test("update copies the license alias into an isolated tree without following source links", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "vyper-license-source-"));
+  const tree = mkdtempSync(join(tmpdir(), "vyper-license-copy-"));
+  t.after(() => {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(tree, { recursive: true, force: true });
+  });
+  mkdirSync(join(root, "licenses"));
+  writeFileSync(join(root, "licenses/LICENSE"), "original license");
+  symlinkSync("licenses/LICENSE", join(root, "LICENSE"));
+  copyUpdateInput(root, tree, "LICENSE");
+  copyUpdateInput(root, tree, "licenses/LICENSE");
+  assert.equal(readlinkSync(join(tree, "LICENSE")), "licenses/LICENSE");
+  assert.equal(readFileSync(join(tree, "LICENSE"), "utf8"), "original license");
+  writeFileSync(join(tree, "LICENSE"), "isolated change");
+  assert.equal(readFileSync(join(root, "LICENSE"), "utf8"), "original license");
+  for (const target of ["../outside", join(root, "licenses/LICENSE"), "missing"]) {
+    rmSync(join(root, "LICENSE"));
+    symlinkSync(target, join(root, "LICENSE"));
+    assert.throws(() => copyUpdateInput(root, tree, "LICENSE"), /unsupported tracked symlink/);
+  }
+  symlinkSync("licenses/LICENSE", join(root, "other-link"));
+  assert.throws(() => copyUpdateInput(root, tree, "other-link"), /unsupported tracked symlink/);
+  rmSync(join(root, "LICENSE"));
+  symlinkSync("licenses/LICENSE", join(root, "LICENSE"));
+  rmSync(join(root, "licenses/LICENSE"));
+  symlinkSync(join(tree, "licenses/LICENSE"), join(root, "licenses/LICENSE"));
+  assert.throws(() => copyUpdateInput(root, tree, "LICENSE"), /unsupported tracked symlink/);
+});
 
 test("remaining baseline and all version sets agree; retired source is unavailable", () => {
   validateSets();
@@ -142,6 +187,7 @@ test("failed generation leaves existing files unchanged and emits no partial pat
             },
       download: async () => {},
       run: (root, command, args) => {
+        assert.equal(readlinkSync(join(root, "LICENSE")), "licenses/LICENSE");
         if (command === "go") throw new Error("simulated assembly failure");
         execFileSync(command, args, { cwd: root, stdio: "pipe" });
       },

@@ -50,22 +50,58 @@ func certificate(t *testing.T) (string, string, *x509.CertPool) {
 	roots.AppendCertsFromPEM(certPEM)
 	return certPath, keyPath, roots
 }
-func freeAddress(t *testing.T) string {
+func startGateway(t *testing.T, o options) (options, context.CancelFunc, <-chan error) {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+	// Keep OS-assigned ports bound throughout startup. Closing a probe listener
+	// lets either the next probe or another process reuse the same port.
+	o.address, o.healthAddress = "127.0.0.1:0", "127.0.0.1:0"
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	addresses := make(chan string, 2)
+	go func(o options) {
+		defer close(done)
+		done <- serveWithListen(ctx, o, func(network, address string) (net.Listener, error) {
+			listener, err := net.Listen(network, address)
+			if err == nil {
+				addresses <- listener.Addr().String()
+			}
+			return listener, err
+		})
+	}(o)
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("gateway stopped: %v", err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("gateway cleanup hung")
+		}
+	})
+	for _, address := range []*string{&o.address, &o.healthAddress} {
+		select {
+		case *address = <-addresses:
+		case err := <-done:
+			t.Fatalf("gateway exited during startup: %v", err)
+		case <-time.After(3 * time.Second):
+			t.Fatal("gateway did not bind listeners")
+		}
 	}
-	address := l.Addr().String()
-	_ = l.Close()
-	return address
+	awaitReady(t, o.healthAddress, done)
+	return o, cancel, done
 }
-func awaitReady(t *testing.T, address string) {
+func awaitReady(t *testing.T, address string, done <-chan error) {
 	t.Helper()
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 	defer client.CloseIdleConnections()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
+		select {
+		case err := <-done:
+			t.Fatalf("gateway exited before readiness: %v", err)
+		default:
+		}
 		resp, err := client.Get("http://" + address + "/health")
 		if err == nil {
 			_ = resp.Body.Close()
@@ -79,12 +115,7 @@ func awaitReady(t *testing.T, address string) {
 }
 func TestTLSAndLifecycle(t *testing.T) {
 	cert, key, roots := certificate(t)
-	o := options{address: freeAddress(t), healthAddress: freeAddress(t), upstream: "http://127.0.0.1:1", cert: cert, key: key}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- serve(ctx, o) }()
-	awaitReady(t, o.healthAddress)
+	o, cancel, done := startGateway(t, options{upstream: "http://127.0.0.1:1", cert: cert, key: key})
 	for _, test := range []struct {
 		name, host string
 		roots      *x509.CertPool
@@ -137,16 +168,17 @@ func TestCertificateFailureBeforeListen(t *testing.T) {
 	cert, key, _ := certificate(t)
 	_, otherKey, _ := certificate(t)
 	for _, test := range []struct{ cert, key string }{{"missing", key}, {cert, "missing"}, {cert, otherKey}} {
-		address := freeAddress(t)
-		err := serve(context.Background(), options{address: address, healthAddress: freeAddress(t), upstream: "http://ipfs:8080", cert: test.cert, key: test.key})
+		listened := false
+		err := serveWithListen(context.Background(), options{upstream: "http://ipfs:8080", cert: test.cert, key: test.key}, func(_, _ string) (net.Listener, error) {
+			listened = true
+			return nil, gatewayError("unexpected_listen")
+		})
 		if err == nil || err.Error() != "invalid_tls_certificate" {
 			t.Fatalf("unexpected error %v", err)
 		}
-		l, err := net.Listen("tcp", address)
-		if err != nil {
+		if listened {
 			t.Fatal("bound before certificate validation")
 		}
-		_ = l.Close()
 	}
 }
 func TestUpstreamValidation(t *testing.T) {
@@ -171,12 +203,7 @@ func TestGracefulDrain(t *testing.T) {
 	}))
 	defer func() { once.Do(func() { close(release) }); upstream.Close() }()
 	cert, key, roots := certificate(t)
-	o := options{address: freeAddress(t), healthAddress: freeAddress(t), upstream: upstream.URL, cert: cert, key: key}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- serve(ctx, o) }()
-	awaitReady(t, o.healthAddress)
+	o, cancel, done := startGateway(t, options{upstream: upstream.URL, cert: cert, key: key})
 	transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: "ipfs.preview.test"}, ForceAttemptHTTP2: true}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}

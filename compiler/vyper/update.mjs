@@ -11,6 +11,8 @@ import {
   existsSync,
   readdirSync,
   lstatSync,
+  readlinkSync,
+  symlinkSync,
   renameSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -94,6 +96,28 @@ const run = (root, command, args, options = {}) =>
   execFileSync(command, args, { cwd: root, stdio: "inherit", timeout: 900000, ...options });
 const save = (path, data) => writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
 
+export function copyUpdateInput(root, tree, name) {
+  const source = join(root, name);
+  const info = lstatSync(source, { throwIfNoEntry: false });
+  if (!info) return; // Preserve locally deleted tracked files.
+  const destination = join(tree, name);
+  if (info.isSymbolicLink()) {
+    // The repository's license-discovery link is the only supported alias.
+    // Recreate it inside the isolated tree; never follow a link into the source.
+    if (
+      name !== "LICENSE" ||
+      readlinkSync(source) !== "licenses/LICENSE" ||
+      !lstatSync(join(root, "licenses/LICENSE"), { throwIfNoEntry: false })?.isFile()
+    )
+      throw new Error("unsupported tracked symlink");
+    symlinkSync("licenses/LICENSE", destination);
+    return;
+  }
+  if (!info.isFile()) throw new Error("non-regular tracked input");
+  mkdirSync(dirname(destination), { recursive: true });
+  copyFileSync(source, destination);
+}
+
 export function assertAppendOnly(before, after, version) {
   for (const [path, key] of [
     ["compiler/vyper/versions/index.json", "versions"],
@@ -148,13 +172,7 @@ export async function generate(version, output, services = {}) {
     )
       .split("\0")
       .filter(Boolean);
-    for (const name of files) {
-      const source = join(root, name);
-      if (!existsSync(source)) continue;
-      if (!lstatSync(source).isFile()) throw new Error("non-regular tracked input");
-      mkdirSync(dirname(join(tree, name)), { recursive: true });
-      copyFileSync(source, join(tree, name));
-    }
+    for (const name of files) copyUpdateInput(root, tree, name);
     execute(tree, "git", ["init", "-q"]);
     execute(tree, "git", ["add", "."]);
     execute(tree, "git", [

@@ -12,6 +12,10 @@ import (
 )
 
 func serve(ctx context.Context, o options) error {
+	return serveWithListen(ctx, o, net.Listen)
+}
+
+func serveWithListen(ctx context.Context, o options, listen func(string, string) (net.Listener, error)) error {
 	u, err := upstreamURL(o.upstream)
 	if err != nil {
 		return err
@@ -20,12 +24,12 @@ func serve(ctx context.Context, o options) error {
 	if err != nil {
 		return gatewayError("invalid_tls_certificate")
 	}
-	listener, err := net.Listen("tcp", o.address)
+	listener, err := listen("tcp", o.address)
 	if err != nil {
 		return gatewayError("https_listen_failed")
 	}
 	defer func() { _ = listener.Close() }()
-	healthListener, err := net.Listen("tcp", o.healthAddress)
+	healthListener, err := listen("tcp", o.healthAddress)
 	if err != nil {
 		return gatewayError("health_listen_failed")
 	}
