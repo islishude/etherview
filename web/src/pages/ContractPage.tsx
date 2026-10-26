@@ -36,6 +36,7 @@ import {
 import {
   type PublicProxyTarget,
   ProxySummary,
+  hasProxyDetails,
   type Translate,
   diamondCutActionLabel,
   proxyVerificationLabel,
@@ -184,11 +185,7 @@ export function ContractPage({ address }: { address: string }) {
   );
   const diamond = diamondOutcome?.diamond;
   const isDiamond = diamond !== undefined;
-  const showProxySummary =
-    isProxy ||
-    proxyDetail?.proxy_detection !== undefined ||
-    proxy.data?.state === "unavailable" ||
-    proxy.data?.state === "failed";
+  const showProxySummary = hasProxyDetails(proxyDetail);
   const clone = proxyDetail?.pattern === "clone";
   const detected = isProxy && proxyDetail?.status !== "not_detected";
   const upgrades = useContractProxyUpgrades(
@@ -370,15 +367,12 @@ export function ContractPage({ address }: { address: string }) {
                     {activeTab === "code" && (
                       <>
                         <QueryNotice
+                          compact
                           loading={proxy.isPending}
                           error={isUnverifiedArtifactError(proxy.error) ? undefined : proxy.error}
                         />
-                        {showProxySummary ? (
-                          <ProxySummary
-                            detail={proxyDetail}
-                            loading={proxy.isPending}
-                            error={proxy.error}
-                          />
+                        {showProxySummary && proxyDetail ? (
+                          <ProxySummary key={address} detail={proxyDetail} />
                         ) : null}
                         {showDirectArtifact ? (
                           <ArtifactPanel

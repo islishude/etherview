@@ -1523,6 +1523,72 @@ test("authoritative ERC-20 holders remain accessible and bilingual at 390px", as
   await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in Chinese");
 });
 
+test("compact proxy information supports independent actions and accessible bilingual layouts", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(120_000);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto(`/address/${address}#code`);
+  const row = page.locator(".proxy-summary-row");
+  const toggle = page.getByRole("button", { name: "View proxy details" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(row.getByRole("link")).toHaveAttribute(
+    "href",
+    `/address/${transparentImplementation}#code`,
+  );
+  await row.getByRole("button", { name: "Copy", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe(transparentImplementation);
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.focus();
+  await toggle.press("Enter");
+  await expect(page.getByRole("region", { name: "Proxy details" })).toBeVisible();
+  await page.getByRole("button", { name: "Hide proxy details" }).press("Space");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const language of ["en", "zh"]) {
+      if (language === "zh") await activateInView(page.getByRole("button", { name: "切换到中文" }));
+      for (const theme of ["light", "dark"]) {
+        await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+        const label = `${width}-${language}-${theme}`;
+        await assertA11yAndNoOverflow(page, `compact proxy information ${label}`);
+        await row.evaluate((element) => element.scrollIntoView({ block: "center" }));
+        await row.screenshot({ path: test.info().outputPath(`proxy-${label}.png`) });
+        await activateInView(
+          page.getByRole("button", {
+            name: language === "en" ? "Switch color theme" : "切换颜色主题",
+          }),
+        );
+      }
+      if (language === "zh")
+        await activateInView(page.getByRole("button", { name: "Switch to English" }));
+    }
+  }
+  await row.getByRole("link").click();
+  await expect(page).toHaveURL(new RegExp(`/address/${transparentImplementation}#code$`, "u"));
+});
+
+test("negative proxy detection leaves ordinary contract code uncluttered", async ({ page }) => {
+  await page.route(`**/api/v1/contracts/${address}/proxy`, async (route) => {
+    await fulfillAPIEnvelope(route, {
+      address,
+      status: "not_detected",
+      snapshot: { chain_id: "1", block_number: "2", block_hash: secondBlockHash },
+      proxy_detection: { status: "not-detected", outcomes: [], conflicts: [] },
+      evidence: [],
+    });
+  });
+  await page.goto(`/address/${address}#code`);
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
+  await expect(page.locator(".proxy-summary")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Read implementation (as proxy)" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Read contract", exact: true })).toBeVisible();
+});
+
 test("verified OpenZeppelin proxy pages use anonymous generated forms and exact bound targets", async ({
   page,
 }) => {
@@ -1546,8 +1612,12 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   await expect(
     page.getByRole("heading", { name: "TransparentUpgradeableProxy", level: 2 }),
   ).toBeVisible();
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
-  await expect(page.getByText("Transparent proxy", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "View proxy details" }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Proxy details" })
+      .getByText("Transparent proxy", { exact: true }),
+  ).toBeVisible();
   const transparentTabs = page.getByRole("tablist", {
     name: "Contract interaction sections",
   });
@@ -1633,7 +1703,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
 
   await page.goto(`/address/${cloneAddress}#code`);
   await expect(page.getByRole("heading", { name: "MinimalClone", level: 2 })).toBeVisible();
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await page.getByRole("button", { name: "View proxy details" }).click();
   await expect(page.getByText(/This EIP-1167 Clone is immutable/)).toBeVisible();
   const cloneTabs = page.getByRole("tablist", { name: "Contract interaction sections" });
   await expect(cloneTabs.getByRole("tab", { name: "Upgrade history" })).toHaveCount(0);
@@ -1655,7 +1725,7 @@ test("verified OpenZeppelin proxy pages use anonymous generated forms and exact 
   const cloneCodeTab = cloneTabs.getByRole("tab", { name: "Code" });
   await cloneCodeTab.click();
   await expect(cloneCodeTab).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await page.getByRole("button", { name: "View proxy details" }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await activateInView(page.getByRole("button", { name: "Switch color theme" }));
@@ -1780,10 +1850,10 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
   });
 
   await page.goto(`/address/${cwiaAddress}#code`);
-  await expect(page.getByRole("heading", { name: "Proxy identity", level: 2 })).toBeVisible();
+  await expect(page.getByRole("button", { name: "View proxy details" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await page.getByRole("button", { name: "View proxy details" }).click();
   await expect(page.getByText("Solady legacy CWIA bytecode", { exact: true })).toBeVisible();
   await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
   await expect(page.getByText("Exact implementation address", { exact: true })).toBeVisible();
@@ -1824,8 +1894,8 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
     const response = await fetch("/__e2e/home/head", { method: "POST" });
     if (!response.ok) throw new Error("failed to publish E2E head event");
   });
-  await expect(page.getByRole("heading", { name: "Proxy identity" })).toBeVisible();
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await expect(page.getByRole("button", { name: "View proxy details" })).toBeVisible();
+  await page.getByRole("button", { name: "View proxy details" }).click();
   await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();
   await expect(
     page.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u),
@@ -1846,7 +1916,7 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
   await page.goto(`/address/${cwiaUnverifiedAddress}#code`);
   await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await page.getByRole("button", { name: "View proxy details" }).click();
   await expect(page.getByText("Verified Solidity AST and decoded", { exact: true })).toBeVisible();
   await expect(page.getByText("Matching implementation code hash", { exact: true })).toBeVisible();
   await expect(page.getByText("Verified by code hash", { exact: true })).toBeVisible();
@@ -1913,7 +1983,7 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
 
   await page.goto(`/address/${cwiaAddress}#code`);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await page.getByRole("button", { name: "View proxy details" }).click();
   const argumentsScroll = page.locator(".cwia-arguments-scroll");
   await expect(argumentsScroll).toBeVisible();
   await expect
@@ -1951,7 +2021,7 @@ test("ERC-2535 pages preserve selector-scoped facets and ordered DiamondCut hist
 
   await page.goto(`/address/${diamondAddress}#code`);
   await expect(page.getByRole("heading", { name: "DiamondRouter", level: 2 })).toBeVisible();
-  await page.getByRole("heading", { name: "Proxy identity" }).click();
+  await page.getByRole("button", { name: "View proxy details" }).click();
   await expect(
     page
       .locator(".proxy-facts dt")

@@ -1,29 +1,49 @@
-.proxy-summary > summary {
-  padding: 0;
-  cursor: pointer;
-  list-style: none;
-  border-bottom: 0;
-}
-
-.proxy-summary > summary::-webkit-details-marker {
-  display: none;
-}
-
-.proxy-summary > summary::after {
-  content: "+";
-  color: var(--muted);
-  font-size: 1.2rem;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.proxy-summary[open] > summary {
+.proxy-summary {
+  min-width: 0;
   margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--line);
 }
 
-.proxy-summary[open] > summary::after {
-  content: "−";
+.proxy-summary-row,
+.proxy-summary-target {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.proxy-summary-type {
+  overflow-wrap: anywhere;
+}
+
+.proxy-summary-target {
+  gap: 0.35rem;
+}
+
+.proxy-details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  cursor: pointer;
+}
+
+.proxy-details-toggle:hover {
+  text-decoration: underline;
+}
+
+.proxy-details-toggle:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .proxy-facts {

@@ -1,6 +1,6 @@
+import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CopyableField } from "@/components/CopyButton";
-import { QueryNotice } from "@/components/QueryNotice";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { type ContractProxyDetails } from "@/contracts/proxy";
 
@@ -8,19 +8,25 @@ export type PublicProxyTarget = NonNullable<
   NonNullable<ContractProxyDetails["proxy_detection"]>["primary"]
 >["targets"][number];
 
-export function ProxySummary({
-  detail,
-  loading,
-  error,
-}: {
-  detail?: ContractProxyDetails;
-  loading: boolean;
-  error: unknown;
-}) {
+export function hasProxyDetails(detail?: ContractProxyDetails): boolean {
+  if (!detail) return false;
+  const detection = detail.proxy_detection;
+  return (
+    detail.proxy !== undefined ||
+    detail.status !== "not_detected" ||
+    (detection !== undefined &&
+      (detection.status !== "not-detected" ||
+        detection.conflicts.length > 0 ||
+        detection.outcomes.some((outcome) => outcome.status !== "not-detected")))
+  );
+}
+
+export function ProxySummary({ detail }: { detail: ContractProxyDetails }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   const detection = detail?.proxy_detection;
   const primaryOutcome = detection?.primary;
-  const detected = detection !== undefined && detection.status !== "not-detected";
   const diamondOutcome = detection?.outcomes.find(
     (outcome) =>
       outcome.family === "erc2535" &&
@@ -33,134 +39,215 @@ export function ProxySummary({
     .map((outcome) => `${outcome.family}${outcome.variant ? ` (${outcome.variant})` : ""}`)
     .join(" → ");
   return (
-    <details className="panel proxy-summary">
-      <summary className="panel-heading">
-        <h2 id="proxy-summary-title">{t("contracts.proxy.title")}</h2>
-        {detail ? (
-          <span
-            className={
-              detail.status === "verified" || detection?.status === "confirmed"
-                ? "availability yes"
-                : "availability no"
-            }
-          >
-            {detection
-              ? proxyDetectionStatusLabel(detection.status, t)
-              : proxyStatusLabel(detail.status, t)}
-          </span>
-        ) : null}
-      </summary>
-      <QueryNotice loading={loading} error={error} />
-      {detail?.status === "not_detected" && !detected ? (
-        <p className="quiet">{t("contracts.proxy.notDetected")}</p>
-      ) : null}
-      {detail && (detail.status !== "not_detected" || detected) ? (
-        <dl className="proxy-facts">
-          <ProxyDetectionFacts
-            detection={detection}
-            diamond={diamond}
-            layers={layers}
-            primary={primaryOutcome}
-            t={t}
-          />
-          {detail.pattern ? (
-            <Fact
-              label={t("contracts.proxy.pattern")}
-              value={proxyPatternLabel(detail.pattern, t)}
-            />
-          ) : null}
-          {detail.mechanism ? (
-            <Fact
-              label={t("contracts.proxy.mechanism")}
-              value={proxyMechanismLabel(detail.mechanism, t)}
-            />
-          ) : null}
-          {detail.evidence_state ? (
-            <Fact
-              label={t("contracts.proxy.evidenceState")}
-              value={proxyEvidenceStateLabel(detail.evidence_state, t)}
-            />
-          ) : null}
-          {detail.confidence ? (
-            <Fact
-              label={t("contracts.proxy.confidence")}
-              value={proxyConfidenceLabel(detail.confidence, t)}
-            />
-          ) : null}
-          {detail.standard_version ? (
-            <Fact label={t("contracts.proxy.standardVersion")} value={detail.standard_version} />
-          ) : null}
-          {detail.implementation ? (
-            <IdentityFact
-              label={t("contracts.proxy.implementation")}
-              identity={detail.implementation}
-            />
-          ) : null}
-          {detail.admin ? (
-            <IdentityFact label={t("contracts.proxy.admin")} identity={detail.admin} />
-          ) : null}
-          {detail.beacon ? (
-            <IdentityFact label={t("contracts.proxy.beacon")} identity={detail.beacon} />
-          ) : null}
-          {detail.management?.target ? (
-            <IdentityFact
-              label={t("contracts.proxy.managementTarget")}
-              identity={detail.management.target}
-            />
-          ) : null}
-          {detail.management?.affected_proxy_count ? (
-            <Fact
-              label={t("contracts.proxy.affectedProxies")}
-              value={detail.management.affected_proxy_count}
-            />
-          ) : null}
-          {detail.binding_id ? (
-            <Fact label={t("contracts.proxy.binding")} value={detail.binding_id} mono />
-          ) : null}
-          <Fact
-            label={t("contracts.proxy.snapshot")}
-            value={`${detail.snapshot.block_number} · ${detail.snapshot.block_hash}`}
-            mono
-          />
-          <ImmutableArgsFacts detail={detail} t={t} />
-        </dl>
-      ) : null}
-      <CWIAImmutableArgsDetails detail={detail} t={t} />
-      {detail && detail.evidence.length > 0 ? (
-        <details className="proxy-evidence">
-          <summary>{t("contracts.proxy.evidence", { count: detail.evidence.length })}</summary>
-          <ul>
-            {detail.evidence.map((item, index) => (
-              <li key={`${item.source}:${item.subject}:${item.block_hash ?? "snapshot"}:${index}`}>
-                {proxyEvidenceSourceLabel(item.source, t)} ·{" "}
-                {proxyEvidenceSubjectLabel(item.subject, t)} ·{" "}
-                {proxyEvidenceResultLabel(item.result, t)}
-                {item.address ? (
-                  <>
-                    {" "}
-                    · <code>{item.address}</code>
-                  </>
+    <div className="proxy-summary">
+      <div className="proxy-summary-row">
+        <ProxySummaryIdentity detail={detail} t={t} />
+        <button
+          aria-controls={detailsId}
+          aria-expanded={expanded}
+          className="proxy-details-toggle"
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
+          {t(expanded ? "contracts.proxy.hideDetails" : "contracts.proxy.viewDetails")}
+          <span aria-hidden="true">{expanded ? "−" : "+"}</span>
+        </button>
+      </div>
+      <section aria-label={t("contracts.proxy.title")} hidden={!expanded} id={detailsId}>
+        {expanded ? (
+          <>
+            {hasProxyDetails(detail) ? (
+              <dl className="proxy-facts">
+                <ProxyDetectionFacts
+                  detection={detection}
+                  diamond={diamond}
+                  layers={layers}
+                  primary={primaryOutcome}
+                  t={t}
+                />
+                {detail.pattern ? (
+                  <Fact
+                    label={t("contracts.proxy.pattern")}
+                    value={proxyPatternLabel(detail.pattern, t)}
+                  />
                 ) : null}
-                {item.block_number ? <> · #{item.block_number}</> : null}
-              </li>
-            ))}
-          </ul>
-        </details>
+                {detail.mechanism ? (
+                  <Fact
+                    label={t("contracts.proxy.mechanism")}
+                    value={proxyMechanismLabel(detail.mechanism, t)}
+                  />
+                ) : null}
+                {detail.evidence_state ? (
+                  <Fact
+                    label={t("contracts.proxy.evidenceState")}
+                    value={proxyEvidenceStateLabel(detail.evidence_state, t)}
+                  />
+                ) : null}
+                {detail.confidence ? (
+                  <Fact
+                    label={t("contracts.proxy.confidence")}
+                    value={proxyConfidenceLabel(detail.confidence, t)}
+                  />
+                ) : null}
+                {detail.standard_version ? (
+                  <Fact
+                    label={t("contracts.proxy.standardVersion")}
+                    value={detail.standard_version}
+                  />
+                ) : null}
+                {detail.implementation ? (
+                  <IdentityFact
+                    label={t("contracts.proxy.implementation")}
+                    identity={detail.implementation}
+                  />
+                ) : null}
+                {detail.admin ? (
+                  <IdentityFact label={t("contracts.proxy.admin")} identity={detail.admin} />
+                ) : null}
+                {detail.beacon ? (
+                  <IdentityFact label={t("contracts.proxy.beacon")} identity={detail.beacon} />
+                ) : null}
+                {detail.management?.target ? (
+                  <IdentityFact
+                    label={t("contracts.proxy.managementTarget")}
+                    identity={detail.management.target}
+                  />
+                ) : null}
+                {detail.management?.affected_proxy_count ? (
+                  <Fact
+                    label={t("contracts.proxy.affectedProxies")}
+                    value={detail.management.affected_proxy_count}
+                  />
+                ) : null}
+                {detail.binding_id ? (
+                  <Fact label={t("contracts.proxy.binding")} value={detail.binding_id} mono />
+                ) : null}
+                <Fact
+                  label={t("contracts.proxy.snapshot")}
+                  value={`${detail.snapshot.block_number} · ${detail.snapshot.block_hash}`}
+                  mono
+                />
+                <ImmutableArgsFacts detail={detail} t={t} />
+              </dl>
+            ) : null}
+            <CWIAImmutableArgsDetails detail={detail} t={t} />
+            {detail && detail.evidence.length > 0 ? (
+              <details className="proxy-evidence">
+                <summary>
+                  {t("contracts.proxy.evidence", { count: detail.evidence.length })}
+                </summary>
+                <ul>
+                  {detail.evidence.map((item, index) => (
+                    <li
+                      key={`${item.source}:${item.subject}:${item.block_hash ?? "snapshot"}:${index}`}
+                    >
+                      {proxyEvidenceSourceLabel(item.source, t)} ·{" "}
+                      {proxyEvidenceSubjectLabel(item.subject, t)} ·{" "}
+                      {proxyEvidenceResultLabel(item.result, t)}
+                      {item.address ? (
+                        <>
+                          {" "}
+                          · <code>{item.address}</code>
+                        </>
+                      ) : null}
+                      {item.block_number ? <> · #{item.block_number}</> : null}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
+            {diamond ? (
+              <p className="context-note" role="note">
+                {t("contracts.diamond.interactionSafety")}
+              </p>
+            ) : detail?.mechanism === "cwia" ? null : detail &&
+              detail.status !== "verified" &&
+              detail.status !== "not_detected" ? (
+              <p className="chain-warning" role="status">
+                {t("contracts.proxy.writeDisabled")}
+              </p>
+            ) : null}
+            <CloneImmutabilityNote detail={detail} t={t} />
+          </>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function ProxySummaryIdentity({ detail, t }: { detail: ContractProxyDetails; t: Translate }) {
+  const detection = detail.proxy_detection;
+  const primary = detection?.primary;
+  const authoritative = detail.proxy !== undefined;
+  const diamond = !authoritative && primary?.family === "erc2535";
+  const implementation = authoritative ? detail.implementation?.address : primary?.implementation;
+  const singleton = !authoritative && primary?.implementation_role === "singleton";
+  const unavailable = detail.status === "unavailable" || detail.status === "failed";
+  return (
+    <>
+      <strong className="proxy-summary-type">{proxySummaryType(detail, t)}</strong>
+      {unavailable ? (
+        <span className="availability no" role="status">
+          {proxyStatusLabel(detail.status, t)}
+        </span>
+      ) : detection ? (
+        <span className={detection.status === "confirmed" ? "availability yes" : "availability no"}>
+          {t("contracts.proxy.detectionLabel", {
+            status: proxyDetectionStatusLabel(detection.status, t),
+          })}
+        </span>
+      ) : null}
+      {detection?.outcomes
+        .filter(
+          (outcome) => outcome.status !== "not-detected" && outcome.status !== detection.status,
+        )
+        .map((outcome) => (
+          <span className="availability no" key={outcome.detector}>
+            {outcome.family ?? outcome.detector}: {proxyDetectionStatusLabel(outcome.status, t)}
+          </span>
+        ))}
+      {authoritative && !unavailable ? (
+        <span className={detail.status === "verified" ? "availability yes" : "availability no"}>
+          {t("contracts.proxy.bindingLabel", { status: proxyStatusLabel(detail.status, t) })}
+        </span>
       ) : null}
       {diamond ? (
-        <p className="context-note" role="note">
-          {t("contracts.diamond.interactionSafety")}
-        </p>
-      ) : detail?.mechanism === "cwia" ? null : detail &&
-        detail.status !== "verified" &&
-        detail.status !== "not_detected" ? (
-        <p className="chain-warning" role="status">
-          {t("contracts.proxy.writeDisabled")}
-        </p>
+        primary.diamond ? (
+          <span>{t("contracts.diamond.facetCount", { count: primary.diamond.facets.length })}</span>
+        ) : null
+      ) : implementation ? (
+        <span className="proxy-summary-target">
+          <span className="quiet">
+            {t(singleton ? "contracts.proxy.singleton" : "contracts.proxy.implementation")}
+          </span>
+          <AddressIdentity address={implementation} copy contract />
+        </span>
       ) : null}
-      <CloneImmutabilityNote detail={detail} t={t} />
-    </details>
+    </>
   );
+}
+
+function proxySummaryType(detail: ContractProxyDetails, t: Translate): string {
+  if (detail.proxy) {
+    if (detail.mechanism === "cwia") return "CWIA";
+    if (detail.pattern && detail.pattern !== "unknown") return proxyPatternLabel(detail.pattern, t);
+    if (detail.mechanism) return proxyMechanismLabel(detail.mechanism, t);
+  }
+  const family = detail.proxy_detection?.primary?.family;
+  switch (family) {
+    case "safe":
+      return "Safe";
+    case "erc2535":
+      return "Diamond";
+    case "erc1167":
+      return "ERC-1167";
+    case "cwia":
+      return "CWIA";
+    case "erc1967":
+      return "ERC-1967";
+    default:
+      return t("contracts.proxy.detectionTitle");
+  }
 }
 
 type ProxyDetection = NonNullable<ContractProxyDetails["proxy_detection"]>;

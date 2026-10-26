@@ -194,6 +194,7 @@ describe("contract proxy route", () => {
     renderContractRoute();
     const panel = await screen.findByRole("tabpanel", { name: "Code" });
     expect(await within(panel).findByText("Explorer API is not available yet")).toBeVisible();
+    expect(within(panel).getAllByText("Explorer API is not available yet")).toHaveLength(1);
   });
 
   it("explains when the contract has no verified artifact", async () => {
@@ -296,10 +297,13 @@ describe("contract proxy route", () => {
     installContractAPI({ pattern: "none", safeDetection: true });
     renderContractRoute();
 
-    await screen.findByRole("heading", { name: "Proxy identity" });
-    const summary = document.querySelector<HTMLElement>("details.proxy-summary");
-    expect(summary).not.toBeNull();
-    summary!.setAttribute("open", "");
+    const toggle = await screen.findByRole("button", { name: "View proxy details" });
+    const row = document.querySelector<HTMLElement>(".proxy-summary-row")!;
+    expect(within(row).getByText("Singleton")).toBeVisible();
+    expect(within(row).getByText("Detection: Confirmed")).toBeVisible();
+    expect(within(row).queryByText(/Binding:/u)).toBeNull();
+    await userEvent.setup().click(toggle);
+    const summary = screen.getByRole("region", { name: "Proxy details" });
     expect(within(summary!).getByText("Proxy family").nextElementSibling).toHaveTextContent("safe");
     expect(screen.getAllByText("Confirmed").length).toBeGreaterThan(0);
     expect(screen.getByText(implementationAddress)).toBeVisible();
@@ -313,7 +317,11 @@ describe("contract proxy route", () => {
     const user = userEvent.setup();
     renderContractRoute();
 
-    await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    const toggle = await screen.findByRole("button", { name: "View proxy details" });
+    const row = document.querySelector<HTMLElement>(".proxy-summary-row")!;
+    expect(within(row).getByText("2 facet groups")).toBeVisible();
+    expect(within(row).queryByRole("link")).toBeNull();
+    await user.click(toggle);
     expect(screen.getByText("Proxy family").nextElementSibling).toHaveTextContent("erc2535");
     expect(screen.getByText("Full cross-check")).toBeVisible();
     expect(screen.getByText("Not detected")).toBeVisible();
@@ -352,12 +360,14 @@ describe("contract proxy route", () => {
       expect(screen.queryByRole("link", { name: "Submit a verification request" })).toBeNull();
       const codePanel = document.getElementById("contract-panel-code");
       expect(codePanel).not.toBeNull();
-      await within(codePanel!).findByRole("heading", { name: "Proxy identity" });
-      expect(codePanel!.querySelector("details.proxy-summary")).not.toHaveAttribute("open");
-      expect(within(codePanel!).getByRole("heading", { name: "Proxy identity" })).toBeVisible();
-      const proxyHeading = codePanel!.querySelector<HTMLElement>("details.proxy-summary > summary");
+      await within(codePanel!).findByRole("button", { name: "View proxy details" });
+      expect(
+        within(codePanel!).getByRole("button", { name: "View proxy details" }),
+      ).toHaveAttribute("aria-expanded", "false");
+      expect(within(codePanel!).getByRole("button", { name: "View proxy details" })).toBeVisible();
+      const proxyHeading = codePanel!.querySelector<HTMLElement>(".proxy-summary-row");
       expect(proxyHeading!.querySelector(".eyebrow")).toBeNull();
-      expect(within(proxyHeading!).getByText("Verified")).toBeVisible();
+      expect(within(proxyHeading!).getByText("Binding: Verified")).toBeVisible();
       const tabs = await screen.findByRole("tablist", {
         name: "Contract interaction sections",
       });
@@ -457,7 +467,7 @@ describe("contract proxy route", () => {
     renderContractRoute();
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    await user.click(await screen.findByRole("button", { name: "View proxy details" }));
     expect(
       await screen.findByText(
         "This EIP-1167 Clone is immutable. No upgrade controls or fabricated upgrade history are exposed.",
@@ -491,7 +501,9 @@ describe("contract proxy route", () => {
 
     renderContractRoute();
 
-    await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "View proxy details" }));
     expect(await screen.findByText("Solady legacy CWIA bytecode")).toBeVisible();
     expect(screen.getByText("Verified Solidity AST and decoded")).toBeVisible();
     expect(screen.getByText("Verified Solidity AST", { exact: true })).toBeVisible();
@@ -530,7 +542,9 @@ describe("contract proxy route", () => {
     installContractAPI({ pattern: "cwia", cwiaSchemaStatus: "schema_unavailable" });
 
     renderContractRoute();
-    await userEvent.setup().click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "View proxy details" }));
     expect(await screen.findByText("Verified Solidity AST unavailable")).toBeVisible();
     expect(
       screen.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u),
@@ -557,7 +571,7 @@ describe("contract proxy route", () => {
       }),
     ).toBeVisible();
 
-    await user.click(await screen.findByRole("heading", { name: "Proxy identity" }));
+    await user.click(await screen.findByRole("button", { name: "View proxy details" }));
     expect(await screen.findByText("Verified Solidity AST and decoded")).toBeVisible();
     expect(screen.getByText("Verified by code hash", { exact: true })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "Verified artifact" })).toBeNull();
@@ -583,13 +597,118 @@ describe("contract proxy route", () => {
     expectAnonymousContractRequests(fetcher);
   });
 
+  it("keeps address copy and navigation separate from keyboard detail expansion", async () => {
+    installContractAPI({ pattern: "transparent" });
+    const user = userEvent.setup();
+    const copy = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    renderContractRoute();
+    const toggle = await screen.findByRole("button", { name: "View proxy details" });
+    const row = document.querySelector<HTMLElement>(".proxy-summary-row")!;
+    expect(within(row).getByRole("link")).toHaveAttribute(
+      "href",
+      `/address/${implementationAddress}#code`,
+    );
+    await user.click(within(row).getByRole("button", { name: "Copy" }));
+    expect(copy).toHaveBeenCalledWith(implementationAddress);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    toggle.focus();
+    await user.keyboard("{Enter}");
+    const details = screen.getByRole("region", { name: "Proxy details" });
+    expect(toggle).toHaveAttribute("aria-controls", details.id);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(within(details).getByText("Canonical snapshot")).toBeVisible();
+    await user.keyboard(" ");
+    expect(screen.queryByRole("region", { name: "Proxy details" })).toBeNull();
+    expect(toggle).toHaveFocus();
+  });
+
+  it.each(["candidate", "inconsistent", "unknown"] as const)(
+    "keeps %s evidence visible without claiming verification",
+    async (status) => {
+      const detection = safeProxyDetection();
+      installContractAPI({
+        pattern: "none",
+        proxyResponse: async () =>
+          envelope({
+            ...proxyDetail("none"),
+            proxy_detection: {
+              ...detection,
+              status,
+              primary: { ...detection.primary, status },
+              outcomes: [{ ...detection.primary, status }],
+              conflicts: status === "inconsistent" ? ["conflicting families"] : [],
+            },
+          }),
+      });
+      renderContractRoute();
+      const toggle = await screen.findByRole("button", { name: "View proxy details" });
+      const row = document.querySelector<HTMLElement>(".proxy-summary-row")!;
+      expect(
+        within(row).getByText(`Detection: ${i18n.t(`contracts.proxy.detectionStatus.${status}`)}`),
+      ).toBeVisible();
+      expect(within(row).queryByText(/Binding:|Verified/u)).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Read implementation (as proxy)" })).toBeNull();
+      await userEvent.setup().click(toggle);
+      expect(screen.getByText("Canonical snapshot")).toBeVisible();
+      if (status === "inconsistent") expect(screen.getByText("conflicting families")).toBeVisible();
+    },
+  );
+
+  it("retains unknown family outcomes even when the aggregate detection is negative", async () => {
+    installContractAPI({
+      pattern: "none",
+      proxyResponse: async () =>
+        envelope({
+          ...proxyDetail("none"),
+          proxy_detection: {
+            status: "not-detected",
+            outcomes: [{ ...safeProxyDetection().primary, status: "unknown" }],
+            conflicts: [],
+          },
+        }),
+    });
+    renderContractRoute();
+    await userEvent
+      .setup()
+      .click(await screen.findByRole("button", { name: "View proxy details" }));
+    expect(screen.getByText("Canonical snapshot")).toBeVisible();
+    expect(screen.getByText("safe: Unknown")).toBeVisible();
+    expect(
+      screen.queryByText("No supported proxy mechanism was detected at this canonical snapshot."),
+    ).toBeNull();
+  });
+
+  it("uses the authoritative implementation instead of a competing detection target", async () => {
+    installContractAPI({
+      pattern: "transparent",
+      proxyResponse: async () =>
+        envelope({
+          ...proxyDetail("transparent"),
+          proxy_detection: {
+            ...safeProxyDetection(),
+            status: "inconsistent",
+            primary: { ...safeProxyDetection().primary, implementation: oldImplementationAddress },
+          },
+        }),
+    });
+    renderContractRoute();
+    await screen.findByRole("button", { name: "View proxy details" });
+    const row = document.querySelector<HTMLElement>(".proxy-summary-row")!;
+    expect(within(row).getByText("Transparent proxy")).toBeVisible();
+    expect(within(row).getByText("Detection: Inconsistent")).toBeVisible();
+    expect(within(row).getByRole("link")).toHaveAttribute(
+      "href",
+      `/address/${implementationAddress}#code`,
+    );
+  });
+
   it("hides proxy identity and proxy histories for a non-proxy contract", async () => {
     const fetcher = installContractAPI({ pattern: "none" });
 
     renderContractRoute();
 
     expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
-    expect(screen.queryByRole("heading", { name: "Proxy identity" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View proxy details" })).toBeNull();
     const tabs = screen.getByRole("tablist", {
       name: "Contract interaction sections",
     });
@@ -678,9 +797,15 @@ describe("contract proxy route", () => {
 
       renderContractRoute();
 
-      const proxyTitle = labels.language === "en" ? "Proxy identity" : "代理身份";
-      await user.click(await screen.findByRole("heading", { name: proxyTitle }));
-      expect(await screen.findByText(labels.pattern)).toBeVisible();
+      const proxyTitle = labels.language === "en" ? "View proxy details" : "查看代理详情";
+      await user.click(await screen.findByRole("button", { name: proxyTitle }));
+      expect(
+        within(
+          screen.getByRole("region", {
+            name: labels.language === "en" ? "Proxy details" : "代理详情",
+          }),
+        ).getByText(labels.pattern),
+      ).toBeVisible();
       expect(screen.getByText(labels.mechanism)).toBeVisible();
       expect(screen.getByText(labels.evidenceState)).toBeVisible();
       expect(screen.getAllByText(labels.confidence).length).toBeGreaterThan(0);
@@ -1058,6 +1183,7 @@ function proxyDetail(
       address: proxyAddress,
       status: "not_detected",
       snapshot: snapshot(),
+      proxy_detection: { status: "not-detected", outcomes: [], conflicts: [] },
       evidence: [],
     };
   }
