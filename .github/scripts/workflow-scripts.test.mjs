@@ -123,7 +123,7 @@ test("CI command groups preserve sequence and stop after the first failure", () 
   for (const [script, expected] of [
     ["vyper-ci-packages.sh", ["pnpm", "node", "node", "node"]],
     ["vyper-ci-native.sh", ["pnpm", "node", "pnpm"]],
-    ["preview-ci-certificates.sh", ["make", "sudo", "chmod"]],
+    ["preview-ci-certificates.sh", ["make"]],
   ])
     sandbox(({ fake, run, commands }) => {
       for (const command of new Set(expected)) fake(command);

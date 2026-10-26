@@ -88,10 +88,5 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
 	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--no-deps", "--wait", "--wait-timeout", "180", "api"); err != nil {
 		h.t.Fatal(err)
 	}
-	binding, err := h.project.Port(ctx, "api", 8080)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	h.apiURL = "https://" + binding
 	h.assertAmsterdam(ctx, "0x1235")
 }

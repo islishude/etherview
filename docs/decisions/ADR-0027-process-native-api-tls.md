@@ -37,9 +37,11 @@ readiness, and monolith/split-role parity contracts.
   operations boundary and never receives the API private key.
 - The production deployment template at `deploy/compose.yaml` remains HTTP
   and ships no TLS overlay. The repository-root `compose.yaml` selects the
-  full-stack Preview as the checked-in local HTTPS workflow: an
-  explicit mkcert target installs local trust and generates an ignored
-  localhost pair, which Preview mounts read-only only into `api`. Helm uses an
+  full-stack Preview behind a shared Caddy TLS terminator. The explicit mkcert
+  target generates an ignored `*.etherview.local` pair mounted only into Caddy.
+  Preview API speaks container-network HTTP with an HTTPS public URL, and has
+  no default host-published application port. Authentication still derives its
+  origin and Secure cookies from that public URL, not forwarding headers. Helm uses an
   independent, pre-existing `apiTLS.existingSecret`, mounts it only into the
   selected `all`/`api` main container, and marks the application Service and
   probes as HTTPS. `ingress.tls` continues to configure the

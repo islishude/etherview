@@ -130,12 +130,11 @@ function main() {
     [...preview, "-f", "e2e/previewmetadata/compose.yaml"],
     {
       IPFS_API_PORT: "0",
-      IPFS_GATEWAY_PORT: "0",
+      PREVIEW_HTTPS_PORT: "0",
       LIGHTHOUSE_HTTP_PORT: "0",
-      ETHERVIEW_PORT: "127.0.0.1:0",
-      ETHERVIEW_METRICS_PORT: "127.0.0.1:0",
-      GETH_HTTP_PORT: "127.0.0.1:0",
-      GETH_WS_PORT: "127.0.0.1:0",
+      ETHERVIEW_METRICS_PORT: "0",
+      GETH_HTTP_PORT: "0",
+      GETH_WS_PORT: "0",
     },
     "preview-metadata",
   );

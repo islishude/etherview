@@ -42,12 +42,12 @@ const (
 	previewChainID          = "48815"
 	previewChainIDHex       = "0xbeaf"
 	metadataTokenID         = "1"
-	metadataGateway         = "https://ipfs.preview.test:8443"
+	metadataGateway         = "https://ipfs.etherview.local"
 	metadataURI             = "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	updatedMetadataURI      = metadataURI + "?revision=2"
-	resolvedMetadataURL     = "https://ipfs.preview.test:8443/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
+	resolvedMetadataURL     = "https://ipfs.etherview.local/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	updatedResolvedMetadata = resolvedMetadataURL + "?revision=2"
-	resolvedImageURL        = "https://ipfs.preview.test:8443/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
+	resolvedImageURL        = "https://ipfs.etherview.local/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
 	expectedMetadataSHA256  = "a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d"
 	expectedMetadataBytes   = 205
 	previewDatabasePassword = "etherview-preview-metadata-e2e"
@@ -167,11 +167,9 @@ func newHarness(t *testing.T) *harness {
 	image := valueOrDefault("IMAGE", "etherview:local")
 	network := filepath.Join(artifacts, "network")
 	for _, required := range []string{
-		filepath.Join(root, ".local", "preview-tls", "tls.crt"),
-		filepath.Join(root, ".local", "preview-tls", "tls.key"),
 		filepath.Join(root, ".local", "preview-tls", "rootCA.pem"),
-		filepath.Join(root, ".local", "preview-tls", "ipfs.crt"),
-		filepath.Join(root, ".local", "preview-tls", "ipfs.key"),
+		filepath.Join(root, ".local", "preview-tls", "gateway.crt"),
+		filepath.Join(root, ".local", "preview-tls", "gateway.key"),
 	} {
 		if info, statErr := os.Stat(required); statErr != nil || !info.Mode().IsRegular() {
 			t.Fatalf("required Preview runtime file %s is unavailable; run the Make target: %v", required, statErr)
@@ -194,13 +192,12 @@ func newHarness(t *testing.T) *harness {
 		"PREVIEW_NETWORK_DIR":             network,
 		"LIGHTHOUSE_HTTP_PORT":            "0",
 		"ETHERVIEW_METADATA_IPFS_GATEWAY": metadataGateway,
-		"ETHERVIEW_PORT":                  "127.0.0.1:0",
-		"ETHERVIEW_METRICS_PORT":          "127.0.0.1:0",
-		"GETH_HTTP_PORT":                  "127.0.0.1:0",
-		"GETH_WS_PORT":                    "127.0.0.1:0",
+		"ETHERVIEW_METRICS_PORT":          "0",
+		"GETH_HTTP_PORT":                  "0",
+		"GETH_WS_PORT":                    "0",
 		"POSTGRES_PASSWORD":               previewDatabasePassword,
 		"IPFS_API_PORT":                   "0",
-		"IPFS_GATEWAY_PORT":               "0",
+		"PREVIEW_HTTPS_PORT":              "0",
 	}
 	return &harness{t: t, root: root, project: project, artifacts: artifacts, image: image}
 }
@@ -218,6 +215,7 @@ func (h *harness) run(ctx context.Context) {
 	h.assertLocalGateway(ctx)
 	h.assertPublicConfig(ctx)
 	initialReceipt := h.deployNFT(ctx)
+	h.assertGatewayBrowser(ctx)
 	h.assertAmsterdam(ctx, "0x1234")
 	contract := *initialReceipt.ContractAddress
 	h.waitTokenContract(ctx, initialReceipt)
@@ -330,14 +328,6 @@ func (h *harness) connect(ctx context.Context) {
 	if h.http != nil {
 		h.http.CloseIdleConnections()
 	}
-	rpcBinding, err := h.project.Port(ctx, "geth", 8545)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	h.rpc, err = rpc.DialContext(ctx, "http://"+rpcBinding)
-	if err != nil {
-		h.t.Fatal(err)
-	}
 	postgresBinding, err := h.project.Port(ctx, "postgres", 5432)
 	if err != nil {
 		h.t.Fatal(err)
@@ -351,7 +341,7 @@ func (h *harness) connect(ctx context.Context) {
 		err := h.db.Ping(ctx)
 		return err == nil, fmt.Sprint(err), err
 	})
-	apiBinding, err := h.project.Port(ctx, "api", 8080)
+	apiBinding, err := h.project.Port(ctx, "preview-gateway", 443)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -362,12 +352,21 @@ func (h *harness) connect(ctx context.Context) {
 	}
 	h.http = &http.Client{
 		Timeout: 10 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			if strings.HasSuffix(address, ".etherview.local:443") {
+				address = apiBinding
+			}
+			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, address)
+		}, TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			RootCAs:    roots,
 		}},
 	}
-	h.apiURL = "https://" + apiBinding
+	h.apiURL = "https://app.etherview.local"
+	h.rpc, err = rpc.DialOptions(ctx, "https://geth.etherview.local", rpc.WithHTTPClient(h.http))
+	if err != nil {
+		h.t.Fatal(err)
+	}
 }
 
 func (h *harness) assertPublicConfig(ctx context.Context) {
@@ -822,7 +821,7 @@ func (h *harness) assertTransitionLog(
 		!strings.EqualFold(record.Block.Hash, receipt.BlockHash.Hex()) ||
 		record.Transition.State != "available" || record.Transition.Code != "" ||
 		record.Source.Scheme != "ipfs" || record.Request.Scheme != "https" ||
-		record.Request.Host != "ipfs.preview.test" || record.Request.Path != "/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json" ||
+		record.Request.Host != "ipfs.etherview.local" || record.Request.Path != "/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json" ||
 		record.Request.Redirects != 0 {
 		h.t.Fatalf("metadata transition log = %#v", record)
 	}
@@ -956,8 +955,8 @@ func (h *harness) writeReport(
 		"revision": revision, "dirty": dirty, "image_id": imageID,
 		"gateway_mode": "local-offline", "gateway": metadataGateway,
 		"gateway_ips": h.gatewayIPs, "kubo_image_id": h.serviceImageID(ctx, "ipfs"),
-		"gateway_image_id":       h.serviceImageID(ctx, "ipfs-gateway"),
-		"gateway_implementation": "go-ipfs-gateway",
+		"gateway_image_id":       h.serviceImageID(ctx, "preview-gateway"),
+		"gateway_implementation": "caddy",
 		"cli_roundtrip":          true, "offline_no_fetch": true,
 		"chain_id": previewChainID, "contract": strings.ToLower(initialReceipt.ContractAddress.Hex()),
 		"token_id":             metadataTokenID,
@@ -1090,4 +1089,19 @@ func valueOrDefault(name, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func (h *harness) assertGatewayBrowser(ctx context.Context) {
+	h.t.Helper()
+	binding, err := h.project.Port(ctx, "preview-gateway", 443)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	command := exec.CommandContext(ctx, valueOrDefault("NODE", "node"), "web/scripts/preview-gateway-browser.mjs", binding, filepath.Join(h.root, ".local", "preview-tls", "gateway.crt"), h.artifacts)
+	command.Dir = h.root
+	output, err := command.CombinedOutput()
+	if err != nil {
+		h.t.Fatalf("Preview browser: %v\n%s", err, output)
+	}
+	h.t.Log(string(output))
 }

@@ -123,16 +123,31 @@ fetch authority.
 
 ### Preview gateway implementation
 
-Preview uses the independent standard-library Go `ipfs-gateway` executable and
-scratch image. It proxies only GET/HEAD `/ipfs/` reads to the configured Kubo
-HTTP origin, rejects traversal/encoded separator paths, and preserves streaming.
-Its dedicated certificate is loaded before either listener opens; TLS 1.2/1.3
-and HTTP/2 are supported. Certificate rotation requires restart. Only the gateway
-mounts the private key; its image runs as root to read the existing owner-only
-0600 bind mount without widening key permissions.
+Preview uses the official pinned Caddy image and the shared `preview-gateway`
+service. The IPFS virtual host accepts only GET/HEAD `/ipfs/` reads with no body
+or upgrade; raw escaped paths reject traversal, nested encoded separators and
+control characters before Caddy's normal path matching. Query encoding and
+streamed bytes are preserved. Kubo's management API is never proxied.
 
-The loopback HTTP health listener reports HTTPS serving readiness. SIGTERM
-withdraws readiness and drains requests for at most ten seconds. Upstream
-connects are bounded to five seconds; response headers and stream inactivity to
-thirty seconds. Proxy failures use stable redacted errors. This helper is not
-an application role and does not alter the monolith/split component manifest.
+The same listener routes only `app`, `ipfs`, `geth`, and `beacon` under
+`etherview.local`. Caddy terminates TLS using the operator-generated mkcert
+wildcard pair, mounted only into Caddy with its key at 0600. Automatic issuance,
+HTTP redirects and the admin API are disabled; rotation requires recreation.
+The app uses container-network HTTP while its HTTPS public origin remains the
+SIWE and Secure-cookie authority (ADR-0027). Metadata alone trusts the public CA
+and opts into its controlled private gateway; API media policy stays strict.
+
+Node routes support Geth JSON-RPC/WSS and Beacon `/eth/` REST/SSE. The gateway
+owns the explicit space-separated Origin allowlist, strips upstream CORS and
+Origin after checking browser requests, permits requests without Origin, rejects
+null/unlisted origins and does not enable credentialed cross-origin requests.
+It never proxies Engine or validator APIs and does not expand the SPA CSP.
+
+Only the loopback HTTPS host port is published. A container-loopback health
+listener checks gateway serving, independently of upstream availability. Core
+roles never depend on gateway readiness. Connections and headers have five- and
+thirty-second limits; IPFS read/write inactivity is bounded to thirty seconds.
+Node bodies are bounded to 32 MiB, subscriptions to 24 hours, and shutdown to ten
+seconds. No node writes are retried. Proxy failures are redacted; request URLs,
+bodies, credentials and nested upstream errors are not logged. Actual-container
+regressions own these contracts, including hostile paths and long idle streams.

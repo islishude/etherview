@@ -77,7 +77,7 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 | P30-T24  | done   | P20-T13                                                       | Unified block-pinned proxy detector/resolver, generated Safe manifests and exact evidence, memoized bounded RPC, public projections, metrics/runbook and bounded backfill without generation flags or shadow comparison | baseline differential, unit/fuzz, adversarial exact-block RPC, Safe factory discovery, authorization/reorg, PostgreSQL/race, browser and production gates               |
 | P30-T33  | done   | P00                                                           | Typed role/subsystem builders, independent executable component manifest, shared lifecycle/readiness, bounded HTTP/pool shutdown, optional native API TLS and fail-closed startup                                       | configuration/graph, HTTP/1.1/HTTP/2 cancellation, stuck-borrower, deployment and monolith/split parity tests                                                           |
 | P30-T34  | done   | P20, P30-T33                                                  | PostgreSQL job/outbox authority, optional NATS/Redis/S3 accelerators, AWS SDK credential discovery and role-scoped workload identity, and isolated RustFS service acceptance                                            | outage/fallback, credential refresh/redaction/redirect, S3 unit/race, real RustFS and deployment tests                                                                  |
-| P30-T35  | done   | P00, P10, P40, P50                                            | Non-root production images, native healthchecks and Compose topologies, streaming single-file IPFS CLI, and local Kubo Preview with an independent Go HTTPS gateway                                                     | image/schema/runtime, CLI/gateway unit/race, TLS isolation, offline roundtrip, exact metadata/restart and native architecture gates                                     |
+| P30-T35  | done   | P00, P10, P40, P50                                            | Non-root production images, native healthchecks and Compose topologies, streaming single-file IPFS CLI, and local Kubo Preview with an HTTPS gateway                                                                    | image/schema/runtime, CLI/gateway unit/race, TLS isolation, offline roundtrip, exact metadata/restart and native architecture gates                                     |
 | P30-T36  | done   | P30-T33, P30-T34                                              | Helm role deployments, HPA, migration job, secrets, network policy                                                                                                                                                      | Helm lint/render tests                                                                                                                                                  |
 | P30-T37  | done   | P10, P20, P40                                                 | Configurable structured logs, fenced progress/outcome reporting, OpenTelemetry, bounded Go-runtime/native writer-reader pool metrics, alerts, admin/repair and domain tuning baselines                                  | metric contracts, outage/failover and bounded benchmarks; reference capacity remains P70-T04                                                                            |
 | P30-T43  | done   | P20-T11, P20-T13, P30-T15, P30-T20                            | Exact transaction-time EIP-7702 execution identity, state/trace/ABI and constructor provenance, delegated-account interaction and calldata semantics                                                                    | same-transaction delegation, same-block redelegation, clearing, immutable raw evidence, reorg/replay, PostgreSQL, browser and real runtime tests                        |
@@ -90,6 +90,7 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 | P30-T139 | done   | P30-T10, P30-T14, P30-T15, P30-T97                            | Bounded remote eth-bytecode-db discovery, durable scheduling and locally verified source publication with provenance and role parity                                                                                    | Protocol/PG race, creation fallback/Yul, source provenance, common/browser/schema/runtime gates and production Solidity/Vyper topology parity                           |
 | P30-T140 | done   | P30-T10                                                       | Optional Etherscan credentials for Sourcify imports, authenticated encryption before durable enqueue, credential-safe request identity and bilingual Web inputs                                                         | API, redaction/tamper/deduplication, PostgreSQL worker and browser regressions                                                                                          |
 | P30-T141 | done   | P30-T10, P30-T140                                             | Sourcify-to-Etherview source import through canonical local verification, explicit post-publication import and accessible verification choices                                                                          | API authorization, hostile-source and PostgreSQL publication regressions, bilingual browser and select visual checks                                                    |
+| P30-T142 | done   | P30-T138                                                      | Caddy Preview HTTPS migration for app, IPFS, Geth and Beacon on *.etherview.local, including browser origins and streaming                                                                                              | Real Caddy boundary regressions, browser authentication, Preview metadata/consensus, runtime/RustFS and common gates                                                    |
 
 ## Acceptance
 
@@ -185,6 +186,18 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P60/P70 release blockers remain independent.
 
 ## Evidence
+
+P30-T142 passed locally on macOS ARM64 on 2026-10-26: `make test-preview-gateway`
+against the official Caddy 2.11.7 image, both Preview E2E prebuilt targets after
+building the application and pulling Preview images, `make check`, `make test-e2e`
+(148 browser tests), `make test-runtime-e2e`, and `make test-rustfs`.
+Caddy regressions cover TLS, raw IPFS paths/bodies, cancellation and timeouts,
+CORS and replacement origins, streaming, failed writes without retries, upstream
+isolation, certificate startup failures and bounded shutdown. Real Preview
+acceptance covers HTTPS transactions, IPFS, finalized Beacon data, all/split
+parity, and browser SIWE/CSRF/Secure cookies, wallet URLs, CORS, WSS and SSE.
+Tests use isolated name resolution and disposable loopback ports; this does not
+claim a daily Preview migration, system hosts changes or a remote CI run.
 
 P30-T141 passed on 2026-10-25 against the worktree based on `d6da23b` on local
 macOS ARM64: Go package and focused race tests, PostgreSQL 18 local publication,
@@ -325,10 +338,6 @@ Kubo acceptance replaced the failed public-gateway prerequisite: the exact
 `make test-preview-metadata` passed two canonical metadata versions, one
 attempt each, gateway/worker restart and immutable content checks. That local
 replacement does not establish public-IPFS availability.
-
-The independent Go HTTPS IPFS gateway passed unit/race, Compose and real-Kubo
-Preview checks. Native pgx and gateway evidence are revision-specific; the
-historical CI run above does not cover later gateway changes.
 
 Neutral contracts and production/test decomposition passed import-graph,
 source/lint, focused, and topology checks. Aggregate bounded-runtime acceptance

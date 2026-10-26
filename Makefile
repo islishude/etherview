@@ -49,17 +49,16 @@ HARDHAT3_IMAGE ?= etherview-hardhat3:local
 # Enable 2 by default only after matching native AMD64/ARM64 measurements.
 VERIFICATION_PARALLEL ?= 1
 FOUNDRY_IMAGE ?= etherview-foundry:local
-IPFS_GATEWAY_IMAGE ?= etherview-ipfs-gateway:local
+PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
+export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs ipfs-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview-push.env
 PREVIEW_TLS_DIR := .local/preview-tls
-PREVIEW_TLS_CERT := $(PREVIEW_TLS_DIR)/tls.crt
-PREVIEW_TLS_KEY := $(PREVIEW_TLS_DIR)/tls.key
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
-PREVIEW_IPFS_CERT := $(PREVIEW_TLS_DIR)/ipfs.crt
-PREVIEW_IPFS_KEY := $(PREVIEW_TLS_DIR)/ipfs.key
+PREVIEW_GATEWAY_CERT := $(PREVIEW_TLS_DIR)/gateway.crt
+PREVIEW_GATEWAY_KEY := $(PREVIEW_TLS_DIR)/gateway.key
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
 VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
@@ -78,8 +77,7 @@ endef
 # Build and generation
 
 .PHONY: pnpm-install web-install compiler-install go-build web-build web-generate generate-go \
-	generate generate-check docker-build hardhat3-client-image-build foundry-client-image-build \
-	preview-gateway-build
+	generate generate-check docker-build hardhat3-client-image-build foundry-client-image-build
 
 pnpm-install:
 	$(PNPM) install --frozen-lockfile
@@ -136,8 +134,9 @@ foundry-client-image-build:
 	DOCKER="$(DOCKER)" $(BUILDX) build --load \
 		--tag "$(FOUNDRY_IMAGE)" e2e/foundry
 
-preview-gateway-build:
-	DOCKER="$(DOCKER)" $(BUILDX) build --load --file deploy/ipfs/Dockerfile --tag "$(IPFS_GATEWAY_IMAGE)" .
+test-preview-gateway:
+	$(DOCKER) pull "$(PREVIEW_GATEWAY_IMAGE)"
+	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" DOCKER="$(DOCKER)" $(GO) test -race -count=1 -tags=previewgatewaye2e -timeout=10m ./e2e/previewgateway
 
 
 # Quality checks
@@ -313,23 +312,23 @@ test-runtime-e2e-prebuilt:
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
-test-preview-metadata: preview-cert-check docker-build preview-gateway-build preview-images
+test-preview-metadata: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(IPFS_GATEWAY_IMAGE)"; do \
-		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-gateway-build' first); \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)"; do \
+		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
 test-preview-metadata-prebuilt: preview-e2e-check
-	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+	@PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
 
-test-preview-consensus: preview-cert-check docker-build preview-gateway-build preview-images
+test-preview-consensus: preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-consensus-prebuilt
 
 test-preview-consensus-prebuilt: preview-e2e-check
-	@IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+	@PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
 
 test-hardhat3-provider-compat: pnpm-install
@@ -464,7 +463,7 @@ helm-check:
 # Preview lifecycle
 
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
-	preview-images start-preview stop-preview recreate-preview
+	preview-images start-preview stop-preview recreate-preview test-preview-gateway
 
 start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
@@ -472,10 +471,8 @@ preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
 	@mkdir -p "$(PREVIEW_TLS_DIR)"
 	$(MKCERT) -install
-	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_TLS_CERT)" -key-file "$(PREVIEW_TLS_KEY)" \
-		etherview.localhost localhost 127.0.0.1 ::1
-	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_IPFS_CERT)" -key-file "$(PREVIEW_IPFS_KEY)" \
-		ipfs.preview.test
+	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_GATEWAY_CERT)" -key-file "$(PREVIEW_GATEWAY_KEY)" \
+		'*.etherview.local'
 	@set -eu; \
 		ca_root="$$("$(MKCERT)" -CAROOT)"; \
 		test -r "$$ca_root/rootCA.pem" || { \
@@ -483,13 +480,13 @@ preview-cert:
 			exit 1; \
 		}; \
 		cp "$$ca_root/rootCA.pem" "$(PREVIEW_TLS_CA)"
-	@chmod 600 "$(PREVIEW_TLS_KEY)" "$(PREVIEW_IPFS_KEY)"
-	@chmod 644 "$(PREVIEW_TLS_CERT)" "$(PREVIEW_IPFS_CERT)" "$(PREVIEW_TLS_CA)"
-	@echo "preview-cert: wrote $(PREVIEW_TLS_CERT), $(PREVIEW_TLS_KEY), and public $(PREVIEW_TLS_CA)"
+	@chmod 600 "$(PREVIEW_GATEWAY_KEY)"
+	@chmod 644 "$(PREVIEW_GATEWAY_CERT)" "$(PREVIEW_TLS_CA)"
+	@echo "preview-cert: wrote $(PREVIEW_GATEWAY_CERT), $(PREVIEW_GATEWAY_KEY), and public $(PREVIEW_TLS_CA)"
 
 preview-cert-check:
-	@test -r "$(PREVIEW_TLS_CERT)" && test -r "$(PREVIEW_TLS_KEY)" && test -r "$(PREVIEW_TLS_CA)" && \
-		test -r "$(PREVIEW_IPFS_CERT)" && test -r "$(PREVIEW_IPFS_KEY)" || { \
+	@test -r "$(PREVIEW_TLS_CA)" && \
+		test -r "$(PREVIEW_GATEWAY_CERT)" && test -r "$(PREVIEW_GATEWAY_KEY)" || { \
 		echo "Preview TLS certificate or public root CA missing; run 'make preview-cert' first"; \
 		exit 1; \
 	}
@@ -504,25 +501,25 @@ preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
 preview-images: preview-env
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
-start-preview: preview-env preview-cert-check docker-build preview-gateway-build preview-images
+start-preview: preview-env preview-cert-check docker-build preview-images
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
-	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
+	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
-	@printf '\nPreview: https://etherview.localhost:%s\n' "$${ETHERVIEW_PORT:-8080}"
+	@printf '\nPreview: https://app.etherview.local (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
-recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-gateway-build
-	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
+recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build
+	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
-	IPFS_GATEWAY_IMAGE="$(IPFS_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
+	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs

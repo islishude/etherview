@@ -31,7 +31,7 @@ test("push private keys reach only the sending role in Preview and deployment", 
   const file = path.join(directory, "push.env");
   fs.writeFileSync(
     file,
-    "ETHERVIEW_PORT=19443\nETHERVIEW_PUSH_ENABLED=true\nETHERVIEW_PUSH_PUBLIC_KEY=public-fixture\n" +
+    "PREVIEW_HTTPS_PORT=19443\nETHERVIEW_PUSH_ENABLED=true\nETHERVIEW_PUSH_PUBLIC_KEY=public-fixture\n" +
       "ETHERVIEW_PUSH_CONTACT=mailto:operator@example.com\n" +
       "ETHERVIEW_PUSH_PRIVATE_KEY=private-fixture\nETHERVIEW_PUSH_PRIVATE_KEY_FILE=/run/push-key\n" +
       "ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true\n",
@@ -59,7 +59,7 @@ test("push private keys reach only the sending role in Preview and deployment", 
     );
     if (args.length === 0)
       assert.equal(
-        config.services.api.ports.find((port) => port.target === 8080).published,
+        config.services["preview-gateway"].ports.find((port) => port.target === 443).published,
         "19443",
       );
     for (const [role, service] of Object.entries(config.services)) {
@@ -170,7 +170,7 @@ for (const mode of ["monolith", "distributed"]) {
       "lighthouse",
       "validator",
       "ipfs",
-      "ipfs-gateway",
+      "preview-gateway",
       "archive-init",
     ]) {
       assert.equal(config.services[name], undefined);
@@ -206,13 +206,16 @@ test("Preview Make commands pass the unified env path through the Compose native
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, "preview.env");
   prepareEnvironment(file);
-  fs.appendFileSync(file, "ETHERVIEW_PORT=19444\n");
+  fs.appendFileSync(file, "PREVIEW_HTTPS_PORT=19444\n");
   const config = JSON.parse(
     runCompose(["-f", "compose.yaml", "config", "--format", "json"], {
-      env: { ...process.env, COMPOSE_ENV_FILES: file, ETHERVIEW_PORT: undefined },
+      env: { ...process.env, COMPOSE_ENV_FILES: file, PREVIEW_HTTPS_PORT: undefined },
     }),
   );
-  assert.equal(config.services.api.ports.find((port) => port.target === 8080).published, "19444");
+  assert.equal(
+    config.services["preview-gateway"].ports.find((port) => port.target === 443).published,
+    "19444",
+  );
   assert.equal(config.services.maintenance.environment.ETHERVIEW_PUSH_ENABLED, "true");
   assert.equal(config.services.api.environment.ETHERVIEW_PUSH_PRIVATE_KEY, undefined);
   const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");

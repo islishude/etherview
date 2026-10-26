@@ -59,7 +59,7 @@ func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 			t.Fatalf("Preview config retains removed field %q", removed)
 		}
 	}
-	if !preview.Features.NFTMetadata || preview.Metadata.IPFSGateway != "https://ipfs.preview.test:8443" ||
+	if !preview.Features.NFTMetadata || preview.Metadata.IPFSGateway != "https://ipfs.etherview.local" ||
 		preview.Metadata.FetchTimeout != "30s" {
 		t.Fatalf(
 			"Preview NFT metadata = %v gateway = %q timeout = %q, want bounded local HTTPS gateway",

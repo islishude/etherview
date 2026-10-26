@@ -1015,14 +1015,18 @@ size alone is not sufficient justification to weaken those invariants.
   available document only with explicit latest/content observations and a
   stale marker; reorg automatically removes orphan update influence.
 
-Preview uses a pinned local Kubo node behind the independent standard-library
-Go `ipfs-gateway` HTTPS proxy and scratch image. The proxy serves only GET/HEAD
-`/ipfs/` reads and is not an application runtime role. Its
-metadata-only worker trusts the local public CA and explicitly permits the
-owned private gateway; the API media fetch policy remains strict. Daily Preview
-can retrieve IPFS content, while its acceptance topology seeds the same CID and
-runs Kubo offline. The independent operator `cmd/ipfs` tool talks to Kubo's
-loopback management API; it is not an explorer HTTP endpoint or runtime role.
+Preview uses pinned Kubo, Geth and Lighthouse nodes behind the official Caddy
+`preview-gateway`. Four explicit `*.etherview.local` hosts route app/API,
+read-only IPFS, execution JSON-RPC/WSS and Beacon REST/SSE. TLS terminates at
+Caddy; API traffic inside the container network uses HTTP. The gateway is not
+an application role and its health does not depend on optional upstreams.
+Only Caddy holds its wildcard private key. Metadata trusts the public CA and
+explicitly permits its private IPFS host; API media policy remains strict.
+Node CORS uses an exact configurable allowlist without credentials. The SPA
+continues using the generated same-origin client and injected wallet boundary.
+Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
+The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
+which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
 
 ## Operator Recovery Boundary
 

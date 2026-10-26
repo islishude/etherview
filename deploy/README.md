@@ -146,13 +146,13 @@ execution image or published ports with `GETH_IMAGE`, `GETH_HTTP_PORT`, and
 make preview-cert
 make start-preview
 curl --cacert .local/preview-tls/rootCA.pem \
-  -fsS https://etherview.localhost:8080/api/v1/config
+  -fsS https://app.etherview.local/api/v1/config
 ```
 
 `make preview-cert` is an explicit, one-time local trust operation: it requires
 mkcert, installs mkcert's local CA, and generates an ignored certificate pair
-under `.local/preview-tls/` for `etherview.localhost`, `localhost`,
-`127.0.0.1`, and `::1`. It also
+under `.local/preview-tls/` for `*.etherview.local`. Add the four explicit hosts
+entries from the [Caddy runbook](../docs/operations.md#preview-caddy-gateway). It also
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
 `make start-preview` builds images, then prepares or verifies an ignored
@@ -176,15 +176,15 @@ Never use these keys on an external network. Beacon HTTP defaults to loopback
 port 5052 (`LIGHTHOUSE_HTTP_PORT` overrides it), while Engine RPC and RustFS
 remain internal. Only API/enrich receive scoped archive credentials. See the
 runbook for lifecycle, credential overrides and failure diagnosis.
-Preview mounts only the certificate pair read-only into the API role. Rotate
+Preview mounts the certificate pair read-only only into Caddy; the API uses
+container-network HTTP. Rotate
 it by rerunning `make preview-cert` and then `make recreate-preview`. The public
 listener is
-`https://etherview.localhost:8080`; health and metrics on the operations listener remain
+`https://app.etherview.local`; health and metrics on the operations listener remain
 plain HTTP at `http://localhost:9090`. Browsers use the installed system trust;
 the checked-in command path also works for curl builds that do not consult it.
 The add-network control advertises the local Geth endpoint as
-`http://localhost:8545`. Wallet metadata validation permits that exact
-Preview-local HTTP RPC exception only; production RPC URLs and every block
+`https://geth.etherview.local`. Production RPC URLs and every block
 explorer or icon URL remain HTTPS-only.
 
 Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
@@ -236,15 +236,14 @@ not establish chain progress. Compose render regressions fix the healthcheck
 definition and role topology, while production image checks retain the non-root, native-architecture, and compiler-runtime
 boundaries.
 
-NFT metadata defaults to the local `https://ipfs.preview.test:8443` Kubo
+NFT metadata defaults to the local `https://ipfs.etherview.local` Kubo
 HTTPS gateway. Daily Preview uses IPFS network retrieval; the 30-second fetch
 budget remains bounded, and the ordinary metadata default stays 10 seconds.
 Kubo `v0.43.1` retains pinned content in `ipfs-data` and imports the fixed
-metadata fixture idempotently. Add `127.0.0.1 ipfs.preview.test` to the host's
-hosts file for browser navigation. `make preview-cert` creates a dedicated
-IPFS certificate; the proxy alone receives its private key and metadata alone
-receives the public CA. Only loopback ports 8443 (gateway) and 5001 (management
-API) are published; override them with `IPFS_GATEWAY_PORT`/`IPFS_API_PORT`.
+metadata fixture idempotently. Add `127.0.0.1 ipfs.etherview.local` to the host's
+hosts file for browser navigation. Caddy uses the shared wildcard certificate;
+metadata alone receives the public CA. Loopback ports 443 (gateway) and 5001 (management
+API) are published; override them with `PREVIEW_HTTPS_PORT`/`IPFS_API_PORT`.
 
 `ETHERVIEW_METADATA_IPFS_GATEWAY` still permits an explicit HTTPS override,
 without automatic public-gateway fallback. The metadata-only private-network
