@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
@@ -50,15 +51,15 @@ export function SourcifyImportForm({
     <div className="verification-layout">
       <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
         <div className="verification-flow-heading">
-          <Download aria-hidden="true" />
+          <UIIcon icon={Download} />
           <h2>{t("sourcify.importTitle")}</h2>
         </div>
         <p className="quiet">{t("sourcify.importHelp", { chain: chainID })}</p>
         <div className="verification-flow-steps" aria-label={t("sourcify.importSteps")}>
           <span>Sourcify</span>
-          <ArrowRight aria-hidden="true" />
+          <UIIcon icon={ArrowRight} />
           <span>{t("sourcify.localCheck")}</span>
-          <ArrowRight aria-hidden="true" />
+          <UIIcon icon={ArrowRight} />
           <span>Etherview</span>
         </div>
         <div className="form-grid">

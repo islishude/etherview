@@ -72,7 +72,7 @@ describe("WalletMenu", () => {
       </>,
     );
     const user = userEvent.setup();
-    const summary = screen.getByText("Connect wallet", { selector: "summary" });
+    const summary = screen.getByLabelText("Connect wallet", { selector: "summary" });
     const menu = summary.parentElement as HTMLDetailsElement;
 
     await user.click(summary);
@@ -87,7 +87,7 @@ describe("WalletMenu", () => {
   it("keeps the popover open for interactions inside the menu", async () => {
     render(<WalletMenu />);
     const user = userEvent.setup();
-    const summary = screen.getByText("Connect wallet", { selector: "summary" });
+    const summary = screen.getByLabelText("Connect wallet", { selector: "summary" });
     const menu = summary.parentElement as HTMLDetailsElement;
 
     await user.click(summary);

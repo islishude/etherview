@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useTranslation } from "react-i18next";
 import { useBlockConsensus } from "@/api/consensus";
 import type * as schemas from "@/api/heyapi/types.gen";
@@ -57,7 +59,10 @@ export function ConsensusPanel({ hash }: { hash: string }) {
           )}
           {hasDetails && (
             <details className="block-consensus-details">
-              <summary>{t("consensus.technicalDetails")}</summary>
+              <summary>
+                <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+                {t("consensus.technicalDetails")}
+              </summary>
               <dl className="block-consensus-detail-list">
                 {consensusDetailFields.map((key) =>
                   data[key] === undefined ? null : (

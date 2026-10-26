@@ -439,3 +439,44 @@ code {
 .account-navigation {
   flex: 0 0 auto;
 }
+
+/* UIIcon owns sizes and strokes; containers own spacing, color and hit areas. */
+.ui-icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  vertical-align: -0.125em;
+}
+:where(button, a, summary):has(> .ui-icon) {
+  align-items: center;
+}
+button:has(> .ui-icon):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+button:has(> .ui-icon):focus-visible,
+a:has(> .ui-icon):focus-visible,
+summary:has(> .ui-icon):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.disclosure-chevron {
+  transition: transform 0.18s ease;
+}
+details[open] > summary > .disclosure-chevron {
+  transform: rotate(180deg);
+}
+
+summary:has(.native-disclosure-icon) {
+  list-style: none;
+}
+summary:has(.native-disclosure-icon)::-webkit-details-marker {
+  display: none;
+}
+.native-disclosure-icon {
+  margin-inline-end: 0.35rem;
+  transition: transform 0.18s ease;
+}
+details[open] > summary > .native-disclosure-icon,
+details[open] > summary > .calldata-row-name > .native-disclosure-icon {
+  transform: rotate(90deg);
+}

@@ -295,12 +295,12 @@
   white-space: nowrap;
 }
 
-.coverage-badge.complete .status-dot {
-  background: var(--success);
+.coverage-badge.complete .status-icon {
+  color: var(--success);
 }
 
-.coverage-badge.pending .status-dot {
-  background: var(--warning);
+.coverage-badge.pending .status-icon {
+  color: var(--warning);
 }
 
 .analytics-pending {

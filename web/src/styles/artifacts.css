@@ -212,12 +212,7 @@
 
 .source-tree-chevron,
 .source-tree-file-icon {
-  width: 1rem;
   color: var(--text-soft);
-  font-family: var(--font-sans);
-  font-size: 0.85rem;
-  font-weight: 850;
-  text-align: center;
 }
 
 .source-tree-item.active .source-tree-file-icon {
@@ -566,10 +561,6 @@
   font-size: 0.68rem;
 }
 
-.artifact-disclosure[open] > summary > span:last-child {
-  transform: rotate(45deg);
-}
-
 .artifact-disclosure-body {
   min-width: 0;
   position: relative;
@@ -712,4 +703,17 @@
     min-width: 0;
     flex-wrap: wrap;
   }
+}
+
+.source-editor .cm-search button[name="close"],
+.source-editor .cm-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.source-editor .cm-search button[name="close"]:hover,
+.source-editor .cm-dialog-close:hover {
+  color: var(--text);
 }

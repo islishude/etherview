@@ -161,12 +161,10 @@
 
 .calldata-node-summary {
   cursor: pointer;
-  list-style-position: outside;
   background: var(--surface);
 }
 
-.calldata-node-summary::marker,
-.calldata-composite > summary::-webkit-details-marker {
+.calldata-node-summary .native-disclosure-icon {
   color: var(--brand);
 }
 

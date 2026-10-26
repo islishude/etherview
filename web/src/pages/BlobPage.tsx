@@ -1,3 +1,5 @@
+import { ArrowLeft } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useBlockBlobs } from "@/api/consensus";
@@ -15,7 +17,7 @@ export function BlobPage({ hash, index }: { hash: string; index: string }) {
   return (
     <Page title={t("consensus.blobDetails")} description={item?.versioned_hash} mono>
       <Link to="/blocks/$blockID" params={{ blockID: hash }} search={{ tab: "blobs" }}>
-        <span aria-hidden="true">← </span>
+        <UIIcon icon={ArrowLeft} />
         {t("consensus.blockBlobs")}
       </Link>
       <section className="panel blob-detail-panel" aria-label={t("consensus.blobDetails")}>

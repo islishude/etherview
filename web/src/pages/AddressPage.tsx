@@ -1,3 +1,5 @@
+import "./AddressQRCode.css";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
 import { AddressAccountActions } from "@/components/AddressAccountActions";
@@ -5,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { QRCodeSVG } from "qrcode.react";
+import { QrCode, X } from "lucide-react";
 import { isAddress } from "viem";
 
 import { usePublicConfig } from "@/api/publicConfig";
@@ -159,9 +162,6 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
       : account.data?.type === "delegated_eoa"
         ? t("page.delegatedAccount")
         : t("page.address");
-  const qrPayload = publicConfig.data
-    ? `ethereum:${displayAddress}@${publicConfig.data.chain_id}`
-    : undefined;
   useEffect(() => {
     if (!contractHash || delegationHash || account.isPending || account.error || contractAvailable)
       return;
@@ -183,11 +183,7 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   ]);
 
   return (
-    <Page
-      title={title}
-      description={<AddressHeader address={displayAddress} qrPayload={qrPayload} />}
-      mono
-    >
+    <Page title={title} description={<AddressHeader address={displayAddress} />} mono>
       <QueryNotice loading={account.isPending} error={account.error} />
       {account.data && <AddressAccountActions address={address} />}
       {account.data && (
@@ -421,7 +417,7 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   );
 }
 
-function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: string }) {
+function AddressHeader({ address }: { address: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const openButtonRef = useRef<HTMLButtonElement>(null);
@@ -447,7 +443,7 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
     <>
       <span className="address-header-actions">
         <AddressIdentity address={address} compact={false} copy link={false} />
-        {qrPayload ? (
+        {isAddress(address) ? (
           <button
             aria-label={t("actions.showQRCode")}
             aria-haspopup="dialog"
@@ -456,11 +452,11 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
             ref={openButtonRef}
             type="button"
           >
-            <span aria-hidden="true">▦</span>
+            <UIIcon icon={QrCode} size={16} />
           </button>
         ) : null}
       </span>
-      {open && qrPayload ? (
+      {open && isAddress(address) ? (
         <div
           className="dialog-backdrop"
           onMouseDown={(event) => {
@@ -470,6 +466,7 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
         >
           <div
             aria-labelledby="address-qr-title"
+            aria-describedby="address-qr-description"
             aria-modal="true"
             className="qr-dialog"
             onKeyDown={(event) => {
@@ -502,30 +499,41 @@ function AddressHeader({ address, qrPayload }: { address: string; qrPayload?: st
             tabIndex={-1}
           >
             <div className="qr-dialog-heading">
-              <h2 id="address-qr-title">{t("detail.addressQRCode")}</h2>
+              <div className="qr-dialog-title">
+                <span className="qr-dialog-icon">
+                  <UIIcon icon={QrCode} size={20} />
+                </span>
+                <h2 id="address-qr-title">{t("detail.addressQRCode")}</h2>
+              </div>
               <button
                 aria-label={t("common.close")}
                 className="dialog-close"
                 onClick={() => setOpen(false)}
                 type="button"
               >
-                ×
+                <UIIcon icon={X} />
               </button>
             </div>
+            <p id="address-qr-description" className="qr-dialog-description">
+              {t("detail.addressQRDescription")}
+            </p>
             <div className="qr-code-surface">
               <QRCodeSVG
                 bgColor="#ffffff"
                 fgColor="#111111"
-                includeMargin
+                marginSize={4}
                 level="M"
-                size={224}
+                size={240}
                 title={t("detail.addressQRCode")}
-                value={qrPayload}
+                value={address}
               />
             </div>
-            <CopyableField value={qrPayload}>
-              <code>{qrPayload}</code>
-            </CopyableField>
+            <div className="qr-address">
+              <span className="qr-address-label">{t("page.address")}</span>
+              <CopyableField value={address}>
+                <code>{address}</code>
+              </CopyableField>
+            </div>
           </div>
         </div>
       ) : null}

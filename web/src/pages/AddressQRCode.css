@@ -1,0 +1,84 @@
+.qr-dialog {
+  width: min(25rem, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 1.5rem;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-sans);
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
+}
+
+.qr-dialog .qr-dialog-heading {
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.qr-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.qr-dialog-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.qr-dialog-description {
+  margin: 0 0 1.5rem;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+}
+
+.qr-code-surface {
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.75rem;
+  margin: 0 auto 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.qr-code-surface svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.qr-address {
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.875rem;
+  background: var(--surface-raised);
+}
+
+.qr-address-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.qr-address .copyable-field {
+  width: 100%;
+  align-items: center;
+  font-size: 0.8125rem;
+}
+
+.qr-address code {
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}

@@ -1,3 +1,4 @@
+import { SelectControl } from "@/components/SelectControl";
 import { type FormEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -341,7 +342,7 @@ function PrepaidBillingPanel() {
           </label>
           <label className="field-control">
             <span>{t("billing.topup.method")}</span>
-            <select
+            <SelectControl
               onChange={(event) => setMethod(event.target.value as BillingTransferMethod)}
               value={method}
             >
@@ -350,7 +351,7 @@ function PrepaidBillingPanel() {
                   {value}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <p className="billing-boundary-note">
             {t("billing.topup.confirmation", {
@@ -616,7 +617,7 @@ function BillingFilterPanel({
         <div className="billing-filter-grid">
           <label className="field-control">
             <span>{t("billing.fields.state")}</span>
-            <select
+            <SelectControl
               onChange={(event) =>
                 onChange({
                   ...draft,
@@ -631,11 +632,11 @@ function BillingFilterPanel({
                   {t(`billing.states.${state}`)}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <label className="field-control">
             <span>{t("billing.fields.operation")}</span>
-            <select
+            <SelectControl
               onChange={(event) => onChange({ ...draft, operation: event.target.value })}
               value={draft.operation}
             >
@@ -645,7 +646,7 @@ function BillingFilterPanel({
                   {operation}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <label className="field-control">
             <span>{t("billing.fields.network")}</span>

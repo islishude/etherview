@@ -1,9 +1,11 @@
+import "./AddressIdentity.css";
 import { useTranslation } from "react-i18next";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
 import { CopyableField } from "@/components/CopyButton";
 import { usePrimaryName } from "./AddressNamesProvider";
+import { SystemAddressMarker } from "./SystemAddressMarker";
 
 export function AddressIdentity({
   address,
@@ -26,7 +28,9 @@ export function AddressIdentity({
   const { t } = useTranslation();
   const system = address.toLowerCase() === "0xfffffffffffffffffffffffffffffffffffffffe";
   const content = (
-    <span className={`address-identity${primary ? " has-primary-name" : ""}`}>
+    <span
+      className={`address-identity${primary ? " has-primary-name" : ""}${compact ? " is-compact" : ""}`}
+    >
       {primary ? (
         <span className="address-primary-name-row">
           <bdi className="address-primary-name" title={primary.name}>
@@ -40,7 +44,6 @@ export function AddressIdentity({
       <code className="address-identity-value" title={address}>
         {compact ? shortenAddress(address) : address}
       </code>
-      {system && <small className="system-address-badge">{t("detail.systemAddress")}</small>}
       {suffix}
     </span>
   );
@@ -63,7 +66,15 @@ export function AddressIdentity({
   ) : (
     content
   );
-  return copy ? <CopyableField value={address}>{linked}</CopyableField> : linked;
+  const identity = system ? (
+    <span className={`address-system-identity${!compact && !primary ? " is-full" : ""}`}>
+      {linked}
+      <SystemAddressMarker />
+    </span>
+  ) : (
+    linked
+  );
+  return copy ? <CopyableField value={address}>{identity}</CopyableField> : identity;
 }
 
 export function shortenAddress(value: string): string {

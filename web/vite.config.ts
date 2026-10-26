@@ -107,7 +107,9 @@ export default defineConfig({
 
             {
               name: "vendor",
-              test: /node_modules/,
+              // Let Lucide follow its consumers instead of pulling the entire shared
+              // vendor group (including route-only QR rendering) into the shell.
+              test: (id) => /node_modules/.test(id) && !/[\\/]lucide-react[\\/]/.test(id),
               priority: 10,
               minSize: 20 * KiB,
               maxSize: 350 * KiB,

@@ -1,3 +1,5 @@
+import { ArrowRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
 import { useIdentityRecovery } from "@/api/identityRecovery";
@@ -452,7 +454,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
                           </dt>
                           <dd>
                             <code>{change.before ?? "∅"}</code>
-                            <span aria-hidden="true">→</span>
+                            <UIIcon icon={ArrowRight} />
                             <code>{change.after ?? "∅"}</code>
                           </dd>
                         </div>

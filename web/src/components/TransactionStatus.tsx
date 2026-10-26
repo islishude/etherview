@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import {
   ArrowRightLeft,
   CircleCheck,
@@ -35,7 +36,7 @@ export function TransactionStatus({
   const Icon = statusIcons[status];
   return (
     <span className={`transaction-status ${status}`} data-status={status}>
-      <Icon aria-hidden="true" className="transaction-status-icon" size={14} strokeWidth={2.5} />
+      <UIIcon icon={Icon} className="transaction-status-icon" size={14} />
       <span>{label}</span>
     </span>
   );

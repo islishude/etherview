@@ -1,3 +1,5 @@
+import { CircleCheck, CircleDot } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -79,13 +81,16 @@ export function WalletMenu() {
           className="control wallet-summary"
           ref={summaryRef}
         >
-          <span
-            className={wallet.active ? "status-dot success" : "status-dot"}
-            aria-hidden="true"
+          <UIIcon
+            icon={wallet.active ? CircleCheck : CircleDot}
+            size={14}
+            className={wallet.active ? "status-icon success" : "status-icon"}
           />
-          {wallet.active
-            ? (walletPrimaryName?.name ?? shorten(wallet.active.account, 6, 4))
-            : t("actions.connect")}
+          <span className="wallet-summary-label">
+            {wallet.active
+              ? (walletPrimaryName?.name ?? shorten(wallet.active.account, 6, 4))
+              : t("actions.connect")}
+          </span>
         </summary>
         <div className="wallet-popover">
           <div className="popover-heading">
@@ -165,7 +170,7 @@ export function WalletMenu() {
               ) : auth.session.authenticated && auth.session.user ? (
                 <>
                   <span className="authenticated-user">
-                    <span className="status-dot success" aria-hidden="true" />
+                    <UIIcon icon={CircleCheck} size={14} className="status-icon success" />
                     <span>
                       <strong>
                         {auth.session.user.display_name ??

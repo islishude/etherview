@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, ListFilter, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -72,15 +73,15 @@ export function RequestTypeFilter({
           setOpen(!open);
         }}
       >
-        <ListFilter size={16} aria-hidden="true" />
+        <UIIcon icon={ListFilter} size={16} />
         <span>{label(value)}</span>
         <span className="request-filter-count">{count(value)}</span>
-        <ChevronDown size={15} aria-hidden="true" />
+        <UIIcon icon={ChevronDown} size={16} />
       </button>
       {open && (
         <div className="request-filter-popover" id={id}>
           <label className="request-filter-search">
-            <Search size={15} aria-hidden="true" />
+            <UIIcon icon={Search} size={16} />
             <input
               ref={searchInput}
               type="search"
@@ -103,7 +104,7 @@ export function RequestTypeFilter({
                 }}
               >
                 <span className="request-filter-check">
-                  {value === type && <Check size={15} aria-hidden="true" />}
+                  {value === type && <UIIcon icon={Check} size={16} />}
                 </span>
                 <span>{label(type)}</span> {type && <code>{type}</code>}{" "}
                 <span className="request-filter-count">{count(type)}</span>

@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { useId, useState } from "react";
 import { Download, Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -48,7 +49,7 @@ export function BlobActions({ hash, index }: { hash: string; index: string }) {
           aria-controls={previewID}
           onClick={() => void load(false)}
         >
-          {preview ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          {preview ? <UIIcon icon={EyeOff} size={16} /> : <UIIcon icon={Eye} size={16} />}
           {t(
             busy === "preview"
               ? "consensus.loadingPreview"
@@ -63,7 +64,7 @@ export function BlobActions({ hash, index }: { hash: string; index: string }) {
           disabled={Boolean(busy)}
           onClick={() => void load(true)}
         >
-          <Download size={16} aria-hidden="true" />
+          <UIIcon icon={Download} size={16} />
           {t(busy === "download" ? "consensus.preparingDownload" : "consensus.download")}
         </button>
       </div>

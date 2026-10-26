@@ -1,3 +1,5 @@
+import { ArrowRight, CircleAlert, History } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -371,7 +373,7 @@ export function ReorgContext({ kind, hash }: { kind: "block" | "transaction"; ha
   return (
     <section className="reorg-context" role="status" aria-labelledby="reorg-context-title">
       <span className="reorg-mark" aria-hidden="true">
-        ↺
+        <UIIcon icon={History} size={24} />
       </span>
       <div>
         <h2 id="reorg-context-title">
@@ -458,7 +460,7 @@ export function CapabilityDegraded({ stage, state }: { stage: string; state: str
   const { t } = useTranslation();
   return (
     <div className="query-notice degraded" role="status">
-      <span className="status-dot warning" aria-hidden="true" />
+      <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
       <span>
         <strong>{t("state.stageUnavailable", { stage: stageLabel(stage, t) })}</strong>
         <small>
@@ -881,7 +883,7 @@ function SearchResultLink({ result }: { result: SearchResult }) {
             {result.canonical ? t("common.canonical") : t("common.orphan")}
           </span>
         )}
-        <span aria-hidden="true">→</span>
+        <UIIcon icon={ArrowRight} />
       </span>
     </>
   );

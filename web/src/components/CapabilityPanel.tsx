@@ -1,3 +1,5 @@
+import { Ellipsis } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useTranslation } from "react-i18next";
 
 import { Surface } from "./DesignPrimitives";
@@ -10,7 +12,7 @@ export function CapabilityPanel({ detail }: { detail?: string }) {
       aria-labelledby="capability-title"
     >
       <span className="capability-mark" aria-hidden="true">
-        ···
+        <UIIcon icon={Ellipsis} size={24} />
       </span>
       <div>
         <h2 id="capability-title">{t("capability.foundation")}</h2>

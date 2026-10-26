@@ -1,3 +1,5 @@
+import { CircleAlert } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -203,7 +205,7 @@ function UserOperationFailure({ operation }: { operation: UserOperationDetail })
   return (
     <section className="reorg-context user-operation-failure" role="status">
       <span className="reorg-mark" aria-hidden="true">
-        !
+        <UIIcon icon={CircleAlert} size={24} />
       </span>
       <div>
         <h2>

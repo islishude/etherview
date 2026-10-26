@@ -691,8 +691,8 @@ describe("core transaction detail pages", () => {
       await user.click(fromCopy);
       await user.click(toCopy);
 
-      expect(fromCopy).toHaveTextContent("✓");
-      expect(toCopy).toHaveTextContent("✓");
+      expect(fromCopy.querySelector("svg.lucide-check")).not.toBeNull();
+      expect(toCopy.querySelector("svg.lucide-check")).not.toBeNull();
 
       fromCopy.focus();
       expect(fromCopy).toHaveFocus();

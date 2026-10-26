@@ -593,9 +593,15 @@ describe("ContractArtifactPanel", () => {
 
     const editor = screen.getByRole("textbox", { name: "Read-only source editor for main.yul" });
     expect(editor).toHaveAttribute("contenteditable", "false");
+    expect(editor).toHaveAttribute("tabindex", "0");
     expect(editor.querySelector(".tok-keyword")).toHaveTextContent("object");
     await user.click(screen.getByRole("button", { name: "Search" }));
     expect(document.querySelector(".cm-search")).not.toBeNull();
+    const closeSearch = await screen.findByRole("button", { name: "Close" });
+    expect(closeSearch.querySelector("svg.lucide-x")).not.toBeNull();
+    expect(closeSearch.textContent).toBe("");
+    await user.click(closeSearch);
+    expect(document.querySelector(".cm-search")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Fullscreen" }));
     expect(requestFullscreen).toHaveBeenCalledTimes(1);

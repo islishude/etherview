@@ -108,16 +108,36 @@ it.each(["en", "zh"])(
         <AddressIdentity address={system} link={false} copy compact={false} />
       </I18nextProvider>,
     );
-    expect(screen.getByText(language === "en" ? "System Address" : "系统地址")).toBeVisible();
+    const label = language === "en" ? "System Address" : "系统地址";
+    const marker = screen.getByRole("button", { name: label });
+    expect(marker).toBeVisible();
+    expect(screen.queryByRole("tooltip", { hidden: true })).toBeNull();
+    // JSDOM does not implement the popover top layer; browser tests verify visibility.
+    await user.hover(marker);
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent(label);
+    await user.unhover(marker);
+    expect(screen.queryByRole("tooltip", { hidden: true })).toBeNull();
+    await user.tab();
+    expect(marker).toHaveFocus();
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent(label);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("tooltip", { hidden: true })).toBeNull();
+    await user.click(marker);
+    expect(screen.getByRole("tooltip", { hidden: true })).toHaveTextContent(label);
+    await user.click(document.body);
+    expect(screen.queryByRole("tooltip", { hidden: true })).toBeNull();
+    await user.click(marker);
+    await user.tab();
+    expect(screen.queryByRole("tooltip", { hidden: true })).toBeNull();
     expect(screen.getByTitle(system)).toBeVisible();
-    await user.click(screen.getByRole("button"));
+    await user.click(screen.getByRole("button", { name: language === "en" ? "Copy" : "复制" }));
     expect(await navigator.clipboard.readText()).toBe(system);
     rerender(
       <I18nextProvider i18n={i18n}>
         <AddressIdentity address="0xffffffffffffffffffffffffffffffffffffffff" link={false} />
       </I18nextProvider>,
     );
-    expect(screen.queryByText(language === "en" ? "System Address" : "系统地址")).toBeNull();
+    expect(screen.queryByRole("button", { name: label })).toBeNull();
     await i18n.changeLanguage("en");
   },
 );

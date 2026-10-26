@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import type { BrowserVerificationJob } from "@/api/types";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,11 +25,11 @@ export function SourcifyWorkspace({
     <div className="verification-workspace">
       <div className="verification-actions" role="group" aria-label={t("sourcify.workflow")}>
         <button type="button" aria-pressed={mode === "import"} onClick={() => setMode("import")}>
-          <Download aria-hidden="true" />
+          <UIIcon icon={Download} />
           {t("sourcify.importTab")}
         </button>
         <button type="button" aria-pressed={mode === "publish"} onClick={() => setMode("publish")}>
-          <Upload aria-hidden="true" />
+          <UIIcon icon={Upload} />
           {t("sourcify.publishTab")}
         </button>
       </div>

@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { BlobsPanel, BlobHashList } from "./BlobsPanel";
 import { usePublicConfig } from "@/api/publicConfig";
@@ -182,7 +184,10 @@ export function TransactionAuthorizationsPanel({
                 </div>
               </dl>
               <details className="transaction-more-details">
-                <summary>{t("detail.rawAuthorization")}</summary>
+                <summary>
+                  <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+                  {t("detail.rawAuthorization")}
+                </summary>
                 <dl>
                   <div>
                     <dt>yParity</dt>

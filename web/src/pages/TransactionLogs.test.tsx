@@ -39,7 +39,7 @@ it.each([
       <TransactionLogCard log={log} locale={language} />
     </I18nextProvider>,
   );
-  expect(screen.getByText(label)).toBeVisible();
+  expect(screen.getByRole("button", { name: label })).toBeVisible();
   expect(screen.getByText(amount)).toBeVisible();
   await userEvent.setup().click(screen.getByText(details));
   expect(screen.getByRole("heading", { name: source })).toBeVisible();

@@ -1,3 +1,6 @@
+import { CircleAlert } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
+import { SelectControl } from "@/components/SelectControl";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
@@ -216,7 +219,7 @@ export function VerifyPage({
                 />
                 <label className="field-control" htmlFor="verification-language">
                   <span>{t("verification.language")}</span>
-                  <select
+                  <SelectControl
                     id="verification-language"
                     value={language}
                     onChange={(event) => {
@@ -237,11 +240,11 @@ export function VerifyPage({
                     <option value="yul">{t("verificationLanguage.yul")}</option>
                     <option value="geas">{t("verificationLanguage.geas")}</option>
                     <option value="vyper">{t("verificationLanguage.vyper")}</option>
-                  </select>
+                  </SelectControl>
                 </label>
                 <label className="field-control" htmlFor="verification-input-kind">
                   <span>{t("verification.inputKind")}</span>
-                  <select
+                  <SelectControl
                     disabled={language === "geas"}
                     id="verification-input-kind"
                     value={inputKind}
@@ -258,12 +261,12 @@ export function VerifyPage({
                         <option value="multipart">{t("verification.multipart")}</option>
                       </>
                     )}
-                  </select>
+                  </SelectControl>
                 </label>
                 <div className="field-control">
                   <label htmlFor="verification-compiler">{t("verification.compilerVersion")}</label>
                   {language === "geas" ? (
-                    <select
+                    <SelectControl
                       disabled={compilerCatalog.isPending || !compilerCatalog.data}
                       id="verification-compiler"
                       onChange={(event) => setCompilerVersion(event.target.value)}
@@ -274,7 +277,7 @@ export function VerifyPage({
                           {version}
                         </option>
                       ))}
-                    </select>
+                    </SelectControl>
                   ) : (
                     <CompilerVersionSelect
                       key={language}
@@ -298,7 +301,7 @@ export function VerifyPage({
                     {inputKind === "multipart" && (
                       <label className="field-control" htmlFor="verification-optimization-mode">
                         <span>{t("verification.optimizationMode")}</span>
-                        <select
+                        <SelectControl
                           id="verification-optimization-mode"
                           value={optimizationMode}
                           onChange={(event) =>
@@ -313,7 +316,7 @@ export function VerifyPage({
                               {mode}
                             </option>
                           ))}
-                        </select>
+                        </SelectControl>
                       </label>
                     )}
                   </>
@@ -418,7 +421,7 @@ function UnavailablePanel({ title, detail }: { title: string; detail: string }) 
   return (
     <section className="capability-panel" role="status">
       <span className="capability-mark" aria-hidden="true">
-        !
+        <UIIcon icon={CircleAlert} size={24} />
       </span>
       <div>
         <h2>{title}</h2>

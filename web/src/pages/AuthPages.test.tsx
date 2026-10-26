@@ -503,7 +503,7 @@ function accountPageSignInButton() {
 }
 
 async function signInFromWalletMenu(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByText("Connect wallet", { selector: "summary" }));
+  await user.click(await screen.findByLabelText("Connect wallet", { selector: "summary" }));
   const section = document.querySelector<HTMLElement>(".wallet-auth-section");
   expect(section).not.toBeNull();
   const signIn = within(section as HTMLElement).getByRole("button", {

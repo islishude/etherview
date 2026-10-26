@@ -1,3 +1,6 @@
+import "@/styles/artifacts.css";
+import { ChevronDown, ChevronRight, FileCode2 } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import "@/i18n/resources/sourcify";
 import { defaultKeymap } from "@codemirror/commands";
 import { StreamLanguage, syntaxHighlighting, type StreamParser } from "@codemirror/language";
@@ -14,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { CopyButton } from "@/components/CopyButton";
 import { formatTimestamp } from "@/components/format";
 import { getDocumentCSPNonce } from "@/csp";
+import { SourceEditorIcons } from "./SourceEditorIcons";
 
 import { decodeConstructorArguments } from "./abi";
 import type { VerifiedContractArtifact } from "./proxy";
@@ -636,6 +640,7 @@ function SourceWorkspace({
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
           EditorView.contentAttributes.of({
+            tabindex: "0",
             "aria-label": t("contracts.artifact.readOnlyEditor", { file: selected.name }),
           }),
           ...(cspNonce ? [EditorView.cspNonce.of(cspNonce)] : []),
@@ -735,6 +740,7 @@ function SourceWorkspace({
           </div>
         </div>
         <div className="source-editor" data-read-only="true" ref={hostRef} />
+        <SourceEditorIcons host={hostRef} />
         <footer className="source-editor-status">
           <span>{language.toUpperCase()}</span>
           <span>
@@ -831,12 +837,10 @@ function renderSourceTreeNode({
             }
           : {})}
       >
-        <span
-          aria-hidden="true"
+        <UIIcon
+          icon={isDirectory ? (isExpanded ? ChevronDown : ChevronRight) : FileCode2}
           className={isDirectory ? "source-tree-chevron" : "source-tree-file-icon"}
-        >
-          {isDirectory ? (isExpanded ? "⌄" : "›") : "◇"}
-        </span>
+        />
         <span>{node.name}</span>
       </button>
       {isDirectory && isExpanded ? (
@@ -1035,7 +1039,7 @@ function ConstructorArgumentsDisclosure({ abi, encoded }: { abi: unknown; encode
               : t("contracts.artifact.hexBytes", { count: byteCount })}
           </small>
         </span>
-        <span aria-hidden="true">＋</span>
+        <UIIcon icon={ChevronDown} className="disclosure-chevron" />
       </summary>
       <div className="artifact-disclosure-body constructor-arguments-body">
         {decoded ? (
@@ -1098,7 +1102,7 @@ function ArtifactDisclosure({
           <strong>{title}</strong>
           {description ? <small>{description}</small> : null}
         </span>
-        <span aria-hidden="true">＋</span>
+        <UIIcon icon={ChevronDown} className="disclosure-chevron" />
       </summary>
       <div className="artifact-disclosure-body">
         <div className="artifact-disclosure-actions">

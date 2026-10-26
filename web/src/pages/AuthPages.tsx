@@ -1,3 +1,6 @@
+import { CircleCheck, CircleDot, X } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
+import { SelectControl } from "@/components/SelectControl";
 import { WatchlistPanel } from "./WatchlistPages";
 import { usePrivateIdentity } from "@/api/privateAccount";
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -88,9 +91,10 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
           <section className="identity-grid" aria-label={t("auth.account.identityStatus")}>
             <article className="panel identity-card">
               <div className="identity-card-heading">
-                <span
-                  className={wallet.active ? "status-dot success" : "status-dot"}
-                  aria-hidden="true"
+                <UIIcon
+                  icon={wallet.active ? CircleCheck : CircleDot}
+                  size={14}
+                  className={wallet.active ? "status-icon success" : "status-icon"}
                 />
                 <h2>{t("auth.walletState.title")}</h2>
               </div>
@@ -120,9 +124,10 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
 
             <article className="panel identity-card">
               <div className="identity-card-heading">
-                <span
-                  className={auth.session.authenticated ? "status-dot success" : "status-dot"}
-                  aria-hidden="true"
+                <UIIcon
+                  icon={auth.session.authenticated ? CircleCheck : CircleDot}
+                  size={14}
+                  className={auth.session.authenticated ? "status-icon success" : "status-icon"}
                 />
                 <h2>{t("auth.sessionState.title")}</h2>
               </div>
@@ -662,7 +667,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                 onClick={() => setIssued(undefined)}
                 type="button"
               >
-                ×
+                <UIIcon icon={X} />
               </button>
             </div>
             <p>{t("auth.apiKeys.issuedWarning")}</p>
@@ -904,7 +909,7 @@ function AdminUserCard({
       <div className="admin-user-controls">
         <label className="field-control">
           <span>{t("auth.fields.role")}</span>
-          <select
+          <SelectControl
             aria-label={t("auth.admin.roleFor", { address: user.address })}
             disabled={auth.pending}
             onChange={(event) => setRole(event.target.value as User["role"])}
@@ -912,11 +917,11 @@ function AdminUserCard({
           >
             <option value="user">{t("auth.role.user")}</option>
             <option value="admin">{t("auth.role.admin")}</option>
-          </select>
+          </SelectControl>
         </label>
         <label className="field-control">
           <span>{t("auth.fields.status")}</span>
-          <select
+          <SelectControl
             aria-label={t("auth.admin.statusFor", { address: user.address })}
             disabled={auth.pending}
             onChange={(event) => setStatus(event.target.value as User["status"])}
@@ -924,7 +929,7 @@ function AdminUserCard({
           >
             <option value="active">{t("auth.status.active")}</option>
             <option value="disabled">{t("auth.status.disabled")}</option>
-          </select>
+          </SelectControl>
         </label>
       </div>
       <div className="admin-user-actions">

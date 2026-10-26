@@ -1,3 +1,4 @@
+import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -205,7 +206,7 @@ export function BrowserPushPanel() {
     <section className="browser-push-panel" aria-label={t("browserPush.title")}>
       <div className="browser-push-heading">
         <span className="browser-push-icon" aria-hidden="true">
-          {active ? <BellRing size={20} /> : <Bell size={20} />}
+          {active ? <UIIcon icon={BellRing} size={20} /> : <UIIcon icon={Bell} size={20} />}
         </span>
         <h3>{t("browserPush.title")}</h3>
         <span className={`browser-push-badge${active ? " is-active" : ""}`}>

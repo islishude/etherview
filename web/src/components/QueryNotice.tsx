@@ -1,3 +1,5 @@
+import { CircleAlert, CircleHelp, LoaderCircle } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useTranslation } from "react-i18next";
 
 import { ApiError } from "@/api/client";
@@ -14,7 +16,7 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   if (loading) {
     return (
       <div className={compact ? "query-notice compact" : "query-notice"} role="status">
-        <span className="query-loading-spinner" aria-hidden="true" />
+        <UIIcon icon={LoaderCircle} size={20} className="query-loading-spinner" />
         <span>{t("state.loading")}</span>
       </div>
     );
@@ -27,7 +29,7 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
         className={compact ? "query-notice degraded compact" : "query-notice degraded"}
         role="status"
       >
-        <span className="status-dot warning" aria-hidden="true" />
+        <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
         <span>
           <strong>{t("state.stageUnavailable", { stage: stageLabel(details.stage, t) })}</strong>
           {!compact && (
@@ -89,7 +91,7 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
           className={compact ? "query-notice degraded compact" : "query-notice degraded"}
           role="status"
         >
-          <span className="status-dot warning" aria-hidden="true" />
+          <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
           <span>
             <strong>{typed.title}</strong>
             {!compact && <small>{typed.detail}</small>}
@@ -110,7 +112,7 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   }
   return (
     <div className={compact ? "query-notice compact" : "query-notice"} role="status">
-      <span className="status-dot muted" aria-hidden="true" />
+      <UIIcon icon={CircleHelp} size={14} className="status-icon muted" />
       <span>
         <strong>{t("state.apiUnavailable")}</strong>
         {!compact && <small>{t("state.apiUnavailableDetail")}</small>}

@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QRCodeSVG } from "qrcode.react";
 
 import i18n from "@/i18n";
 import {
@@ -812,7 +814,18 @@ describe("core value and address pages", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Show QR code" }));
     const dialog = screen.getByRole("dialog", { name: "Address QR code" });
     expect(dialog).toHaveFocus();
-    expect(within(dialog).getByText(`ethereum:${address}@1`)).toBeVisible();
+    expect(within(dialog).getByText(address)).toBeVisible();
+    const expectedQR = document.createElement("div");
+    expectedQR.innerHTML = renderToStaticMarkup(
+      <QRCodeSVG value={address} level="M" marginSize={4} size={240} />,
+    );
+    // Check the encoded modules, not just the address printed beside the QR.
+    expect(dialog.querySelector(".qr-code-surface svg")?.getAttribute("viewBox")).toBe(
+      expectedQR.querySelector("svg")?.getAttribute("viewBox"),
+    );
+    expect(
+      [...dialog.querySelectorAll(".qr-code-surface path")].map((path) => path.getAttribute("d")),
+    ).toEqual([...expectedQR.querySelectorAll("path")].map((path) => path.getAttribute("d")));
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show QR code" })).toHaveFocus();

@@ -1,0 +1,135 @@
+/* Address identity and system hints load with their consuming routes. */
+
+.address-identity {
+  min-width: 0;
+  display: inline-grid;
+  gap: 0.12rem;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.address-primary-name-row {
+  min-width: 0;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.address-primary-name {
+  max-width: 14rem;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}
+
+.address-identity-value {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.address-identity:not(.has-primary-name) .address-identity-value {
+  color: inherit;
+  font-size: inherit;
+}
+
+.address-identity.is-compact .address-identity-value {
+  white-space: nowrap;
+}
+
+.custom-ens-badge {
+  flex: none;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 0.58rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.address-system-identity {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0.3rem;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.address-system-identity > a {
+  min-width: 0;
+}
+
+.address-system-identity.is-full,
+.address-system-identity.is-full .address-identity {
+  display: inline;
+}
+
+.address-system-identity.is-full .system-address-marker {
+  height: 1em;
+  margin-inline-start: 0.3rem;
+  vertical-align: -0.1em;
+}
+
+.system-address-marker {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 1lh;
+  anchor-scope: --system-address;
+}
+
+.system-address-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0.2rem;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: help;
+  anchor-name: --system-address;
+}
+
+.system-address-button:hover,
+.system-address-button:focus-visible {
+  color: var(--text);
+}
+
+.system-address-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.system-address-tooltip {
+  position: fixed;
+  position-anchor: --system-address;
+  position-area: top;
+  position-try-fallbacks: flip-block, --system-tooltip-left, --system-tooltip-right;
+  inset: auto;
+  margin: 0.35rem;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: var(--text);
+  color: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+@position-try --system-tooltip-left {
+  position-area: top span-left;
+}
+
+@position-try --system-tooltip-right {
+  position-area: top span-right;
+}

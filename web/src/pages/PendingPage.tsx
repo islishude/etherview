@@ -1,3 +1,5 @@
+import { CircleAlert } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -298,7 +300,7 @@ function PendingUnavailablePanel({
   return (
     <section className="capability-panel pending-unavailable" role="status">
       <span className="capability-mark" aria-hidden="true">
-        !
+        <UIIcon icon={CircleAlert} size={24} />
       </span>
       <div>
         <h2>{title}</h2>

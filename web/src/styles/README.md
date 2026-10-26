@@ -10,13 +10,16 @@ in cascade order:
 4. `account.css` — account, API key, administration, and billing pages.
 5. `analytics.css` — shared form controls and chart pages.
 6. `verification.css` — verification, proxy history, and ABI forms.
-7. `artifacts.css` — verified source browsing, CodeMirror, and compiler data.
-8. `responsive.css` — footer/network-picker additions, animations, and shared
+7. `responsive.css` — footer/network-picker additions, animations, and shared
    responsive overrides.
 
 The lazy contract page imports `../pages/ContractPage.css` for its proxy summary
 and facts; these rules do not enter the initial shell stylesheet. Shared loading
 indicators stay in `explorer/shared.css`.
+
+`ContractArtifactPanel` imports `artifacts.css` for verified source browsing,
+file-tree icons, CodeMirror, and compiler data. Its responsive rules remain in
+that stylesheet; these feature styles do not enter the initial shell.
 
 Keep feature rules in their owning module. Put a component's narrow-layout
 rule beside the component when it is self-contained; reserve `responsive.css`
@@ -30,7 +33,7 @@ values. Preserve the import order unless the intended cascade change is tested.
 
 1. `explorer/shared.css` — page layout, panels, status badges, and notices.
 2. `explorer/home.css` — home metrics and recent activity.
-3. `explorer/tables.css` — tables, address identity cells, and list notes.
+3. `explorer/tables.css` — tables and list notes.
 4. `explorer/chain.css` — coverage and reorg context.
 5. `explorer/pending.css` — pending snapshots, fees, and pagination.
 6. `explorer/entities.css` — entity details, shared tabs, copy controls,
@@ -70,6 +73,24 @@ Keep its selectors feature-specific and its colors on foundation tokens; it
 must not override shared page or navigation styles.
 
 ## Visual system
+
+Address identity and select-arrow styles live beside `AddressIdentity` and
+`SelectControl` and load with their consumers.
+
+All application UI icons use Lucide through `UIIcon`, with a 2px stroke and
+14px inline/status, 16px control, 20px activity, or 24px illustration sizes.
+Import the chosen Lucide icons in their owning module to retain route splitting;
+do not add a global icon registry. `UIIcon` hides decorative SVGs from assistive
+technology; buttons and links own translated names, titles and state. Icon-only
+controls retain visible keyboard focus, and state changes must also update text
+or accessible names. Containers own spacing and color, never SVG size overrides.
+`SelectControl` retains a native select and adds the shared decorative chevron;
+forced-colors mode restores the browser arrow. Loading and disclosure icons
+respect reduced motion. Brand assets, wallet/provider imagery, QR payloads and
+data visualizations are content rather than UI icons and keep their own rendering.
+`SourceEditorIcons` adapts the pinned CodeMirror search and go-to-line close
+buttons to the same Lucide SVGs while retaining the editor's native commands
+and focus handling. Editor upgrades must retain the bilingual keyboard regression.
 
 The explorer uses neutral surfaces with a blue brand accent in both themes.
 `foundation.css` owns all shared color, typography, radius and shadow tokens:

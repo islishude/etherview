@@ -1,3 +1,6 @@
+import { ChevronRight } from "lucide-react";
+import { UIIcon } from "@/components/UIIcon";
+import { SelectControl } from "@/components/SelectControl";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -525,6 +528,7 @@ function AbiFunctionCard({
 function FunctionSummary({ entry, index }: { entry: AbiFunctionEntry; index: number }) {
   return (
     <summary>
+      <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
       <span className="function-index">{index + 1}</span>
       <code>{entry.signature}</code>
       <span className={`function-mutability ${entry.fn.stateMutability}`}>
@@ -564,7 +568,7 @@ function AbiInputEditor({
           <small>{parameter.type}</small>
         </span>
         {parameter.type === "bool" ? (
-          <select
+          <SelectControl
             disabled={disabled}
             id={inputID}
             onChange={(event) => onChange({ ...node, value: event.target.value })}
@@ -573,7 +577,7 @@ function AbiInputEditor({
             <option value="">—</option>
             <option value="true">true</option>
             <option value="false">false</option>
-          </select>
+          </SelectControl>
         ) : parameter.type === "string" || parameter.type === "bytes" ? (
           <textarea
             disabled={disabled}
