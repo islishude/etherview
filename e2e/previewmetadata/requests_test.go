@@ -27,7 +27,7 @@ func (h *harness) assertExecutionRequests(ctx context.Context, receipt rpcReceip
 	var envelope struct {
 		Data *gloas.SignedExecutionPayloadEnvelope `json:"data"`
 	}
-	if err := h.getJSON(ctx, "https://beacon.etherview.local/eth/v1/beacon/execution_payload_envelopes/"+root, &envelope); err != nil {
+	if err := h.getJSON(ctx, "https://beacon.etherview.localhost/eth/v1/beacon/execution_payload_envelopes/"+root, &envelope); err != nil {
 		h.t.Fatal(err)
 	}
 	if envelope.Data == nil || envelope.Data.Message == nil || envelope.Data.Message.ExecutionRequests == nil {

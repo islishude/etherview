@@ -34,7 +34,7 @@ make start-preview
 ```
 
 `preview-cert` installs mkcert's local CA and creates ignored localhost
-certificates. Open <https://app.etherview.local>; the operations listener
+certificates. Open <https://app.etherview.localhost>; the operations listener
 is at <http://localhost:9090>. Solidity/Yul compilation uses a bounded,
 permission-restricted Node 26.12.1 SEA subprocess.
 

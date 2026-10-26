@@ -38,7 +38,7 @@ readiness, and monolith/split-role parity contracts.
 - The production deployment template at `deploy/compose.yaml` remains HTTP
   and ships no TLS overlay. The repository-root `compose.yaml` selects the
   full-stack Preview behind a shared Caddy TLS terminator. The explicit mkcert
-  target generates an ignored `*.etherview.local` pair mounted only into Caddy.
+  target generates an ignored `*.etherview.localhost` pair mounted only into Caddy.
   Preview API speaks container-network HTTP with an HTTPS public URL, and has
   no default host-published application port. Authentication still derives its
   origin and Secure cookies from that public URL, not forwarding headers. Helm uses an

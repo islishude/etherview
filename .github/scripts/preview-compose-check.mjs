@@ -197,10 +197,10 @@ assert.equal(gateway.ports.length, 1);
 assert.equal(gateway.ports[0].target, 443);
 assert.equal(gateway.ports[0].host_ip, "127.0.0.1");
 assert.deepEqual(gateway.networks.default.aliases.toSorted(), [
-  "app.etherview.local",
-  "beacon.etherview.local",
-  "geth.etherview.local",
-  "ipfs.etherview.local",
+  "app.etherview.localhost",
+  "beacon.etherview.localhost",
+  "geth.etherview.localhost",
+  "ipfs.etherview.localhost",
 ]);
 for (const name of ["geth", "lighthouse", "api"]) {
   for (const port of services[name].ports ?? [])
@@ -208,7 +208,7 @@ for (const name of ["geth", "lighthouse", "api"]) {
 }
 assert.equal(gateway.depends_on, undefined, "upstream outages do not gate Caddy");
 assert.equal(services.metadata.depends_on["preview-gateway"].condition, "service_healthy");
-assert.match(previewConfig, /ipfs_gateway: https:\/\/ipfs\.etherview\.local/u);
+assert.match(previewConfig, /ipfs_gateway: https:\/\/ipfs\.etherview\.localhost/u);
 for (const [name, service] of Object.entries(services)) {
   const mounts = service.volumes ?? [];
   assert.equal(

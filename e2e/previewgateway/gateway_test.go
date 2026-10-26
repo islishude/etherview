@@ -51,7 +51,7 @@ func docker(t *testing.T, args ...string) string {
 
 func start(t *testing.T) *gateway {
 	t.Helper()
-	return startWithOrigins(t, "https://app.etherview.local http://localhost:5173 http://127.0.0.1:5173")
+	return startWithOrigins(t, "https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173")
 }
 
 func startWithOrigins(t *testing.T, origins string) *gateway {
@@ -192,7 +192,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 	t.Cleanup(transport.CloseIdleConnections)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		req, _ := http.NewRequest(http.MethodGet, "https://app.etherview.local/", nil)
+		req, _ := http.NewRequest(http.MethodGet, "https://app.etherview.localhost/", nil)
 		resp, requestErr := g.client.Do(req)
 		if requestErr == nil {
 			_ = resp.Body.Close()
@@ -208,7 +208,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 
 func (g *gateway) request(method, host, path, origin, body string) (*http.Response, []byte) {
 	g.t.Helper()
-	req, err := http.NewRequest(method, "https://"+host+".etherview.local"+path, strings.NewReader(body))
+	req, err := http.NewRequest(method, "https://"+host+".etherview.localhost"+path, strings.NewReader(body))
 	if err != nil {
 		g.t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestRoutesAndBoundary(t *testing.T) {
 		t.Run(test.host+test.method+test.path, func(t *testing.T) {
 			if test.status == 0 { // Unknown hosts must never reach an upstream (TLS may reject them).
 				before := g.calls.Load()
-				resp, err := g.client.Get("https://unknown.etherview.local/")
+				resp, err := g.client.Get("https://unknown.etherview.localhost/")
 				if err == nil {
 					_ = resp.Body.Close()
 				}
@@ -290,7 +290,7 @@ func TestRoutesAndBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, origin := range []string{"https://app.etherview.local", "http://localhost:5173", "http://127.0.0.1:5173", "https://evil.invalid", "null"} {
+	for _, origin := range []string{"https://app.etherview.localhost", "http://localhost:5173", "http://127.0.0.1:5173", "https://evil.invalid", "null"} {
 		for _, method := range []string{"POST", "OPTIONS"} {
 			resp, _ := g.request(method, "geth", "/", origin, "{}")
 			allowed := origin != "null" && origin != "https://evil.invalid"
@@ -321,9 +321,9 @@ func TestTLSAndFailure(t *testing.T) {
 		roots        *x509.CertPool
 		max          uint16
 	}{
-		{"untrusted", "app.etherview.local", x509.NewCertPool(), tls.VersionTLS13},
+		{"untrusted", "app.etherview.localhost", x509.NewCertPool(), tls.VersionTLS13},
 		{"wrong-name", "wrong.invalid", g.roots, tls.VersionTLS13},
-		{"old-tls", "app.etherview.local", g.roots, tls.VersionTLS11},
+		{"old-tls", "app.etherview.localhost", g.roots, tls.VersionTLS11},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			conn, err := tls.Dial("tcp", g.binding, &tls.Config{RootCAs: test.roots, ServerName: test.server, MinVersion: tls.VersionTLS10, MaxVersion: test.max})
@@ -334,7 +334,7 @@ func TestTLSAndFailure(t *testing.T) {
 		})
 	}
 	for _, version := range []uint16{tls.VersionTLS12, tls.VersionTLS13} {
-		conn, err := tls.Dial("tcp", g.binding, &tls.Config{RootCAs: g.roots, ServerName: "app.etherview.local", MinVersion: version, MaxVersion: version})
+		conn, err := tls.Dial("tcp", g.binding, &tls.Config{RootCAs: g.roots, ServerName: "app.etherview.localhost", MinVersion: version, MaxVersion: version})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -348,7 +348,7 @@ func TestStreamingAndDeadlines(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		req, _ := http.NewRequestWithContext(ctx, "GET", "https://ipfs.etherview.local/ipfs/cid/stream", nil)
+		req, _ := http.NewRequestWithContext(ctx, "GET", "https://ipfs.etherview.localhost/ipfs/cid/stream", nil)
 		resp, err := g.client.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -375,7 +375,7 @@ func TestStreamingAndDeadlines(t *testing.T) {
 		}
 	})
 	t.Run("body-timeout", func(t *testing.T) {
-		resp, err := g.client.Get("https://ipfs.etherview.local/ipfs/cid/stream")
+		resp, err := g.client.Get("https://ipfs.etherview.localhost/ipfs/cid/stream")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -389,12 +389,12 @@ func TestStreamingAndDeadlines(t *testing.T) {
 		dialer := websocket.Dialer{TLSClientConfig: &tls.Config{RootCAs: g.roots}, NetDialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, network, g.binding)
 		}}
-		conn, _, err := dialer.Dial("wss://geth.etherview.local/", http.Header{"Origin": []string{"https://app.etherview.local"}})
+		conn, _, err := dialer.Dial("wss://geth.etherview.localhost/", http.Header{"Origin": []string{"https://app.etherview.localhost"}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() { _ = conn.Close() }()
-		rejected, response, err := dialer.Dial("wss://geth.etherview.local/", http.Header{"Origin": []string{"https://evil.invalid"}})
+		rejected, response, err := dialer.Dial("wss://geth.etherview.localhost/", http.Header{"Origin": []string{"https://evil.invalid"}})
 		if rejected != nil {
 			_ = rejected.Close()
 		}
@@ -404,7 +404,7 @@ func TestStreamingAndDeadlines(t *testing.T) {
 		if err == nil {
 			t.Fatal("untrusted WS Origin accepted")
 		}
-		resp, err := g.client.Get("https://beacon.etherview.local/eth/v1/events/idle-stream")
+		resp, err := g.client.Get("https://beacon.etherview.localhost/eth/v1/events/idle-stream")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -441,7 +441,7 @@ func TestRequestLimits(t *testing.T) {
 	if resp.StatusCode != 413 {
 		t.Fatalf("oversize status %d", resp.StatusCode)
 	}
-	req, _ := http.NewRequest("GET", "https://ipfs.etherview.local/ipfs/cid", io.NopCloser(strings.NewReader("body")))
+	req, _ := http.NewRequest("GET", "https://ipfs.etherview.localhost/ipfs/cid", io.NopCloser(strings.NewReader("body")))
 	req.ContentLength = -1
 	before := g.calls.Load()
 	response, err := g.client.Do(req)
@@ -465,7 +465,7 @@ func TestFailureIsolationAndRange(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatal("node failure affected app")
 	}
-	req, _ := http.NewRequest("GET", "https://ipfs.etherview.local/ipfs/cid", nil)
+	req, _ := http.NewRequest("GET", "https://ipfs.etherview.localhost/ipfs/cid", nil)
 	req.Header.Set("Range", "bytes=0-1")
 	resp, err := g.client.Do(req)
 	if err != nil {
@@ -487,12 +487,12 @@ func TestFailureIsolationAndRange(t *testing.T) {
 
 func TestStalledDownstream(t *testing.T) {
 	g := start(t)
-	conn, err := tls.Dial("tcp", g.binding, &tls.Config{RootCAs: g.roots, ServerName: "ipfs.etherview.local", MinVersion: tls.VersionTLS12})
+	conn, err := tls.Dial("tcp", g.binding, &tls.Config{RootCAs: g.roots, ServerName: "ipfs.etherview.localhost", MinVersion: tls.VersionTLS12})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	_, err = io.WriteString(conn, "GET /ipfs/cid/flood HTTP/1.1\r\nHost: ipfs.etherview.local\r\n\r\n")
+	_, err = io.WriteString(conn, "GET /ipfs/cid/flood HTTP/1.1\r\nHost: ipfs.etherview.localhost\r\n\r\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +506,7 @@ func TestStalledDownstream(t *testing.T) {
 
 func TestOriginOverride(t *testing.T) {
 	g := startWithOrigins(t, "https://custom.example null")
-	for _, origin := range []string{"https://app.etherview.local", "http://localhost:5173", "https://custom.example", "null"} {
+	for _, origin := range []string{"https://app.etherview.localhost", "http://localhost:5173", "https://custom.example", "null"} {
 		response, _ := g.request("POST", "geth", "/", origin, "{}")
 		want := 403
 		if origin == "https://custom.example" {
@@ -543,14 +543,14 @@ func TestWebSocketUpgradeTokens(t *testing.T) {
 	} {
 		t.Run(test.connection+test.upgrade, func(t *testing.T) {
 			conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", g.binding, &tls.Config{
-				RootCAs: g.roots, ServerName: "geth.etherview.local", MinVersion: tls.VersionTLS12,
+				RootCAs: g.roots, ServerName: "geth.etherview.localhost", MinVersion: tls.VersionTLS12,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = conn.Close() }()
 			_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-			_, err = fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: geth.etherview.local\r\nOrigin: https://app.etherview.local\r\nConnection: %s\r\nUpgrade: %s\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", test.connection, test.upgrade)
+			_, err = fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: geth.etherview.localhost\r\nOrigin: https://app.etherview.localhost\r\nConnection: %s\r\nUpgrade: %s\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", test.connection, test.upgrade)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -24,7 +24,7 @@
 (tls_boundary) {
 	tls /run/preview-tls/gateway.crt /run/preview-tls/gateway.key
 	handle_errors {
-		@invalidBody expression `{http.request.host} == 'ipfs.etherview.local' && {http.error.status_code} == 413`
+		@invalidBody expression `{http.request.host} == 'ipfs.etherview.localhost' && {http.error.status_code} == 413`
 		respond @invalidBody "invalid_request" 400
 		@tooLarge expression `{http.error.status_code} == 413`
 		respond @tooLarge "request_too_large" 413
@@ -80,14 +80,14 @@
 	stream_timeout 24h
 }
 
-https://app.etherview.local {
+https://app.etherview.localhost {
 	import tls_boundary
 	reverse_proxy {$PREVIEW_APP_UPSTREAM:api:8080} {
 		import transport
 	}
 }
 
-https://geth.etherview.local {
+https://geth.etherview.localhost {
 	import tls_boundary
 	route {
 		import node_origin
@@ -114,7 +114,7 @@ https://geth.etherview.local {
 	}
 }
 
-https://beacon.etherview.local {
+https://beacon.etherview.localhost {
 	import tls_boundary
 	route {
 		import node_origin
@@ -131,7 +131,7 @@ https://beacon.etherview.local {
 	}
 }
 
-https://ipfs.etherview.local {
+https://ipfs.etherview.localhost {
 	import tls_boundary
 	route {
 		# Inspect the original escaped path, before Caddy's path matcher cleans it.
@@ -156,7 +156,7 @@ https://ipfs.etherview.local {
 		reverse_proxy {$PREVIEW_IPFS_UPSTREAM:ipfs:8080} {
 			# Immediate streaming with cancellation propagation (not flush_interval -1).
 			flush_interval 1ms
-			header_up Host ipfs.etherview.local
+			header_up Host ipfs.etherview.localhost
 			header_up -Forwarded
 			header_up -X-Forwarded-For
 			header_up -X-Forwarded-Host

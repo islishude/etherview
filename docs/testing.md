@@ -985,6 +985,8 @@ Preview browser acceptance requires the locked pnpm workspace and Chrome, or
 `PLAYWRIGHT_USE_BUNDLED=1` with `pnpm --dir web exec playwright install chromium`.
 The metadata gate runs real SIWE, CSRF, wallet URL and node CORS/WSS/SSE browser
 checks only after the first mined transaction, beyond the genesis waiting period.
+Metadata acceptance requires the `.localhost` image projection to remain `unsafe`
+without a navigation URL while the metadata worker successfully fetches its text.
 It trusts only the test certificate SPKI and explicitly grants local-network
 permission to its test pages; it never disables general TLS verification.
 

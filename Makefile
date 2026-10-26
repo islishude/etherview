@@ -472,7 +472,7 @@ preview-cert:
 	@mkdir -p "$(PREVIEW_TLS_DIR)"
 	$(MKCERT) -install
 	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_GATEWAY_CERT)" -key-file "$(PREVIEW_GATEWAY_KEY)" \
-		'*.etherview.local'
+		'*.etherview.localhost'
 	@set -eu; \
 		ca_root="$$("$(MKCERT)" -CAROOT)"; \
 		test -r "$$ca_root/rootCA.pem" || { \
@@ -510,7 +510,7 @@ start-preview: preview-env preview-cert-check docker-build preview-images
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
-	@printf '\nPreview: https://app.etherview.local (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
+	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans

@@ -163,9 +163,9 @@ The project names and volume identities are unchanged; this file relocation
 does not require stopping, deleting or migrating either environment's data.
 
 The explicit certificate target installs mkcert trust and generates an ignored
-`*.etherview.local` pair mounted read-only only into Caddy. The public app is
-`https://app.etherview.local`; `http://localhost:9090` remains the operations
-listener. Add the four host mappings in [Preview Caddy gateway](#preview-caddy-gateway).
+`*.etherview.localhost` pair mounted read-only only into Caddy. The public app is
+`https://app.etherview.localhost`; `http://localhost:9090` remains the operations
+listener. See name resolution in [Preview Caddy gateway](#preview-caddy-gateway).
 The gateway uses loopback port 443 (`PREVIEW_HTTPS_PORT` overrides it). After
 building the application and pulling the official Caddy image,
 it prepares `.local/preview-network/` using the pinned
@@ -323,9 +323,12 @@ download policies. Add the override to `.local/preview-push.env` (or the file
 selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it;
 set it back to `false` to restore public-network checks.
 
-Preview includes Kubo `v0.43.1` behind Caddy at `https://ipfs.etherview.local`.
+Preview includes Kubo `v0.43.1` behind Caddy at `https://ipfs.etherview.localhost`.
 The shared wildcard pair is mounted only into Caddy; metadata receives only the
 public CA. Existing installations rerun `make preview-cert` before recreation.
+Metadata text remains available, but images resolved through this `.localhost`
+gateway have display state `unsafe` and no external navigation URL. The public
+image policy and authenticated media proxy keep their existing local-host protections.
 
 Daily Preview retrieves uncached content over IPFS and retains it in the
 project-scoped `ipfs-data` volume. The reviewed metadata fixture is imported and
@@ -334,8 +337,8 @@ and its proxy along with the application containers while preserving their
 volumes; `make stop-preview` deletes all Preview volumes, including IPFS data.
 `PREVIEW_HTTPS_PORT` and `IPFS_API_PORT` override the loopback-only host ports
 (defaults 443 and 5001). The gateway's container address stays at port 443;
-when overriding its host port, open it using that port in the browser. Generated
-image links continue using the configured gateway URL.
+when overriding its host port, open it using that port in the browser. Configured
+public URLs must also be updated when changing the browser-facing port.
 
 Preview keeps `metadata.unsafe_allow_private_networks=false` in its mounted
 YAML and overrides it only in the split metadata worker for this controlled
@@ -1503,7 +1506,7 @@ to the current login and stop on logout, session expiry/revocation or user
 disablement. Closing the page does not end the login. Unsupported browsers and
 permission denial are shown in the UI; this does not provide email or Webhooks.
 
-For Preview at `https://app.etherview.local`, the root Compose entry point
+For Preview at `https://app.etherview.localhost`, the root Compose entry point
 uses one ignored `.local/preview-push.env` for all local settings, including the
 VAPID key pair.
 `make start-preview` and `make recreate-preview` run `make preview-env` first:
@@ -1613,27 +1616,28 @@ shipped Caddyfile in real containers before full Preview acceptance.
 
 Run `make preview-cert` to install mkcert trust and create
 `.local/preview-tls/gateway.crt`, `gateway.key` and the public `rootCA.pem`.
-Only Caddy mounts the wildcard private key, which remains 0600. Configure these
-explicit host mappings (`hosts` does not implement wildcards):
+Only Caddy mounts the wildcard private key, which remains 0600. If a host client
+does not resolve these names to loopback, configure these explicit mappings
+(`hosts` does not implement wildcards):
 
 ```text
-127.0.0.1 app.etherview.local
-127.0.0.1 ipfs.etherview.local
-127.0.0.1 geth.etherview.local
-127.0.0.1 beacon.etherview.local
+127.0.0.1 app.etherview.localhost
+127.0.0.1 ipfs.etherview.localhost
+127.0.0.1 geth.etherview.localhost
+127.0.0.1 beacon.etherview.localhost
 ```
 
-The `.local` suffix may otherwise use multicast DNS; explicit hosts entries
-provide deterministic local resolution. Docker uses matching network aliases.
-Tests use isolated address mapping and never edit system hosts.
+Docker uses explicit network aliases so container clients reach Caddy rather
+than their own loopback interface. Tests use isolated address mapping and never
+edit system hosts.
 
-| URL                                       | Upstream                            |
-| ----------------------------------------- | ----------------------------------- |
-| `https://app.etherview.local`             | API and embedded SPA, internal HTTP |
-| `https://ipfs.etherview.local/ipfs/<cid>` | Kubo read-only content              |
-| `https://geth.etherview.local`            | Geth JSON-RPC POST                  |
-| `wss://geth.etherview.local`              | Geth subscriptions                  |
-| `https://beacon.etherview.local/eth/…`    | Beacon REST and SSE                 |
+| URL                                           | Upstream                            |
+| --------------------------------------------- | ----------------------------------- |
+| `https://app.etherview.localhost`             | API and embedded SPA, internal HTTP |
+| `https://ipfs.etherview.localhost/ipfs/<cid>` | Kubo read-only content              |
+| `https://geth.etherview.localhost`            | Geth JSON-RPC POST                  |
+| `wss://geth.etherview.localhost`              | Geth subscriptions                  |
+| `https://beacon.etherview.localhost/eth/…`    | Beacon REST and SSE                 |
 
 `PREVIEW_HTTPS_PORT` defaults to 443 on 127.0.0.1; ephemeral ports are used by
 tests. Nondefault browser ports require matching public URL, wallet URLs and
@@ -1642,7 +1646,7 @@ automatically issue certificates, or expose an administration API. Its internal
 loopback health check reports serving readiness independently of upstreams.
 
 `PREVIEW_NODE_ALLOWED_ORIGINS` replaces the complete space-separated list;
-defaults are `https://app.etherview.local http://localhost:5173
+defaults are `https://app.etherview.localhost http://localhost:5173
 http://127.0.0.1:5173`. Unlisted/null Origins are rejected for REST and WSS;
 CLI clients without Origin are accepted. Browsers may separately prompt for
 local-network access; grant it for the trusted local development page. Node CORS does not grant application

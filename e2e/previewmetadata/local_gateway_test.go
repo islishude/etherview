@@ -112,7 +112,7 @@ func (h *harness) assertGatewayTLS(ctx context.Context) {
 		h.t.Fatal(err)
 	}
 	transport := h.http.Transport.(*http.Transport).Clone()
-	transport.TLSClientConfig.ServerName = "ipfs.etherview.local"
+	transport.TLSClientConfig.ServerName = "ipfs.etherview.localhost"
 	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return (&net.Dialer{Timeout: time.Second}).DialContext(ctx, network, binding)
 	}
@@ -127,7 +127,7 @@ func (h *harness) assertGatewayTLS(ctx context.Context) {
 		if err != nil {
 			h.t.Fatal(err)
 		}
-		request.Host = "ipfs.etherview.local"
+		request.Host = "ipfs.etherview.localhost"
 		response, err := client.Do(request)
 		if err != nil {
 			h.t.Fatal(err)
@@ -142,7 +142,7 @@ func (h *harness) assertGatewayTLS(ctx context.Context) {
 		}
 	}
 	untrusted := transport.Clone()
-	untrusted.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "ipfs.etherview.local", RootCAs: x509.NewCertPool()}
+	untrusted.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "ipfs.etherview.localhost", RootCAs: x509.NewCertPool()}
 	defer untrusted.CloseIdleConnections()
 	untrustedClient := &http.Client{Transport: untrusted, Timeout: 5 * time.Second}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+binding+path, nil)

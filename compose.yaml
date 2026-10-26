@@ -98,7 +98,7 @@ services:
   preview-gateway:
     image: ${PREVIEW_GATEWAY_IMAGE:-caddy:2.11.7-alpine}
     environment:
-      PREVIEW_NODE_ALLOWED_ORIGINS: ${PREVIEW_NODE_ALLOWED_ORIGINS:-https://app.etherview.local http://localhost:5173 http://127.0.0.1:5173}
+      PREVIEW_NODE_ALLOWED_ORIGINS: ${PREVIEW_NODE_ALLOWED_ORIGINS:-https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173}
     volumes:
       - ./deploy/preview/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./.local/preview-tls/gateway.crt:/run/preview-tls/gateway.crt:ro
@@ -108,7 +108,12 @@ services:
     networks:
       default:
         aliases:
-          [app.etherview.local, ipfs.etherview.local, geth.etherview.local, beacon.etherview.local]
+          [
+            app.etherview.localhost,
+            ipfs.etherview.localhost,
+            geth.etherview.localhost,
+            beacon.etherview.localhost,
+          ]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
       interval: 5s

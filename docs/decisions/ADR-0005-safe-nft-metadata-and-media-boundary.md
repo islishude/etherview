@@ -130,12 +130,14 @@ control characters before Caddy's normal path matching. Query encoding and
 streamed bytes are preserved. Kubo's management API is never proxied.
 
 The same listener routes only `app`, `ipfs`, `geth`, and `beacon` under
-`etherview.local`. Caddy terminates TLS using the operator-generated mkcert
+`etherview.localhost`. Caddy terminates TLS using the operator-generated mkcert
 wildcard pair, mounted only into Caddy with its key at 0600. Automatic issuance,
 HTTP redirects and the admin API are disabled; rotation requires recreation.
 The app uses container-network HTTP while its HTTPS public origin remains the
 SIWE and Secure-cookie authority (ADR-0027). Metadata alone trusts the public CA
 and opts into its controlled private gateway; API media policy stays strict.
+Images resolved through the `.localhost` gateway remain `unsafe` in the public
+display projection, without a navigation URL, even when metadata text is available.
 
 Node routes support Geth JSON-RPC/WSS and Beacon `/eth/` REST/SSE. The gateway
 owns the explicit space-separated Origin allowlist, strips upstream CORS and

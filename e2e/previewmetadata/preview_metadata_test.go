@@ -42,12 +42,12 @@ const (
 	previewChainID          = "48815"
 	previewChainIDHex       = "0xbeaf"
 	metadataTokenID         = "1"
-	metadataGateway         = "https://ipfs.etherview.local"
+	metadataGateway         = "https://ipfs.etherview.localhost"
 	metadataURI             = "ipfs://bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	updatedMetadataURI      = metadataURI + "?revision=2"
-	resolvedMetadataURL     = "https://ipfs.etherview.local/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
+	resolvedMetadataURL     = "https://ipfs.etherview.localhost/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json"
 	updatedResolvedMetadata = resolvedMetadataURL + "?revision=2"
-	resolvedImageURL        = "https://ipfs.etherview.local/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
+	resolvedImageURL        = "https://ipfs.etherview.localhost/ipfs/bafybeidfjqmasnpu6z7gvn7l6wthdcyzxh5uystkky3xvutddbapchbopi/no-time-to-explain.jpeg"
 	expectedMetadataSHA256  = "a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d"
 	expectedMetadataBytes   = 205
 	previewDatabasePassword = "etherview-preview-metadata-e2e"
@@ -353,7 +353,7 @@ func (h *harness) connect(ctx context.Context) {
 	h.http = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			if strings.HasSuffix(address, ".etherview.local:443") {
+			if strings.HasSuffix(address, ".etherview.localhost:443") {
 				address = apiBinding
 			}
 			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, address)
@@ -362,8 +362,8 @@ func (h *harness) connect(ctx context.Context) {
 			RootCAs:    roots,
 		}},
 	}
-	h.apiURL = "https://app.etherview.local"
-	h.rpc, err = rpc.DialOptions(ctx, "https://geth.etherview.local", rpc.WithHTTPClient(h.http))
+	h.apiURL = "https://app.etherview.localhost"
+	h.rpc, err = rpc.DialOptions(ctx, "https://geth.etherview.localhost", rpc.WithHTTPClient(h.http))
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -692,9 +692,13 @@ func (h *harness) assertMetadataAPI(ctx context.Context, receipt rpcReceipt, con
 		!strings.EqualFold(data.Observation.BlockHash, receipt.BlockHash.Hex()) ||
 		data.ContentObservation.ChainID != previewChainID ||
 		data.ContentObservation.BlockNumber != strconv.FormatUint(uint64(receipt.BlockNumber), 10) ||
-		!strings.EqualFold(data.ContentObservation.BlockHash, receipt.BlockHash.Hex()) || data.ContentStale ||
-		data.Image.State != "available" || data.Image.URL != resolvedImageURL || data.Image.SourceScheme != "ipfs" {
+		!strings.EqualFold(data.ContentObservation.BlockHash, receipt.BlockHash.Hex()) || data.ContentStale {
 		h.t.Fatalf("metadata API payload = %#v", data)
+	}
+	// The metadata worker may fetch the local gateway, but the public display
+	// policy must still withhold browser navigation to any .localhost host.
+	if data.Image.State != "unsafe" || data.Image.URL != "" || data.Image.SourceScheme != "" {
+		h.t.Fatalf("local gateway image escaped the display policy: %#v", data.Image)
 	}
 
 	mediaRequest, err := http.NewRequestWithContext(
@@ -821,7 +825,7 @@ func (h *harness) assertTransitionLog(
 		!strings.EqualFold(record.Block.Hash, receipt.BlockHash.Hex()) ||
 		record.Transition.State != "available" || record.Transition.Code != "" ||
 		record.Source.Scheme != "ipfs" || record.Request.Scheme != "https" ||
-		record.Request.Host != "ipfs.etherview.local" || record.Request.Path != "/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json" ||
+		record.Request.Host != "ipfs.etherview.localhost" || record.Request.Path != "/ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json" ||
 		record.Request.Redirects != 0 {
 		h.t.Fatalf("metadata transition log = %#v", record)
 	}

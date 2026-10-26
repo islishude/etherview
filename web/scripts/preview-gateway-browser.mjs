@@ -15,7 +15,7 @@ const fingerprint = createHash("sha256").update(spki).digest("base64");
 const browser = await chromium.launch({
   channel: process.env.PLAYWRIGHT_USE_BUNDLED === "1" ? undefined : "chrome",
   args: [
-    `--host-resolver-rules=MAP *.etherview.local ${binding}, EXCLUDE localhost`,
+    `--host-resolver-rules=MAP *.etherview.localhost ${binding}, EXCLUDE localhost`,
     // Trust only this test's certificate key, not arbitrary HTTPS errors.
     `--ignore-certificate-errors-spki-list=${fingerprint}`,
     "--no-proxy-server",
@@ -25,7 +25,7 @@ try {
   const context = await browser.newContext();
   await context.tracing.start({ screenshots: true, snapshots: true });
   const page = await context.newPage();
-  const response = await page.goto("https://app.etherview.local");
+  const response = await page.goto("https://app.etherview.localhost");
   assert.equal(response.status(), 200);
   assert.match(response.headers()["content-security-policy"], /connect-src 'self'/);
   await page.locator("main").waitFor();
@@ -35,9 +35,9 @@ try {
   assert.equal(await page.evaluate(() => isSecureContext), true);
   const config = await page.evaluate(async () => (await fetch("/api/v1/config")).json());
   assert(config.data, JSON.stringify(config));
-  assert.deepEqual(config.data.wallet_add_chain.rpc_urls, ["https://geth.etherview.local"]);
+  assert.deepEqual(config.data.wallet_add_chain.rpc_urls, ["https://geth.etherview.localhost"]);
   assert.deepEqual(config.data.wallet_add_chain.block_explorer_urls, [
-    "https://app.etherview.local",
+    "https://app.etherview.localhost",
   ]);
   // Public Preview development account; never use this key outside disposable tests.
   const account = privateKeyToAccount(
@@ -52,8 +52,8 @@ try {
     if (result.status !== 201) throw new Error(`challenge: ${result.status}`);
     return (await result.json()).data;
   }, account.address);
-  assert(challenge.message.startsWith("https://app.etherview.local wants you to sign in"));
-  assert(challenge.message.includes("URI: https://app.etherview.local"));
+  assert(challenge.message.startsWith("https://app.etherview.localhost wants you to sign in"));
+  assert(challenge.message.includes("URI: https://app.etherview.localhost"));
   const signature = await account.signMessage({ message: challenge.message });
   const session = await page.evaluate(
     async (input) => {
@@ -69,7 +69,7 @@ try {
   );
   const cookie = (await context.cookies()).find((item) => item.name === "etherview_session");
   assert(cookie?.secure && cookie.httpOnly);
-  assert.equal(cookie.domain, "app.etherview.local");
+  assert.equal(cookie.domain, "app.etherview.localhost");
   assert.equal(cookie.sameSite, "Lax");
   assert.equal(cookie.path, "/api/v1");
   assert.equal(
@@ -100,19 +100,19 @@ try {
     );
     await dev.goto(`${origin}/`);
     const result = await dev.evaluate(async () => {
-      const rpc = await fetch("https://geth.etherview.local", {
+      const rpc = await fetch("https://geth.etherview.localhost", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
       });
-      const beacon = await fetch("https://beacon.etherview.local/eth/v1/node/version");
+      const beacon = await fetch("https://beacon.etherview.localhost/eth/v1/node/version");
       return { chain: (await rpc.json()).result, beacon: beacon.status };
     });
     assert.deepEqual(result, { chain: "0xbeaf", beacon: 200 });
     await dev.evaluate(async () => {
       await Promise.all([
         new Promise((resolve, reject) => {
-          const ws = new WebSocket("wss://geth.etherview.local");
+          const ws = new WebSocket("wss://geth.etherview.localhost");
           const observed = [];
           const timer = setTimeout(() => {
             ws.close();
@@ -155,7 +155,7 @@ try {
         }),
         new Promise((resolve, reject) => {
           const source = new EventSource(
-            "https://beacon.etherview.local/eth/v1/events?topics=head",
+            "https://beacon.etherview.localhost/eth/v1/events?topics=head",
           );
           const timer = setTimeout(() => {
             source.close();

@@ -1016,7 +1016,7 @@ size alone is not sufficient justification to weaken those invariants.
   stale marker; reorg automatically removes orphan update influence.
 
 Preview uses pinned Kubo, Geth and Lighthouse nodes behind the official Caddy
-`preview-gateway`. Four explicit `*.etherview.local` hosts route app/API,
+`preview-gateway`. Four explicit `*.etherview.localhost` hosts route app/API,
 read-only IPFS, execution JSON-RPC/WSS and Beacon REST/SSE. TLS terminates at
 Caddy; API traffic inside the container network uses HTTP. The gateway is not
 an application role and its health does not depend on optional upstreams.

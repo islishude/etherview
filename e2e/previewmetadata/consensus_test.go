@@ -165,7 +165,7 @@ func (h *harness) assertConsensusBlob(ctx context.Context, receipt rpcReceipt, b
 			}
 		}
 	}
-	if err := h.getJSON(ctx, "https://beacon.etherview.local/eth/v2/beacon/blocks/"+*observed.Data.Root, &beacon); err != nil {
+	if err := h.getJSON(ctx, "https://beacon.etherview.localhost/eth/v2/beacon/blocks/"+*observed.Data.Root, &beacon); err != nil {
 		h.t.Fatal(err)
 	}
 	if beacon.Data.Message.Slot != *observed.Data.Slot || !strings.EqualFold(beacon.Data.Message.Body.Bid.Message.BlockHash, receipt.BlockHash.Hex()) {
@@ -200,7 +200,7 @@ func (h *harness) assertConsensusBlob(ctx context.Context, receipt rpcReceipt, b
 		h.t.Fatal("Beacon commitment mismatch")
 	}
 	var full struct{ Data []string }
-	if err := h.getJSON(ctx, "https://beacon.etherview.local/eth/v1/beacon/blobs/"+*observed.Data.Root+"?versioned_hashes="+refs[0].VersionedHash, &full); err != nil {
+	if err := h.getJSON(ctx, "https://beacon.etherview.localhost/eth/v1/beacon/blobs/"+*observed.Data.Root+"?versioned_hashes="+refs[0].VersionedHash, &full); err != nil {
 		h.t.Fatal(err)
 	}
 	if len(full.Data) != 1 || !bytes.Equal(common.FromHex(full.Data[0]), blob) {
