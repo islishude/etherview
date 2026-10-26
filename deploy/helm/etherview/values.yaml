@@ -262,8 +262,7 @@ externalSecret:
 
 config:
   turnstile:
-    verification_enabled: false
-    csv_export_enabled: false
+    enabled: false
     site_key: ""
   push:
     enabled: false

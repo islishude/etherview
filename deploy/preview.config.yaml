@@ -253,6 +253,5 @@ bytecode_db:
 
 # Optional browser challenge. Secret is API/all environment-only.
 turnstile:
-  verification_enabled: false
-  csv_export_enabled: false
+  enabled: false
   site_key: ""

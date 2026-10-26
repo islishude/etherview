@@ -1156,9 +1156,12 @@ retaining TLS verification, redirect rejection and all source-verification fence
 
 ## Optional browser human verification
 
-Runtime `turnstile` configuration provides independent default-off verification
-and CSV export guards. The public config includes only their switches and site
-key; API/all read the secret from environment or file. The HTTP layer validates
+Runtime `turnstile.enabled` is the single default-off switch for browser
+verification, CSV exports and future Turnstile-protected operations. Actions
+remain scenario-specific; adding an operation does not add a configuration
+switch. Public config exposes only `enabled` and `site_key` while enabled and
+omits the `turnstile` object while disabled. API/all read the secret from
+environment or file. The HTTP layer validates
 single-use tokens after session/Origin/CSRF and capability checks, before parsing
 sources or opening export snapshots. Siteverify checks action and configured
 hostname through fixed HTTPS with bounded time/response and no redirects or

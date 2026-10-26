@@ -39,13 +39,10 @@ type PushConfig struct {
 
 // TurnstileConfig controls browser challenges; SecretKey is API-role environment-only.
 type TurnstileConfig struct {
-	VerificationEnabled bool   `yaml:"verification_enabled"`
-	CSVExportEnabled    bool   `yaml:"csv_export_enabled"`
-	SiteKey             string `yaml:"site_key"`
-	SecretKey           string `yaml:"-"`
+	Enabled   bool   `yaml:"enabled"`
+	SiteKey   string `yaml:"site_key"`
+	SecretKey string `yaml:"-"`
 }
-
-func (c TurnstileConfig) Enabled() bool { return c.VerificationEnabled || c.CSVExportEnabled }
 
 // Config is the complete runtime configuration. A deployment serves exactly
 // one chain, although chain_id remains present in persistent identities.

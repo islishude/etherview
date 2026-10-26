@@ -1241,7 +1241,9 @@ These local checks do not establish remote CI acceptance.
 ## Turnstile and address toolbar acceptance
 
 Run focused `internal/turnstile`, config, HTTP, app and embedded Web tests,
-frontend tests, and the embedded browser suite. Cover both independent switches,
+frontend tests, and the embedded browser suite. Cover the shared default-off
+switch enabling/disabling every protected operation, removed configuration
+rejection, public config omission while disabled,
 secret role isolation, authentication before validation, token bounds/expiry and
 replay rejection, action/hostname mismatch, redirects, timeout/cancellation,
 malformed/oversized responses, JSON-before-CSV failures and unchanged native

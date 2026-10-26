@@ -1878,17 +1878,30 @@ its external success is separate from local compilation and publication.
 
 Create a [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
 **Managed** widget for the hostname in
-`server.public_url`. Configure `turnstile.site_key` and independently enable
-`turnstile.verification_enabled` and/or `turnstile.csv_export_enabled` (both
-false by default). Environment equivalents are `ETHERVIEW_TURNSTILE_SITE_KEY`,
-`ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED`, and
-`ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED`. Supply the secret only to API/all as
+`server.public_url`. Configure `turnstile.site_key` and set `turnstile.enabled`
+to true (false by default). This single switch protects browser contract
+verification, CSV exports and all future Turnstile-protected operations.
+Each operation retains its own action validation. Environment equivalents are
+`ETHERVIEW_TURNSTILE_SITE_KEY` and `ETHERVIEW_TURNSTILE_ENABLED`.
+Supply the secret only to API/all as
 `ETHERVIEW_TURNSTILE_SECRET_KEY` or `ETHERVIEW_TURNSTILE_SECRET_KEY_FILE`; the
 file option requires a read-only mount in those services. Never place the secret
 in YAML, ConfigMaps, browser config, image build arguments or logs.
 
+Replace the removed `turnstile.verification_enabled` and
+`turnstile.csv_export_enabled` keys with `turnstile.enabled`; replace either old
+`ETHERVIEW_TURNSTILE_VERIFICATION_ENABLED` /
+`ETHERVIEW_TURNSTILE_CSV_EXPORT_ENABLED` environment variable with
+`ETHERVIEW_TURNSTILE_ENABLED`. Enable the shared switch if either old guard was
+enabled. Application startup rejects removed YAML keys and environment
+variables; Helm rejects removed values and uses `config.turnstile.enabled`.
+There are no compatibility aliases. Compose only forwards current variable
+names, so replace old entries in your environment file before recreating
+services; an old entry alone no longer enables protection.
+
 Restart API/all after changing settings; the same image works with either
-configuration. The SPA learns the switches/site key from `/api/v1/config`;
+configuration. The SPA learns `enabled` and `site_key` from `/api/v1/config`
+(the `turnstile` object is omitted when disabled);
 reload already-open tabs after changing them. Preview and external Compose
 forward public settings to services and secret inputs only to API/all. Helm
 uses `config.turnstile`, `secrets.turnstileSecretKey` and, when ExternalSecret is

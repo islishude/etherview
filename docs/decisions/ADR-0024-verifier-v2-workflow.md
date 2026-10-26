@@ -191,7 +191,8 @@ Genesis proof remains unavailable rather than weakening the creation boundary.
 
 ## Optional browser submission challenge
 
-`turnstile.verification_enabled` defaults off. When enabled, all four browser
+`turnstile.enabled` defaults off and is shared by verification, CSV exports
+and future protected operations. When enabled, all four browser
 submission POSTs require a single `X-Turnstile-Token`, after SIWE, Origin, CSRF
 and capability checks but before source parsing, target resolution, upstream
 calls or enqueueing. Cloudflare Siteverify must confirm success, action
@@ -202,5 +203,5 @@ Failures return redacted `turnstile_invalid` (403) or `turnstile_unavailable`
 has a five-second deadline, no redirects or retries, and a 16 KiB response cap.
 Tokens are at most 2048 characters, single-use and valid for five minutes.
 Secrets are environment/file-only and read by API/all roles; public runtime
-config exposes only the site key and switches. No database snapshot is held
+config exposes only the site key and shared switch when enabled. No database snapshot is held
 while validating, and tokens are never persisted in job inputs.

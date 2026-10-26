@@ -117,7 +117,7 @@ spec:
           port: 443
 {{- end }}
 
-{{- if and .Values.networkPolicy.enabled (or .Values.config.turnstile.verification_enabled .Values.config.turnstile.csv_export_enabled) }}
+{{- if and .Values.networkPolicy.enabled .Values.config.turnstile.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

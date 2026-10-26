@@ -6054,9 +6054,9 @@ type PublicConfigResponse struct {
 
 // PublicTurnstileConfig defines model for PublicTurnstileConfig.
 type PublicTurnstileConfig struct {
-	CsvExportEnabled    bool   `json:"csv_export_enabled"`
-	SiteKey             string `json:"site_key"`
-	VerificationEnabled bool   `json:"verification_enabled"`
+	// Enabled Shared switch for all browser Turnstile-protected operations.
+	Enabled bool   `json:"enabled"`
+	SiteKey string `json:"site_key"`
 }
 
 // PushSubscriptionInput defines model for PushSubscriptionInput.
@@ -8064,7 +8064,7 @@ type RotateCurrentUserAPIKeyParams struct {
 type ExportCurrentUserAddressActivityParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 
-	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
 	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
@@ -8097,7 +8097,7 @@ type UpdateCurrentUserWatchParams struct {
 type SubmitBrowserAddressVerificationParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 
-	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
 	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
@@ -8105,7 +8105,7 @@ type SubmitBrowserAddressVerificationParams struct {
 type SubmitBrowserSourcifyVerificationParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 
-	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
 	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
@@ -8113,7 +8113,7 @@ type SubmitBrowserSourcifyVerificationParams struct {
 type SubmitBrowserSourcifyFromEtherscanParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 
-	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
 	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
@@ -8121,7 +8121,7 @@ type SubmitBrowserSourcifyFromEtherscanParams struct {
 type ImportBrowserSourcifyContractParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 
-	// XTurnstileToken Required when runtime Turnstile protection is enabled for this operation. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
 	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 

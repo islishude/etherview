@@ -18,7 +18,7 @@ window.turnstile = {
  },
  remove(id) { widgets.get(id)?.replaceChildren(); widgets.delete(id); }
 };`;
-async function protectedSession(page: Page, csv: boolean) {
+async function protectedSession(page: Page) {
   await installVerificationSession(page);
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
@@ -26,8 +26,7 @@ async function protectedSession(page: Page, csv: boolean) {
     Object.assign(body.data.features, { user_auth: true, verification: true, sourcify: true });
     body.data.turnstile = {
       site_key: "test-public",
-      verification_enabled: !csv,
-      csv_export_enabled: csv,
+      enabled: true,
     };
     await route.fulfill({ response, json: body });
   });
@@ -36,7 +35,7 @@ for (const language of ["en", "zh"] as const) {
   test(`address toolbar and CSV challenge failure/retry in ${language}`, async ({ page }, info) => {
     const zh = language === "zh";
     await page.addInitScript((lng) => localStorage.setItem("etherview.language", lng), language);
-    await protectedSession(page, true);
+    await protectedSession(page);
     let scripts = 0;
     await page.route("https://challenges.cloudflare.com/**", (route) => {
       scripts++;
@@ -80,6 +79,12 @@ for (const language of ["en", "zh"] as const) {
       }, theme);
       for (const width of [1280, 390]) {
         await page.setViewportSize({ width, height: 900 });
+        // Inspect settled theme colors, not an intermediate CSS transition frame.
+        await toolbar.evaluate(async (element) => {
+          await Promise.all(
+            element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+          );
+        });
         await toolbar.screenshot({
           path: info.outputPath(`address-toolbar-${theme}-${width}.png`),
         });
@@ -161,7 +166,7 @@ for (const language of ["en", "zh"] as const) {
 test("local verification preserves uploaded source and needs a fresh challenge after rejection", async ({
   page,
 }) => {
-  await protectedSession(page, false);
+  await protectedSession(page);
   await page.route("https://challenges.cloudflare.com/**", (route) =>
     route.fulfill({ contentType: "application/javascript", body: widgetScript }),
   );

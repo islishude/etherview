@@ -9,7 +9,7 @@ import (
 var turnstileKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,256}$`)
 
 func validateTurnstileConfig(c Config) error {
-	if !c.Turnstile.Enabled() {
+	if !c.Turnstile.Enabled {
 		return nil
 	}
 	var errs []error

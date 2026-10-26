@@ -964,7 +964,6 @@ expect_render_failure alert-rules-without-scoped-monitor \
   --set prometheusRule.enabled=true \
   --set serviceMonitor.enabled=false
 
-echo "helm render test: PASS"
 
 # Consensus credentials and immutable archive identities are role scoped.
 consensus_roles="$temporary_dir/consensus-roles.yaml"
@@ -987,13 +986,40 @@ for mode in monolith distributed; do
   turnstile_render="$temporary_dir/turnstile-$mode.yaml"
   "$helm_bin" template etherview "$chart_dir" --set mode="$mode" \
     --set config.features.user_auth=true --set-string config.server.public_url=https://explorer.example.com \
-    --set config.turnstile.csv_export_enabled=true --set-string config.turnstile.site_key=public-widget > "$turnstile_render"
+    --set config.turnstile.enabled=true --set-string config.turnstile.site_key=public-widget > "$turnstile_render"
   owner=api
   if [ "$mode" = monolith ]; then owner=all; fi
   assert_occurrences "$turnstile_render" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 1
+  assert_resource_occurrences "$turnstile_render" etherview-turnstile "app.kubernetes.io/component: $owner" 1
+  assert_resource_occurrences "$turnstile_render" etherview-turnstile "port: 443" 1
   assert_component_occurrences "$turnstile_render" "$owner" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 1
   for role in sync enrich trace metadata maintenance; do
     assert_component_occurrences "$turnstile_render" "$role" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 0
   done
 done
 expect_render_failure inline-turnstile-secret --set-string config.turnstile.secret_key=secret
+
+for mode in monolith distributed; do
+  disabled_turnstile="$temporary_dir/turnstile-disabled-$mode.yaml"
+  "$helm_bin" template etherview "$chart_dir" --set mode="$mode" > "$disabled_turnstile"
+  assert_occurrences "$disabled_turnstile" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 0
+  assert_occurrences "$disabled_turnstile" "name: etherview-turnstile" 0
+done
+expect_render_failure removed-turnstile-verification --set config.turnstile.verification_enabled=true
+expect_render_failure removed-turnstile-csv --set config.turnstile.csv_export_enabled=true
+expect_render_failure turnstile-external-secret-missing \
+  --set-string config.turnstile.site_key=public-widget \
+  --set externalSecret.enabled=true --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
+  --set config.turnstile.enabled=true --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com
+assert_contains "$temporary_dir/turnstile-external-secret-missing.err" "externalSecret.turnstileSecretRemoteKey is required"
+turnstile_external="$temporary_dir/turnstile-external.yaml"
+"$helm_bin" template etherview "$chart_dir" --set externalSecret.enabled=true \
+  --set-string config.turnstile.site_key=public-widget \
+  --set config.turnstile.enabled=true --set config.features.user_auth=true \
+  --set-string config.server.public_url=https://explorer.example.com \
+  --set-string externalSecret.sessionPepperRemoteKey=runtime/session-pepper \
+  --set-string externalSecret.turnstileSecretRemoteKey=runtime/turnstile > "$turnstile_external"
+assert_occurrences "$turnstile_external" 'key: "runtime/turnstile"' 1
+
+echo "helm render test: PASS"

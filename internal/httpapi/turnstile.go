@@ -13,11 +13,7 @@ type TurnstileValidator interface {
 }
 
 func (h *Handler) requireTurnstile(w http.ResponseWriter, r *http.Request, action string) bool {
-	enabled := h.cfg.Turnstile.VerificationEnabled
-	if action == "csv_export" {
-		enabled = h.cfg.Turnstile.CSVExportEnabled
-	}
-	if !enabled {
+	if !h.cfg.Turnstile.Enabled {
 		return true
 	}
 	tokens := r.Header.Values("X-Turnstile-Token")
