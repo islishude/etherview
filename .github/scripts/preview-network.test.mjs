@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import test from "node:test";
+import { spawnSync } from "node:child_process";
 import {
   fingerprint,
   validateNetwork,
@@ -42,6 +43,31 @@ test("recreate verifies all material without changing bytes or timestamps", (t) 
   assert.equal(prepareNetwork(directory, { checkOnly: true }).version, 1);
   assert.equal(fs.statSync(file).mtimeMs, before);
   assert.equal(fs.readFileSync(file, "utf8"), "{}");
+});
+
+test("the shared generator fixes three-second slots even with ambient overrides", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-preview-duration-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(directory, "jq"), "#!/bin/sh\necho 0x1\n", { mode: 0o700 });
+  const script = fs.readFileSync(
+    new URL("../../deploy/preview/generate.sh", import.meta.url),
+    "utf8",
+  );
+  // Exercise the real generator's environment setup without invoking the container tools.
+  const setup =
+    script.split("/work/entrypoint.sh cl")[0] +
+    '\nprintf "%s %s" "$SLOT_DURATION_IN_SECONDS" "$SLOT_DURATION_MS"\n';
+  const result = spawnSync("bash", ["-c", setup], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH}`,
+      SLOT_DURATION_IN_SECONDS: "6",
+      SLOT_DURATION_MS: "6000",
+    },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, "3 3000");
 });
 test("missing, partial, altered and extra material fail closed", (t) => {
   const { directory } = fixture(t);

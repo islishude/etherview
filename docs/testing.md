@@ -985,8 +985,13 @@ Preview browser acceptance requires the locked pnpm workspace and Chrome, or
 `PLAYWRIGHT_USE_BUNDLED=1` with `pnpm --dir web exec playwright install chromium`.
 The metadata gate runs real SIWE, CSRF, wallet URL and node CORS/WSS/SSE browser
 checks only after the first mined transaction, beyond the genesis waiting period.
-Metadata acceptance requires the `.localhost` image projection to remain `unsafe`
-without a navigation URL while the metadata worker successfully fetches its text.
+Metadata acceptance requires the explicitly allowlisted local IPFS image to
+project as `available` with its exact HTTPS navigation URL while the worker
+successfully fetches metadata text. Navigation regressions retain default-empty
+and unlisted-local-origin rejection, exact host/port matching, confirmation before
+requests, cancellation, and opener-free/no-referrer navigation. Config and app
+regressions prove that navigation exceptions never authorize media or metadata
+network fetches.
 It trusts only the test certificate SPKI and explicitly grants local-network
 permission to its test pages; it never disables general TLS verification.
 
@@ -1147,8 +1152,12 @@ all-role layouts. Every test owns its generated network bundle, Compose project,
 volumes and ephemeral loopback ports; it never overwrites the daily Preview.
 
 `make test-preview-consensus` runs the fixed Geth v1.17.10 / Lighthouse v8.3.2
-combination with Gloas at genesis and the durable RustFS archive. It checks
-real blob transactions with cell proofs, exact Beacon/execution associations,
+combination with Gloas at genesis and the durable RustFS archive. Daily Preview,
+metadata acceptance and consensus acceptance share three-second slots. Both
+acceptance suites verify the live Beacon slot duration and record it in their
+reports. The generator is part of the network fingerprint, so older six-second
+bundles require explicit reinitialization rather than silent reuse.
+It checks real blob transactions with cell proofs, exact Beacon/execution associations,
 consensus-first slots, independent Beacon/S3/API byte readback, checksum and
 commitment identity, read-only API credentials, client/object-store outages,
 core recreation during archive outages in both role layouts, failed and repeated

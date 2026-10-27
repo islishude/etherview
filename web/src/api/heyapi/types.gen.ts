@@ -834,7 +834,7 @@ export type NftMetadataImageState = 'available' | 'unavailable' | 'missing' | 'u
 export type NftMetadataImage = {
     state: NftMetadataImageState;
     /**
-     * Unverified external HTTPS navigation target. HTTPS image values are returned directly; valid IPFS values use the configured HTTPS gateway.
+     * Unverified external HTTPS navigation target. HTTPS image values are returned directly; valid IPFS values use the configured HTTPS gateway. Localhost and non-public IP literals require an explicit exact-origin image navigation allowlist entry. This permits only user-confirmed navigation, not server-side media fetching, and does not validate destination DNS, content, or subsequent browser redirects.
      */
     url?: string;
     source_scheme?: 'https' | 'ipfs';

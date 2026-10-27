@@ -18,6 +18,23 @@ import (
 // Public Hardhat development key. Never fund it on an external network.
 const previewSigningKey = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
+const previewSlotDurationMillis = "3000"
+
+func (h *harness) assertSlotDuration(ctx context.Context) {
+	h.t.Helper()
+	var spec struct {
+		Data struct {
+			SlotDurationMS string `json:"SLOT_DURATION_MS"`
+		}
+	}
+	if err := h.getJSON(ctx, "https://beacon.etherview.localhost/eth/v1/config/spec", &spec); err != nil {
+		h.t.Fatal(err)
+	}
+	if spec.Data.SlotDurationMS != previewSlotDurationMillis {
+		h.t.Fatalf("Preview requires %sms slots, got %q", previewSlotDurationMillis, spec.Data.SlotDurationMS)
+	}
+}
+
 func (h *harness) prepareNetwork(ctx context.Context) {
 	h.t.Helper()
 	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `import {prepareNetwork} from "./.github/scripts/preview-network.mjs"; prepareNetwork(process.argv[1]);`, h.project.Env["PREVIEW_NETWORK_DIR"])

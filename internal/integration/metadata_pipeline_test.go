@@ -309,7 +309,7 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 		}
 	}
 
-	reader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.example/base")
+	reader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.example/base", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,6 +320,28 @@ func TestPostgresNFTMetadataDisplayReaderSelectsOnlyNewestCanonicalObservation(t
 		selected.Observation.BlockHash != genesisHash || selected.ContentObservation == nil ||
 		selected.ContentObservation.BlockHash != genesisHash || selected.ContentStale {
 		t.Fatalf("canonical display selection=%+v err=%v", selected, err)
+	}
+
+	for _, allow := range []bool{false, true} {
+		var origins []string
+		if allow {
+			origins = []string{"https://ipfs.etherview.localhost"}
+		}
+		localReader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.etherview.localhost", origins)
+		if err != nil {
+			t.Fatal(err)
+		}
+		local, err := localReader.NFTMetadata(ctx, address, "42")
+		if err != nil || local.Name != selected.Name || local.Observation != selected.Observation {
+			t.Fatalf("local projection: %+v, %v", local, err)
+		}
+		if allow {
+			if local.Image.State != metadata.NFTMetadataImageAvailable || local.Image.URL != "https://ipfs.etherview.localhost/ipfs/bafybeigdyrzt1234567890/42.png" {
+				t.Fatalf("allowed projection: %+v", local.Image)
+			}
+		} else if local.Image.State != metadata.NFTMetadataImageUnsafe || local.Image.URL != "" {
+			t.Fatalf("default projection: %+v", local.Image)
+		}
 	}
 	for index, state := range []metadata.State{
 		metadata.StatePending, metadata.StateUnavailable, metadata.StateUnsafe, metadata.StateError,
@@ -681,7 +703,7 @@ func TestPostgresNFTMetadataUpdateSignalsDriveBoundedExactSourceRefresh(t *testi
 	if processed, err := updateDiscoverer.ProcessOnce(ctx); err != nil || !processed {
 		t.Fatalf("process batch update=%t err=%v", processed, err)
 	}
-	displayReader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.example/base")
+	displayReader, err := metadata.NewPostgresMetadataReader(db, "1", "https://ipfs.example/base", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -82,3 +82,36 @@ func TestMetadataConfigurationIsStrictlyBounded(t *testing.T) {
 		}
 	}
 }
+
+func TestImageNavigationOriginsConfiguration(t *testing.T) {
+	cfg := Default()
+	if len(cfg.Metadata.ImageNavigationAllowedOrigins) != 0 {
+		t.Fatal("navigation exceptions must default empty")
+	}
+	for _, value := range []string{"https://ipfs.localhost, https://127.0.0.1:8443", ""} {
+		if err := applyEnvironment(&cfg, func(name string) (string, bool) {
+			if name == envPrefix+"METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS" {
+				return value, true
+			}
+			return "", false
+		}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if value == "" && len(cfg.Metadata.ImageNavigationAllowedOrigins) != 0 {
+			t.Fatal("empty override did not clear list")
+		}
+		if value != "" && len(cfg.Metadata.ImageNavigationAllowedOrigins) != 2 {
+			t.Fatal("CSV override not applied")
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, invalid := range []string{"http://ipfs.localhost", "https://*.localhost", "https://ipfs.localhost/path", "https://secret@ipfs.localhost", "https://ipfs.localhost?x=secret", "https://ipfs.localhost#fragment"} {
+		cfg.Metadata.ImageNavigationAllowedOrigins = []string{invalid}
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "metadata.image_navigation_allowed_origins") || strings.Contains(err.Error(), "secret") {
+			t.Fatalf("invalid origin validation: %v", err)
+		}
+	}
+}

@@ -206,7 +206,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			mediaProxy     *metadata.MediaProxy
 		)
 		if cfg.Features.NFTMetadata {
-			metadataReader, err = metadata.NewPostgresMetadataReader(readDB, chainID, cfg.Metadata.IPFSGateway)
+			metadataReader, err = metadata.NewPostgresMetadataReader(readDB, chainID, cfg.Metadata.IPFSGateway, cfg.Metadata.ImageNavigationAllowedOrigins)
 			if err != nil {
 				return err
 			}

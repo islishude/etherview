@@ -172,7 +172,7 @@ it prepares `.local/preview-network/` using the pinned
 `ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
 validator keys. The checked-in `deploy/preview.genesis.json` template remains
-unchanged. Chain ID is 48815, slots take six seconds, and Amsterdam/Gloas are
+unchanged. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
 active at genesis. Geth v1.17.10 uses full sync and archive state; Lighthouse
 v8.3.2 runs both the Beacon node and validator client. These clients form an
 isolated local PoS network with no public bootnodes or external builders.
@@ -326,9 +326,23 @@ set it back to `false` to restore public-network checks.
 Preview includes Kubo `v0.43.1` behind Caddy at `https://ipfs.etherview.localhost`.
 The shared wildcard pair is mounted only into Caddy; metadata receives only the
 public CA. Existing installations rerun `make preview-cert` before recreation.
-Metadata text remains available, but images resolved through this `.localhost`
-gateway have display state `unsafe` and no external navigation URL. The public
-image policy and authenticated media proxy keep their existing local-host protections.
+Metadata text remains available, and images resolved through this `.localhost`
+gateway are unverified external links requiring confirmation before each opening.
+Preview explicitly sets `metadata.image_navigation_allowed_origins` to
+`["https://ipfs.etherview.localhost"]`; production examples and Helm default to `[]`.
+The list permits navigation exceptions for exact HTTPS host/port pairs only.
+Host matching ignores case and a trailing dot; omitted ports equal 443. Wildcards,
+credentials, non-root paths, queries and fragments are invalid. Use ASCII hostnames
+(or their punycode form). Other local destinations remain `unsafe` without a URL.
+The list does not grant server-side fetch authority or validate destination content,
+DNS answers, or subsequent browser redirects.
+
+`ETHERVIEW_METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS` overrides the list with
+comma-separated origins; an explicitly empty value clears it. Apply the same
+configuration to the API process in split mode or the `all` process in monolith
+mode. Changing the browser-facing gateway port requires updating both the gateway
+URL and its allowlist entry. Recreate the application processes after configuration
+changes; no database migration or metadata refetch is required.
 
 Daily Preview retrieves uncached content over IPFS and retains it in the
 project-scoped `ipfs-data` volume. The reviewed metadata fixture is imported and

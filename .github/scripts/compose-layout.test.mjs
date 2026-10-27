@@ -248,3 +248,23 @@ for (const key of [
     }
   });
 }
+
+test("image navigation origins preserve defaults and reach API in every topology", () => {
+  const key = "ETHERVIEW_METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS";
+  for (const value of [undefined, "", "https://ipfs.etherview.localhost,https://127.0.0.1:8443"]) {
+    for (const [args, owner] of [
+      [[], "api"],
+      [
+        ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "monolith"],
+        "etherview",
+      ],
+      [
+        ["--project-directory", root, "-f", "deploy/compose.yaml", "--profile", "distributed"],
+        "api",
+      ],
+    ]) {
+      const config = render(args, { [key]: value });
+      assert.equal(config.services[owner].environment[key], value ?? null);
+    }
+  }
+});

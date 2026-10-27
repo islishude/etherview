@@ -17,9 +17,10 @@ func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 	}
 	var preview struct {
 		Metadata struct {
-			FetchTimeout               string `yaml:"fetch_timeout"`
-			IPFSGateway                string `yaml:"ipfs_gateway"`
-			UnsafeAllowPrivateNetworks bool   `yaml:"unsafe_allow_private_networks"`
+			ImageNavigationAllowedOrigins []string `yaml:"image_navigation_allowed_origins"`
+			FetchTimeout                  string   `yaml:"fetch_timeout"`
+			IPFSGateway                   string   `yaml:"ipfs_gateway"`
+			UnsafeAllowPrivateNetworks    bool     `yaml:"unsafe_allow_private_networks"`
 		} `yaml:"metadata"`
 		Features struct {
 			Verification bool `yaml:"verification"`
@@ -37,6 +38,9 @@ func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 	}
 	if err := yaml.Unmarshal(data, &preview); err != nil {
 		t.Fatal(err)
+	}
+	if len(preview.Metadata.ImageNavigationAllowedOrigins) != 1 || preview.Metadata.ImageNavigationAllowedOrigins[0] != "https://ipfs.etherview.localhost" {
+		t.Fatal("Preview must allow only its exact IPFS navigation origin")
 	}
 	if !preview.Features.Verification || !preview.Security.PublicVerification {
 		t.Fatal("Preview public verification must be enabled")

@@ -30,6 +30,7 @@ x-etherview-app-env: &etherview-app-env
   # A value-less override preserves the checked-in gateway unless the caller
   # explicitly selects another HTTPS endpoint.
   ETHERVIEW_METADATA_IPFS_GATEWAY:
+  ETHERVIEW_METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS:
 
 x-etherview-api-env: &etherview-api-env
   <<: *etherview-app-env

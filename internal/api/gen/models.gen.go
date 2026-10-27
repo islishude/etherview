@@ -5528,7 +5528,7 @@ type NFTMetadataImage struct {
 	SourceScheme *NFTMetadataImageSourceScheme `json:"source_scheme,omitempty"`
 	State        NFTMetadataImageState         `json:"state"`
 
-	// Url Unverified external HTTPS navigation target. HTTPS image values are returned directly; valid IPFS values use the configured HTTPS gateway.
+	// Url Unverified external HTTPS navigation target. HTTPS image values are returned directly; valid IPFS values use the configured HTTPS gateway. Localhost and non-public IP literals require an explicit exact-origin image navigation allowlist entry. This permits only user-confirmed navigation, not server-side media fetching, and does not validate destination DNS, content, or subsequent browser redirects.
 	Url *string `json:"url,omitempty"`
 }
 

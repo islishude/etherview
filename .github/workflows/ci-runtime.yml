@@ -53,6 +53,10 @@ jobs:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - uses: ./.github/actions/setup-toolchain
+      - name: Use Ubuntu archive mirrors for browser dependencies
+        # Slow successful Azure downloads do not trigger APT mirror failover.
+        # Keep the runner's official Ubuntu archive and security mirrors.
+        run: sudo sed -i '\|://azure\.archive\.ubuntu\.com/ubuntu/|d' /etc/apt/apt-mirrors.txt
       - name: Install Preview browser dependencies
         run: |
           pnpm install --frozen-lockfile
