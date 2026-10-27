@@ -1152,8 +1152,12 @@ all-role layouts. Every test owns its generated network bundle, Compose project,
 volumes and ephemeral loopback ports; it never overwrites the daily Preview.
 
 `make test-preview-consensus` runs the fixed Geth v1.17.10 / Lighthouse v8.3.2
-combination with Gloas at genesis and the durable RustFS archive. It checks
-real blob transactions with cell proofs, exact Beacon/execution associations,
+combination with Gloas at genesis and the durable RustFS archive. Daily Preview,
+metadata acceptance and consensus acceptance share three-second slots. Both
+acceptance suites verify the live Beacon slot duration and record it in their
+reports. The generator is part of the network fingerprint, so older six-second
+bundles require explicit reinitialization rather than silent reuse.
+It checks real blob transactions with cell proofs, exact Beacon/execution associations,
 consensus-first slots, independent Beacon/S3/API byte readback, checksum and
 commitment identity, read-only API credentials, client/object-store outages,
 core recreation during archive outages in both role layouts, failed and repeated

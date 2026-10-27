@@ -172,7 +172,7 @@ it prepares `.local/preview-network/` using the pinned
 `ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
 validator keys. The checked-in `deploy/preview.genesis.json` template remains
-unchanged. Chain ID is 48815, slots take six seconds, and Amsterdam/Gloas are
+unchanged. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
 active at genesis. Geth v1.17.10 uses full sync and archive state; Lighthouse
 v8.3.2 runs both the Beacon node and validator client. These clients form an
 isolated local PoS network with no public bootnodes or external builders.

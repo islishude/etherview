@@ -212,6 +212,7 @@ func (h *harness) run(ctx context.Context) {
 	}
 	h.initializeArchive(ctx)
 	h.connect(ctx)
+	h.assertSlotDuration(ctx)
 	h.assertLocalGateway(ctx)
 	h.assertPublicConfig(ctx)
 	initialReceipt := h.deployNFT(ctx)
@@ -961,6 +962,7 @@ func (h *harness) writeReport(
 		"gateway_ips": h.gatewayIPs, "kubo_image_id": h.serviceImageID(ctx, "ipfs"),
 		"gateway_image_id":       h.serviceImageID(ctx, "preview-gateway"),
 		"gateway_implementation": "caddy",
+		"slot_duration_ms":       previewSlotDurationMillis,
 		"cli_roundtrip":          true, "offline_no_fetch": true,
 		"chain_id": previewChainID, "contract": strings.ToLower(initialReceipt.ContractAddress.Hex()),
 		"token_id":             metadataTokenID,
