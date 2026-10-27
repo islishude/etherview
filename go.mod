@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/adraffy/go-ens-normalize v0.1.1
-	github.com/attestantio/go-eth2-client v0.30.1
+	github.com/attestantio/go-eth2-client v0.30.3
 	github.com/aws/aws-sdk-go-v2 v1.47.4
 	github.com/aws/aws-sdk-go-v2/config v1.33.10
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.10
