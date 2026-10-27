@@ -16,7 +16,7 @@ require (
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/fjl/geas v0.3.3
 	github.com/fxamacker/cbor/v2 v2.9.6
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.152.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/holiman/uint256 v1.3.2
