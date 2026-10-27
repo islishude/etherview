@@ -28,8 +28,8 @@ github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYW
 github.com/antlr4-go/antlr/v4 v4.13.1/go.mod h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0 h1:axGnT1gRIfimI7gJifB699GoE/oq+F2MU7Dml6nw9rQ=
 github.com/apapsch/go-jsonmerge/v2 v2.0.0/go.mod h1:lvDnEdqiQrp0O42VQGgmlKpxL1AP2+08jFMw88y4klk=
-github.com/attestantio/go-eth2-client v0.30.1 h1:OqAzTr4UFVGKTQ1XCeZaOJ6VyD5P7p5bEU2YsVXxYB8=
-github.com/attestantio/go-eth2-client v0.30.1/go.mod h1:IcbypY5iD/c/T5OLWVuZyWS8kM8HXkGc0ZW12uikfys=
+github.com/attestantio/go-eth2-client v0.30.3 h1:IMo5WC+yAHPUfHMb9OXELGfTzCArRVy5OeIt/fz8LS8=
+github.com/attestantio/go-eth2-client v0.30.3/go.mod h1:IcbypY5iD/c/T5OLWVuZyWS8kM8HXkGc0ZW12uikfys=
 github.com/aws/aws-sdk-go-v2 v1.47.4 h1:bTvk6UdSSSvaQsfLVj1JRDEEqj/PDRwGf1KanaRzau0=
 github.com/aws/aws-sdk-go-v2 v1.47.4/go.mod h1:XkrjAZvr705Nytv6PkPUhoSB2W9+vVHBp5oAWpkh8Ak=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.24 h1:t7FxqJ5KHDeKceyD4HtGaG6z7hMSeVGjs5/4c+L5ArM=
