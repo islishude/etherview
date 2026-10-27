@@ -28,11 +28,12 @@ GITLEAKS ?= gitleaks
 GO_LICENSES ?= go-licenses
 GOLANGCI_LINT ?= golangci-lint
 
-GOVULNCHECK_VERSION ?= v1.6.0
+GOVULNCHECK_VERSION ?= v1.9.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v2.0.1
 GOLANGCI_LINT_VERSION ?= v2.14.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
+MKCERT_VERSION ?= v1.4.4
 
 GENERATED_PATHS := \
 	internal/verify/vyper_runtime_policy_generated.go \
@@ -266,7 +267,7 @@ web-test: web-install
 test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
-test-workflow-scripts:
+test-workflow-scripts: test-dependency-updates
 	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs .github/scripts/compose-check.test.mjs
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
@@ -541,3 +542,17 @@ stop-x402-local:
 		--profile monolith --profile distributed down --volumes --remove-orphans
 
 recreate-x402-local: stop-x402-local start-x402-local
+
+# Dependency maintenance (network discovery stays outside deterministic check).
+.PHONY: dependency-check dependency-update test-dependency-updates install-preview-tools
+dependency-check:
+	$(NODE) .github/scripts/dependency-updates.mjs check $(if $(DEP),--dependency "$(DEP)")
+
+dependency-update:
+	$(NODE) .github/scripts/dependency-updates.mjs update --dependency "$(DEP)" --version "$(VERSION)"
+
+test-dependency-updates:
+	$(NODE) --test .github/scripts/dependency-updates.test.mjs
+
+install-preview-tools:
+	$(GO) install filippo.io/mkcert@$(MKCERT_VERSION)

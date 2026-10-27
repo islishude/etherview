@@ -1,0 +1,144 @@
+name: Dependency updates
+
+on:
+  schedule:
+    # Monday at 09:47 Asia/Shanghai (01:47 UTC).
+    - cron: "47 1 * * 1"
+  workflow_dispatch:
+    inputs:
+      dependency:
+        description: "Optional registry dependency ID"
+        type: string
+        required: false
+      version:
+        description: "Optional exact stable version (requires dependency)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-updates
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      base: ${{ steps.discover.outputs.base }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY: ${{ inputs.dependency }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          args=()
+          if [[ -n "$DEPENDENCY" ]]; then args+=(--dependency "$DEPENDENCY"); fi
+          if [[ -n "$VERSION" ]]; then args+=(--version "$VERSION"); fi
+          node .github/scripts/dependency-updates.mjs check "${args[@]}" --output "$RUNNER_TEMP/dependency-discovery"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dependency-discovery
+          path: ${{ runner.temp }}/dependency-discovery/
+          if-no-files-found: warn
+          retention-days: 14
+
+  prepare:
+    needs: discover
+    if: needs.discover.outputs.matrix != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      pull-requests: read
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.discover.outputs.base }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-toolchain
+      - id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY: ${{ matrix.dependency }}
+          VERSION: ${{ matrix.version }}
+        run: node .github/scripts/dependency-update-pr.mjs --inspect --dependency "$DEPENDENCY" --version "$VERSION"
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        if: steps.inspect.outputs.action == 'create'
+        with:
+          version-file: compiler/vyper/pyproject.toml
+      - name: Prepare and validate isolated candidate
+        if: steps.inspect.outputs.action == 'create'
+        env:
+          DEPENDENCY: ${{ matrix.dependency }}
+          VERSION: ${{ matrix.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/dependency-updates.mjs update --dependency "$DEPENDENCY" --version "$VERSION" --output "$RUNNER_TEMP/dependency-update"
+      - uses: actions/upload-artifact@v7
+        if: steps.inspect.outputs.action == 'create' && success()
+        with:
+          name: dependency-update-${{ matrix.dependency }}-${{ matrix.version }}
+          path: ${{ runner.temp }}/dependency-update/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Report failure
+        if: failure()
+        run: echo "Dependency candidate failed. No partial update is published; see job logs." >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: [discover, prepare]
+    if: needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.discover.outputs.base }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - id: inspect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY: ${{ matrix.dependency }}
+          VERSION: ${{ matrix.version }}
+        run: node .github/scripts/dependency-update-pr.mjs --inspect --dependency "$DEPENDENCY" --version "$VERSION"
+      - uses: actions/download-artifact@v8
+        if: steps.inspect.outputs.action == 'create'
+        with:
+          name: dependency-update-${{ matrix.dependency }}-${{ matrix.version }}
+          path: ${{ runner.temp }}/dependency-update
+      - name: Publish validated PR
+        if: steps.inspect.outputs.action == 'create'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPENDENCY: ${{ matrix.dependency }}
+          VERSION: ${{ matrix.version }}
+        run: node .github/scripts/dependency-update-pr.mjs --dependency "$DEPENDENCY" --version "$VERSION" --artifact "$RUNNER_TEMP/dependency-update"

@@ -3,9 +3,14 @@
 set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-CHECKER="$SCRIPT_DIR/toolchain-check.sh"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/etherview-toolchain-check.XXXXXX")"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT INT TERM
+CHECKER="$FIXTURE_ROOT/toolchain-check.sh"
+sed -e 's/^MINIMUM_GO=.*/MINIMUM_GO="go1.27.3"/' \
+    -e 's/^MINIMUM_NODE=.*/MINIMUM_NODE="v26.12.1"/' \
+    -e 's/^MINIMUM_PNPM=.*/MINIMUM_PNPM="12.15.0"/' \
+    "$SCRIPT_DIR/toolchain-check.sh" > "$CHECKER"
+chmod 0700 "$CHECKER"
 
 make_fake() {
   local name="$1"

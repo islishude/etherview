@@ -8,6 +8,12 @@ updates:
       time: "02:00"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
+    # Coordinated updates and reviewed holds: .github/dependency-registry.json.
+    ignore:
+      - dependency-name: "github.com/fjl/geas"
+      - dependency-name: "github.com/holiman/bloomfilter/v2"
+      - dependency-name: "github.com/multiformats/go-base36"
+      - dependency-name: "go"
     groups:
       opentelemetry:
         patterns: ["go.opentelemetry.io/*"]
@@ -26,6 +32,15 @@ updates:
       time: "02:30"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
+    # Coordinated updates and reviewed holds: .github/dependency-registry.json.
+    ignore:
+      - dependency-name: "license-checker-rseidelsohn"
+      - dependency-name: "node"
+      - dependency-name: "pnpm"
+      - dependency-name: "pyodide"
+      - dependency-name: "pyodide-legacy"
+      - dependency-name: "solc"
+      - dependency-name: "solc-*"
     groups:
       codemirror:
         patterns: ["@codemirror/*"]
@@ -61,7 +76,9 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /e2e/*
     schedule:
       interval: monthly
       day: monday
@@ -70,6 +87,9 @@ updates:
     open-pull-requests-limit: 10
     # Python changes require coordinated Vyper runtime and lock updates (ADR-0047).
     ignore:
+      - dependency-name: "ghcr.io/foundry-rs/foundry"
+      - dependency-name: "golang"
+      - dependency-name: "node"
       - dependency-name: "python"
     groups:
       container-images:
@@ -79,6 +99,7 @@ updates:
     directories:
       - /
       - /e2e/*
+      - /deploy
     schedule:
       interval: monthly
       day: monday
@@ -87,6 +108,8 @@ updates:
     open-pull-requests-limit: 10
     # These images are built locally rather than published in a registry.
     ignore:
+      - dependency-name: "caddy"
+      - dependency-name: "ghcr.io/foundry-rs/foundry"
       - dependency-name: "etherview"
       - dependency-name: "etherview-*"
     groups:
