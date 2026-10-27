@@ -1,0 +1,843 @@
+{
+  "schema": 1,
+  "dependencies": [
+    {
+      "id": "govulncheck",
+      "source": "github-tags",
+      "package": "golang/vuln",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "GOVULNCHECK_VERSION ?= v{{version}}",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "go",
+          "install",
+          "golang.org/x/vuln/cmd/govulncheck@v{{version}}"
+        ]
+      ],
+      "generated": [],
+      "ignores": {}
+    },
+    {
+      "id": "gitleaks",
+      "source": "github",
+      "package": "gitleaks/gitleaks",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "GITLEAKS_VERSION ?= v{{version}}",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "go",
+          "install",
+          "github.com/zricethezav/gitleaks/v8@v{{version}}"
+        ]
+      ],
+      "generated": [],
+      "ignores": {}
+    },
+    {
+      "id": "go-licenses",
+      "source": "github",
+      "package": "google/go-licenses",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "GO_LICENSES_VERSION ?= v{{version}}",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "go",
+          "install",
+          "github.com/google/go-licenses/v2@v{{version}}"
+        ]
+      ],
+      "generated": [],
+      "ignores": {}
+    },
+    {
+      "id": "golangci-lint",
+      "source": "github",
+      "package": "golangci/golangci-lint",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "GOLANGCI_LINT_VERSION ?= v{{version}}",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "go",
+          "install",
+          "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v{{version}}"
+        ]
+      ],
+      "generated": [],
+      "ignores": {}
+    },
+    {
+      "id": "mkcert",
+      "source": "github",
+      "package": "FiloSottile/mkcert",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "MKCERT_VERSION ?= v{{version}}",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "go",
+          "install",
+          "filippo.io/mkcert@v{{version}}"
+        ]
+      ],
+      "generated": [],
+      "ignores": {}
+    },
+    {
+      "id": "license-checker",
+      "source": "npm",
+      "package": "license-checker-rseidelsohn",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "WEB_LICENSE_CHECKER_VERSION ?= {{version}}",
+          "count": 1
+        },
+        {
+          "path": "package.json",
+          "template": "    \"license-checker-rseidelsohn\": \"{{version}}\"",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "pnpm",
+          "install",
+          "--lockfile-only",
+          "--ignore-scripts"
+        ]
+      ],
+      "generated": [
+        "pnpm-lock.yaml"
+      ],
+      "ignores": {
+        "npm": [
+          "license-checker-rseidelsohn"
+        ]
+      }
+    },
+    {
+      "id": "pnpm",
+      "source": "npm",
+      "package": "pnpm",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "package.json",
+          "template": "    \"pnpm\": \">= {{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "package.json",
+          "template": "  \"packageManager\": \"pnpm@{{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "Dockerfile",
+          "template": "    && env PNPM_VERSION={{version}} ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \\",
+          "count": 1
+        },
+        {
+          "path": "Dockerfile",
+          "template": "    && test \"$(pnpm --version)\" = \"{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "e2e/hardhat3/Dockerfile",
+          "template": "    && env PNPM_VERSION={{version}} ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \\",
+          "count": 1
+        },
+        {
+          "path": "e2e/hardhat3/Dockerfile",
+          "template": "    && test \"$(pnpm --version)\" = \"{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "e2e/hardhat3/package.json",
+          "template": "    \"pnpm\": \">={{version}}\"",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/toolchain-check.sh",
+          "template": "MINIMUM_PNPM=\"{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "README.md",
+          "template": "Toolchains: Go >={{other}}, Node.js {{other}}, and pnpm {{version}} (pinned in",
+          "count": 1
+        },
+        {
+          "path": "docs/development.md",
+          "template": "`pnpm-lock.yaml`. Install pnpm {{version}} (pinned by `packageManager`), then run",
+          "count": 1
+        },
+        {
+          "path": "docs/development.md",
+          "template": "with `PNPM_VERSION={{version}}`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "  {{version}} before generating or validating artifacts. Compatible newer stable",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "npm",
+          "exec",
+          "--yes",
+          "--package=pnpm@{{version}}",
+          "--",
+          "pnpm",
+          "install",
+          "--lockfile-only",
+          "--ignore-scripts"
+        ]
+      ],
+      "generated": [
+        "pnpm-lock.yaml"
+      ],
+      "ignores": {
+        "npm": [
+          "pnpm"
+        ]
+      }
+    },
+    {
+      "id": "go",
+      "source": "go",
+      "package": "go",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "go.mod",
+          "template": "go {{version}}",
+          "count": 1
+        },
+        {
+          "path": "Dockerfile",
+          "template": "FROM golang:{{version}} AS go-builder",
+          "count": 1
+        },
+        {
+          "path": "e2e/x402local/facilitator.Dockerfile",
+          "template": "FROM golang:{{version}} AS build",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/toolchain-check.sh",
+          "template": "MINIMUM_GO=\"go{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "README.md",
+          "template": "Toolchains: Go >={{version}}, Node.js {{other}}, and pnpm {{other}} (pinned in",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "- `make toolchain-check`: require at least Go {{version}}, Node {{other}}, and pnpm",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "gomod": [
+          "go"
+        ],
+        "docker": [
+          "golang"
+        ]
+      }
+    },
+    {
+      "id": "foundry",
+      "source": "github",
+      "package": "foundry-rs/foundry",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "e2e/foundry/Dockerfile",
+          "template": "FROM ghcr.io/foundry-rs/foundry:v{{version}}",
+          "count": 1
+        },
+        {
+          "path": "e2e/foundry/Dockerfile",
+          "template": "RUN forge --version | grep -F \"forge Version: {{version}}\" \\",
+          "count": 1
+        },
+        {
+          "path": "e2e/x402local/fixture.Dockerfile",
+          "template": "FROM ghcr.io/foundry-rs/foundry:v{{version}}",
+          "count": 1
+        },
+        {
+          "path": "e2e/x402local/compose.yaml",
+          "template": "    image: ghcr.io/foundry-rs/foundry:v{{version}}",
+          "count": 1
+        },
+        {
+          "path": "e2e/runtime/compose.yaml",
+          "template": "    image: ${ETHERVIEW_RUNTIME_FIXTURE_IMAGE:-ghcr.io/foundry-rs/foundry:v{{version}}}",
+          "count": 1
+        },
+        {
+          "path": "e2e/runtime/runtime_test.go",
+          "template": "\t\t\"ETHERVIEW_RUNTIME_FIXTURE_IMAGE\": valueOrDefault(\"ETHERVIEW_RUNTIME_FIXTURE_IMAGE\", \"ghcr.io/foundry-rs/foundry:v{{version}}\"),",
+          "count": 1
+        },
+        {
+          "path": "e2e/runtime/foundry_e2e_test.go",
+          "template": "\tfoundryVersion                = \"{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "docs/architecture/etherscan-v2-compatibility.md",
+          "template": "Foundry v{{version}} can use the same strict compatibility boundary through its",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "  deterministic Prague chain from the default Foundry `v{{version}}` image and a",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "  v{{version}} client image with no network and force a Solidity 0.8.30 rebuild. The",
+          "count": 1
+        },
+        {
+          "path": "docs/operations.md",
+          "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "docker": [
+          "ghcr.io/foundry-rs/foundry"
+        ],
+        "docker-compose": [
+          "ghcr.io/foundry-rs/foundry"
+        ]
+      }
+    },
+    {
+      "id": "caddy",
+      "source": "github",
+      "package": "caddyserver/caddy",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "Makefile",
+          "template": "PREVIEW_GATEWAY_IMAGE ?= caddy:{{version}}-alpine",
+          "count": 1
+        },
+        {
+          "path": "compose.yaml",
+          "template": "    image: ${PREVIEW_GATEWAY_IMAGE:-caddy:{{version}}-alpine}",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "template": "          \"PREVIEW_GATEWAY_IMAGE=caddy:{{version}}-alpine\",",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\"]",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "template": "      assert.deepEqual(prebuilt.commands[1].args, [\"image\", \"inspect\", \"caddy:{{version}}-alpine\"]);",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/preview-compose-check.mjs",
+          "template": "  process.env.PREVIEW_GATEWAY_IMAGE ?? \"caddy:{{version}}-alpine\",",
+          "count": 1
+        },
+        {
+          "path": "e2e/previewgateway/gateway_test.go",
+          "template": "\t\timage = \"caddy:{{version}}-alpine\"",
+          "count": 1
+        },
+        {
+          "path": "e2e/previewgateway/startup_test.go",
+          "template": "\t\timage = \"caddy:{{version}}-alpine\"",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "`caddy:{{version}}-alpine` image with isolated upstreams and a test-only trusted CA.",
+          "count": 1
+        },
+        {
+          "path": "docs/operations.md",
+          "template": "Preview uses `caddy:{{version}}-alpine` directly, configurable with",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "docker-compose": [
+          "caddy"
+        ]
+      }
+    },
+    {
+      "id": "packaging",
+      "source": "pypi",
+      "package": "packaging",
+      "policy": "auto",
+      "reason": "",
+      "pins": [
+        {
+          "path": "compiler/vyper/pyproject.toml",
+          "template": "dependencies = [\"packaging=={{version}}\"]",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/README.md",
+          "template": "and cache uv downloads. The tooling project's `uv.lock` pins packaging {{version}} and",
+          "count": 1
+        }
+      ],
+      "commands": [
+        [
+          "uv",
+          "lock",
+          "--project",
+          "compiler/vyper",
+          "--upgrade-package",
+          "packaging"
+        ]
+      ],
+      "generated": [
+        "compiler/vyper/uv.lock"
+      ],
+      "ignores": {}
+    },
+    {
+      "id": "uv",
+      "source": "github",
+      "package": "astral-sh/uv",
+      "policy": "report",
+      "reason": "uv is already resolved within >=minimum,<1.0.0 by setup-uv. Raising the compatibility minimum requires reference resolver tests; it is not an installed-version pin.",
+      "pins": [
+        {
+          "path": "compiler/vyper/pyproject.toml",
+          "template": "required-version = \">={{version}},<1.0.0\"",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/README.md",
+          "template": "Install a stable uv version in `>={{version}},<1.0.0`, as required by `pyproject.toml`.",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/README.md",
+          "template": "reference environment using uv `>={{version}},<1.0.0` and the version index's exact Python.",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {}
+    },
+    {
+      "id": "node",
+      "source": "github",
+      "package": "nodejs/node",
+      "policy": "report",
+      "reason": "SEA runtime requires coordinated identity updates and native AMD64/ARM64 compiler and production acceptance (ADR-0040/0053).",
+      "pins": [
+        {
+          "path": ".nvmrc",
+          "template": "v{{version}}",
+          "count": 1
+        },
+        {
+          "path": "package.json",
+          "template": "    \"node\": \">= {{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "compiler/package.json",
+          "template": "    \"node\": \"{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "Dockerfile",
+          "template": "FROM node:{{version}} AS node-builder",
+          "count": 1
+        },
+        {
+          "path": "e2e/hardhat3/Dockerfile",
+          "template": "FROM node:{{version}}",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/toolchain-check.sh",
+          "template": "MINIMUM_NODE=\"v{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "compiler/compile.mjs",
+          "template": "const requiredNodeVersion = \"v{{version}}\";",
+          "count": 1
+        },
+        {
+          "path": "compiler/build-runtime.mjs",
+          "template": "  node_version: \"v{{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/wasm/execute.mjs",
+          "template": "      process.version !== \"v{{version}}\" ||",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/solcjs-runtime-image-check.mjs",
+          "template": "assert.equal(manifest.node_version, \"v{{version}}\");",
+          "count": 1
+        },
+        {
+          "path": "compiler/test-sea.mjs",
+          "template": "    '{\"schema\":\"etherview-solcjs-sea-self-test-v1\",\"sea\":true,\"node_version\":\"v{{version}}\",\"wrapper_package\":\"solc@{{other}}\",\"exec_argv\":[\"--permission\",\"--disable-sigusr1\",\"--no-addons\",\"--no-global-search-paths\",\"--max-old-space-size=384\"],\"permissions\":\"restricted\",\"write_denied\":true}'",
+          "count": 1
+        },
+        {
+          "path": "README.md",
+          "template": "Toolchains: Go >={{other}}, Node.js {{version}}, and pnpm {{other}} (pinned in",
+          "count": 1
+        },
+        {
+          "path": "README.md",
+          "template": "`package.json`). The compiler workspace requires exactly Node.js {{version}}.",
+          "count": 1
+        },
+        {
+          "path": "README.md",
+          "template": "permission-restricted Node {{version}} SEA subprocess.",
+          "count": 1
+        },
+        {
+          "path": "deploy/README.md",
+          "template": "and execution. Each compile starts a fresh Node {{version}} SEA subprocess with a minimal",
+          "count": 1
+        },
+        {
+          "path": "deploy/README.md",
+          "template": "stage contains the application binary plus one read-only Node {{version}} SEA, its",
+          "count": 1
+        },
+        {
+          "path": "deploy/helm/etherview/README.md",
+          "template": "fresh permission-restricted Node {{version}} SEA subprocess. The single SEA,",
+          "count": 1
+        },
+        {
+          "path": "docs/development.md",
+          "template": "TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:{{version}}` image's curl to download the",
+          "count": 1
+        },
+        {
+          "path": "docs/development.md",
+          "template": "exactly Node {{version}} and solc {{other}}, while the Hardhat fixture keeps solc 0.8.30.",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "  The image contains one read-only Node {{version}} SEA, only the automatically",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "  enforce the compiler workspace's exact Node {{version}} engine.",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "- `make toolchain-check`: require at least Go {{other}}, Node {{version}}, and pnpm",
+          "count": 1
+        },
+        {
+          "path": "docs/architecture/overview.md",
+          "template": "- The production image includes one Node {{version}} SEA containing the",
+          "count": 1
+        },
+        {
+          "path": "licenses/THIRD_PARTY_NOTICES.md",
+          "template": "- Runtime: Node.js {{version}} Single Executable Application",
+          "count": 1
+        },
+        {
+          "path": "docs/decisions/ADR-0031-api-owned-solc-js-executor.md",
+          "template": "- The production image contains the Node {{version}} SEA and exact-lockfile",
+          "count": 1
+        },
+        {
+          "path": "docs/decisions/ADR-0040-sea-packaged-solcjs-executor.md",
+          "template": "- The production solc-js executor is a Node {{version}} SEA containing one bundled",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/wasm/alias-feasibility.mjs",
+          "template": "  assert.equal(process.version, \"v{{version}}\");",
+          "count": 1
+        },
+        {
+          "path": "deploy/check-image.sh",
+          "template": "echo \"docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v{{version}}, Geas=0.3.3, Pyodide=314.0.7+0.29.5, hardened rootfs)\"",
+          "count": 1
+        },
+        {
+          "path": "deploy/check-image.sh",
+          "template": "if [ \"$sea_self_test\" != '{\"schema\":\"etherview-solcjs-sea-self-test-v1\",\"sea\":true,\"node_version\":\"v{{version}}\",\"wrapper_package\":\"solc@{{other}}\",\"exec_argv\":[\"--permission\",\"--disable-sigusr1\",\"--no-addons\",\"--no-global-search-paths\",\"--max-old-space-size=384\"],\"permissions\":\"restricted\",\"write_denied\":true}' ]; then",
+          "count": 1
+        },
+        {
+          "path": "docs/operations.md",
+          "template": "one lockfile. The compiler workspace requires Node {{version}}; root pnpm policy",
+          "count": 1
+        },
+        {
+          "path": "e2e/hardhat3/package.json",
+          "template": "    \"node\": \">={{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "internal/verify/solcjs.go",
+          "template": "\tsolcJSNodeVersion         = \"v{{version}}\"",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "docker": [
+          "node"
+        ],
+        "npm": [
+          "node"
+        ]
+      },
+      "reviewFiles": [
+        "internal/verify/solcjs_test.go",
+        ".github/scripts/toolchain-check_test.sh"
+      ]
+    },
+    {
+      "id": "pyodide",
+      "source": "npm",
+      "package": "pyodide",
+      "policy": "report",
+      "reason": "Authenticated Python WASM runtime; update policy, manifests and application lock through ADR-0053/0054 native acceptance.",
+      "pins": [
+        {
+          "path": "compiler/package.json",
+          "template": "    \"pyodide\": \"{{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/wasm/runtime-policy.json",
+          "template": "    \"npm\": \"pyodide\",\n    \"pyodide\": \"{{version}}\",",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "npm": [
+          "pyodide"
+        ]
+      }
+    },
+    {
+      "id": "pyodide-legacy",
+      "source": "npm",
+      "package": "pyodide",
+      "policy": "report",
+      "reason": "Authenticated Python WASM runtime; update policy, manifests and application lock through ADR-0053/0054 native acceptance.",
+      "pins": [
+        {
+          "path": "compiler/package.json",
+          "template": "    \"pyodide-legacy\": \"npm:pyodide@{{version}}\"",
+          "count": 1
+        },
+        {
+          "path": "compiler/vyper/wasm/runtime-policy.json",
+          "template": "    \"npm\": \"pyodide-legacy\",\n    \"pyodide\": \"{{version}}\",",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "npm": [
+          "pyodide-legacy"
+        ]
+      }
+    },
+    {
+      "id": "geas",
+      "source": "github-tags",
+      "package": "fjl/geas",
+      "policy": "report",
+      "reason": "Exact license review binds version and checksums; review notices and upstream bytes before updating the license gate.",
+      "pins": [
+        {
+          "path": "go.mod",
+          "template": "\tgithub.com/fjl/geas v{{version}}",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/go-license-check.sh",
+          "template": "EXPECTED_GEAS_VERSION=\"v{{version}}\"",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "gomod": [
+          "github.com/fjl/geas"
+        ]
+      }
+    },
+    {
+      "id": "bloomfilter",
+      "source": "github-tags",
+      "package": "holiman/bloomfilter",
+      "policy": "report",
+      "reason": "Exact license review binds version and checksums; review notices and upstream bytes before updating the license gate.",
+      "pins": [
+        {
+          "path": "go.mod",
+          "template": "\tgithub.com/holiman/bloomfilter/v2 v{{version}} // indirect",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/go-license-check.sh",
+          "template": "EXPECTED_BLOOMFILTER_VERSION=\"v{{version}}\"",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "gomod": [
+          "github.com/holiman/bloomfilter/v2"
+        ]
+      }
+    },
+    {
+      "id": "go-base36",
+      "source": "github-tags",
+      "package": "multiformats/go-base36",
+      "policy": "report",
+      "reason": "Exact license review binds version and checksums; review notices and upstream bytes before updating the license gate.",
+      "pins": [
+        {
+          "path": "go.mod",
+          "template": "\tgithub.com/multiformats/go-base36 v{{version}} // indirect",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/go-license-check.sh",
+          "template": "EXPECTED_BASE36_VERSION=\"v{{version}}\"",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "gomod": [
+          "github.com/multiformats/go-base36"
+        ]
+      }
+    },
+    {
+      "id": "solc-wrapper",
+      "source": "npm",
+      "package": "solc",
+      "policy": "report",
+      "reason": "Pinned compiler wrapper and historical fixture versions require compiler identity and native acceptance; do not replace fixture compilers.",
+      "pins": [
+        {
+          "path": "compiler/package.json",
+          "template": "    \"solc\": \"{{version}}\",",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "npm": [
+          "solc",
+          "solc-*"
+        ]
+      }
+    }
+  ],
+  "delegated": [
+    {
+      "owner": "dependabot",
+      "scope": "Go modules, npm workspaces, Actions, Docker and Compose excluding the explicit ignores below"
+    },
+    {
+      "owner": "vyper-update",
+      "scope": "New stable Vyper compilers via the existing authenticated update workflow"
+    },
+    {
+      "owner": "historical",
+      "scope": "compiler/vyper/versions/*.lock, application-lock archives, Solidity fixture versions, test samples and authenticated digests: immutable inputs, never generic replacements"
+    }
+  ]
+}

@@ -52,6 +52,31 @@ boundary only when it materially affected execution. Read-only inspection in
 the in-app browser is useful for diagnosing a built SPA, but it does not
 replace a required `make test-e2e` pass.
 
+## Dependency update validation
+
+`make test-dependency-updates` is an offline gate included in
+`make test-workflow-scripts`. It validates registered version positions and
+Dependabot ownership, numeric stable-version ordering, major/zero-major policy,
+linked updates, upstream failures, clean-worktree protection and isolated
+candidate preparation. Publication tests use a temporary local Git remote to
+exercise PR-creation failure recovery and repeat runs without rewriting a
+branch; HTTP and GitHub API results are fixtures, not live publication evidence.
+
+Candidate preparation installs or resolves the selected tool/package where
+applicable, regenerates only its allowed locks, and runs workflow-script and
+documentation regressions plus `git diff --check`. The publisher verifies the
+base commit, patch hash, file inventory, normal file modes and exact registered
+source replacements. Candidate scripts never receive the publishing token.
+A failed query or check is a failure, never evidence that dependencies are current.
+
+After the workflow reaches `main`, manually dispatch it and inspect the discovery
+artifact and job summary. An actual available candidate must produce one PR;
+repeat dispatch must retain that PR. Approve its workflows and require the full
+existing CI, including native runtime gates for affected images, before merging.
+If there is no newer version, record discovery as tested and publication as not
+tested; do not manufacture an obsolete or downgraded candidate. Local fixtures
+cannot establish GitHub permissions, hosted scheduling or real PR CI behavior.
+
 ## Common Gates
 
 The [CI workflow](../.github/workflows/ci.yml) runs on pull requests, pushes to

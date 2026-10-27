@@ -1982,3 +1982,48 @@ without build-time notice downloads or collection. Dependency upgrades that
 change a notice require updating the repository inventory before rebuilding.
 Preview uses the official Caddy image directly; its upstream image owns its
 license inventory, rather than the application image build.
+
+## Dependency update automation
+
+The Dependency updates workflow checks the default branch every Monday at
+09:47 Asia/Shanghai (01:47 UTC); GitHub may delay scheduled execution. It also
+supports manual dispatch with optional registry dependency ID and exact stable
+version (without `v`). An exact version requires a dependency ID. Discovery
+reports are retained as artifacts for 14 days; successful candidate patches and
+validation reports are retained for 7 days. Existing Dependabot monthly schedules
+and the dedicated Vyper update workflow retain their separate responsibilities.
+
+Enable **Settings → Actions → General → Workflow permissions → Allow GitHub
+Actions to create and approve pull requests**. Keep the default token permission
+read-only. The workflow grants contents/PR write permissions only to its publishing
+job and uses `GITHUB_TOKEN`; no PAT or App private key is required. It never
+approves workflows, approves reviews, merges PRs or force-pushes branches.
+An organization policy that prohibits this setting blocks publication and must
+be resolved by an administrator; the job must not silently skip that failure.
+
+When a bot PR appears, select **Approve workflows to run** and inspect the complete
+existing CI results before manually merging. Its preparation evidence is limited
+to the listed candidate checks. Review-only entries report their candidate and
+reason in the discovery summary; they do not silently install new runtime bytes.
+
+A PR uses `codex/dependency-update-<dependency>-<version>`. Repeat runs retain open,
+closed and merged PRs; closing a PR suppresses that exact candidate. For a new
+attempt at a rejected version, a maintainer can reopen the existing PR after
+review. If the branch was pushed but PR creation failed, retrying from the same
+base can create the missing PR only when its bot identity, parent and tree match
+exactly. Human changes or a different base/tree stop recovery. Inspect and preserve
+needed work before manually removing an obsolete bot branch; then dispatch again.
+
+Upstream timeouts, rate limits, invalid responses, unexpected file changes and
+candidate validation failures are visible failures. Inspect the failing job and
+rerun after resolving the cause. No partial candidate is published; a failure in
+one preparation job prevents publication of that batch. Ordinary CI remains
+independent of live release discovery.
+
+For Node SEA/Pyodide changes, follow ADR-0040/0053/0054 and regenerate the runtime
+identities and application locks with native AMD64/ARM64 acceptance. License-bound
+Go dependencies require fresh notice/source/checksum review. The solc wrapper and
+historical compiler fixtures require their compiler-specific acceptance; never
+replace historical inputs or hand-edit authenticated digests. uv minimum changes
+require reference-resolver policy tests. The dedicated Vyper workflow remains the
+entry point for adding supported Vyper releases.

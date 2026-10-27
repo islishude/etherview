@@ -76,6 +76,52 @@ milestone; they do not automatically justify creating a plan item.
    synchronize the root only for scope, dependency or overall-state changes.
    Review staged, unstaged and untracked files again before reporting completion.
 
+## Dependency maintenance
+
+`.github/dependency-registry.json` owns dependencies that require coordinated
+updates or dedicated review. Each entry identifies its public release source,
+exact linked version positions, update policy, permitted generated locks and
+Dependabot exclusions. Versions stay in their existing owning files; the
+registry matches them rather than maintaining a second current-version value.
+Missing positions, conflicting versions and duplicate ownership fail the gate.
+Add new Makefile `*_VERSION` settings to the registry in the same change.
+
+- `make dependency-check` queries upstream versions without modifying files.
+  `DEP=govulncheck` restricts discovery. Output distinguishes available automatic
+  candidates, review-only updates, no updates and upstream errors. Network
+  discovery is intentionally outside deterministic `make check`. GitHub requests
+  use an optional `GH_TOKEN` for authenticated rate limits; the workflow supplies
+  its built-in read-only token automatically.
+- `make dependency-update DEP=govulncheck VERSION=1.9.0` illustrates preparing
+  an exact newer version; use a version newer than the current pin. Versions
+  omit a leading `v`. The command requires a clean working tree, prepares an
+  isolated temporary checkout, runs package installation/lock generation and
+  candidate regressions, then applies the validated patch without committing.
+  Failed preparation leaves the original working tree unchanged. An equal
+  version, downgrade, prerelease or review-only dependency is rejected.
+- `make test-dependency-updates` checks the registry and runs offline regression
+  tests. It also runs through `make test-workflow-scripts` and ordinary CI.
+
+Automatic candidates stay within the current major version; `0.x` candidates
+stay within the current minor. One dependency and all its linked locations form
+one PR. pnpm and Python locks are regenerated with their package managers.
+Only govulncheck is bumped as part of the initial automation installation;
+other discovered updates receive separate review.
+
+Dependabot retains monthly ownership of ordinary Go/npm/Actions/container
+updates, including nested E2E Dockerfiles and deployment Compose. Registry
+exclusions prevent it from independently changing coordinated pins. Node SEA,
+Pyodide, the solc wrapper and exact license-review bindings are report-only.
+The uv entry tracks the supported minimum: setup-uv already resolves a version
+inside the configured range, so raising that compatibility floor is a reviewed
+policy change. Existing Vyper discovery owns new compiler additions. Historical
+compiler locks, Solidity fixture versions, sample inputs and authenticated
+hashes are not generic upgrade targets.
+
+The weekly workflow, permissions, PR approval and recovery procedure are in
+[operations](operations.md#dependency-update-automation). A successful candidate
+check is not full production acceptance; all existing PR CI gates still apply.
+
 ## Implementation policy
 
 - Do not preserve backward compatibility during active development. The current
