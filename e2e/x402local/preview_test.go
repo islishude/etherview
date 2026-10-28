@@ -29,7 +29,7 @@ import (
 )
 
 // The ordinary Preview files own the topology/config; only the test's ports,
-// public origin and eventual all-role command are overridden.
+// public origin, isolated compiler cache and eventual all-role command are overridden.
 func TestPreviewX402(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Minute)
 	defer cancel()
@@ -46,7 +46,7 @@ func TestPreviewX402(t *testing.T) {
 `, origin, origin[len("http://"):])), 0600); err != nil {
 		t.Fatal(err)
 	}
-	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", overlay)
+	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", "e2e/preview-compiler-cache.compose.yaml", overlay)
 	project.Env = map[string]string{
 		"ETHERVIEW_IMAGE":       os.Getenv("IMAGE"),
 		"ETHERVIEW_CONFIG_FILE": filepath.Join(root, "preview/config.yaml"),

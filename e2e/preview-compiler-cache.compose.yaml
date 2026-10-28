@@ -1,0 +1,8 @@
+# Populate ownership from the production image, without mounting the daily cache.
+services:
+  api:
+    volumes:
+      - compiler-cache:/var/lib/etherview/compilers
+
+volumes:
+  compiler-cache:

@@ -179,6 +179,7 @@ func newHarness(t *testing.T) *harness {
 		root,
 		testcompose.UniqueProjectName("etherview-preview-metadata"),
 		"compose.yaml",
+		"e2e/preview-compiler-cache.compose.yaml",
 		"e2e/previewmetadata/compose.yaml",
 	)
 	project.Env = map[string]string{

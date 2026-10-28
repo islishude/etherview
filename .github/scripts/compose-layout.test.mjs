@@ -138,8 +138,35 @@ test("Preview compiler cache is a host bind prepared by start-preview", () => {
   assert.equal(mount.source, path.join(root, ".local/preview-compilers"));
   const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");
   const start = makefile.split("\nstart-preview:")[1].split(/\n\S/)[0];
-  assert.ok(start.indexOf("mkdir -p -m 0750 .local/preview-compilers/cache") < start.indexOf("up --no-build"));
+  assert.ok(
+    start.indexOf("mkdir -p -m 0750 .local/preview-compilers/cache") <
+      start.indexOf("up --no-build"),
+  );
   assert.ok(start.includes("mkdir -p -m 0750 .local/preview-compilers/cache"));
+});
+
+test("Preview E2E compiler caches are writable image-populated project volumes", () => {
+  for (const project of ["preview-cache-first", "preview-cache-second"]) {
+    const config = render([
+      "-p",
+      project,
+      "-f",
+      "compose.yaml",
+      "-f",
+      "e2e/preview-compiler-cache.compose.yaml",
+      "-f",
+      "e2e/previewmetadata/compose.yaml",
+    ]);
+    const mounts = config.services.api.volumes.filter(
+      (mount) => mount.target === "/var/lib/etherview/compilers",
+    );
+    assert.equal(mounts.length, 1);
+    assert.equal(mounts[0].type, "volume");
+    assert.equal(mounts[0].source, "compiler-cache");
+    assert.notEqual(mounts[0].read_only, true);
+    assert.notEqual(mounts[0].volume?.nocopy, true);
+    assert.equal(config.volumes["compiler-cache"].name, `${project}_compiler-cache`);
+  }
 });
 
 test("Preview shares the local UserOperation registry across application roles", (t) => {
