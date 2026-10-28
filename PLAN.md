@@ -33,6 +33,9 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P30-T145 completed Preview genesis source verification during startup,
+with local 24-contract publication and manual repeat-run acceptance.
+
 P30-T144 has completed the Rundler implementation and real Preview acceptance;
 its final common/runtime/deployment gates remain blocked on external DNS and
 registry access. P30 owns the exact clearing conditions.

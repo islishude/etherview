@@ -222,7 +222,7 @@ test("Preview Make commands pass the unified env path through the Compose native
   const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");
   assert.match(
     makefile,
-    /^start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = \$\(PREVIEW_ENV_FILE\)$/m,
+    /^start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis: export COMPOSE_ENV_FILES = \$\(PREVIEW_ENV_FILE\)$/m,
   );
 });
 
@@ -268,4 +268,20 @@ test("image navigation origins preserve defaults and reach API in every topology
       assert.equal(config.services[owner].environment[key], value ?? null);
     }
   }
+});
+
+test("genesis verification profile uses read-only inputs without role secrets", () => {
+  const config = JSON.parse(
+    runCompose(["-f", "compose.yaml", "--profile", "genesis-verify", "config", "--format", "json"]),
+  );
+  const helper = config.services["genesis-verify"];
+  assert.equal(helper.image, "etherview-preview-bundler:local");
+  assert.deepEqual(helper.entrypoint, ["node", "/verification/verify.mjs"]);
+  assert.equal(helper.read_only, true);
+  assert.deepEqual(helper.cap_drop, ["ALL"]);
+  assert.equal(helper.user, "node");
+  assert.equal(helper.ports, undefined);
+  assert.equal(helper.environment, undefined);
+  assert.equal(helper.volumes.length, 2);
+  assert.ok(helper.volumes.every((volume) => volume.read_only));
 });

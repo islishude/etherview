@@ -96,6 +96,7 @@ availability does not gate core readiness.
 | P30-T142 | done    | P30-T138                                                      | Caddy Preview HTTPS migration for app, IPFS, Geth and Beacon on *.etherview.localhost, including browser origins and streaming                                                                                          | Real Caddy boundary regressions, browser authentication, Preview metadata/consensus, runtime/RustFS and common gates                                                    |
 | P30-T143 | done    | P20-T22, P20-T17, P30-T138                                    | Reproducible Preview genesis ERC-4337 v0.9 and .test ENS contracts, Alto Bundler and management CLI                                                                                                                     | Reproducible genesis, real PoS safe-mode Bundler and ENS CLI/API/browser, split/all restart and existing Preview gates                                                  |
 | P30-T144 | blocked | P30-T143                                                      | Replace Preview Alto with pinned Rundler v0.9 support, remove Alto-only genesis helpers and patch                                                                                                                       | Reproducible genesis, safe validation, standard RPC, real PoS submission/rejection/restart in split/all and existing Preview gates                                      |
+| P30-T145 | done    | P30-T143, P30-T14                                             | Verify every Preview genesis contract through the normal local verifier during Compose startup                                                                                                                          | Complete source inventory, bounded failure and restart regressions, real Preview publication for every non-empty allocation                                             |
 
 ## Acceptance
 
@@ -394,3 +395,14 @@ passed `make check`, explicit integration/race and browser suites, schema,
 runtime/x402, Hardhat, and Foundry production gates at its delivery revision.
 This covers domain hardening, not P60-T17 live payments or P70-T04 capacity;
 short local benchmarks establish regression coverage only.
+
+### Preview genesis verification acceptance
+
+P30-T145 passed on 2026-10-28 against local Geth/Lighthouse and the production
+API: all 24 code-bearing genesis allocations have exact-address runtime
+publications; a repeated run and API restart reuse all 24. The source inventory
+includes constructor-created children and fixed system/utility/application
+inputs, with no synthetic creation evidence. Input generation checks, 15 helper
+regressions, Compose rendering, Preview lint, repository formatting, docs and
+plan checks passed. This is local Preview acceptance, not a production rollout
+or evidence clearing P30-T144's independent release gates.

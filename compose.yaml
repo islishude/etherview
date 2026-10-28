@@ -12,6 +12,19 @@ x-etherview-paths: &etherview-paths
     - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
 
 services:
+  genesis-verify:
+    image: etherview-preview-bundler:local
+    profiles: ["genesis-verify"]
+    entrypoint: ["node", "/verification/verify.mjs"]
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./preview/verification:/verification:ro
+      - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
+    restart: "no"
+
   bundler:
     extends:
       file: preview/compose/chain.yaml

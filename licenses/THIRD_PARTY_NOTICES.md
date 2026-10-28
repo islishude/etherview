@@ -176,7 +176,22 @@ required Solidity import closure from the official GitHub commit
 OpenZeppelin packages. The ENS npm package is not installed because its package
 name is covered by GHSA-58x9-4xmp-8mg5. PreviewRegistrarController changes only
 the upstream controller name and `.eth` node/suffix to `.test`. The exact source
-snapshot and compiler settings are checked in; startup never fetches or compiles.
+snapshot and compiler settings are checked in. Genesis verification compiles
+these inputs through the ordinary API worker; startup does not fetch sources.
 
 ENS buffer 0.1.3 is BSD-2-Clause; `npm-clarifications.json` pins its reviewed
 license-file hash where the scanner otherwise reports only BSD.
+
+### Preview verification source bundles
+
+`preview/verification` retains inline compiler inputs for all genesis contracts.
+The account-abstraction and ENS license notices above also cover these source
+copies; OpenZeppelin imports (including 5.0.2 for the canonical SimpleAccount
+factory) retain their MIT SPDX and copyright comments.
+`Multicall3.json` retains the MIT-licensed mds1 Multicall3 source and its full
+license text in source comments. `ERC1820Registry.json` retains Jordi Baylina's
+ERC-1820 source and its CC0 dedication. Each snapshot records its source URL.
+The `sys-asm.json` bundle pins ethereum/sys-asm revision
+f808a29f280f0b844d83fec592d3e1c592d1c92a and retains its complete MIT license.
+Its BeaconRoots source explicitly uses PUSH3 for the deployed EIP-4788 constant;
+this adaptation is recorded alongside the upstream revision.

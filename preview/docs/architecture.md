@@ -10,7 +10,11 @@ The deterministic generator executes constructors and
 initializers in an isolated pinned EVM at chain ID 48815, exports complete
 state, and checks canonical EntryPoint deployment identity. Build inputs and
 allocation/ABI manifests participate in immutable network reuse validation.
-Ordinary startup neither compiles nor deploys these contracts.
+Ordinary startup never deploys these contracts. After chain readiness, an
+explicit Compose helper submits the fixed source inventory to the normal API
+verification queue and requires exact-address runtime publications for every
+genesis contract. The API role performs normal pinned local compilation under
+ADR-0024 and ADR-0039; no ABI or source is published directly by the helper.
 
 The independent Preview Rundler process simulates and bundles signed operations
 against internal Geth. Its public HTTPS RPC exposes only standard ERC-4337

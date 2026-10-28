@@ -170,3 +170,31 @@ production Permit2/proxy compatibility. The existing Preview metadata/browser
 and consensus gates remain required. `make preview-network-check` additionally
 checks the absence of transaction-based initialization. The contract fixture
 checks genesis token storage, owner balance and Facilitator funding. No local test closes P60-T17.
+
+## Genesis verification inputs
+
+`make preview-verification-check` checks the source bundle checksums, reproduces
+local ENS/Local USD compiler inputs, and runs complete-inventory, wrong-identity,
+publication, repeat-run, compiler-failure and bounded-timeout regressions.
+`make preview-network-check` also runs the helper regressions;
+`make preview-contracts-check` also checks generated verification inputs.
+
+`node preview/verification/generate.mjs` explicitly regenerates `local.json`
+and `inventory.json` after reviewed contract changes. It uses the same pinned
+compiler settings and source hashes as the genesis application manifest and
+resolves all imports into inline content. Ordinary startup does not run this
+generator. The other JSON bundles retain their upstream source URLs/revision;
+Sourcify snapshots provide inputs only, never local verification evidence.
+The SimpleAccount implementation shares its factory's compilation unit, using
+the pinned account-abstraction revision and OpenZeppelin 5.0.2. The historical
+deployment JSON at that revision contains older account sources and a different
+OpenZeppelin version; it must not replace the matching checked-in input.
+The system assembly bundle records its explicit PUSH3 adaptation for the
+historically deployed BeaconRoots bytecode; local compilation must match the
+actual genesis bytes exactly.
+
+Real acceptance runs `make verify-preview-genesis` against Geth/Lighthouse and
+the production API, requiring all 24 non-empty allocations to publish, then
+repeats it to prove reuse. This check is additive to existing Preview chain,
+Bundler, ENS and billing acceptance; a mocked helper test does not establish
+compiler execution or durable publication.

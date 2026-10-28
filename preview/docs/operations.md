@@ -380,3 +380,31 @@ publication rather than at the creator code epoch.
 New disposable Preview networks activate Amsterdam at genesis. Existing Preview
 volumes retain their genesis identity; do not replace their runtime genesis or
 remove their volumes as part of an application update.
+
+## Genesis contract source verification
+
+`make start-preview` runs source verification after real PoS readiness.
+`make recreate-preview` preserves existing publications and does not run this step. The `genesis-verify` Compose profile uses the existing
+Preview Node/Rundler image, a read-only source bundle, and the internal API and
+Geth endpoints. It does not deploy contracts or change chain state.
+
+Run `make verify-preview-genesis` to retry this step on a running Preview.
+The host wrapper creates an API key scoped to `api:read` and `contract:verify`,
+passes it only over stdin, and revokes it in cleanup. Source verification uses
+the ordinary API queue and API-role compiler workers. It requires the normal
+compiler catalog and checksum-verified compiler downloads; first startup can
+therefore take longer or fail if compiler hosts are unavailable.
+
+The helper checks the complete non-empty-code allocation inventory against the
+runtime genesis and canonical authenticated import before submission. Each
+contract must have an exact-address published artifact for its expected chain
+and code hash, with a successful runtime match. Genesis verification supplies
+no creation evidence. Existing matching artifacts are reused when verification is rerun;
+terminal failures, missing sources, identity mismatches and bounded timeouts
+fail the Make target. A retry retains completed publications. Inspect helper
+output for the contract name and, on a polling timeout, the durable job ID.
+
+The fixed source inventory and checksums live in `preview/verification`.
+Sources are not discovered from public services during startup. Refreshing
+sources is an explicit reviewed development operation; see
+[verification source maintenance](testing.md#genesis-verification-inputs).

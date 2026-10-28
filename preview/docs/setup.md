@@ -136,3 +136,8 @@ the rebuildable compiler cache. For manual cache reclamation, stop every
 `all`/`api` process mounting the volume before removing it; the next compiler
 job downloads the authenticated artifact again. Override
 the application tag with `ETHERVIEW_IMAGE`.
+
+After chain readiness, startup verifies sources for every genesis contract.
+A failed verification step fails startup's Make target while retaining the
+running chain and completed publications. Resolve the reported failure and run
+`make verify-preview-genesis`; see the [operator procedure](operations.md#genesis-contract-source-verification).

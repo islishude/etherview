@@ -480,7 +480,7 @@ helm-check:
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
 	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
-start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
+start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
@@ -507,7 +507,7 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-x402.test.mjs .github/scripts/preview-bundler.test.mjs
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-x402.test.mjs .github/scripts/preview-bundler.test.mjs preview/verification/verify.test.mjs
 
 preview-env:
 	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
@@ -528,6 +528,7 @@ start-preview: preview-env preview-cert-check docker-build preview-images
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-verify.mjs
 	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
@@ -588,6 +589,7 @@ preview-contracts-generate: pnpm-install
 
 preview-contracts-check: pnpm-install
 	$(NODE) preview/contracts/generate.mjs --check
+	$(NODE) preview/verification/generate.mjs --check
 	$(NODE) --test preview/contracts/test.mjs
 
 test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
@@ -595,3 +597,11 @@ test-preview-contracts: pnpm-install preview-cert-check docker-build preview-ima
 
 test-preview-contracts-prebuilt: preview-e2e-check
 	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewContracts$$' ./e2e/previewmetadata
+
+.PHONY: verify-preview-genesis preview-verification-check
+verify-preview-genesis: preview-env
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-verify.mjs
+
+preview-verification-check: pnpm-install
+	$(NODE) preview/verification/generate.mjs --check
+	$(NODE) --test preview/verification/verify.test.mjs
