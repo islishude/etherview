@@ -193,7 +193,7 @@ Preview storage-enforced conditional-write IAM permissions are deferred by
 operator decision until RustFS 1.0.5 is evaluated. The deployed RustFS 1.0.4
 still does not resolve this IAM limitation; application conditional writes and
 API read-only access remain active. The
-[runbook](../operations.md#preview-archive-iam-limitation) owns the issue details.
+[runbook](../../preview/docs/operations.md#preview-archive-iam-limitation) owns the issue details.
 Clearing this requires a fixed release containing upstream
 [PR #8615](https://github.com/rustfs/rustfs/pull/8615) and real-container rejection
 of unconditional writes and overwrites, with unchanged stored bytes after denial.

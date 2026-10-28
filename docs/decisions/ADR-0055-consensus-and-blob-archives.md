@@ -79,7 +79,7 @@ enrich write/read access; the archive client uses conditional creates.
 RustFS 1.0.4 still does not enforce the conditional header through IAM, so storage-side
 enforcement remains deferred pending evaluation of 1.0.5 with the upstream policy
 fix and real-container rejection of unconditional writes and overwrites. See the
-[operator limitation](../operations.md#preview-archive-iam-limitation) for policy
+[operator limitation](../../preview/docs/operations.md#preview-archive-iam-limitation) for policy
 key details and the release acceptance boundary. Administrator credentials stay
 in the storage and initialization services.
 The one-shot provisioner is outside application startup dependencies; lifecycle

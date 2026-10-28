@@ -23,6 +23,10 @@ contract, security boundary, external-service boundary, or monolith/split
 runtime decision changes. Keep milestone status out of `AGENTS.md`, and keep
 design detail out of plans once an ADR or architecture document owns it.
 
+Preview-specific setup, operations, architecture and acceptance live in
+[preview/docs](../preview/docs/README.md); shared guides link to those procedures.
+ADRs and milestone status remain in their repository-wide catalogs.
+
 ## Planning threshold
 
 Create or extend a plan only for a substantial capability, a consequential

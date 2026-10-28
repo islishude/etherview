@@ -143,175 +143,13 @@ perform client trust-chain and hostname checks at the public origin; the
 application does not issue, renew, or hot-reload certificates.
 
 The `deploy/compose.yaml` deployment remains HTTP and expects production TLS
-to terminate externally. For a locally trusted Caddy HTTPS example,
-initialize and start the full-stack Preview:
+to terminate externally. Run deployment commands with
+`--project-directory . -f deploy/compose.yaml --env-file .env.deploy`.
+For a locally trusted Caddy HTTPS example, see [Setup and lifecycle](../preview/docs/operations.md#setup-and-lifecycle).
 
-```sh
-make preview-cert
-make start-preview
-```
+## Sourcify operations
 
-Preview settings live in `.local/preview-push.env`. Start/recreate automatically
-initialize missing settings and reuse existing VAPID keys; `make preview-env`
-prepares the file separately. See [browser push configuration](#private-watches-notifications-and-csv-exports).
-
-Preview now uses the repository-root `compose.yaml`; deployment commands use
-`--project-directory . -f deploy/compose.yaml --env-file .env.deploy` from the
-repository root. Move existing deployment settings out of `.env` manually as
-described in the [deployment guide](../deploy/README.md#docker-compose).
-The project names and volume identities are unchanged; this file relocation
-does not require stopping, deleting or migrating either environment's data.
-
-The explicit certificate target installs mkcert trust and generates an ignored
-`*.etherview.localhost` pair mounted read-only only into Caddy. The public app is
-`https://app.etherview.localhost`; `http://localhost:9090` remains the operations
-listener. See name resolution in [Preview Caddy gateway](#preview-caddy-gateway).
-The gateway uses loopback port 443 (`PREVIEW_HTTPS_PORT` overrides it). After
-building the application and pulling the official Caddy image,
-it prepares `.local/preview-network/` using the pinned
-`ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
-execution genesis, Beacon configuration/state, Engine JWT and 64 development
-validator keys. The checked-in `preview/genesis.json` template remains
-unchanged. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
-active at genesis. Geth v1.17.10 uses full sync and archive state; Lighthouse
-v8.3.2 runs both the Beacon node and validator client. These clients form an
-isolated local PoS network with no public bootnodes or external builders.
-
-`make start-preview` reuses an intact bundle, validating every file against its
-manifest and the current configuration fingerprint. Partial or changed material
-fails closed. Existing volumes without matching network material require an
-explicit `make stop-preview`; startup never deletes them automatically.
-`make recreate-preview` reuses the existing network bundle without refreshing its timestamp;
-it never creates or modifies a Genesis file. It recreates clients and workers
-while retaining chain state, PostgreSQL, blob objects and validator slashing
-protection. `make stop-preview` destroys all Preview volumes and the default
-generated network directory, but retains TLS certificates. Moving from the old
-Geth dev Preview requires this explicit reset. A complete custom bundle can be
-selected with `PREVIEW_NETWORK_DIR`; individual `ETHERVIEW_GENESIS_FILE` and
-`GETH_GENESIS_FILE` overrides are rejected. Custom bundles are never deleted by
-the stop target and must be reset by their owner.
-
-The template retains its pre-funded development addresses and system contracts.
-Transactions are signed locally with the standard Hardhat development account
-`0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` (the first account from
-`test test test test test test test test test test test junk`) and submitted
-through `eth_sendRawTransaction`. Geth no longer unlocks accounts or provides
-the `dev` RPC namespace. Never fund these public development keys on external
-networks. The browser wallet flow is unchanged.
-
-Preview enables consensus enrichment and blob archival. Lighthouse runs as a
-supernode with blob pruning disabled. Its Beacon API is published only on
-`127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}`; Engine RPC is internal, with its JWT
-mounted only into Geth and Lighthouse. Validator keys are isolated from
-application roles. Startup waits for successive real execution/Beacon blocks.
-
-RustFS 1.0.4 stores blobs in the persistent `blob-data` volume. The one-shot
-`archive-init` service uses RustFS CLI v0.1.36 to provision the private
-`etherview-preview-blobs` bucket and scoped users idempotently. There is no
-expiry policy or trace-cache bucket reuse. API has GetObject permission;
-enrich has GetObject/PutObject, without deletion rights. Override development
-passwords through `PREVIEW_BLOB_READ_SECRET`, `PREVIEW_BLOB_WRITE_SECRET`, and
-RustFS administrator variables before initialization. Administrator credentials
-are never passed to application roles. RustFS ports are not published by the
-daily stack. The application core healthcheck remains independent of both
-optional services, including during container recreation. `archive-init` is an
-explicit one-shot profile, outside the core dependency graph. Start/recreate
-first bring up the runtime, then run `archive-init` separately and propagate its
-exit status before checking real block production. Initialization failure does
-not prevent already started API/enrich containers from becoming ready.
-After correcting credentials or restoring storage, repeat
-`docker compose --env-file .local/preview-push.env -f compose.yaml run --rm archive-init`; this preserves
-existing objects. To recreate application roles during an archive outage, use
-`docker compose --env-file .local/preview-push.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
-The full start/recreate targets still report optional service startup failures.
-
-### Preview x402 billing
-
-`make start-preview` and `make recreate-preview` build the test-only token and
-Facilitator images, enable Account billing, then initialize Local USD after real
-PoS block production. This uses the existing Geth/Lighthouse chain ID **48815**;
-no public testnet or external payment Facilitator is involved. The initializer
-funds a dedicated deployment/settlement account with 10 local ETH and deploys
-one token. Repeated initialization checks bytecode and preserves token balances,
-authorizations and PostgreSQL credit. A used deployer with no expected token or
-a bytecode mismatch fails closed; investigate before an explicit Preview reset.
-
-Open `https://app.etherview.localhost/account`, add the configured Preview
-network (`https://geth.etherview.localhost`, chain ID 48815), and import the
-public development wallet below. Never use this key for real assets:
-
-```text
-Address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
-Private key: ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-Local USD: 0x8464135c8F25Da09e49BC8782676a84730C318bC (6 decimals)
-```
-
-Sign in, open Billing, and top up `100` atomic units with each of `eip3009` and
-`permit2`. The latter asks for an exact-amount approval followed by a signature.
-The initial token allocation is 10^18 atomic units. Create a user API key with
-`api:read`, then call `/v2/api?chainid=48815&module=account&action=balance&address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&apikey=YOUR_KEY`.
-Each successful `account.balance` or `contract.getabi` call costs one atomic
-unit; failed calls release their reservation. Native explorer reads stay free.
-After two top-ups and one successful priced read the available credit is `199`.
-
-The Facilitator has no host port and cannot block API/core readiness. Stopping
-it prevents new settlement but existing credit remains spendable. The local
-HTTP exception accepts only the configured service host within private Docker
-IPv4 ranges, rejects redirects and retains response/time bounds. For custom
-address pools, set `ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS` to the exact bridge
-CIDRs. `make recreate-preview` preserves network and database volumes;
-`make stop-preview` deletes them. Insufficient settlement gas requires an
-explicit local transfer to `0x70997970C51812dc3A010C7d01b50e0d17dc79C8`.
-If broadcasting or receipt lookup becomes uncertain, the local Facilitator
-returns `settlement_pending` with the signed transaction hash. Resume the chain,
-inspect that exact receipt, then use the [billing reconciliation procedure](#prepaid-api-billing-and-x402-top-ups);
-never create a replacement payment to recover an uncertain settlement.
-
-Permit2 here is the test token's local witness settlement implementation. This
-is product/accounting acceptance only; P60-T17 still requires both live-method
-reports and independent writer/chain reconciliation.
-
-### Preview archive IAM limitation
-
-The archive client sends `If-None-Match: *` on writes, but upgrading to RustFS
-1.0.4 does not resolve storage-enforced conditional-write IAM permissions.
-The current writer policy grants GetObject/PutObject without requiring that
-header, so writer credentials can still issue unconditional writes and overwrite
-an existing key. API read-only permissions, application conditional creation,
-and independent archive integrity checks remain active; they do not establish
-storage-side protection against direct use of writer credentials.
-
-Upstream [PR #8615](https://github.com/rustfs/rustfs/pull/8615) addresses policies
-rejecting `s3:if-none-match` and `s3:if-match` with `invalid key name`. Its scope
-covers bucket, IAM and STS policies: values come from nonblank request headers,
-not identity claims that could fabricate a missing precondition. For writes,
-`If-None-Match` must be `*`; unsupported ETag values return `501 NotImplemented`,
-while an existing destination with `*` returns `412 PreconditionFailed`.
-The PR also checks raw headers and parsed inputs separately to prevent form
-uploads from bypassing validation. It does not itself provide
-`s3:ObjectCreationOperation` or full AWS conditional-policy parity.
-
-Storage-enforced permissions remain deferred until RustFS 1.0.5 is evaluated.
-This is the next evaluation target, not a promise that the release fixes IAM;
-a merged PR or release milestone is insufficient. Before clearing the limitation,
-verify the deployed image contains the fix and all nodes support the policy keys.
-Using the scoped writer credentials and the proposed policy, test successful
-conditional creation, denial of missing/blank conditions and unconditional
-writes, rejection of overwrites and unsupported ETag conditions, and unchanged
-stored bytes after every rejected operation. Retain the API read-only denial
-check separately. Do not claim IAM enforcement from the application archive
-regression alone.
-
-### Preview recovery
-
-If blocks stop advancing, inspect Geth/Beacon/validator logs and Engine JWT
-identity before changing data. An archive outage affects collection/downloads;
-existing consensus metadata remains queryable. Restart the failed service and
-use the existing `reindex --stage blob` procedure if a job reached an unavailable
-terminal state. The start/recreate targets do not modify the host trust store.
-
-Preview enables Sourcify at `https://sourcify.dev/server`. Use a supported public
-chain's ID and contract address when testing through Preview. Submit compiler
+Use a supported public chain ID and contract address. Submit compiler
 metadata and source files to `POST /api/v1/verifier/sourcify` with an `X-API-Key`
 holding `contract:verify`, then poll `GET /api/v1/verifier/jobs/{id}`. Check
 `outcome.kind` for `sourcify_success`; job completion alone does not mean
@@ -357,63 +195,18 @@ contract returns `sourcify_not_found`; mismatched runtime returns
 without their diagnostic body. The Web offers direct import first and a
 separate local import action after external publication.
 
-Outside Preview, Sourcify rejects DNS answers containing private, loopback or
+Sourcify rejects DNS answers containing private, loopback or
 special-purpose addresses by default. For local Fake-IP development, set
 `sourcify.unsafe_allow_private_networks: true` or
 `ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS=true`. The switch affects only
-Sourcify and defaults to `false` outside Preview. Preview enables it by default. HTTPS, certificate
+Sourcify and defaults to `false`. HTTPS, certificate
 verification, checked-IP dialing, redirect rejection and request limits remain
 enforced; environment HTTP proxies remain disabled. It does not enable automatic
 source publication or change the separate metadata, bytecode database or compiler
-download policies. Add the override to `.local/preview-push.env` (or the file
-selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it;
-set it back to `false` to restore public-network checks.
+download policies. For Preview defaults and overrides, see
+[external source configuration](../preview/docs/operations.md#external-source-configuration).
 
-Preview includes Kubo `v0.43.1` behind Caddy at `https://ipfs.etherview.localhost`.
-The shared wildcard pair is mounted only into Caddy; metadata receives only the
-public CA. Existing installations rerun `make preview-cert` before recreation.
-Metadata text remains available, and images resolved through this `.localhost`
-gateway are unverified external links requiring confirmation before each opening.
-Preview explicitly sets `metadata.image_navigation_allowed_origins` to
-`["https://ipfs.etherview.localhost"]`; production examples and Helm default to `[]`.
-The list permits navigation exceptions for exact HTTPS host/port pairs only.
-Host matching ignores case and a trailing dot; omitted ports equal 443. Wildcards,
-credentials, non-root paths, queries and fragments are invalid. Use ASCII hostnames
-(or their punycode form). Other local destinations remain `unsafe` without a URL.
-The list does not grant server-side fetch authority or validate destination content,
-DNS answers, or subsequent browser redirects.
-
-`ETHERVIEW_METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS` overrides the list with
-comma-separated origins; an explicitly empty value clears it. Apply the same
-configuration to the API process in split mode or the `all` process in monolith
-mode. Changing the browser-facing gateway port requires updating both the gateway
-URL and its allowlist entry. Recreate the application processes after configuration
-changes; no database migration or metadata refetch is required.
-
-Daily Preview retrieves uncached content over IPFS and retains it in the
-project-scoped `ipfs-data` volume. The reviewed metadata fixture is imported and
-pinned idempotently at every Kubo start. `make recreate-preview` replaces Kubo
-and its proxy along with the application containers while preserving their
-volumes; `make stop-preview` deletes all Preview volumes, including IPFS data.
-`PREVIEW_HTTPS_PORT` and `IPFS_API_PORT` override the loopback-only host ports
-(defaults 443 and 5001). The gateway's container address stays at port 443;
-when overriding its host port, open it using that port in the browser. Configured
-public URLs must also be updated when changing the browser-facing port.
-
-Preview keeps `metadata.unsafe_allow_private_networks=false` in its mounted
-YAML and overrides it only in the split metadata worker for this controlled
-local HTTPS gateway. TLS validation, fetch bounds, and document validation
-remain enabled. API NFT media and every other role remain strict, so the API
-media proxy does not fetch private gateway content. Gateway image links remain
-user-confirmed navigation only. An explicit `ETHERVIEW_METADATA_IPFS_GATEWAY`
-can select another HTTPS gateway; no automatic public fallback exists.
-
-Run `make test-preview-metadata` for the isolated offline acceptance gate. It
-uses a unique project, fresh volumes, and random loopback ports. The Kubo daemon is offline with `Gateway.NoFetch=true`; fixed-content
-and CLI roundtrips need no external retrieval. The test preserves both exact
-metadata versions and their single attempts, checks owned gateway addresses,
-and proves a metadata-worker restart does not add an attempt. Successful and
-failed runs retain diagnostics and a success report when available.
+See [IPFS gateway](../preview/docs/operations.md#ipfs-gateway).
 
 ### IPFS file tool
 
@@ -1423,7 +1216,7 @@ not mix worker versions with incompatible queue semantics. Initialization and
 startup do not queue failed scans or `pending_runtime` attempts and do not
 create a historical workload.
 
-Before recovering an upgraded Preview deployment, record redacted aggregate
+Before recovering an upgraded deployment, record redacted aggregate
 state from an operator database session. Preserve the result with the rollout
 evidence; do not include connection strings, addresses, hashes, compilation
 IDs, or other row-level data:
@@ -1438,7 +1231,7 @@ SELECT status, count(*) FROM derived_verification_forward_blocks
 GROUP BY status ORDER BY status;
 ```
 
-After all new replicas are healthy, explicitly recover Preview with the
+After all new replicas are healthy, explicitly recover with the
 existing audited command; migration startup must not substitute for it:
 
 ```sh
@@ -1478,11 +1271,7 @@ attempts can be reconsidered. A reorg marks attempt provenance stale and
 current readers stop resolving the orphaned child until the exact block hash
 is reattached.
 
-For an existing Preview deployment, rebuild and recreate only the application
-services with `make recreate-preview`; do not remove the PostgreSQL or Geth
-volumes. Then run the address-scoped command inside the API container. This
-repairs scans created by an older binary whose cursor began at verification
-publication rather than at the creator code epoch.
+For Preview, see [verification recovery](../preview/docs/operations.md#verification-recovery).
 
 ### Runtime smoke verification fixture (development only)
 
@@ -1566,46 +1355,7 @@ to the current login and stop on logout, session expiry/revocation or user
 disablement. Closing the page does not end the login. Unsupported browsers and
 permission denial are shown in the UI; this does not provide email or Webhooks.
 
-For Preview at `https://app.etherview.localhost`, the root Compose entry point
-uses one ignored `.local/preview-push.env` for all local settings, including the
-VAPID key pair.
-`make start-preview` and `make recreate-preview` run `make preview-env` first:
-it creates the file when missing, generates a P-256 key pair, fills missing push
-settings and enforces mode 0600. Generated private scalars retain leading zero
-bytes to encode exactly 32 bytes in unpadded base64url. Existing values, comments
-and key pairs are preserved; generated defaults enable Preview push and leave private-network
-access disabled. Only maintenance receives the private key; Compose does not
-inject the whole file into containers. `.local/` is excluded from Git and Docker
-build contexts. Production push remains disabled by default.
-
-Preview lifecycle commands explicitly load that file, without loading root `.env`.
-`PREVIEW_ENV_FILE` overrides the path for Make commands. To migrate existing
-settings, move the root `.env` contents into `.local/preview-push.env`, keeping
-its existing private key and matching public key, then remove root `.env`.
-`ETHERVIEW_PREVIEW_PUSH_ENV_FILE` is no longer used.
-Run `make preview-env` separately before using raw Compose commands:
-
-```sh
-make preview-env
-docker compose --env-file .local/preview-push.env config --quiet
-```
-
-Compose itself does not generate the file. An existing public key without its
-private key, or a mismatched pair, fails initialization instead of silently
-rotating browser subscriptions.
-File-based keys may retain `ETHERVIEW_PUSH_PRIVATE_KEY_FILE` with the matching
-public key and an explicit read-only Compose mount.
-
-Use a trusted Preview TLS certificate. Existing databases from before this schema change must be
-recreated under the [fresh-database policy](#fresh-database-initialization);
-`make recreate-preview` replaces runtime containers but does not reset an old
-database. After fresh initialization, sign in, add a watch, enable this browser,
-then close all site tabs while leaving the browser/system able to receive push.
-Create a new matching transaction only after enabling. Verify the summary has
-no amount and opens the correct transaction, then verify logout stops subsequent
-alerts. Record browser/OS versions, notification permission, deployed build and
-the observed result. Offline delivery is deliberately not an acceptance goal:
-TTL 0 drops messages instead of storing them for later delivery.
+See [Browser push](../preview/docs/operations.md#browser-push).
 
 When validating background click navigation, close DevTools and allow the
 Service Worker to stop before sending a real transaction notification, then
@@ -1617,8 +1367,8 @@ check the browser's native notification callback and helper-process logs before
 changing application routes.
 
 For local development with Stash/Clash Fake-IP DNS or a private push receiver,
-set `push.unsafe_allow_private_networks: true`, or set the following in Preview's
-ignored `.local/preview-push.env`:
+set `push.unsafe_allow_private_networks: true`, or set the following environment
+override on the sender:
 
 ```dotenv
 ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true
@@ -1669,73 +1419,7 @@ old admission records. Existing HTTP write limits still bound file delivery.
 
 ### Preview Caddy gateway
 
-Preview uses `caddy:2.11.7-alpine` directly, configurable with
-`PREVIEW_GATEWAY_IMAGE`. `make preview-images` pulls it; lifecycle commands and
-CI no longer build a gateway binary. `make test-preview-gateway` exercises the
-shipped Caddyfile in real containers before full Preview acceptance.
-
-Run `make preview-cert` to install mkcert trust and create
-`.local/preview-tls/gateway.crt`, `gateway.key` and the public `rootCA.pem`.
-Only Caddy mounts the wildcard private key, which remains 0600. If a host client
-does not resolve these names to loopback, configure these explicit mappings
-(`hosts` does not implement wildcards):
-
-```text
-127.0.0.1 app.etherview.localhost
-127.0.0.1 ipfs.etherview.localhost
-127.0.0.1 geth.etherview.localhost
-127.0.0.1 beacon.etherview.localhost
-127.0.0.1 bundler.etherview.localhost
-```
-
-Docker uses explicit network aliases so container clients reach Caddy rather
-than their own loopback interface. Tests use isolated address mapping and never
-edit system hosts.
-
-| URL                                           | Upstream                            |
-| --------------------------------------------- | ----------------------------------- |
-| `https://app.etherview.localhost`             | API and embedded SPA, internal HTTP |
-| `https://ipfs.etherview.localhost/ipfs/<cid>` | Kubo read-only content              |
-| `https://geth.etherview.localhost`            | Geth JSON-RPC POST                  |
-| `wss://geth.etherview.localhost`              | Geth subscriptions                  |
-| `https://beacon.etherview.localhost/eth/…`    | Beacon REST and SSE                 |
-
-`PREVIEW_HTTPS_PORT` defaults to 443 on 127.0.0.1; ephemeral ports are used by
-tests. Nondefault browser ports require matching public URL, wallet URLs and
-allowed Origins in an operator config. The gateway does not open port 80,
-automatically issue certificates, or expose an administration API. Its internal
-loopback health check reports serving readiness independently of upstreams.
-
-`PREVIEW_NODE_ALLOWED_ORIGINS` replaces the complete space-separated list;
-defaults are `https://app.etherview.localhost http://localhost:5173
-http://127.0.0.1:5173`. Unlisted/null Origins are rejected for REST and WSS;
-CLI clients without Origin are accepted. Browsers may separately prompt for
-local-network access; grant it for the trusted local development page. Node CORS does not grant application
-sessions or relax the app's CSP. Node request bodies are limited to 32 MiB;
-subscriptions end after 24 hours and should reconnect. No writes are retried.
-Engine, validator and Kubo administration routes are not exposed.
-
-Recreate Preview after updating certificates or configuration. Caddy is the
-only TLS terminator in this topology; process-native TLS remains available for
-other deployments. Migration removes the old gateway container through
-Compose's orphan cleanup and preserves chain/database/IPFS/archive volumes.
-Old local certificate files can be removed manually after migration; they are
-no longer mounted. Browser users must log in again on the new app domain.
-Do not use `stop-preview` for migration because that command deletes volumes.
-
-Preview genesis predeploys the system contracts from the pinned Geth developer
-allocation, including withdrawal, consolidation and builder request queues.
-Activating a fork without its contracts can prevent Geth from building any
-blocks. Changes to these allocations change the genesis hash: use a fresh
-Compose project for validation, and do not initialize existing chain volumes
-with a different genesis. `recreate-preview` preserves the same runtime genesis
-and volumes; it is not a genesis migration procedure.
-
-The CI `Preview metadata, consensus, and blobs E2E` job runs the full offline-Kubo acceptance
-on pull requests, main pushes and the daily schedule. It creates a temporary
-runner CA and wildcard gateway certificate through `make preview-cert`;
-no operator certificates or secrets are required. Its seven-day artifact
-contains only acceptance reports and diagnostic logs, not certificate keys.
+See [Preview Caddy gateway](../preview/docs/operations.md#preview-caddy-gateway).
 
 ## Amsterdam protocol data
 
@@ -1755,9 +1439,7 @@ replay and reorg revoke coverage until the current generation is published.
 An operator may explicitly reindex `--stage native_transfer` for a reviewed
 canonical range. No startup reindex or legacy data adapter is installed.
 
-New disposable Preview networks activate Amsterdam at genesis. Existing Preview
-volumes retain their genesis identity; do not replace their runtime genesis or
-remove their volumes as part of an application update.
+See [Preview genesis updates](../preview/docs/operations.md#genesis-updates).
 
 ## Vyper compiler update proposals
 
@@ -1868,8 +1550,8 @@ read capability without changing execution finality or core readiness.
 
 Set `features.verification: true` and `bytecode_db.enabled: true` to search the
 remote Ethereum Bytecode Database for indexed contracts. The feature defaults
-to disabled outside Preview; Preview enables both settings by default. Set
-`ETHERVIEW_BYTECODE_DB_ENABLED=false` to disable discovery in Preview.
+to disabled. See [Preview source configuration](../preview/docs/operations.md#external-source-configuration)
+for local defaults and overrides.
 `bytecode_db.base_url` defaults to
 `https://eth-bytecode-db.services.blockscout.com`; HTTPS search endpoints use
 public-network address checks by default. No source is uploaded and no remote compiler
@@ -1887,14 +1569,13 @@ The existing `verification.max_input_bytes` also limits each candidate.
 For local Fake-IP or private-network development, explicitly set
 `bytecode_db.unsafe_allow_private_networks: true` or
 `ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS=true`. This independent
-escape hatch defaults to `false` outside Preview. Preview enables it by default.
+escape hatch defaults to `false`.
 It allows the bytecode
 search client's resolved private, loopback and special-purpose addresses
 (including `198.18.0.0/15`); it does not change metadata or compiler-download
 policy. HTTPS, certificate verification, redirect rejection, checked-IP dialing
 and request/response bounds remain enforced; environment HTTP proxies remain
-disabled. In Preview, add the environment override to `.local/preview-push.env`
-(or the file selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply it. Use `false` to restore public-network checks.
+disabled. Set the override to `false` to restore public-network checks.
 
 Repeated bounded address sweeps cover old contracts, late creation facts and
 reorgs. Ordinary contracts wait for canonical creation facts; authenticated
@@ -2077,250 +1758,8 @@ entry point for adding supported Vyper releases.
 
 ## Preview ERC-4337 and local ENS
 
-A fresh `make start-preview` includes the v0.9 EntryPoint, SimpleAccount factory,
-Rundler Bundler, and `.test` registrar/resolver suite. Bundler RPC is
-`https://bundler.etherview.localhost`; the generated manifest in
-`preview/contracts/manifest.json` lists addresses, code hashes, ABIs and
-public development identities. These identities are confined to disposable
-Preview networks. No Mainnet RPC or external CCIP gateway is required for ENS.
-The ENS owner is development mnemonic account 19; Bundler executor/utility use
-account 9, separate from x402 and the normal CLI owner (account 0).
-
-Genesis updates require a fresh database and network. Preserve anything needed
-before explicitly running `make stop-preview` followed by `make start-preview`;
-stop removes Preview volumes. `make recreate-preview` retains state and rejects
-changed network fingerprints. Never replace one genesis file inside an existing
-bundle. Local USD and its initial owner balance are part of the same genesis.
-
-### Every genesis allocation
-
-The tables below cover all **31 addresses** in
-[`preview/genesis.json`](../preview/genesis.json): 26 contracts and
-five externally owned accounts. Addresses are for chain ID **48815** only.
-The generated [application manifest](../preview/contracts/manifest.json)
-provides application ABIs, code hashes and development account indices;
-[`allocation.json`](../preview/contracts/allocation.json) also includes
-constructor-created children. The genesis file is authoritative for every
-account's code, nonce, balance and storage. EVM precompiles and the protocol's
-system caller are not extra allocations in these tables.
-
-#### Protocol and shared utility contracts
-
-All nine contracts below start with nonce 1 and zero ETH. The seven Geth system
-allocations must match the pinned client's `core.SystemContractAllocs()`;
-ERC-1820 and Multicall3 are additional shared utilities. Protocol queues and
-history contracts are driven by the execution/consensus protocol, not the
-Preview management CLI.
-
-| Address                                      | Contract             | Purpose and caller                                                                                                 |
-| -------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `0x00000961ef480eb55e80d19ad83579a64c007002` | WithdrawalQueue      | EIP-7002 execution-triggered validator withdrawal requests; Geth drains the queue into execution requests.         |
-| `0x0000bbddc7ce488642fb579f8b00f3a590007251` | ConsolidationQueue   | EIP-7251 validator consolidation requests, processed with the consensus layer.                                     |
-| `0x0000bff46984e3725691fa540a8c7589300d8282` | BuilderDeposit       | EIP-8282 builder deposit requests for the Amsterdam/Gloas Preview.                                                 |
-| `0x000064d678505ad48f8ccb093bc65613800e8282` | BuilderExit          | EIP-8282 builder exit requests.                                                                                    |
-| `0x000f3df6d732807ef1319fb7b8bb8522d0beac02` | BeaconRoots          | EIP-4788 beacon-root history, updated by protocol system calls and readable by EVM callers.                        |
-| `0x0000f90827f1c53a10cb7a02335b175320002935` | HistoryStorage       | EIP-2935 execution block-hash history, maintained by protocol system calls.                                        |
-| `0x4e59b44847b379578588920ca78fbf26c0b4956c` | DeterministicFactory | EIP-7997 keyless CREATE2 factory; the artifact generator uses it for canonical v0.9 EntryPoint/factory deployment. |
-| `0x1820a4b7618bde71dce8cdc73aab6c95905fad24` | ERC1820Registry      | Shared account/interface-implementer registry for ERC-1820 integrations. It is independent of ENS.                 |
-| `0xca11bde05977b3631167028862be2a173976ca11` | Multicall3           | Shared batching helper for contract calls; available to RPC clients and integrations.                              |
-
-#### ERC-4337 contracts
-
-These four contracts start with zero ETH. EntryPoint and SimpleAccountFactory
-each have nonce 2 because their constructors created a child; the other two
-have nonce 1. Rundler uses RPC state overrides for simulation without extra
-simulation predeploys. Only the canonical EntryPoint is configured
-for indexing or exposed by `eth_supportedEntryPoints`.
-
-| Address                                      | Contract                     | Purpose and operation path                                                                                                                                                     |
-| -------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `0x433709009b8330fda32311df1c2afa402ed8d009` | EntryPoint v0.9              | Validates and executes UserOperations and manages deposits/nonces. Rundler submits bundles here; use `aa estimate`, `aa send` and `aa receipt`.                                |
-| `0x0a630a99df908a81115a3022927be82f9299987e` | SenderCreator                | EntryPoint's real constructor-created helper for account creation. It is called through EntryPoint, not directly by CLI users.                                                 |
-| `0xf4a7018fdbf22804526ec4b77dce4f9b0d27a395` | SimpleAccountFactory         | Computes and deploys owner/salt-specific account proxies. `aa address` computes the address; the first successful `aa send` supplies factory calldata and deploys the account. |
-| `0x9ef4c86838638daea46d5517442f5c23fe1dd34c` | SimpleAccount implementation | Shared implementation for factory-created account proxies; it is not a user's wallet address. `aa fund` funds the computed proxy address.                                      |
-
-#### Local ENS contracts
-
-All ten contracts start with nonce 1 and zero ETH. `.test` is owned by the
-BaseRegistrar; the configured controller can register and renew names. ENS
-administration belongs to development account 19. Registration gives the
-selected CLI account ownership of its name, not administration of the system.
-
-| Address                                      | Contract                    | Purpose and operation path                                                                                                                                                          |
-| -------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0xc469e7ae4ad962c30c7111dc580b4adbc7e914dd` | ENSRegistry                 | Authoritative node owner/resolver/TTL registry; holds the initialized `.test`, `reverse`, `addr.reverse` and `default.reverse` relationships.                                       |
-| `0x43ca3d2c94be00692d207c6a1e60d8b325c6f12f` | BaseRegistrarImplementation | ERC-721 ownership and expiry of `.test` labels. `ens transfer` transfers the registrar token; `ens reclaim` updates the Registry owner.                                             |
-| `0xa7c8b0d74b68ef10511f27e97c379fb1651e1ed2` | PreviewRegistrarController  | Upstream controller with the TLD/node changed to `.test`; handles `ens quote`, `ens commit`, `ens register` and `ens renew`.                                                        |
-| `0xe9061f92ba9a3d9ef3f4eb8456ac9e552b3ff5c8` | PreviewPriceOracle          | Fixed rent of 1 gwei per second, zero premium, no exchange-rate feed. Read through `ens quote`.                                                                                     |
-| `0xc92b72ecf468d2642992b195bea99f9b9bb4a838` | PublicResolver              | Stores forward address records and supports the controller's registration-time record setup. `ens set-address` writes the Preview coin-type record.                                 |
-| `0x446c29fbfef829f81e236a2376191f648dbef995` | UniversalResolver           | Local forward/reverse resolution entrypoint used by Etherview and `ens resolve`; never points at Mainnet.                                                                           |
-| `0xabb12158488d9c9bd52c14b9ae4c835ece4a6e13` | GatewayProvider             | UniversalResolver's gateway configuration, initialized to an empty list. Preview makes no external CCIP gateway requests.                                                           |
-| `0xb09da8a5b236fe0295a345035287e80bb0008290` | ReverseRegistrar            | Owns the standard `addr.reverse` branch and supports controller-authorized reverse records. The Preview CLI uses default reverse for its primary name.                              |
-| `0x6d925938edb8a16b3035a4cf34faa090f490202a` | DefaultReverseRegistrar     | Stores account default reverse names; `ens set-primary` updates the calling account's name. The controller can set it during registration.                                          |
-| `0xed8cab8a931a4c0489ad3e3fb5bdea84f74fd23e` | DefaultReverseResolver      | Resolves default reverse records through the local reverse hierarchy, including coin type 2147532463; the application verifies the forward record before displaying a primary name. |
-
-#### Funded accounts
-
-These addresses have no EVM code. Mnemonic indices use the public development
-mnemonic `test test test test test test test test test test test junk` and
-`m/44'/60'/0'/0/index`. It must never hold real assets. The retained Geth fixture
-account is not a mnemonic-index account in this CLI.
-
-| Address                                      | Initial ETH / nonce                              | Purpose                                                                                                                                            |
-| -------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0x71562b71999873db5b286df957af199ec94617f7` | 340282366920938463463.374607431768211446 ETH / 0 | Retained Geth development-fixture funding account; no current Bundler, ENS or x402 service role.                                                   |
-| `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` | 340282366920938463463.374607431768211446 ETH / 0 | Mnemonic index 0: default interactive CLI owner, validator fee recipient and x402 token owner/funding source. Its genesis nonce remains unchanged. |
-| `0xa0ee7a142d267c1f36714e4a8f75612f20a79720` | 1000 ETH / 0                                     | Index 9: dedicated Bundler executor, signing bundle transactions. Its development key is supplied only to the Bundler service.                     |
-| `0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199` | 1000 ETH / 22                                    | Index 19: ENS administrator and deterministic contract-construction account. Nonce 22 is the exported post-construction nonce; do not reset it.    |
-
-The x402 Facilitator account `0x70997970c51812dc3a010c7d01b50e0d17dc79c8`
-(index 1) has 10 ETH and nonce 1 in genesis. Local USD at
-`0x8464135c8f25da09e49bc8782676a84730c318bc` is also a genesis allocation,
-including constructor storage and 1000000000000000000 atomic units owned by
-index 0. The pinned contract generator constructs and exports this state;
-startup performs no token deployment, funding or reminting.
-Existing bundles with the old genesis fail fingerprint validation and require
-explicit network reinitialization using the Preview lifecycle procedure.
-User-specific SimpleAccount proxies and subsequently registered names arise
-after block zero. No NameWrapper, Paymaster or extra EntryPoint version is installed.
-
-### Contract CLI reference
-
-The CLI uses the same fixed genesis identities and checks chain ID plus exact
-block-zero code hashes before operating. Add `--rpc` and `--bundler` for custom
-local endpoints, `--index` to select a public development account, or
-`--key-file` for a server-side signing key. Node clients must trust the Preview
-CA, for example with `NODE_EXTRA_CA_CERTS=.local/preview-tls/rootCA.pem`.
-
-Run commands from the repository root after `pnpm install --frozen-lockfile`
-and a fresh Preview startup. This shell helper only shortens the executable path:
-
-```sh
-export NODE_EXTRA_CA_CERTS="$PWD/.local/preview-tls/rootCA.pem"
-preview_contracts() { node preview/contracts/cli.mjs "$@"; }
-preview_contracts addresses
-```
-
-| Command                                                                           | Result and chain effect                                                                                                                                                                                                                                     |
-| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `addresses`                                                                       | Prints the checked-in application manifest without contacting RPC. For the full genesis inventory, use the tables above or read preview.genesis.json.                                                                                                       |
-| `ens quote NAME [--duration SECONDS]`                                             | Reads availability and base/premium rent in wei; does not reserve the name.                                                                                                                                                                                 |
-| `ens commit NAME --state FILE [--duration SECONDS]`                               | Creates a fresh 0600 state file with the commitment secret, signs and mines a commitment transaction. Fails if FILE already exists.                                                                                                                         |
-| `ens register --state FILE`                                                       | Loads the saved registration, enforces commitment age, pays current quoted rent in ETH, sets the Preview forward address and default reverse name. Reusing a state file with a saved registration hash checks that transaction instead of submitting again. |
-| `ens renew NAME [--duration SECONDS]`                                             | Pays to extend registration by the supplied duration; does not change ownership or records.                                                                                                                                                                 |
-| `ens transfer NAME --to ADDRESS`                                                  | Transfers the registrar ERC-721 token from the selected owner. Registry ownership and records must be updated separately.                                                                                                                                   |
-| `ens reclaim NAME`                                                                | Sets the Registry owner to the selected account using its registrar-token authority. Run as the new token owner after transfer.                                                                                                                             |
-| `ens set-address NAME [--to ADDRESS]`                                             | Sets the ENSIP-11 address record for coin type 2147532463; omitted --to uses the signing account. Requires resolver authorization.                                                                                                                          |
-| `ens set-primary NAME`                                                            | Sets the signing account's default reverse name. Display requires the same name's forward record to match this account.                                                                                                                                     |
-| `ens resolve NAME`                                                                | Reads the local UniversalResolver response, including ABI-encoded address-result bytes; it is not a plain-address formatter.                                                                                                                                |
-| `aa address [--salt INTEGER]`                                                     | Reads the counterfactual account address for owner/salt; does not deploy it.                                                                                                                                                                                |
-| `aa fund [--salt INTEGER] [--value ETH]`                                          | Sends ETH from the signing EOA to that account address, including before deployment. Default funding is 1 ETH.                                                                                                                                              |
-| `aa estimate [--salt INTEGER] [--to ADDRESS] [--value ETH] [--data HEX]`          | Simulates, estimates gas, adds the CLI margin and signs a proposed operation; prints operation/hash without submitting or persisting it.                                                                                                                    |
-| `aa send --state FILE [--salt INTEGER] [--to ADDRESS] [--value ETH] [--data HEX]` | Estimates/signs a new UserOperation, saves its exact hash and signed payload before sending once to Rundler. The first successful operation deploys the account through the factory.                                                                        |
-| `aa receipt --state FILE`                                                         | Queries the saved UserOperation hash. A null result means no receipt is available yet; query again without generating another operation.                                                                                                                    |
-
-Common options are `--rpc URL` (default Geth HTTPS origin), `--bundler URL`
-(default Bundler HTTPS origin), `--index INTEGER` (default 0), and `--key-file
-PATH` (a file containing a 0x-prefixed private key; overrides --index). Keep key
-files private with mode 0600. The Bundler endpoint is only contacted by AA
-estimation/submission/receipt operations. Saved state binds the owner, chain ID
-and genesis hash, so use the same identity and network when resuming.
-
-`--duration` is an integer number of seconds and applies only to quote, commit
-and renew. Its default is 31536000 seconds (one year). Registration costs
-0.031536 ETH per default year plus transaction gas; the minimum is 2419200
-seconds (28 days), with a 90-day grace period. Commitments require 3 seconds and
-expire after 86400 seconds (24 hours). `--value` uses decimal ETH; `--data` uses
-hex calldata; `--salt` is a nonnegative integer, default 0. AA execute defaults
-to the selected EOA, zero ETH and empty calldata. Keep owner/salt consistent
-across address, fund and send; receipt instead reads the saved state.
-
-A complete registration and account-deployment sequence:
-
-```sh
-preview_contracts ens quote alice.test
-preview_contracts ens commit alice.test --state .local/alice-registration.json
-# Wait at least three seconds and another real PoS block.
-preview_contracts ens register --state .local/alice-registration.json
-preview_contracts ens resolve alice.test
-preview_contracts ens renew alice.test --duration 31536000
-preview_contracts ens set-primary alice.test
-
-preview_contracts aa address --salt 0
-preview_contracts aa fund --salt 0 --value 2
-# Fund the future name owner (development index 2) with 1 ETH through the account.
-preview_contracts aa estimate --salt 0 --to 0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc --value 1
-preview_contracts aa send --salt 0 --to 0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc --value 1 --state .local/user-operation.json
-preview_contracts aa receipt --state .local/user-operation.json
-# Query the same receipt until mined before continuing with the funded owner.
-
-preview_contracts ens transfer alice.test --to 0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc
-preview_contracts ens reclaim alice.test --index 2
-preview_contracts ens set-address alice.test --index 2
-preview_contracts ens set-primary alice.test --index 2
-preview_contracts ens resolve alice.test
-```
-
-Names are normalized and limited to one label of at least three characters
-under `.test`. The explorer displays `custom_ens` names only after reverse/forward
-matching; transfer alone does not update those records. Use an ordinary funded
-account for experiments, not the Bundler executor/utility or ENS administrator.
-
-Registration state files contain commitment secrets and are created with 0600
-permissions. Keep them private and out of reports. After interruption, rerun
-`ens register --state FILE` with the original owner; it checks the on-chain
-commitment or saved registration transaction. If no commitment was mined or it
-expired, inspect the saved commit hash and chain state before making a new
-commitment with a new state file. Do not overwrite the pending file or secret.
-The CLI reports reverted transactions rather than automatically replacing them.
-
-For AA, the operation/hash is saved before the RPC send; a timeout never causes
-automatic re-signing or resubmission. A repeated `aa send` with the same file is
-rejected; `aa receipt` performs read-only reconciliation. A different deliberate
-operation needs a different state path. CLI output represents current chain
-state; Etherview search and pages become visible after canonical indexing and
-ENS generation refresh, not necessarily immediately after a receipt.
-
-For arbitrary allocated addresses, the standard RPC remains available for
-read-only inspection. The same commands work for contracts without a dedicated
-CLI subcommand (Foundry `cast` must trust the Preview CA):
-
-```sh
-export ETH_RPC_URL=https://geth.etherview.localhost
-cast code 0x433709009b8330fda32311df1c2afa402ed8d009 --block 0
-cast nonce 0x433709009b8330fda32311df1c2afa402ed8d009 --block 0
-cast balance 0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199 --block 0
-cast call 0x433709009b8330fda32311df1c2afa402ed8d009 'senderCreator()(address)' --block 0
-```
-
-`make preview-contracts-generate` explicitly regenerates checked-in allocations;
-`make preview-contracts-check` reproduces them and tests the real contracts.
-Use Anvil 1.8.6 and the locked pnpm workspace. Do not copy runtime bytecode to a
-new address or manually edit storage: constructor immutables, child contracts,
-nonces and initializer state must remain together.
-
-ENS sources are pinned to the official v1.7.0 GitHub commit and compiled locally;
-the ENS npm package is deliberately absent because of its package-wide malware
-advisory. Rundler uses the official release archives pinned by version and
-SHA-256 in `preview/rundler-release.json`. `make preview-bundler-image`
-downloads the Docker host's Linux architecture and validates cached archives
-before extraction. The image includes the reviewed GPL/LGPL notices.
-The launcher checks chain ID and EntryPoint code at block zero, enables only
-v0.9 and standard eth RPC, and never enables unsafe fallback. See
-[ADR-0057](decisions/ADR-0057-preview-rundler.md). Ordinary startup uses
-checked-in genesis bytecode and storage without compilation or deployment.
+See [Preview ERC-4337 and local ENS](../preview/docs/contracts.md#preview-erc-4337-and-local-ens).
 
 ### Preview configuration layout
 
-The repository-root `compose.yaml` is the single Preview entrypoint. It uses
-Compose `extends` to load service settings from `preview/compose/`:
-`app.yaml`, `chain.yaml`, `storage.yaml`, `gateway.yaml` and `x402.yaml`.
-Host bind mounts and build contexts remain in the root entrypoint so relative
-environment overrides retain repository-root semantics. Named volumes and the
-project identity also remain there. Do not start the service fragments directly.
-
-Preview configuration, genesis, contract artifacts and helper scripts live in
-`preview/`; `deploy/` retains the external-chain production template.
-Local USD code and initial state are part of genesis; no x402 initializer runs
-at startup. Existing network bundles require explicit recreation after genesis
-changes, which discards their local chain and billing data.
+See [Preview configuration layout](../preview/docs/operations.md#preview-configuration-layout).

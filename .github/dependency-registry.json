@@ -412,12 +412,12 @@
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "preview/docs/testing.md",
           "template": "`caddy:{{version}}-alpine` image with isolated upstreams and a test-only trusted CA.",
           "count": 1
         },
         {
-          "path": "docs/operations.md",
+          "path": "preview/docs/operations.md",
           "template": "Preview uses `caddy:{{version}}-alpine` directly, configurable with",
           "count": 1
         }
