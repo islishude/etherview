@@ -450,6 +450,15 @@
   min-width: 980px;
 }
 
+.address-activity-table td {
+  white-space: nowrap;
+}
+
+.address-activity-table .table-primary {
+  /* Keep nested grid/flex identities from shrinking under long token IDs. */
+  min-width: max-content;
+}
+
 .address-direction {
   display: inline-flex;
   min-width: 3.4rem;
