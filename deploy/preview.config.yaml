@@ -99,17 +99,20 @@ features:
   sourcify: true
   nft_metadata: true
   pricing: false
-  ens: false
+  ens: true
   user_auth: true
   user_api_keys: true
   api_billing: true
   x402_topups: true
-  user_operations: false
+  user_operations: true
   safe_proxy_detection: true
   diamond_proxy_detection: true
 
 erc4337:
-  entry_points: []
+  entry_points:
+    - address: "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
+      version: "0.9"
+      from_block: 0
 
 security:
   public_verification: true
@@ -162,11 +165,12 @@ billing:
     etherscan.contract.getabi: { amount_atomic: "1" }
 
 ens:
-  official_gateways: ["https://ccip-v3.ens.xyz"]
+  mode: custom_only
+  official_gateways: []
   custom:
-    registry: ""
-    universal_resolver: ""
-    coin_type: ""
+    registry: "0xc469e7ae4ad962c30c7111dc580b4adbc7e914dd"
+    universal_resolver: "0x446c29fbfef829f81e236a2376191f648dbef995"
+    coin_type: "2147532463"
     gateways: []
   resolution_freshness: 15m
   snapshot_ttl: 30m

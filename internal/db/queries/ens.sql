@@ -29,8 +29,8 @@ INSERT INTO ens_resolution_generations (
     created_at, fresh_until, retain_until
 ) SELECT
     sqlc.arg('chain_id')::numeric, sqlc.arg('policy_key'), sqlc.arg('coin_type')::numeric,
-    sqlc.arg('official_endpoint'), sqlc.arg('official_block_number')::numeric,
-    sqlc.arg('official_block_hash'), sqlc.narg('custom_endpoint'), sqlc.narg('custom_coin_type')::numeric,
+    sqlc.narg('official_endpoint'), sqlc.narg('official_block_number')::numeric,
+    sqlc.narg('official_block_hash'), sqlc.narg('custom_endpoint'), sqlc.narg('custom_coin_type')::numeric,
     sqlc.narg('custom_block_number')::numeric, sqlc.narg('custom_block_hash'),
     sqlc.arg('created_at')::timestamptz, sqlc.arg('fresh_until')::timestamptz,
     sqlc.arg('retain_until')::timestamptz

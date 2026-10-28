@@ -686,9 +686,10 @@ size alone is not sufficient justification to weaken those invariants.
   the capability was available and observed no matching objects.
 - Price adapters retain their bounded HTTPS observation contract. ENS is a
   separate explicitly enabled API capability governed by ADR-0041. One
-  resolution generation pins an exact Ethereum Mainnet finalized block and,
+  `official_first` resolution generation pins an exact Ethereum Mainnet finalized block and,
   when configured, one exact local canonical custom-ENS block plus sticky RPC
-  endpoint identities. Go input uses `adraffy/go-ens-normalize`; the SPA uses
+  endpoint identities. `custom_only` pins only the local source and requires
+  no Mainnet connection. Go input uses `adraffy/go-ens-normalize`; the SPA uses
   Viem `normalize`. Primary-name display additionally requires reverse and
   matching forward resolution for the explored chain's coin type.
 - Official ENS no-record may fall through to the configured current-chain
@@ -1186,3 +1187,26 @@ retries. Failures are typed and redacted, with no readiness dependency. Browser
 widgets are form-local, session-fenced and lazy; native API-key clients and
 watch operations retain their existing paths. ADR-0013, ADR-0024 and ADR-0051
 own the browser, verification and export contracts respectively.
+
+### Preview genesis application contracts
+
+Preview authenticates genesis allocations for EntryPoint v0.9, SenderCreator,
+SimpleAccount and its factory, Alto simulation helpers and a local `.test` ENS
+registration system. The deterministic generator executes constructors and
+initializers in an isolated pinned EVM at chain ID 48815, exports complete
+state, and checks canonical EntryPoint deployment identity. Build inputs and
+allocation/ABI manifests participate in immutable network reuse validation.
+Ordinary startup neither compiles nor deploys these contracts.
+
+The independent Preview Alto process simulates and bundles signed operations
+against internal Geth. Its public HTTPS RPC exposes only standard ERC-4337
+methods. It is not an Etherview runtime component or an indexing data source;
+PostgreSQL-stored canonical calldata and receipts remain the sole userop stage
+inputs. Failure of the Bundler does not gate core/API readiness.
+
+`ens.mode=custom_only` omits the official RPC pool and official generation
+provenance. Local generations retain endpoint and canonical block-hash fences,
+reverse/forward matching and reorg invalidation. Results retain `custom_ens`
+provenance. Default `official_first` retains its existing absence-only fallback.
+Registration, renewal and record changes are CLI-signed transactions; the
+explorer keeps its existing read/search presentation surfaces.

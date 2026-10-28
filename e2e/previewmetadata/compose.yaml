@@ -21,3 +21,10 @@ services:
         published: "0"
         host_ip: 127.0.0.1
         protocol: tcp
+
+  bundler:
+    ports:
+      - target: 4337
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp

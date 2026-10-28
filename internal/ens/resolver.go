@@ -455,8 +455,8 @@ func NewHTTPGateway(client *metadata.Client, allowed []string) (*HTTPGateway, er
 	if client == nil {
 		return nil, errors.New("ENS gateway HTTP client is nil")
 	}
-	if len(allowed) == 0 || len(allowed) > 8 {
-		return nil, errors.New("ENS gateway allowlist must contain 1 to 8 URLs")
+	if len(allowed) > 8 {
+		return nil, errors.New("ENS gateway allowlist must contain at most 8 URLs")
 	}
 	values := make(map[string]struct{}, len(allowed))
 	for _, value := range allowed {

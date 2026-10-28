@@ -126,7 +126,7 @@ Additional keys in `secrets.existingSecret` are selected through these values:
 
 | Value                                                                                 | Default Secret key                                                                    | Application roles and enablement                                              |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `ensRPCURLsKey`                                                                       | `ens-rpc-urls`                                                                        | `all`/`api`, when ENS is enabled                                              |
+| `ensRPCURLsKey`                                                                       | `ens-rpc-urls`                                                                        | `all`/`api`, when ENS uses `official_first`                                   |
 | `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when `config.turnstile.enabled` is true                          |
 | `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                     |
 | `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`enrich`, when consensus is enabled                        |
@@ -393,3 +393,8 @@ procedures.
 suite checks role, HPA, and disruption-budget topology, migration/schema gates,
 feature-off and API-only Secret references, x402 CIDR NetworkPolicy rendering,
 release-scoped x402 alerts, and invalid-value rejection.
+
+`config.ens.mode` defaults to `official_first`. For a chain-local namespace, set
+`custom_only`, configure `config.ens.custom.registry` and `universal_resolver`,
+and use the chain's state RPC. This mode does not inject `ETHERVIEW_ENS_RPC_URLS`;
+`official_gateways` and custom `gateways` may be empty.

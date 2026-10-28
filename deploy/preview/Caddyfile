@@ -131,6 +131,19 @@ https://beacon.etherview.localhost {
 	}
 }
 
+https://bundler.etherview.localhost {
+	import tls_boundary
+	import node_origin
+	@invalidMethod not method POST
+	respond @invalidMethod "method_forbidden" 405
+	reverse_proxy {$PREVIEW_BUNDLER_UPSTREAM:bundler:4337} {
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+	}
+}
+
 https://ipfs.etherview.localhost {
 	import tls_boundary
 	route {

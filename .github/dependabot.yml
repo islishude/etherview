@@ -39,6 +39,7 @@ updates:
       - dependency-name: "pnpm"
       - dependency-name: "pyodide"
       - dependency-name: "pyodide-legacy"
+      - dependency-name: "@pimlico/alto"
       - dependency-name: "solc"
       - dependency-name: "solc-*"
     groups:

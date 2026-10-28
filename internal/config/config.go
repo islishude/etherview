@@ -227,6 +227,7 @@ type ERC4337EntryPointConfig struct {
 // is secret-only and is populated from ETHERVIEW_ENS_RPC_URLS(_FILE), never
 // from ConfigMap-backed YAML.
 type ENSConfig struct {
+	Mode                 string          `yaml:"mode"`
 	OfficialRPCEndpoints []RPCEndpoint   `yaml:"-"`
 	OfficialGateways     []string        `yaml:"official_gateways"`
 	Custom               ENSCustomConfig `yaml:"custom"`
@@ -452,6 +453,7 @@ func Default() Config {
 			MaxRedirects:     3,
 		},
 		ENS: ENSConfig{
+			Mode:                "official_first",
 			OfficialGateways:    []string{"https://ccip-v3.ens.xyz"},
 			ResolutionFreshness: 15 * time.Minute,
 			SnapshotTTL:         30 * time.Minute,

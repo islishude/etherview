@@ -1597,3 +1597,24 @@ func unsetHostEnvironment(t *testing.T, name string) {
 		}
 	})
 }
+
+func TestENSModeConfiguration(t *testing.T) {
+	cfg := Default()
+	cfg.Features.ENS = true
+	cfg.ENS.Mode = "custom_only"
+	cfg.ENS.OfficialGateways = nil
+	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
+	cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ENS.Mode = "unknown"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("unknown ENS mode accepted")
+	}
+	cfg.ENS.Mode = "custom_only"
+	cfg.ENS.Custom = ENSCustomConfig{}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("custom-only mode without deployment accepted")
+	}
+}

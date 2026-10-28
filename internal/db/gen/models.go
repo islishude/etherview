@@ -937,7 +937,7 @@ type EnsResolutionGeneration struct {
 	ChainID             pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	PolicyKey           string             `db:"policy_key" json:"policy_key"`
 	CoinType            pgtype.Numeric     `db:"coin_type" json:"coin_type"`
-	OfficialEndpoint    string             `db:"official_endpoint" json:"official_endpoint"`
+	OfficialEndpoint    *string            `db:"official_endpoint" json:"official_endpoint"`
 	OfficialBlockNumber pgtype.Numeric     `db:"official_block_number" json:"official_block_number"`
 	OfficialBlockHash   []byte             `db:"official_block_hash" json:"official_block_hash"`
 	CustomEndpoint      *string            `db:"custom_endpoint" json:"custom_endpoint"`

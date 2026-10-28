@@ -97,6 +97,11 @@ assert.ok(
   "Preview Geth Genesis mount",
 );
 
+const bundler = requireService("bundler");
+assert.deepEqual(Object.keys(bundler.depends_on), ["geth"], "Bundler depends only on its chain");
+assert.equal((bundler.ports ?? []).length, 0, "Bundler is published only through HTTPS gateway");
+for (const role of roles)
+  assert.equal(services[role].depends_on?.bundler, undefined, `${role} must not depend on Bundler`);
 const applicationImage = requireService("api").image;
 for (const role of roles) {
   const service = requireService(role);
@@ -199,6 +204,7 @@ assert.equal(gateway.ports[0].host_ip, "127.0.0.1");
 assert.deepEqual(gateway.networks.default.aliases.toSorted(), [
   "app.etherview.localhost",
   "beacon.etherview.localhost",
+  "bundler.etherview.localhost",
   "geth.etherview.localhost",
   "ipfs.etherview.localhost",
 ]);

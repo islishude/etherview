@@ -75,6 +75,29 @@ x-etherview-runtime-depends-on: &etherview-runtime-depends-on
     condition: service_started
 
 services:
+  bundler:
+    image: ${PREVIEW_BUNDLER_IMAGE:-etherview-preview-bundler:local}
+    entrypoint: ["node", "/app/src/preview-start.mjs"]
+    volumes:
+      - ./deploy/preview/bundler-start.mjs:/app/src/preview-start.mjs:ro
+      - ./deploy/preview/contracts/manifest.json:/config/contracts.json:ro
+    depends_on:
+      geth:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4337',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_supportedEntryPoints',params:[]})}).then(r=>r.json()).then(r=>process.exit(r.result?.[0]?.toLowerCase()==='0x433709009b8330fda32311df1c2afa402ed8d009'?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 36
+      start_period: 10s
+
   ipfs:
     image: ipfs/kubo:v0.43.1
     command: ["daemon", "--migrate=false"]
@@ -116,6 +139,7 @@ services:
             ipfs.etherview.localhost,
             geth.etherview.localhost,
             beacon.etherview.localhost,
+            bundler.etherview.localhost,
           ]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]

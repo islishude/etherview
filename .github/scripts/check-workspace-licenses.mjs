@@ -47,7 +47,15 @@ export async function checkLicenses(root, workspace = "web") {
     // enforcement in the pinned checker, including license-file inference.
     const result = await new Promise((resolve, reject) => {
       init(
-        { start: directory, direct: 0, includePackages: name, onlyAllow: allowed },
+        {
+          start: directory,
+          direct: 0,
+          includePackages: name,
+          onlyAllow: allowed,
+          ...(existsSync(join(root, "licenses/npm-clarifications.json"))
+            ? { clarificationsFile: join(root, "licenses/npm-clarifications.json") }
+            : {}),
+        },
         (error, result) => (error ? reject(error) : resolve(result)),
       );
     });

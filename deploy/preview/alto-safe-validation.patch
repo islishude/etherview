@@ -1,0 +1,61 @@
+--- a/src/rpc/validation/SafeValidator.ts
++++ b/src/rpc/validation/SafeValidator.ts
+@@ -1,3 +1,4 @@
++import { entryPoint09Abi } from "viem/account-abstraction"
+ import type { SenderManager } from "@alto/executor"
+ import type { GasPriceManager } from "@alto/handlers"
+ import {
+@@ -32,6 +33,7 @@
+     type ExecutionRevertedError,
+     type Hex,
+     decodeErrorResult,
++    decodeFunctionResult,
+     encodeDeployData,
+     encodeFunctionData,
+     zeroAddress
+@@ -483,28 +485,23 @@
+         }
+         const resultData = lastResult.data as Hex
+ 
+-        // Decode the validation result from the revert data
+-        const { errorName, args } = decodeErrorResult({
+-            abi: pimlicoSimulationsAbi,
+-            data: resultData
+-        })
+-
+-        if (errorName !== "ValidationResult") {
+-            let errorCode = ERC7769Errors.SimulateValidation
+-            const errorMessage = errorName || "Unknown validation error"
+-
+-            if (errorMessage.includes("AA24")) {
+-                errorCode = ERC7769Errors.InvalidSignature
+-            }
+-
+-            if (errorMessage.includes("AA31")) {
+-                errorCode = ERC7769Errors.PaymasterDepositTooLow
+-            }
+-
+-            throw new RpcError(errorMessage, errorCode)
+-        }
+-
+-        const validationResult = args[0] as ValidationResult07
++        // The collector ends at EntryPoint.delegateAndRevert. The pinned
++        // simulations return their result; they no longer revert ValidationResult.
++        const envelope = decodeErrorResult({ abi: entryPoint09Abi, data: resultData })
++        if (envelope.errorName !== "DelegateAndRevert") {
++            throw new RpcError("Invalid simulation envelope", ERC7769Errors.SimulateValidation)
++        }
++        const [success, result] = envelope.args
++        if (!success) {
++            const failure = decodeErrorResult({ abi: entryPoint09Abi, data: result })
++            const reason = failure.errorName === "FailedOp" || failure.errorName === "FailedOpWithRevert"
++                ? failure.args[1] : failure.errorName
++            throw new RpcError(reason, reason.includes("AA24")
++                ? ERC7769Errors.InvalidSignature : ERC7769Errors.SimulateValidation)
++        }
++        const validationResult = decodeFunctionResult({
++            abi: pimlicoSimulationsAbi, functionName: "simulateValidation", data: result
++        }) as ValidationResult07
+ 
+         const mergedValidation = this.mergeValidationDataValues(
+             validationResult.returnInfo.accountValidationData,

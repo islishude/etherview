@@ -207,6 +207,17 @@ ens_distributed="$temporary_dir/ens-distributed.yaml"
   --set config.features.ens=true >"$ens_distributed"
 assert_occurrences "$ens_monolith" "name: ETHERVIEW_ENS_RPC_URLS" 1
 assert_occurrences "$ens_distributed" "name: ETHERVIEW_ENS_RPC_URLS" 1
+for topology in monolith distributed; do
+  local_ens="$temporary_dir/ens-custom-$topology.yaml"
+  topology_values="$chart_dir/values.yaml"
+  if [ "$topology" = distributed ]; then topology_values="$chart_dir/values-distributed.yaml"; fi
+  "$helm_bin" template etherview "$chart_dir" -f "$topology_values" \
+    --set config.features.ens=true --set config.ens.mode=custom_only \
+    --set-json 'config.ens.official_gateways=[]' \
+    --set-string config.ens.custom.registry=0x0000000000000000000000000000000000000001 \
+    --set-string config.ens.custom.universal_resolver=0x0000000000000000000000000000000000000002 >"$local_ens"
+  assert_occurrences "$local_ens" "name: ETHERVIEW_ENS_RPC_URLS" 0
+done
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \
   --set-string genesisState.fetchTimeout=1s >"$temporary_dir/genesis-timeout-minimum.yaml"
 "$helm_bin" template etherview "$chart_dir" --namespace explorer \

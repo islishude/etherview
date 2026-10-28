@@ -1325,3 +1325,28 @@ Acceptance requires `make check`, `make test-e2e`,
 `make test-integration-race` and `make test-runtime-e2e`. Controlled transport and
 browser fixtures establish local behavior only; production-domain Cloudflare
 widget validation is a separate operator smoke test.
+
+## Preview application contracts acceptance
+
+`make preview-contracts-check` uses pinned Anvil 1.8.6 to reproduce the genesis
+allocations and exercise registration, commitment age/expiry, pricing, renewal,
+transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
+confined to this contract test; it does not establish PoS or Bundler acceptance.
+
+`make test-preview-contracts` builds the production image and pinned Alto helper,
+then runs the Go-owned real Geth/Lighthouse Preview gate. The prebuilt equivalent
+is `make test-preview-contracts-prebuilt` after `make docker-build preview-images`.
+It checks block-zero code/storage/nonces/balances and authenticated genesis import,
+standard Bundler RPC and rejected debug methods, signed successful/reverted
+UserOperations, bad signatures, insufficient prefund, duplicate submission,
+local `.test` registration/renewal/transfer, generated API data and real browser
+pages in split/all layouts. Container recreation retains state. PostgreSQL ENS
+generations must have no official source. Tests own their project, network and
+volumes; pending CLI secret files are separately scoped and removed, while
+redacted reports and screenshots remain with the Preview diagnostics.
+
+Changes also require `make generate-check`, `make lint-go`, `make docs-check`,
+`make plan-check`, `make check`, `make test-integration-race`, `make test-schema-e2e`,
+`make test-runtime-e2e`, `make test-e2e`, and the existing Preview metadata,
+consensus and x402 gates. Local evidence cannot close unrelated live payment or
+cloud acceptance milestones.

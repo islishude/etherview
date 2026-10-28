@@ -351,6 +351,11 @@
           "path": "docs/operations.md",
           "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
           "count": 1
+        },
+        {
+          "path": "deploy/preview/bundler.Dockerfile",
+          "template": "FROM ghcr.io/foundry-rs/foundry:v{{version}} AS foundry",
+          "count": 1
         }
       ],
       "commands": [],
@@ -824,6 +829,53 @@
           "solc-*"
         ]
       }
+    },
+    {
+      "id": "preview-alto",
+      "source": "npm",
+      "package": "@pimlico/alto",
+      "policy": "report",
+      "reason": "Exact Git revision and submodules bind simulation bytecode and v0.9 validation; rebuild artifacts and pass real PoS acceptance before updating.",
+      "pins": [
+        {
+          "path": "deploy/preview/bundler.Dockerfile",
+          "template": "# Alto version {{version}}; revision pinned below",
+          "count": 1
+        }
+      ],
+      "reviewFiles": [
+        "deploy/preview/contracts/generate.mjs",
+        "deploy/preview/contracts/manifest.json"
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "npm": [
+          "@pimlico/alto"
+        ]
+      }
+    },
+    {
+      "id": "preview-ens",
+      "source": "github",
+      "package": "ensdomains/ens-contracts",
+      "policy": "report",
+      "reason": "Genesis storage, controller TLD patch, dependency notices and resolver behavior require reviewed regeneration.",
+      "pins": [
+        {
+          "path": "deploy/preview/contracts/ens-upstream.mjs",
+          "template": "const version = \"{{version}}\";",
+          "count": 1
+        }
+      ],
+      "reviewFiles": [
+        "deploy/preview/contracts/generate.mjs",
+        "deploy/preview/contracts/manifest.json",
+        "deploy/preview/contracts/upstream/ens-sources.json"
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {}
     }
   ],
   "delegated": [

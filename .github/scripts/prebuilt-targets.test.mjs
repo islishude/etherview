@@ -76,6 +76,7 @@ for (const suite of [
   "preview-metadata",
   "preview-consensus",
   "preview-x402",
+  "preview-contracts",
 ]) {
   const target = `test-${suite}`;
   const preview = suite.startsWith("preview-");
@@ -86,7 +87,7 @@ for (const suite of [
     assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
-      preview ? ["docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
+      preview ? ["docker", "docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
@@ -95,7 +96,7 @@ for (const suite of [
     assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
     assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), preview);
     const builds = ordinary.commands.filter((c) => c.command === "buildx");
-    assert.equal(builds.length, 1);
+    assert.equal(builds.length, preview ? 2 : 1);
     assert(builds[0].args.includes("production"));
     assert.deepEqual(ordinary.commands.slice(-prebuilt.commands.length), prebuilt.commands);
     assert.equal(ordinary.commands.filter((c) => c.command === "compose").length, preview ? 2 : 0);
@@ -107,6 +108,7 @@ for (const suite of [
       ? [
           "etherview:local",
           "caddy:2.11.7-alpine",
+          "etherview-preview-bundler:local",
           "etherview-x402-local-fixture:local",
           "etherview-x402-local-facilitator:local",
         ]

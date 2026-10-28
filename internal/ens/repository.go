@@ -25,7 +25,7 @@ type Generation struct {
 	PolicyKey        string
 	CoinType         *big.Int
 	OfficialEndpoint string
-	OfficialBlock    BlockRef
+	OfficialBlock    *BlockRef
 	CustomEndpoint   string
 	CustomCoinType   *big.Int
 	CustomBlock      *BlockRef
@@ -38,7 +38,7 @@ type GenerationCandidate struct {
 	PolicyKey        string
 	CoinType         *big.Int
 	OfficialEndpoint string
-	OfficialBlock    BlockRef
+	OfficialBlock    *BlockRef
 	CustomEndpoint   string
 	CustomCoinType   *big.Int
 	CustomBlock      *BlockRef
@@ -164,21 +164,25 @@ func (repository *Repository) generationParams(
 	candidate GenerationCandidate,
 ) (dbgen.InsertENSResolutionGenerationParams, error) {
 	if candidate.PolicyKey == "" || candidate.CoinType == nil || candidate.CoinType.Sign() <= 0 ||
-		candidate.CoinType.BitLen() > 256 || candidate.OfficialEndpoint == "" ||
-		candidate.OfficialBlock.Hash == (common.Hash{}) || candidate.CreatedAt.IsZero() ||
+		candidate.CoinType.BitLen() > 256 || candidate.CreatedAt.IsZero() ||
 		!candidate.FreshUntil.After(candidate.CreatedAt) || candidate.RetainUntil.Before(candidate.FreshUntil) {
 		return dbgen.InsertENSResolutionGenerationParams{}, errors.New("ENS generation candidate is invalid")
 	}
 	params := dbgen.InsertENSResolutionGenerationParams{
 		ChainID: repository.chain, PolicyKey: candidate.PolicyKey,
-		CoinType:         pgtype.Numeric{Int: new(big.Int).Set(candidate.CoinType), Valid: true},
-		OfficialEndpoint: candidate.OfficialEndpoint,
-		OfficialBlockNumber: pgtype.Numeric{
-			Int: new(big.Int).SetUint64(candidate.OfficialBlock.Number), Valid: true,
-		},
-		OfficialBlockHash: candidate.OfficialBlock.Hash.Bytes(),
-		CreatedAt:         timestamptz(candidate.CreatedAt), FreshUntil: timestamptz(candidate.FreshUntil),
+		CoinType:  pgtype.Numeric{Int: new(big.Int).Set(candidate.CoinType), Valid: true},
+		CreatedAt: timestamptz(candidate.CreatedAt), FreshUntil: timestamptz(candidate.FreshUntil),
 		RetainUntil: timestamptz(candidate.RetainUntil),
+	}
+	if candidate.OfficialBlock != nil {
+		if candidate.OfficialEndpoint == "" || candidate.OfficialBlock.Hash == (common.Hash{}) {
+			return dbgen.InsertENSResolutionGenerationParams{}, errors.New("official ENS generation candidate is invalid")
+		}
+		params.OfficialEndpoint = &candidate.OfficialEndpoint
+		params.OfficialBlockNumber = pgtype.Numeric{Int: new(big.Int).SetUint64(candidate.OfficialBlock.Number), Valid: true}
+		params.OfficialBlockHash = candidate.OfficialBlock.Hash.Bytes()
+	} else if candidate.OfficialEndpoint != "" || candidate.CustomBlock == nil {
+		return dbgen.InsertENSResolutionGenerationParams{}, errors.New("ENS generation requires a complete source")
 	}
 	if candidate.CustomBlock != nil {
 		if candidate.CustomEndpoint == "" || candidate.CustomCoinType == nil || candidate.CustomCoinType.Sign() <= 0 ||
@@ -191,7 +195,7 @@ func (repository *Repository) generationParams(
 			Int: new(big.Int).SetUint64(candidate.CustomBlock.Number), Valid: true,
 		}
 		params.CustomBlockHash = candidate.CustomBlock.Hash.Bytes()
-	} else if candidate.CustomEndpoint != "" {
+	} else if candidate.CustomEndpoint != "" || candidate.CustomCoinType != nil {
 		return dbgen.InsertENSResolutionGenerationParams{}, errors.New("custom ENS endpoint has no block")
 	}
 	return params, nil
@@ -390,20 +394,22 @@ func decodeGeneration(row dbgen.EnsResolutionGeneration) (Generation, error) {
 	if err != nil || coinType.Sign() <= 0 || coinType.BitLen() > 256 {
 		return Generation{}, errors.New("stored ENS generation coin type is invalid")
 	}
-	officialNumber, err := numericUint64(row.OfficialBlockNumber)
-	if err != nil || len(row.OfficialBlockHash) != common.HashLength {
-		return Generation{}, errors.New("stored ENS official block is invalid")
-	}
-	if row.ID <= 0 || row.PolicyKey == "" || row.OfficialEndpoint == "" || !row.CreatedAt.Valid ||
+	if row.ID <= 0 || row.PolicyKey == "" || !row.CreatedAt.Valid ||
 		!row.FreshUntil.Valid || !row.RetainUntil.Valid || !row.FreshUntil.Time.After(row.CreatedAt.Time) ||
 		row.RetainUntil.Time.Before(row.FreshUntil.Time) {
 		return Generation{}, errors.New("stored ENS generation is invalid")
 	}
 	result := Generation{
 		ID: row.ID, PolicyKey: row.PolicyKey, CoinType: coinType,
-		OfficialEndpoint: row.OfficialEndpoint,
-		OfficialBlock:    BlockRef{Number: officialNumber, Hash: common.BytesToHash(row.OfficialBlockHash)},
-		CreatedAt:        row.CreatedAt.Time.UTC(), FreshUntil: row.FreshUntil.Time.UTC(), RetainUntil: row.RetainUntil.Time.UTC(),
+		CreatedAt: row.CreatedAt.Time.UTC(), FreshUntil: row.FreshUntil.Time.UTC(), RetainUntil: row.RetainUntil.Time.UTC(),
+	}
+	if row.OfficialEndpoint != nil || row.OfficialBlockNumber.Valid || len(row.OfficialBlockHash) > 0 {
+		number, err := numericUint64(row.OfficialBlockNumber)
+		if err != nil || row.OfficialEndpoint == nil || *row.OfficialEndpoint == "" || len(row.OfficialBlockHash) != common.HashLength {
+			return Generation{}, errors.New("stored ENS official source is invalid")
+		}
+		result.OfficialEndpoint = *row.OfficialEndpoint
+		result.OfficialBlock = &BlockRef{Number: number, Hash: common.BytesToHash(row.OfficialBlockHash)}
 	}
 	customPresent := row.CustomEndpoint != nil || row.CustomCoinType.Valid || row.CustomBlockNumber.Valid || len(row.CustomBlockHash) > 0
 	if customPresent {
@@ -422,6 +428,9 @@ func decodeGeneration(row dbgen.EnsResolutionGeneration) (Generation, error) {
 		result.CustomEndpoint = *row.CustomEndpoint
 		result.CustomCoinType = coinType
 		result.CustomBlock = &BlockRef{Number: number, Hash: common.BytesToHash(row.CustomBlockHash)}
+	}
+	if result.OfficialBlock == nil && result.CustomBlock == nil {
+		return Generation{}, errors.New("stored ENS generation has no source")
 	}
 	return result, nil
 }

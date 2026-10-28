@@ -196,7 +196,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 		}
 	}
 	if needsAPI && c.Features.ENS {
-		if len(c.ENS.OfficialRPCEndpoints) == 0 && (c.Chain.ID != 1 || len(c.RPC.Endpoints) == 0) {
+		if c.ENS.Mode != "custom_only" && len(c.ENS.OfficialRPCEndpoints) == 0 && (c.Chain.ID != 1 || len(c.RPC.Endpoints) == 0) {
 			errs = append(errs, errors.New(
 				"API role ENS requires ETHERVIEW_ENS_RPC_URLS or an explored Ethereum Mainnet RPC endpoint",
 			))
@@ -210,6 +210,12 @@ func (c Config) ValidateForRoles(roles []string) error {
 
 func validateENSConfig(cfg ENSConfig, enabled bool) error {
 	var errs []error
+	if cfg.Mode != "official_first" && cfg.Mode != "custom_only" {
+		errs = append(errs, errors.New("ens.mode must be official_first or custom_only"))
+	}
+	if cfg.Mode == "custom_only" && (cfg.Custom.Registry == "" || cfg.Custom.UniversalResolver == "") {
+		errs = append(errs, errors.New("ens.mode custom_only requires a custom registry and universal resolver"))
+	}
 	if cfg.ResolutionFreshness < time.Minute || cfg.ResolutionFreshness > 24*time.Hour {
 		errs = append(errs, errors.New("ens.resolution_freshness must be between 1m and 24h"))
 	}
@@ -234,7 +240,7 @@ func validateENSConfig(cfg ENSConfig, enabled bool) error {
 	if cfg.MaxConcurrency <= 0 || cfg.MaxConcurrency > 16 {
 		errs = append(errs, errors.New("ens.max_concurrency must be between 1 and 16"))
 	}
-	if enabled && len(cfg.OfficialGateways) == 0 {
+	if enabled && cfg.Mode != "custom_only" && len(cfg.OfficialGateways) == 0 {
 		errs = append(errs, errors.New("ens.official_gateways is required when ENS is enabled"))
 	}
 	if len(cfg.OfficialGateways) > 4 || len(cfg.Custom.Gateways) > 4 {

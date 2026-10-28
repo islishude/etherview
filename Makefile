@@ -54,7 +54,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := bundler x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview-push.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -317,7 +317,7 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-x402-local-fixture:local etherview-x402-local-facilitator:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-local-fixture:local etherview-x402-local-facilitator:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -513,7 +513,7 @@ preview-network-runtime: preview-env
 preview-x402-images:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-init x402-facilitator
 
-preview-images: preview-env preview-x402-images
+preview-images: preview-env preview-x402-images preview-bundler-image
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
@@ -530,7 +530,7 @@ stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile x402-init --profile archive-init down --volumes --remove-orphans
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
-recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images
+recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images preview-bundler-image
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
@@ -570,3 +570,22 @@ test-dependency-updates:
 
 install-preview-tools:
 	$(GO) install filippo.io/mkcert@$(MKCERT_VERSION)
+
+.PHONY: preview-bundler-image preview-contracts-generate preview-contracts-check test-preview-contracts test-preview-contracts-prebuilt
+preview-bundler-image:
+	$(BUILDX) build --load -t etherview-preview-bundler:local -f deploy/preview/bundler.Dockerfile .
+
+preview-contracts-generate: pnpm-install preview-bundler-image
+	$(NODE) deploy/preview/contracts/ens-upstream.mjs
+	$(NODE) deploy/preview/contracts/upstream.mjs
+	$(NODE) deploy/preview/contracts/generate.mjs
+
+preview-contracts-check: pnpm-install
+	$(NODE) deploy/preview/contracts/generate.mjs --check
+	$(NODE) --test deploy/preview/contracts/test.mjs
+
+test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt
+
+test-preview-contracts-prebuilt: preview-e2e-check
+	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewContracts$$' ./e2e/previewmetadata
