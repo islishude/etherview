@@ -117,7 +117,6 @@ test("default Compose selects Preview and retains its project and volumes", () =
   }
   for (const name of [
     "postgres-data",
-    "compiler-cache",
     "geth-data",
     "lighthouse-data",
     "validator-data",
@@ -126,6 +125,21 @@ test("default Compose selects Preview and retains its project and volumes", () =
   ]) {
     assert.equal(config.volumes[name].name, `etherview-preview_${name}`);
   }
+});
+
+test("Preview compiler cache is a host bind prepared by start-preview", () => {
+  const config = render([]);
+  assert.equal(config.volumes["compiler-cache"], undefined);
+  assert.equal(config.services["compiler-cache-init"], undefined);
+  const mount = config.services.api.volumes.find(
+    (volume) => volume.target === "/var/lib/etherview/compilers",
+  );
+  assert.equal(mount.type, "bind");
+  assert.equal(mount.source, path.join(root, ".local/preview-compilers"));
+  const makefile = fs.readFileSync(path.join(root, "Makefile"), "utf8");
+  const start = makefile.split("\nstart-preview:")[1].split(/\n\S/)[0];
+  assert.ok(start.indexOf("mkdir -p -m 0750 .local/preview-compilers/cache") < start.indexOf("up --no-build"));
+  assert.ok(start.includes("mkdir -p -m 0750 .local/preview-compilers/cache"));
 });
 
 test("Preview shares the local UserOperation registry across application roles", (t) => {

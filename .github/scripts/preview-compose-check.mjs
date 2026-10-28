@@ -151,8 +151,8 @@ for (const role of roles) {
   );
   assert.equal(cacheMounts.length, role === "api" ? 1 : 0, `${role} compiler cache scope`);
   if (role === "api") {
-    assert.equal(cacheMounts[0].type, "volume", "Preview API compiler cache type");
-    assert.ok(cacheMounts[0].source, "Preview API compiler cache source");
+    assert.equal(cacheMounts[0].type, "bind", "Preview API compiler cache type");
+    assert.ok(cacheMounts[0].source.endsWith("/.local/preview-compilers"), "Preview API compiler cache source");
     assert.equal(tmpfsTargets(service).includes(cachePath), false, "Preview compiler cache tmpfs");
   }
   assert.equal(

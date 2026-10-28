@@ -49,10 +49,17 @@ inodes and spuriously rejects the installation.
   database transaction, snapshot, or connection crosses the external HTTP
   download. An uncertain acquisition or release discards the connection, and
   there is no unlocked fallback.
-- Base Compose and Preview mount one project-scoped named volume at the
-  compiler cache boundary. Only `all` or `api` receives it. Ordinary restart,
+- Base Compose mounts one project-scoped named volume at the compiler cache
+  boundary. Preview instead bind-mounts `.local/preview-compilers` from the
+  repository. `make start-preview` creates the cache directory on the host
+  with mode 0750 and leaves existing ownership and permissions unchanged.
+  Native Linux operators must ensure UID 65532 has access; no helper
+  container or automatic ownership change is required by Preview. Among application
+  roles, only `all` or `api` receives the cache. Ordinary restart,
   forced recreation, and image replacement retain it; an explicit Compose
-  teardown with volume removal deletes it.
+  teardown with volume removal deletes the Base Compose volume but retains
+  the Preview host directory. Preview cache removal is a separate explicit
+  operator action.
 - Helm keeps its memory-backed `emptyDir` default. Operators may instead set
   one existing PersistentVolumeClaim shared by every `all` or `api` replica;
   the chart neither creates nor deletes that claim. Multi-node replicas require
@@ -62,7 +69,7 @@ inodes and spuriously rejects the installation.
   mounts one shared cache must use the same writer PostgreSQL database so the
   advisory key has one lock domain; sharing a volume across separate databases
   is unsupported.
-- Cache growth is bounded by the Docker volume or PVC capacity and operator
+- Cache growth is bounded by the host filesystem, Docker volume or PVC capacity and operator
   monitoring. There is no automatic LRU or catalog-based deletion because a
   bound retry may still require an older catalog generation. Operators stop
   every mounting compiler owner before clearing the cache.

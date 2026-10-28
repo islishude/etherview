@@ -523,6 +523,7 @@ preview-images: preview-env preview-x402-images preview-bundler-image
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
+	@mkdir -p -m 0750 .local/preview-compilers/cache
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans

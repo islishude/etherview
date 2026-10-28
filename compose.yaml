@@ -127,7 +127,7 @@ services:
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-      - compiler-cache:/var/lib/etherview/compilers
+      - ./.local/preview-compilers:/var/lib/etherview/compilers
 
   sync:
     <<: *etherview-paths
@@ -167,7 +167,6 @@ volumes:
   ipfs-data:
   postgres-data:
   geth-data:
-  compiler-cache:
   lighthouse-data:
   validator-data:
   blob-data:

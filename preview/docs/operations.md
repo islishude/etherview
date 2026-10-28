@@ -45,7 +45,9 @@ explicit `make stop-preview`; startup never deletes them automatically.
 it never creates or modifies a Genesis file. It recreates clients and workers
 while retaining chain state, PostgreSQL, blob objects and validator slashing
 protection. `make stop-preview` destroys all Preview volumes and the default
-generated network directory, but retains TLS certificates. Moving from the old
+generated network directory, but retains TLS certificates and the Solidity/Vyper
+cache in `.local/preview-compilers/cache`. See [cache lifecycle](setup.md) for
+explicit reclamation; deleting Docker containers or volumes does not clear it. Moving from the old
 Geth dev Preview requires this explicit reset. A complete custom bundle can be
 selected with `PREVIEW_NETWORK_DIR`; individual `ETHERVIEW_GENESIS_FILE` and
 `GETH_GENESIS_FILE` overrides are rejected. Custom bundles are never deleted by

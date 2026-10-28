@@ -203,7 +203,9 @@ Sourcify and defaults to `false`. HTTPS, certificate
 verification, checked-IP dialing, redirect rejection and request limits remain
 enforced; environment HTTP proxies remain disabled. It does not enable automatic
 source publication or change the separate metadata, bytecode database or compiler
-download policies. For Preview defaults and overrides, see
+download policies. Preview retains Solidity/Vyper artifacts in `.local/preview-compilers/cache`
+even after `make stop-preview`; see [cache lifecycle](../preview/docs/setup.md).
+For Preview defaults and overrides, see
 [external source configuration](../preview/docs/operations.md#external-source-configuration).
 
 See [IPFS gateway](../preview/docs/operations.md#ipfs-gateway).

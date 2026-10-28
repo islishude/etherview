@@ -124,17 +124,25 @@ the six application containers, execution/Beacon/validator clients, object
 storage, Kubo and its gateway, Rundler and the x402 Facilitator, and reruns
 migration while preserving
 PostgreSQL, chain state, validator slashing protection, blob/IPFS data, and the
-project-scoped `compiler-cache` named volume. Cache entries remain ordinary
+host directory `.local/preview-compilers/cache`, bind-mounted at
+`/var/lib/etherview/compilers/cache`. `make start-preview` uses host `mkdir -p -m 0750` to
+create the cache directory; existing ownership and permissions are unchanged.
+No helper container is started. On native Linux, the operator must ensure the
+API container's UID 65532 can read, write and traverse this directory, without
+group/world write permission. Direct Compose startup requires an already
+prepared cache; `make recreate-preview` reuses it. Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They
 do not make an expired compiler catalog usable and do not belong in backups.
 The API downloads a cold miss before coordination, then uses a digest-scoped
 writer PostgreSQL session advisory lock only for destination recheck, atomic
-installation, and final validation. Every process sharing this volume must use
+installation, and final validation. Every process sharing this directory must use
 the same writer database lock domain.
-`make stop-preview` removes the deployment and all project volumes, including
-the rebuildable compiler cache. For manual cache reclamation, stop every
-`all`/`api` process mounting the volume before removing it; the next compiler
-job downloads the authenticated artifact again. Override
+`make stop-preview` removes the deployment and all project volumes, but retains
+this host directory, so Solidity and Vyper artifacts survive even `down --volumes`.
+For manual cache reclamation, stop every `all`/`api` process mounting the directory
+before explicitly deleting `.local/preview-compilers`; the next compiler job
+downloads the authenticated artifact again. Do not share this directory between
+concurrent Preview projects using different writer databases. Override
 the application tag with `ETHERVIEW_IMAGE`.
 
 After chain readiness, startup verifies sources for every genesis contract.
