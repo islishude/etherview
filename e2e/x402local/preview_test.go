@@ -35,6 +35,11 @@ func TestPreviewX402(t *testing.T) {
 	defer cancel()
 	root := repositoryRoot(t)
 	artifacts := t.TempDir()
+	compilerDirectory := t.TempDir()
+	// API owns the private cache/ child; explicitly relax only its test parent.
+	if err := os.Chmod(compilerDirectory, 0o777); err != nil {
+		t.Fatal(err)
+	}
 	origin := "http://127.0.0.1:" + strconv.Itoa(freePort(t))
 	overlay := filepath.Join(artifacts, "ports.yaml")
 	if err := os.WriteFile(overlay, []byte(fmt.Sprintf(`services:
@@ -48,10 +53,11 @@ func TestPreviewX402(t *testing.T) {
 	}
 	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", "e2e/preview-compiler-cache.compose.yaml", overlay)
 	project.Env = map[string]string{
-		"ETHERVIEW_IMAGE":       os.Getenv("IMAGE"),
-		"ETHERVIEW_CONFIG_FILE": filepath.Join(root, "preview/config.yaml"),
-		"PREVIEW_NETWORK_DIR":   filepath.Join(artifacts, "network"),
-		"PREVIEW_HTTPS_PORT":    "0", "GETH_HTTP_PORT": "0", "GETH_WS_PORT": "0",
+		"PREVIEW_E2E_COMPILER_CACHE_DIR": compilerDirectory,
+		"ETHERVIEW_IMAGE":                os.Getenv("IMAGE"),
+		"ETHERVIEW_CONFIG_FILE":          filepath.Join(root, "preview/config.yaml"),
+		"PREVIEW_NETWORK_DIR":            filepath.Join(artifacts, "network"),
+		"PREVIEW_HTTPS_PORT":             "0", "GETH_HTTP_PORT": "0", "GETH_WS_PORT": "0",
 		"LIGHTHOUSE_HTTP_PORT": "0", "IPFS_API_PORT": "0", "ETHERVIEW_METRICS_PORT": "0",
 		"ETHERVIEW_PUSH_ENABLED": "false", "ETHERVIEW_TURNSTILE_ENABLED": "false",
 	}

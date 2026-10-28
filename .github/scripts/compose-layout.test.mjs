@@ -145,27 +145,32 @@ test("Preview compiler cache is a host bind prepared by start-preview", () => {
   assert.ok(start.includes("mkdir -p -m 0750 .local/preview-compilers/cache"));
 });
 
-test("Preview E2E compiler caches are writable image-populated project volumes", () => {
+test("Preview E2E compiler caches use only their test-owned host directories", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-compiler-compose-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   for (const project of ["preview-cache-first", "preview-cache-second"]) {
-    const config = render([
-      "-p",
-      project,
-      "-f",
-      "compose.yaml",
-      "-f",
-      "e2e/preview-compiler-cache.compose.yaml",
-      "-f",
-      "e2e/previewmetadata/compose.yaml",
-    ]);
+    const compilerDirectory = path.join(directory, project);
+    const config = render(
+      [
+        "-p",
+        project,
+        "-f",
+        "compose.yaml",
+        "-f",
+        "e2e/preview-compiler-cache.compose.yaml",
+        "-f",
+        "e2e/previewmetadata/compose.yaml",
+      ],
+      { PREVIEW_E2E_COMPILER_CACHE_DIR: compilerDirectory },
+    );
     const mounts = config.services.api.volumes.filter(
       (mount) => mount.target === "/var/lib/etherview/compilers",
     );
     assert.equal(mounts.length, 1);
-    assert.equal(mounts[0].type, "volume");
-    assert.equal(mounts[0].source, "compiler-cache");
+    assert.equal(mounts[0].type, "bind");
+    assert.equal(mounts[0].source, compilerDirectory);
     assert.notEqual(mounts[0].read_only, true);
-    assert.notEqual(mounts[0].volume?.nocopy, true);
-    assert.equal(config.volumes["compiler-cache"].name, `${project}_compiler-cache`);
+    assert.equal(config.volumes["compiler-cache"], undefined);
   }
 });
 
