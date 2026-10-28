@@ -1,11 +1,12 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
+
+import { sharedRuntimes } from "../../compiler/vyper/wasm/release.mjs";
 import {
   mergeProductionEvidence,
   applicationVersions,
   productionIdentity,
 } from "./production-evidence.mjs";
-import { sharedRuntimes } from "../../compiler/vyper/wasm/release.mjs";
 
 const hash = "a".repeat(64);
 function fixture() {

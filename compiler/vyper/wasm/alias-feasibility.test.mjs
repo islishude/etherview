@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
 import { selectRuntime, compare } from "./alias-feasibility.mjs";
 import { versions } from "./tooling.mjs";
 

@@ -1,10 +1,11 @@
-import { executeVyper } from "./vyper/wasm/execute.mjs";
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isSea } from "node:sea";
 
 import solcPackage from "solc/package.json" with { type: "json" };
 import solcWrapper from "solc/wrapper";
+
+import { executeVyper } from "./vyper/wasm/execute.mjs";
 
 const requiredNodeVersion = "v26.12.1";
 const requiredWrapperPackageVersion = "0.8.37";

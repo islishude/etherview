@@ -1,9 +1,9 @@
 // Diagnostic only: one invocation, one input, one fresh restricted process.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, constants } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 const [shared, bundle, version, mode, expectedPython, otherRuntime] = process.argv.slice(2);
 const require = createRequire(import.meta.url);
 let stage = "loader";

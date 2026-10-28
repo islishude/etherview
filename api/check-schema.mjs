@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+
 import SwaggerParser from "@apidevtools/swagger-parser";
 
 const source = process.argv[2] ?? resolve(import.meta.dirname, "openapi.yaml");

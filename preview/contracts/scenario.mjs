@@ -1,11 +1,13 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 // Called by the owned Go PoS harness. No mining/time-travel RPC is permitted here.
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import assert from "node:assert/strict";
-import { getUserOperationHash } from "viem/account-abstraction";
+
 import { encodeFunctionData, keccak256, toHex } from "viem";
+import { getUserOperationHash } from "viem/account-abstraction";
+
 import {
   connect,
   contracts,

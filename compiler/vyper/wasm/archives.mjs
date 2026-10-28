@@ -1,7 +1,9 @@
+import { gunzipSync, gzipSync } from "node:zlib";
+
 // Archive libraries parse untrusted inputs; policy and resource bounds live here.
 import AdmZip from "adm-zip";
 import tar from "tar-stream";
-import { gunzipSync, gzipSync } from "node:zlib";
+
 import { MAX_ARCHIVE, safeMember } from "./tooling.mjs";
 export function zipEntries(raw) {
   if (raw.length > MAX_ARCHIVE) throw new Error("oversized ZIP");

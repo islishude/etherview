@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+
 import { verifyGenesis } from "../../preview/bundler-start.mjs";
 test("Bundler verifies chain and exact block-zero code before starting", async () => {
   const manifest = { contracts: { EntryPoint: { address: "0xAB" } } };

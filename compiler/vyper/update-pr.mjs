@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, appendFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+
 import { allowedPath, validVersion } from "./update.mjs";
 import { digest } from "./wasm/tooling.mjs";
 

@@ -143,7 +143,7 @@ test-preview-gateway:
 # Quality checks
 
 .PHONY: check toolchain-check plan-check docs-check openapi-check source-check format format-check \
-	repo-format-check web-format-check lint lint-go golangci-lint test-lint-policy web-lint install-lint-tools \
+	repo-format-check web-format-check preview-lint lint lint-go golangci-lint test-lint-policy web-lint install-lint-tools \
 	lint-tool-check install-security-tools security-tool-check security-check license-tool-check \
 	license-check
 
@@ -176,7 +176,7 @@ repo-format-check: pnpm-install
 web-format-check: web-install
 	$(PNPM) --dir web run format:check
 
-lint: lint-go web-lint format-check
+lint: lint-go web-lint preview-lint format-check
 
 lint-go: lint-tool-check source-check web-build
 	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
@@ -193,6 +193,9 @@ golangci-lint: lint-tool-check test-lint-policy
 
 test-lint-policy: lint-tool-check
 	GOLANGCI_LINT="$(GOLANGCI_LINT)" $(NODE) --test .github/scripts/lint-policy.test.mjs
+
+preview-lint: pnpm-install
+	$(PNPM) run lint:preview
 
 web-lint: web-install web-format-check
 	$(PNPM) --dir web run lint:code

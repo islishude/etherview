@@ -1,8 +1,8 @@
+import { execFileSync } from "node:child_process";
 // Explicit source refresh only. Never install or execute ENS npm package scripts.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 const version = "1.7.0";
 const revision = "9b034936a42f462fc04bc0a929a419ede5e18d59";
 const roots = {

@@ -1,19 +1,19 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import net from "node:net";
-import { spawn } from "node:child_process";
+import test from "node:test";
+
 import {
   encodeAbiParameters,
-  namehash,
-  zeroHash,
   keccak256,
   toHex,
   decodeAbiParameters,
   parseAbiParameters,
 } from "viem";
+
 import {
   connect,
   contracts,

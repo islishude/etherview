@@ -201,7 +201,10 @@ builder Node and Debian notices against the checked-in inventory.
 ## Formatting and frontend tooling
 
 Use `make format` to format repository JavaScript, YAML, Markdown, and the
-existing hand-written frontend scope. Use `make format-check` for a read-only
+existing hand-written frontend scope. Root formatting sorts imports; the separate
+frontend configuration retains its existing import order. `make preview-lint`
+checks all Preview scripts with Oxlint `no-unused-vars` as an error and runs
+through both `make lint` and root `pnpm run lint`. Use `make format-check` for a read-only
 check; `make lint` and CI include it. Both commands install the locked root pnpm
 workspace. `pnpm-workspace.yaml` owns the workspace list, install policy and
 dependency overrides; `api`, `web`, `compiler`, and `e2e/hardhat3` share one root

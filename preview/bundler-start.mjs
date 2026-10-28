@@ -1,6 +1,6 @@
+import { spawn } from "node:child_process";
 // Public development identity, scoped only to the isolated Preview Bundler.
 import fs from "node:fs";
-import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 export async function verifyGenesis(rpc, manifest, allocation) {

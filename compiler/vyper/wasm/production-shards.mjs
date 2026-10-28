@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+
 import { executorDigest, fixtureIdentity, sha256, runtimeFor } from "./release.mjs";
 
 export const versions = JSON.parse(

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 // Synthetic public values exercise scanner entropy checks without using credentials.

@@ -2,6 +2,7 @@ import { constants, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, normalize, basename } from "node:path";
 import { isSea } from "node:sea";
+
 import protocol from "./protocol.py";
 import { runtimeByID, runtimeFor } from "./runtime-policy.mjs";
 

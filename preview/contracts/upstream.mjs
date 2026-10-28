@@ -1,7 +1,7 @@
 // The canonical CREATE2 inputs retain their immutable upstream provenance.
 // They do not depend on the Bundler image or its simulation implementation.
-import fs from "node:fs";
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 const file = new URL("upstream/account-abstraction-v09.json", import.meta.url);
 const pinned = JSON.parse(fs.readFileSync(file));
 const sourceIndex = process.argv.indexOf("--source");

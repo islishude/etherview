@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+
 import { sha256, sharedRuntimes } from "../../compiler/vyper/wasm/release.mjs";
 const [base, licenses] = process.argv.slice(2);
 assert.deepEqual(readdirSync(base).sort(), Object.keys(sharedRuntimes).sort());

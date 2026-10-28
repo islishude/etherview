@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
-import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+
 import { runCompose } from "./preview-compose.mjs";
 
 export const generatorImage = "ethpandaops/ethereum-genesis-generator:6.2.7";

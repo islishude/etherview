@@ -1,7 +1,7 @@
 // Read-only verification of checked-in notices against the installed compiler tree.
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 

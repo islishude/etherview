@@ -10,9 +10,10 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { ROOT, canonical, digest, regularFile, versions } from "./tooling.mjs";
-import { runtimeFor } from "./release.mjs";
+
 import { packRuntime } from "./packages.mjs";
+import { runtimeFor } from "./release.mjs";
+import { ROOT, canonical, digest, regularFile, versions } from "./tooling.mjs";
 export async function descriptor(
   item,
   packagePath,

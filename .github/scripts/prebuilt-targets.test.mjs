@@ -1,9 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import test from "node:test";
 
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "prebuilt targets "));

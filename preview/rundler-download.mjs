@@ -1,8 +1,8 @@
+import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 // Fetch only reviewed release archives; a cached archive is checked on every build.
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
-import { execFileSync } from "node:child_process";
 const release = JSON.parse(fs.readFileSync(new URL("rundler-release.json", import.meta.url)));
 const arch = process.argv[2];
 const item = release.linux[arch];

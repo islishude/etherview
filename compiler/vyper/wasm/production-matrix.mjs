@@ -1,10 +1,12 @@
 // Native production acceptance: the same common packages, no network, one process/input.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
-import { resolve, join } from "node:path";
 import { tmpdir, arch, platform } from "node:os";
-import { sha256, sharedRuntimes, runtimeFor } from "./release.mjs";
+import { resolve, join } from "node:path";
+
+import { compile } from "./production-process.mjs";
 import {
   assignments,
   shardOptions,
@@ -12,8 +14,7 @@ import {
   versionEvidence,
   versions,
 } from "./production-shards.mjs";
-import { randomUUID } from "node:crypto";
-import { compile } from "./production-process.mjs";
+import { sha256, sharedRuntimes, runtimeFor } from "./release.mjs";
 const started = Date.now();
 const shard = shardOptions(process.argv.slice(2));
 const selected = shard ? new Set(assignments(shard.count)[shard.index]) : null;

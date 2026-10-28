@@ -255,3 +255,28 @@ test("repository format check rejects parse errors without modifying input", (t)
     assert.equal(readFileSync(join(root, name), "utf8"), content);
   }
 });
+
+test("Preview lint rejects unused imports and variables with the root policy", (t) => {
+  const root = repositoryFixture(t, {
+    "preview/contracts/test.mjs": 'import { namehash, zeroHash } from "viem";\nconst unused = 1;\n',
+  });
+  copyFileSync(join(web, "..", ".oxlintrc.json"), join(root, ".oxlintrc.json"));
+  const result = run(root, "oxlint", ["--config", ".oxlintrc.json", "preview"]);
+  rejects(result, "no-unused-vars");
+  for (const name of ["namehash", "zeroHash", "unused"]) assert.ok(result.output.includes(name));
+  writeFileSync(join(root, "preview/contracts/test.mjs"), "export const used = 1;\n");
+  assert.equal(run(root, "oxlint", ["--config", ".oxlintrc.json", "preview"]).status, 0);
+});
+
+test("repository formatting sorts Preview imports and preserves side-effect order", (t) => {
+  const root = repositoryFixture(t, {
+    "preview/example.mjs":
+      'import z from "z";\nimport a from "a";\nimport "./first.mjs";\nimport "./second.mjs";\nexport { z, a };\n',
+  });
+  assert.equal(repositoryFormat(root, "--check").status, 1);
+  assert.equal(repositoryFormat(root, "--write").status, 0);
+  const text = readFileSync(join(root, "preview/example.mjs"), "utf8");
+  assert.ok(text.indexOf('from "a"') < text.indexOf('from "z"'));
+  assert.ok(text.indexOf('"./first.mjs"') < text.indexOf('"./second.mjs"'));
+  assert.equal(repositoryFormat(root, "--check").status, 0);
+});

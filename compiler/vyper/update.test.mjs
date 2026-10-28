@@ -1,4 +1,3 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
@@ -12,6 +11,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import test from "node:test";
+
+import { publishDiscovery } from "../../.github/scripts/vyper-discover.mjs";
+import { disposition, validateChanges } from "./update-pr.mjs";
 import {
   allowedPath,
   validVersion,
@@ -19,8 +22,6 @@ import {
   assertAppendOnly,
   copyUpdateInput,
 } from "./update.mjs";
-import { publishDiscovery } from "../../.github/scripts/vyper-discover.mjs";
-import { disposition, validateChanges } from "./update-pr.mjs";
 import { ROOT, readJSON } from "./wasm/tooling.mjs";
 
 const future = `${Math.max(...readJSON(join(ROOT, "compiler/vyper/versions/index.json")).versions.map((v) => Number(v.version.split(".")[0]))) + 1}.0.0`;

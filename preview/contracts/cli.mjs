@@ -1,5 +1,7 @@
 import { parseArgs } from "node:util";
+
 import { parseEther } from "viem";
+
 import {
   connect,
   manifest,

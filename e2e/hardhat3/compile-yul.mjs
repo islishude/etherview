@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
 import { writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const solc = require("solc");

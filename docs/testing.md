@@ -224,8 +224,12 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   Chart YAML remain included. Git-ignored files are also excluded.
   Markdown preserves prose wrapping and leaves fenced code untouched. Both
   configurations retain two spaces, double quotes, semicolons, 100 columns,
-  LF, trailing commas, and disabled sorting. Tooling-policy regressions cover
+  LF and trailing commas. Root formatting enables import sorting; frontend
+  import order and the other sorting options remain unchanged. Tooling-policy regressions cover
   selection, exclusions, read-only failure, parse errors, and idempotence.
+- `make preview-lint`: run Oxlint on all scripts under `preview/`, including
+  contract generators and tests. Unused imports and variables fail with
+  `eslint(no-unused-vars)`. Both `make lint` and root `pnpm run lint` include this gate.
 - `make web-lint`: run TypeScript project checking, pinned Oxlint 1.85.0, and
   Oxfmt 0.70.0 format checking. Oxlint checks hand-written `src` TS/TSX for
   unused code, hook placement/dependencies, and size. Production files/functions

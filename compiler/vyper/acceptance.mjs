@@ -1,8 +1,8 @@
-import { canonical } from "./wasm/tooling.mjs";
 // Validate complete native production acceptance for the application release.
 import { readFileSync, writeFileSync, readdirSync, lstatSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import { parseArgs } from "node:util";
+
 import {
   executorDigest,
   fixtureIdentity,
@@ -11,6 +11,7 @@ import {
   runtimeFor,
   validateRuntimeSet,
 } from "./wasm/release.mjs";
+import { canonical } from "./wasm/tooling.mjs";
 const { values } = parseArgs({
   options: {
     artifacts: { type: "string" },

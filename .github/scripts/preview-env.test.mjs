@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { parseEnv } from "node:util";
-import { execFileSync } from "node:child_process";
+
 import { prepareEnvironment } from "./preview-env.mjs";
 
 function fixture(t) {

@@ -1,7 +1,6 @@
 // Diagnostic only. Does not change production runtime selection.
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import {
   mkdirSync,
   readFileSync,
@@ -10,12 +9,13 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
 import { platform, arch } from "node:os";
-import { ROOT, HERE, versions, digest } from "./tooling.mjs";
-import { bundle, download } from "./packages.mjs";
+import { dirname, join, resolve } from "node:path";
 
+import { bundle, download } from "./packages.mjs";
 import { runtimePolicy } from "./runtime-policy.mjs";
+import { ROOT, HERE, versions, digest } from "./tooling.mjs";
 const modern = new Set(runtimePolicy.modern.versions);
 const supported = new Set(versions().map((x) => x.version));
 export function selectRuntime(version) {

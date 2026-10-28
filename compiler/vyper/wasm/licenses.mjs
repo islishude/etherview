@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { sha256 } from "./release.mjs";
 const root = resolve(
   process.argv[2] ?? fileURLToPath(new URL("../../../licenses/python-wasm", import.meta.url)),

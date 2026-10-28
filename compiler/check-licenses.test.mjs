@@ -4,6 +4,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+
 import { checkLicenses, compilerNotices } from "./check-licenses.mjs";
 
 function inventory(t, name) {

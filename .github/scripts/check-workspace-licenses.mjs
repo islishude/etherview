@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { asSummary, init } from "license-checker-rseidelsohn";
 
 const allowed = "0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense";
