@@ -21,9 +21,9 @@ bundle. Local USD and its initial owner balance are part of the same genesis.
 
 ### Every genesis allocation
 
-The tables below cover all **31 addresses** in
+The tables below cover all **30 addresses** in
 [`preview/genesis.json`](../genesis.json): 26 contracts and
-five externally owned accounts. Addresses are for chain ID **48815** only.
+four externally owned accounts. Addresses are for chain ID **48815** only.
 The generated [application manifest](../contracts/manifest.json)
 provides application ABIs, code hashes and development account indices;
 [`allocation.json`](../contracts/allocation.json) also includes
@@ -90,12 +90,10 @@ selected CLI account ownership of its name, not administration of the system.
 
 These addresses have no EVM code. Mnemonic indices use the public development
 mnemonic `test test test test test test test test test test test junk` and
-`m/44'/60'/0'/0/index`. It must never hold real assets. The retained Geth fixture
-account is not a mnemonic-index account in this CLI.
+`m/44'/60'/0'/0/index`. It must never hold real assets.
 
 | Address                                      | Initial ETH / nonce                              | Purpose                                                                                                                                            |
 | -------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0x71562b71999873db5b286df957af199ec94617f7` | 340282366920938463463.374607431768211446 ETH / 0 | Retained Geth development-fixture funding account; no current Bundler, ENS or x402 service role.                                                   |
 | `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` | 340282366920938463463.374607431768211446 ETH / 0 | Mnemonic index 0: default interactive CLI owner, validator fee recipient and x402 token owner/funding source. Its genesis nonce remains unchanged. |
 | `0xa0ee7a142d267c1f36714e4a8f75612f20a79720` | 1000 ETH / 0                                     | Index 9: dedicated Bundler executor, signing bundle transactions. Its development key is supplied only to the Bundler service.                     |
 | `0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199` | 1000 ETH / 22                                    | Index 19: ENS administrator and deterministic contract-construction account. Nonce 22 is the exported post-construction nonce; do not reset it.    |

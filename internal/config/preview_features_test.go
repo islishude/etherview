@@ -95,7 +95,6 @@ func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, address := range []string{
-		"71562b71999873db5b286df957af199ec94617f7",
 		"f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
 	} {
 		allocation, ok := genesis.Alloc[address]
