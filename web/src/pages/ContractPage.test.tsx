@@ -189,6 +189,39 @@ describe("contract proxy route", () => {
     },
   );
 
+  it.each(["none", "cwia"] as const)(
+    "recovers an unavailable classification to %s without showing the wrong source panel",
+    async (pattern) => {
+      let ready = false;
+      installContractAPI({
+        pattern,
+        proxyResponse: async () =>
+          envelope(
+            ready ? proxyDetail(pattern) : { ...proxyDetail("none"), status: "unavailable" },
+          ),
+      });
+      renderContractRoute();
+      const panel = await screen.findByRole("tabpanel", { name: "Code" });
+      expect(await within(panel).findByText("Unavailable", { exact: true })).toBeVisible();
+      expect(within(panel).getByText(i18n.t("state.loading"))).toBeVisible();
+      expect(within(panel).queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+      ready = true;
+      await waitFor(() =>
+        expect(within(panel).queryByText("Unavailable", { exact: true })).toBeNull(),
+      );
+      if (pattern === "none") {
+        expect(
+          await within(panel).findByRole("heading", { name: "Verified artifact" }),
+        ).toBeVisible();
+      } else {
+        expect(within(panel).queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+        expect(
+          within(panel).queryByRole("link", { name: "Submit a verification request" }),
+        ).toBeNull();
+      }
+    },
+  );
+
   it("shows a proxy request error on Code even when the artifact is unverified", async () => {
     installContractAPI({ pattern: "none", proxyStatus: 503, verificationStatus: 404 });
     renderContractRoute();
