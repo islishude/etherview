@@ -26,8 +26,8 @@ network fetches.
 It trusts only the test certificate SPKI and explicitly grants local-network
 permission to its test pages; it never disables general TLS verification.
 
-Full acceptance runs both `make test-preview-metadata` and
-`make test-preview-consensus`, plus `make check`, `make test-e2e`,
+Full acceptance runs `make test-preview-metadata`, `make test-preview-consensus`,
+`make test-preview-contracts` and `make test-preview-x402`, plus `make check`, `make test-e2e`,
 `make test-runtime-e2e`, and `make test-rustfs`. Preview clients use the trusted
 HTTPS virtual hosts with test-owned ephemeral port mappings. The actual app
 still owns same-origin browser security and session checks.
@@ -88,7 +88,7 @@ render commands pass `--project-directory .`; the shared Go Compose helper
 anchors tests at the repository root, while the standalone x402 fixture
 explicitly retains its own directory. Runtime, compiler, schema and RustFS
 tests continue to exercise the external-chain template.
-Run both Preview gates, `make check`, `make test-rustfs` and
+Run the metadata, consensus, contracts and x402 Preview gates, `make check`, `make test-rustfs` and
 `make test-runtime-e2e` for changes to this deployment.
 
 ## Preview application contracts acceptance

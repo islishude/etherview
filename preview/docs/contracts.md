@@ -10,7 +10,7 @@ Rundler Bundler, and `.test` registrar/resolver suite. Bundler RPC is
 `preview/contracts/manifest.json` lists addresses, code hashes, ABIs and
 public development identities. These identities are confined to disposable
 Preview networks. No Mainnet RPC or external CCIP gateway is required for ENS.
-The ENS owner is development mnemonic account 19; Bundler executor/utility use
+The ENS owner is development mnemonic account 19; Bundler executor uses
 account 9, separate from x402 and the normal CLI owner (account 0).
 
 Genesis updates require a fresh database and network. Preserve anything needed
@@ -21,8 +21,8 @@ bundle. Local USD and its initial owner balance are part of the same genesis.
 
 ### Every genesis allocation
 
-The tables below cover all **30 addresses** in
-[`preview/genesis.json`](../genesis.json): 26 contracts and
+The inventory below covers all **28 addresses** in
+[`preview/genesis.json`](../genesis.json): 24 contracts and
 four externally owned accounts. Addresses are for chain ID **48815** only.
 The generated [application manifest](../contracts/manifest.json)
 provides application ABIs, code hashes and development account indices;
@@ -128,7 +128,7 @@ preview_contracts addresses
 
 | Command                                                                           | Result and chain effect                                                                                                                                                                                                                                     |
 | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `addresses`                                                                       | Prints the checked-in application manifest without contacting RPC. For the full genesis inventory, use the tables above or read preview.genesis.json.                                                                                                       |
+| `addresses`                                                                       | Prints the checked-in application manifest without contacting RPC. For the full genesis inventory, use the tables above or read `preview/genesis.json`.                                                                                                     |
 | `ens quote NAME [--duration SECONDS]`                                             | Reads availability and base/premium rent in wei; does not reserve the name.                                                                                                                                                                                 |
 | `ens commit NAME --state FILE [--duration SECONDS]`                               | Creates a fresh 0600 state file with the commitment secret, signs and mines a commitment transaction. Fails if FILE already exists.                                                                                                                         |
 | `ens register --state FILE`                                                       | Loads the saved registration, enforces commitment age, pays current quoted rent in ETH, sets the Preview forward address and default reverse name. Reusing a state file with a saved registration hash checks that transaction instead of submitting again. |
@@ -189,7 +189,7 @@ preview_contracts ens resolve alice.test
 Names are normalized and limited to one label of at least three characters
 under `.test`. The explorer displays `custom_ens` names only after reverse/forward
 matching; transfer alone does not update those records. Use an ordinary funded
-account for experiments, not the Bundler executor/utility or ENS administrator.
+account for experiments, not the Bundler executor or ENS administrator.
 
 Registration state files contain commitment secrets and are created with 0600
 permissions. Keep them private and out of reports. After interruption, rerun

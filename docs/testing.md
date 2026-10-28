@@ -110,8 +110,10 @@ remain independent.
 The reusable [runtime workflow](../.github/workflows/ci-runtime.yml) consumes
 only the AMD64 image, without waiting for compiler packages or verification.
 Its schema/runtime job uses the prebuilt targets. Its Preview job prepares
-certificates and pulls the official Caddy and external images once, then runs metadata
-and consensus/blob acceptance in separate sequential steps. All image consumers
+certificates, builds the Rundler and Facilitator helpers, and pulls the official
+Caddy and external images once. It then verifies reproducible genesis and Caddy
+boundaries, followed by metadata, contracts/Bundler/ENS, x402 and consensus/blob
+acceptance in separate sequential steps. All image consumers
 use the common load action with an exact producer artifact ID and validate
 source revision, architecture and image ID; none rebuilds a missing image.
 

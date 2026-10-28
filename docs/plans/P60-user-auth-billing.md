@@ -50,7 +50,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T18 | done    | P60-T03, P60-T09, P10, P20, P40-T01 | Private writer-authoritative watch management, bounded enrollment, fresh schema/typed queries, and ownership isolation                                             | OpenAPI/generation, schema, Cookie/Origin/CSRF, handler, watch-limit, and PostgreSQL regressions                         |
 | P60-T19 | done    | P60-T18, P20-T10                    | Durable transaction/token notifications, generation-fenced delivery, reorg/reattach handling, read watermarks, and bounded cleanup                                 | restart, lease/generation, concurrency, indexed matching, disabled-account replay, and PostgreSQL regressions            |
 | P60-T20 | done    | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                   |
-| P60-T21 | done    | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, repeatable fixture initialization and prepaid usage                                                    | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                       |
+| P60-T21 | done    | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                            | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                       |
 
 ## Acceptance
 
@@ -170,6 +170,11 @@ These are historical feature results, not tests rerun by this plan consolidation
 or evidence that the live-payment release gate has passed.
 
 ### Preview x402 acceptance (P60-T21)
+
+The record below predates the genesis-predeployment migration. Its initializer
+reuse evidence describes that earlier implementation; the current gate checks
+block-zero token code and Facilitator recreation without chain-state changes.
+See [current Preview acceptance](../../preview/docs/testing.md#x402-billing-gate).
 
 On 2026-10-28, the working tree based on `69dedc09` passed local macOS/Docker
 Desktop acceptance with production image

@@ -87,14 +87,16 @@ The full start/recreate targets still report optional service startup failures.
 
 ### Preview x402 billing
 
-`make start-preview` and `make recreate-preview` build the test-only token and
-Facilitator images, enable Account billing, then initialize Local USD after real
-PoS block production. This uses the existing Geth/Lighthouse chain ID **48815**;
-no public testnet or external payment Facilitator is involved. The initializer
-funds a dedicated deployment/settlement account with 10 local ETH and deploys
-one token. Repeated initialization checks bytecode and preserves token balances,
-authorizations and PostgreSQL credit. A used deployer with no expected token or
-a bytecode mismatch fails closed; investigate before an explicit Preview reset.
+`make start-preview` and `make recreate-preview` build the test-only
+Facilitator image and enable Account billing on the Geth/Lighthouse chain ID
+**48815**; no public testnet or external payment Facilitator is involved.
+Local USD code, constructor storage, the owner's initial token balance and
+10 local ETH for the settlement account are already included in genesis.
+Startup sends no token deployment or funding transactions. Network manifest
+and fingerprint checks reject stale or changed bundles; recreation preserves
+token balances, spent authorizations and PostgreSQL credit. Genesis changes
+require an explicit fresh-network reset, as described in the
+[contract lifecycle](contracts.md#preview-erc-4337-and-local-ens).
 
 Open `https://app.etherview.localhost/account`, add the configured Preview
 network (`https://geth.etherview.localhost`, chain ID 48815), and import the
@@ -293,6 +295,7 @@ edit system hosts.
 | `https://geth.etherview.localhost`            | Geth JSON-RPC POST                  |
 | `wss://geth.etherview.localhost`              | Geth subscriptions                  |
 | `https://beacon.etherview.localhost/eth/…`    | Beacon REST and SSE                 |
+| `https://bundler.etherview.localhost`         | Rundler ERC-4337 JSON-RPC POST      |
 
 `PREVIEW_HTTPS_PORT` defaults to 443 on 127.0.0.1; ephemeral ports are used by
 tests. Nondefault browser ports require matching public URL, wallet URLs and

@@ -9,12 +9,13 @@ application roles. It enables consensus, blob archives, public
 verification, Sourcify, NFT metadata, prepaid billing and local x402 top-ups. Optional NATS, Redis, and object storage accelerators are not part of
 this deployment.
 
-To enable UserOperations on an existing Preview, set
-`ETHERVIEW_FEATURE_USER_OPERATIONS=true` and `ETHERVIEW_ERC4337_ENTRY_POINTS`
-in `.local/preview-push.env`. Use the deployed EntryPoint's address, version and
-deployment block, then run `make recreate-preview` and the
-[bounded UserOperation reindex](../../docs/operations.md#erc-4337-useroperation-indexing).
-All Preview roles receive the same registry.
+UserOperations are enabled by default with the canonical v0.9 EntryPoint at
+block zero, and Rundler is available at `https://bundler.etherview.localhost`.
+All Preview roles receive the same EntryPoint registry. Existing networks from
+before these genesis allocations require an explicit fresh-network reset;
+`make recreate-preview` cannot add genesis contracts to an existing chain.
+See [Preview contracts](contracts.md#preview-erc-4337-and-local-ens) for the
+reset procedure and signed UserOperation CLI.
 
 The Preview Geth container mounts `preview/geth-entrypoint.sh` and initializes
 the read-only Genesis file into the persistent `geth-data` volume before every
@@ -120,7 +121,8 @@ It makes no public-IPFS availability claim.
 
 `make recreate-preview` rebuilds the host-native production image and replaces
 the six application containers, execution/Beacon/validator clients, object
-storage, Kubo and its gateway, and reruns migration while preserving
+storage, Kubo and its gateway, Rundler and the x402 Facilitator, and reruns
+migration while preserving
 PostgreSQL, chain state, validator slashing protection, blob/IPFS data, and the
 project-scoped `compiler-cache` named volume. Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They

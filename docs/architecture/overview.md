@@ -1020,8 +1020,8 @@ size alone is not sufficient justification to weaken those invariants.
   stale marker; reorg automatically removes orphan update influence.
 
 Preview uses pinned Kubo, Geth and Lighthouse nodes behind the official Caddy
-`preview-gateway`. Four explicit `*.etherview.localhost` hosts route app/API,
-read-only IPFS, execution JSON-RPC/WSS and Beacon REST/SSE. TLS terminates at
+`preview-gateway`. Five explicit `*.etherview.localhost` hosts route app/API,
+read-only IPFS, execution JSON-RPC/WSS, Beacon REST/SSE and Bundler JSON-RPC. TLS terminates at
 Caddy; API traffic inside the container network uses HTTP. The gateway is not
 an application role and its health does not depend on optional upstreams.
 Only Caddy holds its wildcard private key. Metadata trusts the public CA and
@@ -1035,10 +1035,11 @@ The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
 
 Preview also runs the test-only x402 Facilitator and Local USD token on its
-Geth/Lighthouse chain. Explicit initialization follows PoS readiness and checks
-existing bytecode without resetting token or account state. Neither helper is a
-core role dependency; existing credit remains spendable during a Facilitator
-outage. The API/all role owns the fingerprint pepper and the normal production
+Geth/Lighthouse chain. Token code, constructor storage, initial owner balance
+and Facilitator funding are predeployed in genesis. Startup validates the
+network bundle without deploying or funding contracts; recreation preserves
+chain and account state. The Facilitator is not a core role dependency;
+existing credit remains spendable during its outage. The API/all role owns the fingerprint pepper and the normal production
 billing components. The local Permit2 witness fixture and private-network HTTP
 exception remain development-only boundaries under ADR-0044.
 

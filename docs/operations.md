@@ -77,7 +77,7 @@ configuration or source directory. Do not put secrets in these public inputs.
 ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
   --env-file .local/preview-push.env build api
 ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
-  --project-directory . -f deploy/compose.yaml --profile monolith build etherview
+  --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile monolith build etherview
 ```
 
 Both Compose entry points pass this value only to the image build. Normal
