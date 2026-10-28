@@ -216,8 +216,15 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
   and script directories. The existing frontend scope runs separately, using
-  its own configuration. `make lint` shares the frontend format prerequisite
-  with `make format-check`, so CI checks it once.
+  its own configuration. Root `pnpm run format` and `pnpm run format:check`
+  run repository formatting followed by `pnpm -r run format` and
+  `pnpm -r run format:check`, respectively. Recursive execution discovers child
+  workspaces with the matching script and excludes the root aggregator.
+  `make format` and `make format-check` use these root entry points.
+  `make lint` runs Go checks and root `pnpm run lint`, which runs Preview lint,
+  `pnpm -r run lint`, and repository format checking. Child workspace lint
+  scripts own their format checks, so frontend formatting runs once.
+  Individual `make web-lint` and `make preview-lint` targets remain available.
   Root exclusions cover dependencies, build outputs, local runtime files,
   generated `*.gen.*` / `*_generated.*` files, third-party license texts,
   `internal/**/testdata/**`, and Helm `templates/**`; ordinary Helm values and

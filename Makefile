@@ -168,7 +168,8 @@ source-check:
 format: pnpm-install
 	$(PNPM) run format
 
-format-check: repo-format-check web-format-check
+format-check: pnpm-install
+	$(PNPM) run format:check
 
 repo-format-check: pnpm-install
 	$(PNPM) run format:repo:check
@@ -176,7 +177,8 @@ repo-format-check: pnpm-install
 web-format-check: web-install
 	$(PNPM) --dir web run format:check
 
-lint: lint-go web-lint preview-lint format-check
+lint: lint-go pnpm-install
+	$(PNPM) run lint
 
 lint-go: lint-tool-check source-check web-build
 	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \

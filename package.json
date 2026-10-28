@@ -10,9 +10,9 @@
   },
   "scripts": {
     "lint:preview": "oxlint --config .oxlintrc.json preview",
-    "lint": "pnpm run lint:preview && pnpm --dir web run lint:code && pnpm run format:check",
-    "format": "pnpm run format:repo && pnpm --dir web run format",
-    "format:check": "pnpm run format:repo:check && pnpm --dir web run format:check",
+    "lint": "pnpm run lint:preview && pnpm -r run lint && pnpm run format:repo:check",
+    "format": "pnpm run format:repo && pnpm -r run format",
+    "format:check": "pnpm run format:repo:check && pnpm -r run format:check",
     "format:repo": "oxfmt --config .oxfmtrc.json --disable-nested-config --write '**/*.{js,mjs,cjs,yaml,yml,md}'",
     "format:repo:check": "oxfmt --config .oxfmtrc.json --disable-nested-config --check '**/*.{js,mjs,cjs,yaml,yml,md}'",
     "check:licenses": "node .github/scripts/check-workspace-licenses.mjs web && node .github/scripts/check-workspace-licenses.mjs compiler && node .github/scripts/check-workspace-licenses.mjs preview/contracts"
