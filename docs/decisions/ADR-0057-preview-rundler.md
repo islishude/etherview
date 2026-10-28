@@ -10,8 +10,9 @@ simulation-result decoding patch and additional simulation predeploys.
 
 ## Decision
 
-Use the pinned official Rundler release as the independent Preview Bundler.
-Review both Linux architecture archive checksums in the release manifest.
+Use the official Rundler image with an explicit version tag as the binary source
+for the independent Preview Bundler. Copy its binary
+into the Node launcher image; Docker selects the matching Linux architecture.
 Keep canonical EntryPoint v0.9 and SimpleAccount identities; remove Alto-only
 simulation predeploys and the unused utility account. Rundler supplies its
 simulation code through RPC state overrides, not deployment transactions.

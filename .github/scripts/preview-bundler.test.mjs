@@ -1,8 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import test from "node:test";
 
 import { verifyGenesis } from "../../preview/bundler-start.mjs";
@@ -22,19 +18,4 @@ test("Bundler verifies chain and exact block-zero code before starting", async (
     if (error) await assert.rejects(verifyGenesis(rpc, manifest, alloc), error);
     else await verifyGenesis(rpc, manifest, alloc);
   }
-});
-test("Corrupt cached Rundler archives fail before extraction or download", (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rundler-cache-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const cache = path.join(dir, ".local/rundler/arm64");
-  fs.mkdirSync(cache, { recursive: true });
-  fs.writeFileSync(path.join(cache, "release.tar.gz"), "corrupt");
-  const result = spawnSync(
-    process.execPath,
-    [path.resolve("preview/rundler-download.mjs"), "arm64"],
-    { cwd: dir, encoding: "utf8" },
-  );
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /cached release checksum mismatch/);
-  assert.equal(fs.existsSync(path.join(cache, "rundler")), false);
 });

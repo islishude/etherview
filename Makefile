@@ -578,10 +578,7 @@ install-preview-tools:
 
 .PHONY: preview-bundler-image preview-contracts-generate preview-contracts-check test-preview-contracts test-preview-contracts-prebuilt
 preview-bundler-image:
-	@arch=$$($(DOCKER) info --format '{{.Architecture}}'); \
-	case "$$arch" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=amd64 ;; *) echo "Unsupported Rundler architecture"; exit 1 ;; esac; \
-	$(NODE) preview/rundler-download.mjs "$$arch" && \
-	$(BUILDX) build --load --build-context rundler=.local/rundler/$$arch -t etherview-preview-bundler:local -f preview/bundler.Dockerfile .
+	DOCKER="$(DOCKER)" $(BUILDX) build --load -t etherview-preview-bundler:local -f preview/bundler.Dockerfile .
 
 preview-contracts-generate: pnpm-install
 	$(NODE) preview/contracts/ens-upstream.mjs

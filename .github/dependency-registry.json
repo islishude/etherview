@@ -835,22 +835,24 @@
       "source": "github",
       "package": "alchemyplatform/rundler",
       "policy": "report",
-      "reason": "Pinned official Linux release checksums and safe v0.9 validation require real PoS acceptance before updating.",
+      "reason": "Rundler version and safe v0.9 validation require real PoS acceptance before updating.",
       "pins": [
         {
-          "path": "preview/rundler-release.json",
-          "template": "  \"version\": \"{{version}}\",",
+          "path": "preview/bundler.Dockerfile",
+          "template": "FROM alchemyplatform/rundler:v{{version}} AS rundler",
           "count": 1
         }
       ],
       "reviewFiles": [
-        "preview/rundler-release.json",
+        "preview/bundler.Dockerfile",
         "preview/bundler-start.mjs",
         "preview/rundler.toml"
       ],
       "commands": [],
       "generated": [],
-      "ignores": {}
+      "ignores": {
+        "docker": ["alchemyplatform/rundler"]
+      }
     },
     {
       "id": "preview-ens",

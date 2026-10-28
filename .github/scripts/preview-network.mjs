@@ -12,7 +12,6 @@ const inputs = [
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "preview/bundler.Dockerfile",
-  "preview/rundler-release.json",
   "preview/rundler.toml",
   "preview/bundler-start.mjs",
   "preview/genesis.json",

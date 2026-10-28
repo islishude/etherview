@@ -14,8 +14,6 @@ function fixture(t) {
     join(dir, ".github/scripts/preview-env.mjs"),
     readFileSync(new URL("./preview-env.mjs", import.meta.url)),
   );
-  mkdirSync(join(dir, "preview"), { recursive: true });
-  writeFileSync(join(dir, "preview/rundler-download.mjs"), "");
   mkdirSync(join(dir, "bin"));
   mkdirSync(join(dir, ".local/preview-tls"), { recursive: true });
   for (const file of ["gateway.crt", "gateway.key", "rootCA.pem"])
@@ -28,7 +26,6 @@ function fixture(t) {
 import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(process.env.COMMAND_LOG, JSON.stringify({ command: ${JSON.stringify(name)}, args }) + "\\n");
-if (${JSON.stringify(name)} === "docker" && args[0] === "info") console.log("aarch64");
 if (${JSON.stringify(name)} === process.env.FAIL_COMMAND) process.exit(9);
 if (${JSON.stringify(name)} === "docker" && args[0] === "image" && args[1] === "inspect" && args[2] === process.env.MISSING_IMAGE) process.exit(1);
 if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAIL_OFFLINE) process.exit(7);

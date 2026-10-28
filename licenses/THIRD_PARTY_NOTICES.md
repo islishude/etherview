@@ -158,8 +158,9 @@ from https://github.com/alchemyplatform/rundler/releases/tag/v0.11.0.
 Its executable is GPL-3.0-or-later and its libraries are LGPL-3.0-or-later.
 The matching source is available at that release tag. Both license texts are
 retained in `preview-rundler-GPL-3.0.txt` and `preview-rundler-LGPL-3.0.txt`
-and shipped under `/app/licenses/` in the image. Linux ARM64 and AMD64 release
-archive checksums are pinned in `preview/rundler-release.json`.
+and shipped under `/app/licenses/` in the image. The binary is copied from the
+official `alchemyplatform/rundler` image, whose version tag is set in
+`preview/bundler.Dockerfile` for both Linux ARM64 and AMD64.
 
 Preview genesis embeds account-abstraction v0.9.0 contracts (commit
 b36a1ed52ae00da6f8a4c8d50181e2877e4fa410, GPL-3.0) using canonical creation
