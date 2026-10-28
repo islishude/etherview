@@ -81,6 +81,8 @@ jobs:
         env:
           TMPDIR: ${{ runner.temp }}
         run: make test-preview-metadata-prebuilt
+      - name: Run local Preview x402 acceptance
+        run: make test-preview-x402-prebuilt
       - name: Run real Preview consensus and blob acceptance
         env:
           TMPDIR: ${{ runner.temp }}

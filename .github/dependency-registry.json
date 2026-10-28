@@ -388,7 +388,7 @@
         },
         {
           "path": ".github/scripts/prebuilt-targets.test.mjs",
-          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\"]",
+          "template": "          \"caddy:{{version}}-alpine\",",
           "count": 1
         },
         {

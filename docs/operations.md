@@ -225,6 +225,52 @@ existing objects. To recreate application roles during an archive outage, use
 `docker compose --env-file .local/preview-push.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
 
+### Preview x402 billing
+
+`make start-preview` and `make recreate-preview` build the test-only token and
+Facilitator images, enable Account billing, then initialize Local USD after real
+PoS block production. This uses the existing Geth/Lighthouse chain ID **48815**;
+no public testnet or external payment Facilitator is involved. The initializer
+funds a dedicated deployment/settlement account with 10 local ETH and deploys
+one token. Repeated initialization checks bytecode and preserves token balances,
+authorizations and PostgreSQL credit. A used deployer with no expected token or
+a bytecode mismatch fails closed; investigate before an explicit Preview reset.
+
+Open `https://app.etherview.localhost/account`, add the configured Preview
+network (`https://geth.etherview.localhost`, chain ID 48815), and import the
+public development wallet below. Never use this key for real assets:
+
+```text
+Address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+Private key: ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+Local USD: 0x8464135c8F25Da09e49BC8782676a84730C318bC (6 decimals)
+```
+
+Sign in, open Billing, and top up `100` atomic units with each of `eip3009` and
+`permit2`. The latter asks for an exact-amount approval followed by a signature.
+The initial token allocation is 10^18 atomic units. Create a user API key with
+`api:read`, then call `/v2/api?chainid=48815&module=account&action=balance&address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&apikey=YOUR_KEY`.
+Each successful `account.balance` or `contract.getabi` call costs one atomic
+unit; failed calls release their reservation. Native explorer reads stay free.
+After two top-ups and one successful priced read the available credit is `199`.
+
+The Facilitator has no host port and cannot block API/core readiness. Stopping
+it prevents new settlement but existing credit remains spendable. The local
+HTTP exception accepts only the configured service host within private Docker
+IPv4 ranges, rejects redirects and retains response/time bounds. For custom
+address pools, set `ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS` to the exact bridge
+CIDRs. `make recreate-preview` preserves network and database volumes;
+`make stop-preview` deletes them. Insufficient settlement gas requires an
+explicit local transfer to `0x70997970C51812dc3A010C7d01b50e0d17dc79C8`.
+If broadcasting or receipt lookup becomes uncertain, the local Facilitator
+returns `settlement_pending` with the signed transaction hash. Resume the chain,
+inspect that exact receipt, then use the [billing reconciliation procedure](#prepaid-api-billing-and-x402-top-ups);
+never create a replacement payment to recover an uncertain settlement.
+
+Permit2 here is the test token's local witness settlement implementation. This
+is product/accounting acceptance only; P60-T17 still requires both live-method
+reports and independent writer/chain reconciliation.
+
 ### Preview archive IAM limitation
 
 The archive client sends `If-None-Match: *` on writes, but upgrading to RustFS

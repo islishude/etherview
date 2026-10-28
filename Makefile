@@ -54,7 +54,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview-push.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -65,7 +65,7 @@ X402_LOCAL_TOPOLOGY ?= monolith
 VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
+.NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus test-preview-x402 start-x402-local recreate-x402-local
 
 # Arguments: image reference, failure message. Keep checks at their call sites.
 define require-image
@@ -317,13 +317,22 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)"; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-x402-local-fixture:local etherview-x402-local-facilitator:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
 test-preview-metadata-prebuilt: preview-e2e-check
 	@PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
+
+.PHONY: test-preview-x402 test-preview-x402-prebuilt
+
+test-preview-x402: preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-x402-prebuilt
+
+test-preview-x402-prebuilt: preview-e2e-check
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -timeout=12m -tags=runtimee2e,previewx402e2e -run '^TestPreviewX402$$' ./e2e/x402local
 
 test-preview-consensus: preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-consensus-prebuilt
@@ -464,7 +473,7 @@ helm-check:
 # Preview lifecycle
 
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
-	preview-images start-preview stop-preview recreate-preview test-preview-gateway
+	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
 start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
@@ -493,7 +502,7 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-x402.test.mjs
 
 preview-env:
 	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
@@ -501,7 +510,10 @@ preview-env:
 preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
-preview-images: preview-env
+preview-x402-images:
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-init x402-facilitator
+
+preview-images: preview-env preview-x402-images
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
@@ -511,19 +523,21 @@ start-preview: preview-env preview-cert-check docker-build preview-images
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm x402-init
 	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile x402-init --profile archive-init down --volumes --remove-orphans
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
-recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build
+recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm x402-init
 
 
 # Local x402 lifecycle

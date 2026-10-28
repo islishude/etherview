@@ -87,3 +87,16 @@ poll the intent after an uncertain response but never resubmit automatically.
   prices and draining active top-up/usage work; balances are never converted.
 - Local/offline Anvil evidence does not replace the explicit live testnet
   top-up, writer, usage, and chain reconciliation gate.
+
+## Local Preview integration
+
+The Geth/Lighthouse Preview enables prepaid billing and both top-up methods on
+its private chain (48815). A test-only initializer deploys the existing local
+billing token from a dedicated development account, verifies exact bytecode on
+reuse and never remints balances. The separate local Facilitator has no public
+port, uses only local development funds and is not a core readiness dependency.
+Initialization follows PoS readiness and failures fail the lifecycle command.
+The API/all role alone receives the fingerprint pepper. Docker bridge CIDRs and
+plain HTTP are explicit Preview-only transport exceptions; production defaults
+remain strict. Permit2 uses the fixture token's local witness settlement path,
+not a deployed production Permit2/proxy pair. These results do not close P60-T17.

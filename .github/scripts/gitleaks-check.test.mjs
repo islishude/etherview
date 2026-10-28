@@ -127,3 +127,51 @@ test("root .local artifacts are ignored while source exceptions retain path and 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Preview x402 exceptions permit only exact public identities at exact paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-x402-"));
+  const script = readFileSync("deploy/preview/x402-init.sh", "utf8");
+  const identities = ["owner_key", "deployer_key", "token"].map((name) => {
+    const match = script.match(new RegExp(`^${name}=(.+)$`, "m"));
+    assert.ok(match);
+    return match[1];
+  });
+  const paths = ["compose.yaml", "deploy/preview/x402-init.sh", "docs/operations.md"];
+  try {
+    for (const file of [...paths, "nested/compose.yaml"]) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(
+        join(root, file),
+        [...identities, publicHash].map((value) => `private_key = "${value}"`).join("\n"),
+      );
+    }
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        resolve(".gitleaks.toml"),
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
+    assert.deepEqual(
+      findings.map(({ File, StartLine }) => `${File}:${StartLine}`).sort(),
+      [
+        ...paths.map((file) => `${file}:4`),
+        ...[1, 2, 3, 4].map((line) => `nested/compose.yaml:${line}`),
+      ].sort(),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

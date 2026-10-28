@@ -109,9 +109,15 @@ function main() {
       },
     );
   config("Preview", preview);
-  config("Preview compiler", [...preview, "--profile", "archive-init"], compilerPaths, "preview", {
-    ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE: "true",
-  });
+  config(
+    "Preview compiler",
+    [...preview, "--profile", "archive-init", "--profile", "x402-init"],
+    compilerPaths,
+    "preview",
+    {
+      ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE: "true",
+    },
+  );
   config(
     "Preview metadata gateway",
     preview,

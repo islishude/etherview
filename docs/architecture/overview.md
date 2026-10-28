@@ -1033,6 +1033,14 @@ Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
 The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
 
+Preview also runs the test-only x402 Facilitator and Local USD token on its
+Geth/Lighthouse chain. Explicit initialization follows PoS readiness and checks
+existing bytecode without resetting token or account state. Neither helper is a
+core role dependency; existing credit remains spendable during a Facilitator
+outage. The API/all role owns the fingerprint pepper and the normal production
+billing components. The local Permit2 witness fixture and private-network HTTP
+exception remain development-only boundaries under ADR-0044.
+
 ## Operator Recovery Boundary
 
 Repair and reindex intentionally have different authority. `repair --stage

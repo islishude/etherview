@@ -70,7 +70,13 @@ if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAI
   };
 }
 
-for (const suite of ["schema-e2e", "runtime-e2e", "preview-metadata", "preview-consensus"]) {
+for (const suite of [
+  "schema-e2e",
+  "runtime-e2e",
+  "preview-metadata",
+  "preview-consensus",
+  "preview-x402",
+]) {
   const target = `test-${suite}`;
   const preview = suite.startsWith("preview-");
   test(`${target}: prepared entry point does not build; ordinary entry point prepares first`, (t) => {
@@ -80,7 +86,7 @@ for (const suite of ["schema-e2e", "runtime-e2e", "preview-metadata", "preview-c
     assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
-      preview ? ["docker", "docker", "go"] : ["docker", "go"],
+      preview ? ["docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
@@ -92,13 +98,18 @@ for (const suite of ["schema-e2e", "runtime-e2e", "preview-metadata", "preview-c
     assert.equal(builds.length, 1);
     assert(builds[0].args.includes("production"));
     assert.deepEqual(ordinary.commands.slice(-prebuilt.commands.length), prebuilt.commands);
-    assert.equal(ordinary.commands.filter((c) => c.command === "compose").length, preview ? 1 : 0);
+    assert.equal(ordinary.commands.filter((c) => c.command === "compose").length, preview ? 2 : 0);
   });
 
   test(`${target}: missing images and failed tests stop the command`, (t) => {
     const f = fixture(t);
     for (const missing of preview
-      ? ["etherview:local", "caddy:2.11.7-alpine"]
+      ? [
+          "etherview:local",
+          "caddy:2.11.7-alpine",
+          "etherview-x402-local-fixture:local",
+          "etherview-x402-local-facilitator:local",
+        ]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });
       assert.notEqual(result.status, 0);

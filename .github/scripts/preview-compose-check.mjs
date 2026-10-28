@@ -367,3 +367,17 @@ for (const [name, service] of Object.entries(services)) {
     );
   }
 }
+
+const facilitator = requireService("x402-facilitator");
+assert.equal(facilitator.environment.X402_LOCAL_RPC_URL, "http://geth:8545");
+assert.equal(facilitator.environment.X402_LOCAL_NETWORK, "eip155:48815");
+assert.equal((facilitator.ports ?? []).length, 0);
+for (const role of roles) {
+  assert.equal(
+    Boolean(services[role].environment.ETHERVIEW_X402_FINGERPRINT_PEPPER),
+    role === "api",
+  );
+  assert.ok(!services[role].depends_on["x402-init"]);
+  assert.ok(!services[role].depends_on["x402-facilitator"]);
+}
+assert.deepEqual(requireService("x402-init").profiles, ["x402-init"]);

@@ -269,6 +269,26 @@ func topup(
 	method, amount string,
 ) topupPayment {
 	t.Helper()
+	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, amount)
+	response := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+	if response.StatusCode != http.StatusOK || response.Header.Get(x402wire.PaymentResponseHeader) == "" {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("%s top-up status=%d body=%s", method, response.StatusCode, body)
+	}
+	_ = response.Body.Close()
+	return payment
+}
+
+func authorizeTopup(
+	t *testing.T,
+	client *http.Client,
+	rpcClient *ethclient.Client,
+	codec *x402wire.Codec,
+	origin, csrf string,
+	owner common.Address,
+	method, amount string,
+) topupPayment {
+	t.Helper()
 	var intent gen.BillingTopupIntentResponse
 	doJSON(t, client, http.MethodPost, origin+"/api/v1/billing/topup-intents", origin, csrf,
 		map[string]string{"amount_atomic": amount}, http.StatusCreated, &intent)
@@ -293,7 +313,7 @@ func topup(
 		t.Fatalf("missing %s requirement", method)
 	}
 	if method == "permit2" {
-		if allowance := tokenUint(t, rpcClient, "allowance", owner, common.HexToAddress(permit2Address)); allowance.String() != amount {
+		if allowance := tokenUintAt(t, rpcClient, common.HexToAddress(selected.SDK().Asset), "allowance", owner, common.HexToAddress(permit2Address)); allowance.String() != amount {
 			t.Fatalf("Permit2 prepayment allowance=%s amount=%s", allowance, amount)
 		}
 	}
@@ -315,12 +335,6 @@ func topup(
 		t.Fatal(err)
 	}
 	header := base64.StdEncoding.EncodeToString(encoded)
-	response := postTopupPayment(t, client, origin, csrf, intent.Data.Id.String(), header)
-	if response.StatusCode != http.StatusOK || response.Header.Get(x402wire.PaymentResponseHeader) == "" {
-		body, _ := io.ReadAll(response.Body)
-		t.Fatalf("%s top-up status=%d body=%s", method, response.StatusCode, body)
-	}
-	_ = response.Body.Close()
 	return topupPayment{intentID: intent.Data.Id.String(), header: header}
 }
 
@@ -390,7 +404,11 @@ func consumeBalance(t *testing.T, client *http.Client, origin, key string, owner
 }
 
 func consumeBalanceError(client *http.Client, origin, key string, owner common.Address) error {
-	target := origin + "/v2/api?chainid=31337&module=account&action=balance&address=" + owner.Hex() + "&apikey=" + url.QueryEscape(key)
+	return consumeBalanceOnChain(client, origin, key, owner, "31337")
+}
+
+func consumeBalanceOnChain(client *http.Client, origin, key string, owner common.Address, chainID string) error {
+	target := origin + "/v2/api?chainid=" + chainID + "&module=account&action=balance&address=" + owner.Hex() + "&apikey=" + url.QueryEscape(key)
 	response, err := client.Get(target)
 	if err != nil {
 		return err
@@ -462,12 +480,16 @@ func approveExact(t *testing.T, client *ethclient.Client, key *ecdsa.PrivateKey,
 
 func tokenUint(t *testing.T, client *ethclient.Client, method string, arguments ...any) *big.Int {
 	t.Helper()
+	return tokenUintAt(t, client, common.HexToAddress(tokenAddress), method, arguments...)
+}
+
+func tokenUintAt(t *testing.T, client *ethclient.Client, address common.Address, method string, arguments ...any) *big.Int {
+	t.Helper()
 	parsed := tokenABI(t)
 	data, err := parsed.Pack(method, arguments...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	address := common.HexToAddress(tokenAddress)
 	result, err := client.CallContract(t.Context(), ethereum.CallMsg{To: &address, Data: data}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -500,6 +522,9 @@ func sendTransaction(t *testing.T, client *ethclient.Client, key *ecdsa.PrivateK
 	header, err := client.HeaderByNumber(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if tip.Cmp(big.NewInt(1_000_000_000)) < 0 {
+		tip = big.NewInt(1_000_000_000)
 	}
 	fee := new(big.Int).Add(tip, new(big.Int).Mul(header.BaseFee, big.NewInt(2)))
 	gas, err := client.EstimateGas(t.Context(), ethereum.CallMsg{From: from, To: &to, Data: data})

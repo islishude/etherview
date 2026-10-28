@@ -821,6 +821,23 @@ make stop-x402-local
 The local environment uses deterministic development keys. Never fund or reuse
 them on any external network.
 
+`make test-preview-x402` builds the production image and local helper images,
+then exercises the same Preview Geth/Lighthouse deployment in a disposable
+project with isolated ports, network material and volumes. The prebuilt form
+is `make test-preview-x402-prebuilt` after `make docker-build preview-images`.
+It checks both EIP-3009 and Permit2, exact allowance consumption, replay,
+chain/credit equality, repeat initialization, API restart and spending during
+Facilitator outage in split and all-role modes. It also pauses the validator,
+checks persisted `settlement_pending` with the exact broadcast hash, resumes
+mining and reconciles one credit without resending. Controlled RPC tests cover
+pre-broadcast rejection, receipt indexing, reverts, wrong hashes, broadcast
+uncertainty and receipt errors/timeouts. Its HTTP loopback test origin
+isolates payment/runtime acceptance; it does not establish browser wallet or
+production Permit2/proxy compatibility. The existing Preview metadata/browser
+and consensus gates remain required. `make preview-network-check` additionally
+checks initializer rejection of wrong chains, used deployment nonces and code
+drift without sending transactions. No local test closes P60-T17.
+
 ## Evidence Rules
 
 - Record the exact target/command and a concise pass/fail summary in the PR or
