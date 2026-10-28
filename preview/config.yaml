@@ -172,7 +172,7 @@ ens:
     universal_resolver: "0x446c29fbfef829f81e236a2376191f648dbef995"
     coin_type: "2147532463"
     gateways: []
-  resolution_freshness: 15m
+  resolution_freshness: 1m
   snapshot_ttl: 30m
   failure_ttl: 30s
   request_timeout: 8s

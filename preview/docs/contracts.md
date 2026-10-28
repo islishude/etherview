@@ -205,6 +205,10 @@ rejected; `aa receipt` performs read-only reconciliation. A different deliberate
 operation needs a different state path. CLI output represents current chain
 state; Etherview search and pages become visible after canonical indexing and
 ENS generation refresh, not necessarily immediately after a receipt.
+Preview uses a one-minute ENS resolution freshness window for interactive
+registration tests. Existing generations retain their original expiry after a
+configuration change; new generations use the new window. The 30-minute
+snapshot retention keeps existing paginated queries stable.
 
 For arbitrary allocated addresses, the standard RPC remains available for
 read-only inspection. The same commands work for contracts without a dedicated
