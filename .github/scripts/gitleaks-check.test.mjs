@@ -135,7 +135,13 @@ test("Preview x402 exceptions permit only exact public identities at exact paths
     compose.match(/X402_LOCAL_FACILITATOR_PRIVATE_KEY: (.+)/)[1],
     "0x8464135c8F25Da09e49BC8782676a84730C318bC",
   ];
-  const paths = ["preview/compose/x402.yaml", "docs/operations.md"];
+  const paths = [
+    "preview/compose/x402.yaml",
+    "docs/operations.md",
+    "preview/docs/operations.md",
+    "compose.yaml",
+    "deploy/preview/x402-init.sh",
+  ];
   try {
     for (const file of [...paths, "nested/compose.yaml"]) {
       mkdirSync(dirname(join(root, file)), { recursive: true });

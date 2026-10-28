@@ -44,7 +44,8 @@ func TestPreviewContracts(t *testing.T) {
 	cfg = strings.ReplaceAll(cfg, "bytecode_db:\n  enabled: true", "bytecode_db:\n  enabled: false")
 	cfg = strings.ReplaceAll(cfg, "resolution_freshness: 15m", "resolution_freshness: 1m")
 	configFile := filepath.Join(h.artifacts, "contracts.config.yaml")
-	if err = os.WriteFile(configFile, []byte(cfg), 0600); err != nil {
+	// The bind-mounted fixture contains no secrets and must be readable by the image UID.
+	if err = os.WriteFile(configFile, []byte(cfg), 0644); err != nil {
 		t.Fatal(err)
 	}
 	h.project.Env["ETHERVIEW_CONFIG_FILE"] = configFile
