@@ -49,10 +49,7 @@ test("the shared generator fixes three-second slots even with ambient overrides"
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-preview-duration-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   fs.writeFileSync(path.join(directory, "jq"), "#!/bin/sh\necho 0x1\n", { mode: 0o700 });
-  const script = fs.readFileSync(
-    new URL("../../deploy/preview/generate.sh", import.meta.url),
-    "utf8",
-  );
+  const script = fs.readFileSync(new URL("../../preview/generate.sh", import.meta.url), "utf8");
   // Exercise the real generator's environment setup without invoking the container tools.
   const setup =
     script.split("/work/entrypoint.sh cl")[0] +

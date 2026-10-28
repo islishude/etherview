@@ -163,6 +163,7 @@ try {
     ...prepared.operation,
     signature: await next.account.sign({ hash: prepared.hash }),
   };
+  stage = "reject invalid signature";
   await assert.rejects(
     () =>
       ctx.bundler.request({
@@ -171,7 +172,19 @@ try {
       }),
     rpcError(-32507),
   );
-  await assert.rejects(() => prepareOperation(ctx, { salt: 999n }), rpcError(-32500));
+  stage = "reject insufficient prefund";
+  // Rundler estimates unfunded accounts with simulation overrides, but must
+  // reject their signed operation at admission before it can enter the pool.
+  const unfunded = await prepareOperation(ctx, { salt: 999n });
+  await assert.rejects(
+    () =>
+      ctx.bundler.request({
+        method: "eth_sendUserOperation",
+        params: [rpcOperation(unfunded.operation), contracts.EntryPoint.address],
+      }),
+    rpcError(-32000),
+  );
+  stage = "reverted execution";
   // Execution may revert after successful validation. Estimate a valid call, then
   // sign an operation whose account execution deliberately calls a reverting target.
   const reverted = {

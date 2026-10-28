@@ -18,9 +18,7 @@ AGENTS.md
 PLAN.md
 docs
 deploy/*
-!deploy/preview
-deploy/preview/*
-!deploy/preview/alto-safe-validation.patch
+preview/*
 coverage
 data
 bin

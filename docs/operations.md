@@ -171,7 +171,7 @@ building the application and pulling the official Caddy image,
 it prepares `.local/preview-network/` using the pinned
 `ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
-validator keys. The checked-in `deploy/preview.genesis.json` template remains
+validator keys. The checked-in `preview/genesis.json` template remains
 unchanged. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
 active at genesis. Geth v1.17.10 uses full sync and archive state; Lighthouse
 v8.3.2 runs both the Beacon node and validator client. These clients form an
@@ -2078,28 +2078,28 @@ entry point for adding supported Vyper releases.
 ## Preview ERC-4337 and local ENS
 
 A fresh `make start-preview` includes the v0.9 EntryPoint, SimpleAccount factory,
-Alto Bundler, and `.test` registrar/resolver suite. Bundler RPC is
+Rundler Bundler, and `.test` registrar/resolver suite. Bundler RPC is
 `https://bundler.etherview.localhost`; the generated manifest in
-`deploy/preview/contracts/manifest.json` lists addresses, code hashes, ABIs and
+`preview/contracts/manifest.json` lists addresses, code hashes, ABIs and
 public development identities. These identities are confined to disposable
 Preview networks. No Mainnet RPC or external CCIP gateway is required for ENS.
 The ENS owner is development mnemonic account 19; Bundler executor/utility use
-accounts 9/10, separate from x402 and the normal CLI owner (account 0).
+account 9, separate from x402 and the normal CLI owner (account 0).
 
 Genesis updates require a fresh database and network. Preserve anything needed
 before explicitly running `make stop-preview` followed by `make start-preview`;
 stop removes Preview volumes. `make recreate-preview` retains state and rejects
 changed network fingerprints. Never replace one genesis file inside an existing
-bundle. Existing x402 initialization remains independent.
+bundle. Local USD and its initial owner balance are part of the same genesis.
 
 ### Every genesis allocation
 
 The tables below cover all **31 addresses** in
-[`deploy/preview.genesis.json`](../deploy/preview.genesis.json): 26 contracts and
+[`preview/genesis.json`](../preview/genesis.json): 26 contracts and
 five externally owned accounts. Addresses are for chain ID **48815** only.
-The generated [application manifest](../deploy/preview/contracts/manifest.json)
+The generated [application manifest](../preview/contracts/manifest.json)
 provides application ABIs, code hashes and development account indices;
-[`allocation.json`](../deploy/preview/contracts/allocation.json) also includes
+[`allocation.json`](../preview/contracts/allocation.json) also includes
 constructor-created children. The genesis file is authoritative for every
 account's code, nonce, balance and storage. EVM precompiles and the protocol's
 system caller are not extra allocations in these tables.
@@ -2124,22 +2124,20 @@ Preview management CLI.
 | `0x1820a4b7618bde71dce8cdc73aab6c95905fad24` | ERC1820Registry      | Shared account/interface-implementer registry for ERC-1820 integrations. It is independent of ENS.                 |
 | `0xca11bde05977b3631167028862be2a173976ca11` | Multicall3           | Shared batching helper for contract calls; available to RPC clients and integrations.                              |
 
-#### ERC-4337 contracts and simulation dependencies
+#### ERC-4337 contracts
 
-These seven contracts start with zero ETH. EntryPoint, SimpleAccountFactory and
-EntryPointSimulations09 each have nonce 2 because their constructors created a
-child; the other four have nonce 1. Only the canonical EntryPoint is configured
+These four contracts start with zero ETH. EntryPoint and SimpleAccountFactory
+each have nonce 2 because their constructors created a child; the other two
+have nonce 1. Rundler uses RPC state overrides for simulation without extra
+simulation predeploys. Only the canonical EntryPoint is configured
 for indexing or exposed by `eth_supportedEntryPoints`.
 
-| Address                                      | Contract                     | Purpose and operation path                                                                                                                                                            |
-| -------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0x433709009b8330fda32311df1c2afa402ed8d009` | EntryPoint v0.9              | Validates and executes UserOperations and manages deposits/nonces. Alto submits bundles here; use `aa estimate`, `aa send` and `aa receipt`.                                          |
-| `0x0a630a99df908a81115a3022927be82f9299987e` | SenderCreator                | EntryPoint's real constructor-created helper for account creation. It is called through EntryPoint, not directly by CLI users.                                                        |
-| `0xf4a7018fdbf22804526ec4b77dce4f9b0d27a395` | SimpleAccountFactory         | Computes and deploys owner/salt-specific account proxies. `aa address` computes the address; the first successful `aa send` supplies factory calldata and deploys the account.        |
-| `0x9ef4c86838638daea46d5517442f5c23fe1dd34c` | SimpleAccount implementation | Shared implementation for factory-created account proxies; it is not a user's wallet address. `aa fund` funds the computed proxy address.                                             |
-| `0x322619fcccc741880ee7071cbe4e877fb919ecf8` | PimlicoSimulations           | Pinned Alto simulation wrapper used for gas estimation and validation. It is not a second supported EntryPoint.                                                                       |
-| `0x8f3acfd2738a732aa1e0367480559f13e8def69c` | EntryPointSimulations09      | v0.9 simulation implementation consumed by Alto with validation enabled; preinstalled so startup does not deploy it.                                                                  |
-| `0xca20cad9ae12f7e5855e07e16c174dedf53d4333` | Simulation SenderCreator     | Child created by EntryPointSimulations09 at constructor nonce 1. Its code/nonce are retained in allocation.json even though it has no standalone CLI command or named manifest entry. |
+| Address                                      | Contract                     | Purpose and operation path                                                                                                                                                     |
+| -------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `0x433709009b8330fda32311df1c2afa402ed8d009` | EntryPoint v0.9              | Validates and executes UserOperations and manages deposits/nonces. Rundler submits bundles here; use `aa estimate`, `aa send` and `aa receipt`.                                |
+| `0x0a630a99df908a81115a3022927be82f9299987e` | SenderCreator                | EntryPoint's real constructor-created helper for account creation. It is called through EntryPoint, not directly by CLI users.                                                 |
+| `0xf4a7018fdbf22804526ec4b77dce4f9b0d27a395` | SimpleAccountFactory         | Computes and deploys owner/salt-specific account proxies. `aa address` computes the address; the first successful `aa send` supplies factory calldata and deploys the account. |
+| `0x9ef4c86838638daea46d5517442f5c23fe1dd34c` | SimpleAccount implementation | Shared implementation for factory-created account proxies; it is not a user's wallet address. `aa fund` funds the computed proxy address.                                      |
 
 #### Local ENS contracts
 
@@ -2173,16 +2171,18 @@ account is not a mnemonic-index account in this CLI.
 | `0x71562b71999873db5b286df957af199ec94617f7` | 340282366920938463463.374607431768211446 ETH / 0 | Retained Geth development-fixture funding account; no current Bundler, ENS or x402 service role.                                                   |
 | `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` | 340282366920938463463.374607431768211446 ETH / 0 | Mnemonic index 0: default interactive CLI owner, validator fee recipient and x402 token owner/funding source. Its genesis nonce remains unchanged. |
 | `0xa0ee7a142d267c1f36714e4a8f75612f20a79720` | 1000 ETH / 0                                     | Index 9: dedicated Bundler executor, signing bundle transactions. Its development key is supplied only to the Bundler service.                     |
-| `0xbcd4042de499d14e55001ccbb24a551f3b954096` | 1000 ETH / 0                                     | Index 10: dedicated Alto utility account; configured only in the Bundler process.                                                                  |
-| `0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199` | 1000 ETH / 24                                    | Index 19: ENS administrator and deterministic contract-construction account. Nonce 24 is the exported post-construction nonce; do not reset it.    |
+| `0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199` | 1000 ETH / 22                                    | Index 19: ENS administrator and deterministic contract-construction account. Nonce 22 is the exported post-construction nonce; do not reset it.    |
 
-The x402 deployer `0x70997970c51812dc3a010c7d01b50e0d17dc79c8` (index 1) and
-Local USD token `0x8464135c8f25da09e49bc8782676a84730c318bc` are **not genesis
-allocations**. `preview-x402-init` funds the deployer from index 0 and deploys
-Local USD with its first CREATE after PoS readiness. Repeated initialization
-checks code without reminting or changing an existing nonce. User-specific
-SimpleAccount proxies and subsequently registered names also arise after
-block zero. No NameWrapper, Paymaster or extra EntryPoint version is installed.
+The x402 Facilitator account `0x70997970c51812dc3a010c7d01b50e0d17dc79c8`
+(index 1) has 10 ETH and nonce 1 in genesis. Local USD at
+`0x8464135c8f25da09e49bc8782676a84730c318bc` is also a genesis allocation,
+including constructor storage and 1000000000000000000 atomic units owned by
+index 0. The pinned contract generator constructs and exports this state;
+startup performs no token deployment, funding or reminting.
+Existing bundles with the old genesis fail fingerprint validation and require
+explicit network reinitialization using the Preview lifecycle procedure.
+User-specific SimpleAccount proxies and subsequently registered names arise
+after block zero. No NameWrapper, Paymaster or extra EntryPoint version is installed.
 
 ### Contract CLI reference
 
@@ -2197,7 +2197,7 @@ and a fresh Preview startup. This shell helper only shortens the executable path
 
 ```sh
 export NODE_EXTRA_CA_CERTS="$PWD/.local/preview-tls/rootCA.pem"
-preview_contracts() { node deploy/preview/contracts/cli.mjs "$@"; }
+preview_contracts() { node preview/contracts/cli.mjs "$@"; }
 preview_contracts addresses
 ```
 
@@ -2216,7 +2216,7 @@ preview_contracts addresses
 | `aa address [--salt INTEGER]`                                                     | Reads the counterfactual account address for owner/salt; does not deploy it.                                                                                                                                                                                |
 | `aa fund [--salt INTEGER] [--value ETH]`                                          | Sends ETH from the signing EOA to that account address, including before deployment. Default funding is 1 ETH.                                                                                                                                              |
 | `aa estimate [--salt INTEGER] [--to ADDRESS] [--value ETH] [--data HEX]`          | Simulates, estimates gas, adds the CLI margin and signs a proposed operation; prints operation/hash without submitting or persisting it.                                                                                                                    |
-| `aa send --state FILE [--salt INTEGER] [--to ADDRESS] [--value ETH] [--data HEX]` | Estimates/signs a new UserOperation, saves its exact hash and signed payload before sending once to Alto. The first successful operation deploys the account through the factory.                                                                           |
+| `aa send --state FILE [--salt INTEGER] [--to ADDRESS] [--value ETH] [--data HEX]` | Estimates/signs a new UserOperation, saves its exact hash and signed payload before sending once to Rundler. The first successful operation deploys the account through the factory.                                                                        |
 | `aa receipt --state FILE`                                                         | Queries the saved UserOperation hash. A null result means no receipt is available yet; query again without generating another operation.                                                                                                                    |
 
 Common options are `--rpc URL` (default Geth HTTPS origin), `--bundler URL`
@@ -2301,7 +2301,26 @@ nonces and initializer state must remain together.
 
 ENS sources are pinned to the official v1.7.0 GitHub commit and compiled locally;
 the ENS npm package is deliberately absent because of its package-wide malware
-advisory. Alto includes the reviewed `alto-safe-validation.patch`, which aligns
-its tracer result decoder with the simulation ABI while retaining safe-mode
-validation. Regeneration refreshes only pinned sources; ordinary startup uses
-checked-in bytecode and storage.
+advisory. Rundler uses the official release archives pinned by version and
+SHA-256 in `preview/rundler-release.json`. `make preview-bundler-image`
+downloads the Docker host's Linux architecture and validates cached archives
+before extraction. The image includes the reviewed GPL/LGPL notices.
+The launcher checks chain ID and EntryPoint code at block zero, enables only
+v0.9 and standard eth RPC, and never enables unsafe fallback. See
+[ADR-0057](decisions/ADR-0057-preview-rundler.md). Ordinary startup uses
+checked-in genesis bytecode and storage without compilation or deployment.
+
+### Preview configuration layout
+
+The repository-root `compose.yaml` is the single Preview entrypoint. It uses
+Compose `extends` to load service settings from `preview/compose/`:
+`app.yaml`, `chain.yaml`, `storage.yaml`, `gateway.yaml` and `x402.yaml`.
+Host bind mounts and build contexts remain in the root entrypoint so relative
+environment overrides retain repository-root semantics. Named volumes and the
+project identity also remain there. Do not start the service fragments directly.
+
+Preview configuration, genesis, contract artifacts and helper scripts live in
+`preview/`; `deploy/` retains the external-chain production template.
+Local USD code and initial state are part of genesis; no x402 initializer runs
+at startup. Existing network bundles require explicit recreation after genesis
+changes, which discards their local chain and billing data.

@@ -1,408 +1,154 @@
 name: etherview-preview
 
-x-etherview-app-env: &etherview-app-env
-  ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS:
-  ETHERVIEW_BYTECODE_DB_ENABLED:
-  ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS:
-  ETHERVIEW_BYTECODE_DB_BASE_URL:
-  ETHERVIEW_BYTECODE_DB_TIMEOUT:
-  ETHERVIEW_BYTECODE_DB_MAX_RESPONSE_BYTES:
-  ETHERVIEW_BYTECODE_DB_MAX_CONCURRENCY:
-  ETHERVIEW_BYTECODE_DB_REQUEST_INTERVAL:
-  ETHERVIEW_BYTECODE_DB_COOLDOWN:
-  ETHERVIEW_TURNSTILE_ENABLED:
-  ETHERVIEW_TURNSTILE_SITE_KEY:
-  ETHERVIEW_PUSH_ENABLED:
-  ETHERVIEW_PUSH_PUBLIC_KEY:
-  ETHERVIEW_PUSH_CONTACT:
-  ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
-  ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
-  # Keep authoritative HTTP polling and add a newHeads wake hint so locally
-  # mined blocks do not wait for the normal polling interval.
-  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://geth:8545,ws://geth:8546}
-  ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
-  ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
-  ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
-  ETHERVIEW_LOG_FORMAT: text
-  ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL:
-  ETHERVIEW_FEATURE_USER_OPERATIONS:
-  ETHERVIEW_ERC4337_ENTRY_POINTS:
-  # A value-less override preserves the checked-in gateway unless the caller
-  # explicitly selects another HTTPS endpoint.
-  ETHERVIEW_METADATA_IPFS_GATEWAY:
-  ETHERVIEW_METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS:
-
-x-etherview-api-env: &etherview-api-env
-  <<: *etherview-app-env
-  ETHERVIEW_TURNSTILE_SECRET_KEY:
-  ETHERVIEW_TURNSTILE_SECRET_KEY_FILE:
-  ETHERVIEW_X402_FINGERPRINT_PEPPER: "preview-x402-fingerprint-dev-only-0000000000000000000000"
-  ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS:
-  ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
-  ETHERVIEW_VERIFICATION_WORKER_COUNT:
-  ETHERVIEW_VERIFICATION_EXECUTOR_PATH:
-  ETHERVIEW_VERIFICATION_GEAS_PATH:
-  # Docker Desktop fake-IP DNS maps public compiler hosts into 198.18/15.
-  # This Preview-only escape hatch retains exact HTTPS-origin, TLS, size, and
-  # SHA-256 validation and is deliberately absent from every other role.
-  ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
-
-x-etherview-service: &etherview-service
-  image: ${ETHERVIEW_IMAGE:-etherview:local}
+# Host paths stay relative to this entrypoint, including environment overrides.
+x-etherview-paths: &etherview-paths
   build:
     context: .
     target: production
     args:
       ETHERVIEW_WEB_BRANDING_DIR: ${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}
-  environment: *etherview-app-env
   volumes:
-    - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+    - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
     - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-
-x-etherview-healthcheck: &etherview-healthcheck
-  test: ["CMD", "/etherview", "healthcheck"]
-  interval: 5s
-  timeout: 3s
-  retries: 34
-  start_period: 10s
-
-x-etherview-runtime-depends-on: &etherview-runtime-depends-on
-  postgres:
-    condition: service_healthy
-  migration:
-    condition: service_completed_successfully
-  geth:
-    condition: service_started
 
 services:
   bundler:
-    image: ${PREVIEW_BUNDLER_IMAGE:-etherview-preview-bundler:local}
-    entrypoint: ["node", "/app/src/preview-start.mjs"]
+    extends:
+      file: preview/compose/chain.yaml
+      service: bundler
     volumes:
-      - ./deploy/preview/bundler-start.mjs:/app/src/preview-start.mjs:ro
-      - ./deploy/preview/contracts/manifest.json:/config/contracts.json:ro
-    depends_on:
-      geth:
-        condition: service_started
-    restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4337',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_supportedEntryPoints',params:[]})}).then(r=>r.json()).then(r=>process.exit(r.result?.[0]?.toLowerCase()==='0x433709009b8330fda32311df1c2afa402ed8d009'?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 5s
-      timeout: 4s
-      retries: 36
-      start_period: 10s
+      - ./preview/bundler-start.mjs:/app/src/preview-start.mjs:ro
+      - ./preview/contracts/manifest.json:/config/contracts.json:ro
+      - ./preview/contracts/allocation.json:/config/allocation.json:ro
+      - ./preview/rundler.toml:/config/rundler.toml:ro
 
   ipfs:
-    image: ipfs/kubo:v0.43.1
-    command: ["daemon", "--migrate=false"]
-    environment:
-      IPFS_PROFILE: server
-      IPFS_GATEWAY_NO_FETCH: "false"
+    extends:
+      file: preview/compose/storage.yaml
+      service: ipfs
     volumes:
       - ipfs-data:/data/ipfs
-      - ./deploy/ipfs/init.sh:/container-init.d/010-preview.sh:ro
+      - ./preview/ipfs/init.sh:/container-init.d/010-preview.sh:ro
       - ./e2e/previewmetadata/testdata/metadata.json:/fixtures/metadata.json:ro
-    ports:
-      - "127.0.0.1:${IPFS_API_PORT:-5001}:5001"
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "ipfs --timeout=5s cat /ipfs/bafybeibnsoufr2renqzsh347nrx54wcubt5lgkeivez63xvivplfwhtpym/metadata.json >/dev/null",
-        ]
-      interval: 5s
-      timeout: 6s
-      retries: 20
-    restart: unless-stopped
 
   preview-gateway:
-    image: ${PREVIEW_GATEWAY_IMAGE:-caddy:2.11.7-alpine}
-    environment:
-      PREVIEW_NODE_ALLOWED_ORIGINS: ${PREVIEW_NODE_ALLOWED_ORIGINS:-https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173}
+    extends:
+      file: preview/compose/gateway.yaml
+      service: preview-gateway
     volumes:
-      - ./deploy/preview/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./preview/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./.local/preview-tls/gateway.crt:/run/preview-tls/gateway.crt:ro
       - ./.local/preview-tls/gateway.key:/run/preview-tls/gateway.key:ro
-    ports:
-      - "127.0.0.1:${PREVIEW_HTTPS_PORT:-443}:443"
-    networks:
-      default:
-        aliases:
-          [
-            app.etherview.localhost,
-            ipfs.etherview.localhost,
-            geth.etherview.localhost,
-            beacon.etherview.localhost,
-            bundler.etherview.localhost,
-          ]
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    tmpfs: [/config, /data]
-    stop_grace_period: 15s
-    restart: unless-stopped
 
   postgres:
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_DB: etherview
-      POSTGRES_USER: etherview
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-etherview-dev-only}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U etherview -d etherview"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
+    extends:
+      file: preview/compose/storage.yaml
+      service: postgres
     volumes:
       - postgres-data:/var/lib/postgresql
 
   geth:
-    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.10}
-    entrypoint: ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"]
-    command:
-      - --networkid=48815
-      - --nodiscover
-      - --maxpeers=0
-      - --authrpc.addr=0.0.0.0
-      - --authrpc.port=8551
-      - --authrpc.vhosts=geth
-      - --authrpc.jwtsecret=/run/engine/jwt.hex
-      - --syncmode=full
-      - --gcmode=archive
-      - --http
-      - --http.addr=0.0.0.0
-      - --http.port=8545
-      - --http.api=eth,net,web3,debug,txpool
-      - --http.vhosts=*
-      - --ws
-      - --ws.addr=0.0.0.0
-      - --ws.port=8546
-      - --ws.api=eth,net,web3,debug,txpool
+    extends:
+      file: preview/compose/chain.yaml
+      service: geth
     volumes:
       - geth-data:/gethdata
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/jwt.hex:/run/engine/jwt.hex:ro
-      - ./deploy/geth-entrypoint.sh:/usr/local/bin/etherview-geth-entrypoint.sh:ro
+      - ./preview/geth-entrypoint.sh:/usr/local/bin/etherview-geth-entrypoint.sh:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-    ports:
-      - "127.0.0.1:${GETH_HTTP_PORT:-8545}:8545"
-      - "127.0.0.1:${GETH_WS_PORT:-8546}:8546"
-    restart: unless-stopped
 
   lighthouse:
-    image: sigp/lighthouse:v8.3.2
-    command:
-      - lighthouse
-      - --testnet-dir=/network
-      - bn
-      - --datadir=/beacon
-      - --execution-endpoint=http://geth:8551
-      - --execution-jwt=/run/engine/jwt.hex
-      - --http
-      - --http-address=0.0.0.0
-      - --http-port=5052
-      - --disable-upnp
-      - --target-peers=0
-      - --supernode
-      - --prune-blobs=false
-      - --allow-insecure-genesis-sync
-      - --suggested-fee-recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
+    extends:
+      file: preview/compose/chain.yaml
+      service: lighthouse
     volumes:
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata:/network:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/jwt.hex:/run/engine/jwt.hex:ro
       - lighthouse-data:/beacon
-    ports:
-      - "127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}:5052"
-    depends_on:
-      geth:
-        condition: service_started
-    restart: unless-stopped
 
   validator:
-    image: sigp/lighthouse:v8.3.2
-    entrypoint: ["/bin/sh", "/validator.sh"]
+    extends:
+      file: preview/compose/chain.yaml
+      service: validator
     volumes:
-      - ./deploy/preview/validator.sh:/validator.sh:ro
+      - ./preview/validator.sh:/validator.sh:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata:/network:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/validator:/initial:ro
       - validator-data:/validators
-    depends_on:
-      lighthouse:
-        condition: service_started
-    restart: unless-stopped
 
   object-storage:
-    image: rustfs/rustfs:1.0.4
-    command: ["/data"]
-    environment:
-      RUSTFS_ADDRESS: ":9000"
-      RUSTFS_CONSOLE_ENABLE: "false"
-      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-etherview}
-      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-etherview-dev-only}
+    extends:
+      file: preview/compose/storage.yaml
+      service: object-storage
     volumes:
       - blob-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 18
-      start_period: 10s
-    restart: unless-stopped
 
   archive-init:
-    image: rustfs/rc:v0.1.36
-    profiles: ["archive-init"]
-    entrypoint: ["/bin/sh", "/archive-init.sh"]
-    environment:
-      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-etherview}
-      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-etherview-dev-only}
-      PREVIEW_BLOB_READ_SECRET: ${PREVIEW_BLOB_READ_SECRET:-preview-read-dev-only}
-      PREVIEW_BLOB_WRITE_SECRET: ${PREVIEW_BLOB_WRITE_SECRET:-preview-write-dev-only}
+    extends:
+      file: preview/compose/storage.yaml
+      service: archive-init
     volumes:
-      - ./deploy/preview/archive-init.sh:/archive-init.sh:ro
-      - ./deploy/preview/read.json:/policies/read.json:ro
-      - ./deploy/preview/write.json:/policies/write.json:ro
-    depends_on:
-      object-storage:
-        condition: service_healthy
-    restart: "no"
-
-  # Development-only helpers; neither is a core role readiness dependency.
-  x402-init:
-    image: etherview-x402-local-fixture:local
-    build:
-      context: ./e2e/x402local
-      dockerfile: fixture.Dockerfile
-    profiles: [x402-init]
-    entrypoint: [sh, /preview-x402-init.sh]
-    volumes:
-      - ./deploy/preview/x402-init.sh:/preview-x402-init.sh:ro
-    environment:
-      RPC_URL: http://geth:8545
-    restart: "no"
+      - ./preview/archive-init.sh:/archive-init.sh:ro
+      - ./preview/read.json:/policies/read.json:ro
+      - ./preview/write.json:/policies/write.json:ro
 
   x402-facilitator:
-    image: etherview-x402-local-facilitator:local
+    extends:
+      file: preview/compose/x402.yaml
+      service: x402-facilitator
     build:
       context: .
       dockerfile: e2e/x402local/facilitator.Dockerfile
-    environment:
-      X402_LOCAL_RPC_URL: http://geth:8545
-      X402_LOCAL_NETWORK: eip155:48815
-      X402_LOCAL_TOKEN: "0x8464135c8F25Da09e49BC8782676a84730C318bC"
-      # Public development key, funded only on the local Preview chain.
-      X402_LOCAL_FACILITATOR_PRIVATE_KEY: 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
-    depends_on:
-      geth:
-        condition: service_started
-    healthcheck:
-      test: [CMD, /x402localfacilitator, --healthcheck]
-      interval: 2s
-      timeout: 2s
-      retries: 30
-    restart: unless-stopped
 
   migration:
-    <<: *etherview-service
-    command: ["migrate", "up", "--config=/etc/etherview/config.yaml"]
-    restart: "no"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: migration
 
   api:
-    <<: *etherview-service
-    command: ["serve", "--roles=api", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-api-env
-      ETHERVIEW_ROLES: api
-      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-reader
-      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_READ_SECRET:-preview-read-dev-only}
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: api
     volumes:
-      - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+      - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
       - compiler-cache:/var/lib/etherview/compilers
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-    depends_on: *etherview-runtime-depends-on
-    healthcheck: *etherview-healthcheck
-    ports:
-      - "127.0.0.1:${ETHERVIEW_METRICS_PORT:-9090}:9090"
-    restart: unless-stopped
 
   sync:
-    <<: *etherview-service
-    command: ["serve", "--roles=sync", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: sync
-    depends_on: *etherview-runtime-depends-on
-    healthcheck: *etherview-healthcheck
-    restart: unless-stopped
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: sync
 
   enrich:
-    <<: *etherview-service
-    command: ["serve", "--roles=enrich", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: enrich
-      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
-      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_WRITE_SECRET:-preview-write-dev-only}
-    depends_on: *etherview-runtime-depends-on
-    healthcheck: *etherview-healthcheck
-    restart: unless-stopped
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: enrich
 
   trace:
-    <<: *etherview-service
-    command: ["serve", "--roles=trace", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: trace
-    depends_on: *etherview-runtime-depends-on
-    healthcheck: *etherview-healthcheck
-    restart: unless-stopped
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: trace
 
   metadata:
-    <<: *etherview-service
-    command: ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: metadata
-      # The controlled local HTTPS gateway is reachable only by this worker's
-      # explicit development-only private-network exception.
-      ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "true"
-      SSL_CERT_FILE: /run/ipfs-ca/rootCA.pem
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: metadata
     volumes:
-      - ${ETHERVIEW_CONFIG_FILE:-./deploy/preview.config.yaml}:/etc/etherview/config.yaml:ro
+      - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
       - ./.local/preview-tls/rootCA.pem:/run/ipfs-ca/rootCA.pem:ro
-    depends_on:
-      <<: *etherview-runtime-depends-on
-      preview-gateway:
-        condition: service_healthy
-    healthcheck: *etherview-healthcheck
-    restart: unless-stopped
 
   maintenance:
-    <<: *etherview-service
-    command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *etherview-app-env
-      ETHERVIEW_ROLES: maintenance
-      ETHERVIEW_PUSH_PRIVATE_KEY:
-      ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
-      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
-    depends_on: *etherview-runtime-depends-on
-    healthcheck: *etherview-healthcheck
-    restart: unless-stopped
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: maintenance
 
 volumes:
   ipfs-data:

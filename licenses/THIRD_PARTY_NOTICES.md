@@ -153,16 +153,22 @@ The generator version and package integrity are pinned in `pnpm-lock.yaml`.
 
 ## Preview application contracts and Bundler
 
-The separate Preview Alto image contains Alto 0.0.21 at commit
-3413697d806785a5b57f7aefea1967ffd4fe618e (GPL-3.0-or-later), its source tree,
-pinned submodule sources, package lock and upstream LICENSE under `/app`.
-The reviewed license is also in `preview-alto-GPL-3.0.txt`.
+The separate Preview Bundler image contains the official Rundler 0.11.0 binary
+from https://github.com/alchemyplatform/rundler/releases/tag/v0.11.0.
+Its executable is GPL-3.0-or-later and its libraries are LGPL-3.0-or-later.
+The matching source is available at that release tag. Both license texts are
+retained in `preview-rundler-GPL-3.0.txt` and `preview-rundler-LGPL-3.0.txt`
+and shipped under `/app/licenses/` in the image. Linux ARM64 and AMD64 release
+archive checksums are pinned in `preview/rundler-release.json`.
 
 Preview genesis embeds account-abstraction v0.9.0 contracts (commit
-b36a1ed52ae00da6f8a4c8d50181e2877e4fa410, GPL-3.0) using the canonical creation
-inputs retained by that Alto revision. The release's `deployments/ethereum`
-files still describe v0.8 and are deliberately not used. The v0.9 source is
-included in the Alto image at `/app/contracts/lib/account-abstraction-v9`.
+b36a1ed52ae00da6f8a4c8d50181e2877e4fa410, GPL-3.0) using canonical creation
+inputs with immutable source and digest provenance in
+`preview/contracts/upstream/account-abstraction-v09.json`.
+Those construction inputs originated in Alto's deployment constants; Alto and
+its simulation helpers are not included in the runtime image or genesis.
+Account-abstraction source is available from the official
+https://github.com/eth-infinitism/account-abstraction repository at that commit.
 
 ENS contracts 1.7.0 are MIT licensed (`preview-ens-MIT.txt`). Preview vendors the
 required Solidity import closure from the official GitHub commit
@@ -171,12 +177,6 @@ OpenZeppelin packages. The ENS npm package is not installed because its package
 name is covered by GHSA-58x9-4xmp-8mg5. PreviewRegistrarController changes only
 the upstream controller name and `.eth` node/suffix to `.test`. The exact source
 snapshot and compiler settings are checked in; startup never fetches or compiles.
-
-The pinned Alto SafeValidator predates its returning simulation ABI. Preview applies
-`deploy/preview/alto-safe-validation.patch` to decode the traced
-`DelegateAndRevert(bool,bytes)` envelope and the returned validation tuple. Failed
-simulations remain rejected; signature, storage/opcode, prefund and time-window
-validation remain enabled. The patch and corresponding source are shipped in the image.
 
 ENS buffer 0.1.3 is BSD-2-Clause; `npm-clarifications.json` pins its reviewed
 license-file hash where the scanner otherwise reports only BSD.

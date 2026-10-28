@@ -351,11 +351,6 @@
           "path": "docs/operations.md",
           "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
           "count": 1
-        },
-        {
-          "path": "deploy/preview/bundler.Dockerfile",
-          "template": "FROM ghcr.io/foundry-rs/foundry:v{{version}} AS foundry",
-          "count": 1
         }
       ],
       "commands": [],
@@ -382,7 +377,7 @@
           "count": 1
         },
         {
-          "path": "compose.yaml",
+          "path": "preview/compose/gateway.yaml",
           "template": "    image: ${PREVIEW_GATEWAY_IMAGE:-caddy:{{version}}-alpine}",
           "count": 1
         },
@@ -661,6 +656,11 @@
           "path": "internal/verify/solcjs.go",
           "template": "\tsolcJSNodeVersion         = \"v{{version}}\"",
           "count": 1
+        },
+        {
+          "path": "preview/bundler.Dockerfile",
+          "template": "FROM node:{{version}}",
+          "count": 1
         }
       ],
       "commands": [],
@@ -831,29 +831,26 @@
       }
     },
     {
-      "id": "preview-alto",
-      "source": "npm",
-      "package": "@pimlico/alto",
+      "id": "preview-rundler",
+      "source": "github",
+      "package": "alchemyplatform/rundler",
       "policy": "report",
-      "reason": "Exact Git revision and submodules bind simulation bytecode and v0.9 validation; rebuild artifacts and pass real PoS acceptance before updating.",
+      "reason": "Pinned official Linux release checksums and safe v0.9 validation require real PoS acceptance before updating.",
       "pins": [
         {
-          "path": "deploy/preview/bundler.Dockerfile",
-          "template": "# Alto version {{version}}; revision pinned below",
+          "path": "preview/rundler-release.json",
+          "template": "  \"version\": \"{{version}}\",",
           "count": 1
         }
       ],
       "reviewFiles": [
-        "deploy/preview/contracts/generate.mjs",
-        "deploy/preview/contracts/manifest.json"
+        "preview/rundler-release.json",
+        "preview/bundler-start.mjs",
+        "preview/rundler.toml"
       ],
       "commands": [],
       "generated": [],
-      "ignores": {
-        "npm": [
-          "@pimlico/alto"
-        ]
-      }
+      "ignores": {}
     },
     {
       "id": "preview-ens",
@@ -863,15 +860,15 @@
       "reason": "Genesis storage, controller TLD patch, dependency notices and resolver behavior require reviewed regeneration.",
       "pins": [
         {
-          "path": "deploy/preview/contracts/ens-upstream.mjs",
+          "path": "preview/contracts/ens-upstream.mjs",
           "template": "const version = \"{{version}}\";",
           "count": 1
         }
       ],
       "reviewFiles": [
-        "deploy/preview/contracts/generate.mjs",
-        "deploy/preview/contracts/manifest.json",
-        "deploy/preview/contracts/upstream/ens-sources.json"
+        "preview/contracts/generate.mjs",
+        "preview/contracts/manifest.json",
+        "preview/contracts/upstream/ens-sources.json"
       ],
       "commands": [],
       "generated": [],

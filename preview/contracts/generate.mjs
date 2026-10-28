@@ -27,7 +27,7 @@ import { entryPoint09Abi, entryPoint09Address } from "viem/account-abstraction";
 import { parseAbi } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 const here = import.meta.dirname;
-const root = path.resolve(here, "../../..");
+const root = path.resolve(here, "../..");
 const require = createRequire(import.meta.url);
 const ensSources = JSON.parse(
   fs.readFileSync(new URL("upstream/ens-sources.json", import.meta.url)),
@@ -43,7 +43,7 @@ const chain = defineChain({
   rpcUrls: { default: { http: [] } },
 });
 const factory = "0x4e59b44847b379578588920cA78FbF26c0B4956C";
-const genesisPath = path.join(root, "deploy/preview.genesis.json");
+const genesisPath = path.join(root, "preview/genesis.json");
 const original = JSON.parse(fs.readFileSync(genesisPath));
 const previous = fs.existsSync(path.join(here, "manifest.json"))
   ? JSON.parse(fs.readFileSync(path.join(here, "manifest.json")))
@@ -79,7 +79,12 @@ contract PreviewPriceOracle is IPriceOracle {
  function price(string calldata, uint256, uint256 duration) external pure returns (Price memory) { return Price(duration * 1 gwei, 0); }
  function supportsInterface(bytes4 id) external pure returns(bool) { return id == type(IPriceOracle).interfaceId || id == 0x01ffc9a7; }
 }`;
+const tokenSource = fs.readFileSync(
+  path.join(root, "e2e/x402local/contracts/LocalBillingToken.sol"),
+  "utf8",
+);
 const sources = {
+  "LocalBillingToken.sol": { content: tokenSource },
   ...Object.fromEntries(
     Object.entries(ensSources.roots)
       .filter(([name]) => name !== "ETHRegistrarController")
@@ -121,7 +126,7 @@ function compiled(file, name) {
   return { abi: a.abi, bytecode: `0x${a.evm.bytecode.object}` };
 }
 const artifacts = {
-  ...upstream("alto-simulations").artifacts,
+  LocalBillingToken: compiled("LocalBillingToken.sol", "LocalBillingToken"),
   EntryPoint: { abi: entryPoint09Abi },
   SimpleAccountFactory: {
     abi: parseAbi([
@@ -298,8 +303,21 @@ try {
   await write("ReverseRegistrar", "setDefaultResolver", [resolver]);
   await write("ReverseRegistrar", "setController", [controller, true]);
   await write("DefaultReverseRegistrar", "setController", [controller, true]);
-  await deploy("PimlicoSimulations");
-  await deploy("EntryPointSimulations09");
+  const tokenDeployer = mnemonicToAccount(mnemonic, { addressIndex: 1 });
+  await rpc.request({
+    method: "anvil_setBalance",
+    params: [tokenDeployer.address, toHex(parseEther("10"))],
+  });
+  const tokenReceipt = await wait(
+    await createWalletClient({ chain, transport, account: tokenDeployer }).deployContract({
+      ...artifacts.LocalBillingToken,
+      args: ["Local USD", "1", mnemonicToAccount(mnemonic).address, 1000000000000000000n],
+      gas: 5000000n,
+    }),
+  );
+  addresses.LocalBillingToken = tokenReceipt.contractAddress;
+  if (addresses.LocalBillingToken.toLowerCase() !== "0x8464135c8f25da09e49bc8782676a84730c318bc")
+    throw new Error("Local USD address mismatch");
   const encoded = await rpc.request({ method: "anvil_dumpState", params: [] });
   let bytes = Buffer.from(encoded.slice(2), "hex");
   if (bytes[0] === 31 && bytes[1] === 139) bytes = gunzipSync(bytes);
@@ -322,15 +340,15 @@ try {
   }
   const devAccounts = {};
   for (const [name, index] of [
+    ["x402Facilitator", 1],
     ["bundlerExecutor", 9],
-    ["bundlerUtility", 10],
     ["ensOwner", 19],
   ]) {
     const address = mnemonicToAccount(mnemonic, { addressIndex: index }).address;
     if (existing.has(address.slice(2).toLowerCase()))
       throw new Error(`Funding allocation collision: ${name}`);
     alloc[address.toLowerCase()] = {
-      balance: toHex(parseEther("1000")),
+      balance: toHex(parseEther(index === 1 ? "10" : "1000")),
       nonce: toHex(BigInt(state.accounts[address.toLowerCase()]?.nonce ?? 0)),
     };
     devAccounts[name] = { address, index };
@@ -376,6 +394,7 @@ try {
       settings: input.settings,
       controllerSourceSha256: sha(controllerSource),
       priceOracleSourceSha256: sha(oracleSource),
+      billingSourceSha256: sha(tokenSource),
     },
     allocationSha256: sha(JSON.stringify(alloc, null, 2) + "\n"),
     sources: {

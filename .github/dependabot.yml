@@ -39,7 +39,6 @@ updates:
       - dependency-name: "pnpm"
       - dependency-name: "pyodide"
       - dependency-name: "pyodide-legacy"
-      - dependency-name: "@pimlico/alto"
       - dependency-name: "solc"
       - dependency-name: "solc-*"
     groups:
@@ -78,6 +77,7 @@ updates:
 
   - package-ecosystem: docker
     directories:
+      - /preview
       - /
       - /e2e/*
     schedule:
@@ -101,6 +101,7 @@ updates:
       - /
       - /e2e/*
       - /deploy
+      - /preview/compose
     schedule:
       interval: monthly
       day: monday

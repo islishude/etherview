@@ -11,7 +11,7 @@ import (
 
 func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	data, err := os.ReadFile("../../preview/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 
 func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.genesis.json")
+	data, err := os.ReadFile("../../preview/genesis.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 
 func TestPreviewEnablesConsensusAndDurableBlobs(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	data, err := os.ReadFile("../../preview/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

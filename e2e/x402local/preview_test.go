@@ -49,7 +49,7 @@ func TestPreviewX402(t *testing.T) {
 	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", overlay)
 	project.Env = map[string]string{
 		"ETHERVIEW_IMAGE":       os.Getenv("IMAGE"),
-		"ETHERVIEW_CONFIG_FILE": filepath.Join(root, "deploy/preview.config.yaml"),
+		"ETHERVIEW_CONFIG_FILE": filepath.Join(root, "preview/config.yaml"),
 		"PREVIEW_NETWORK_DIR":   filepath.Join(artifacts, "network"),
 		"PREVIEW_HTTPS_PORT":    "0", "GETH_HTTP_PORT": "0", "GETH_WS_PORT": "0",
 		"LIGHTHOUSE_HTTP_PORT": "0", "IPFS_API_PORT": "0", "ETHERVIEW_METRICS_PORT": "0",
@@ -92,7 +92,7 @@ func TestPreviewX402(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rpcClient.Close()
-	// Initialization needs actual PoS block production, not just an open RPC.
+	// Settlement needs actual PoS block production, not just an open RPC.
 	deadline := time.Now().Add(180 * time.Second)
 	for {
 		head, err := rpcClient.BlockNumber(ctx)
@@ -104,8 +104,11 @@ func TestPreviewX402(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 	}
-	run("run", "--rm", "x402-init")
 	token := common.HexToAddress("0x8464135c8F25Da09e49BC8782676a84730C318bC")
+	code, err := rpcClient.CodeAt(ctx, token, big.NewInt(0))
+	if err != nil || len(code) == 0 {
+		t.Fatalf("Local USD missing at genesis: %v", err)
+	}
 	ownerKey, err := crypto.HexToECDSA(ownerKeyHex)
 	if err != nil {
 		t.Fatal(err)
@@ -160,10 +163,10 @@ func TestPreviewX402(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		run("run", "--rm", "x402-init")
+		run("up", "-d", "--no-build", "--no-deps", "--force-recreate", "--wait", "x402-facilitator")
 		afterNonce, err := rpcClient.NonceAt(ctx, common.HexToAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8"), nil)
 		if err != nil || nonce != afterNonce || before.Cmp(tokenUintAt(t, rpcClient, token, "balanceOf", owner)) != 0 {
-			t.Fatal("reinitialization changed chain state")
+			t.Fatal("facilitator recreation changed chain state")
 		}
 		run("stop", "x402-facilitator")
 		run("up", "-d", "--no-build", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "180", "api")
@@ -176,7 +179,7 @@ func TestPreviewX402(t *testing.T) {
 		if account.TotalCreditAtomic != credit || account.TotalDebitAtomic != debit || account.ReservedAtomic != "0" || recipient.String() != credit || account.AvailableAtomic != strconv.Itoa((index+1)*199) {
 			t.Fatalf("%s chain/ledger mismatch: %+v recipient=%s", mode, account, recipient)
 		}
-		t.Logf("%s: credit=%s debit=%s available=%s recipient=%s; replay, exact allowance, reinit and outage passed", mode, credit, debit, account.AvailableAtomic, recipient)
+		t.Logf("%s: credit=%s debit=%s available=%s recipient=%s; replay, exact allowance, recreation and outage passed", mode, credit, debit, account.AvailableAtomic, recipient)
 		run("start", "x402-facilitator")
 	}
 	// A broadcast on a paused PoS chain is uncertain, not rejected. Preserve

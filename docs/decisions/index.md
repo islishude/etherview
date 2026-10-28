@@ -6,6 +6,8 @@ merging distinct invariants.
 
 ## Core chain, persistence, and runtime correctness
 
+- [ADR-0057 — Preview Rundler](ADR-0057-preview-rundler.md)
+
 - [ADR-0055 — Consensus and Blob Archives](ADR-0055-consensus-and-blob-archives.md)
 
 - [ADR-0052 — Amsterdam Explorer Support](ADR-0052-amsterdam-explorer-support.md)

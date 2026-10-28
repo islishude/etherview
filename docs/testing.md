@@ -826,7 +826,7 @@ then exercises the same Preview Geth/Lighthouse deployment in a disposable
 project with isolated ports, network material and volumes. The prebuilt form
 is `make test-preview-x402-prebuilt` after `make docker-build preview-images`.
 It checks both EIP-3009 and Permit2, exact allowance consumption, replay,
-chain/credit equality, repeat initialization, API restart and spending during
+chain/credit equality, genesis predeployment, Facilitator recreation, API restart and spending during
 Facilitator outage in split and all-role modes. It also pauses the validator,
 checks persisted `settlement_pending` with the exact broadcast hash, resumes
 mining and reconciles one credit without resending. Controlled RPC tests cover
@@ -835,8 +835,8 @@ uncertainty and receipt errors/timeouts. Its HTTP loopback test origin
 isolates payment/runtime acceptance; it does not establish browser wallet or
 production Permit2/proxy compatibility. The existing Preview metadata/browser
 and consensus gates remain required. `make preview-network-check` additionally
-checks initializer rejection of wrong chains, used deployment nonces and code
-drift without sending transactions. No local test closes P60-T17.
+checks the absence of transaction-based initialization. The contract fixture
+checks genesis token storage, owner balance and Facilitator funding. No local test closes P60-T17.
 
 ## Evidence Rules
 
@@ -1333,12 +1333,13 @@ allocations and exercise registration, commitment age/expiry, pricing, renewal,
 transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
 confined to this contract test; it does not establish PoS or Bundler acceptance.
 
-`make test-preview-contracts` builds the production image and pinned Alto helper,
+`make test-preview-contracts` builds the production image and pinned Rundler helper,
 then runs the Go-owned real Geth/Lighthouse Preview gate. The prebuilt equivalent
 is `make test-preview-contracts-prebuilt` after `make docker-build preview-images`.
 It checks block-zero code/storage/nonces/balances and authenticated genesis import,
 standard Bundler RPC and rejected debug methods, signed successful/reverted
-UserOperations, bad signatures, insufficient prefund, duplicate submission,
+UserOperations, bad signatures, insufficient prefund at submission (Rundler can
+estimate unfunded accounts), duplicate submission,
 local `.test` registration/renewal/transfer, generated API data and real browser
 pages in split/all layouts. Container recreation retains state. PostgreSQL ENS
 generations must have no official source. Tests own their project, network and

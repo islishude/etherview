@@ -14,7 +14,7 @@
     "format:check": "pnpm run format:repo:check && pnpm --dir web run format:check",
     "format:repo": "oxfmt --config .oxfmtrc.json --disable-nested-config --write '**/*.{js,mjs,cjs,yaml,yml,md}'",
     "format:repo:check": "oxfmt --config .oxfmtrc.json --disable-nested-config --check '**/*.{js,mjs,cjs,yaml,yml,md}'",
-    "check:licenses": "node .github/scripts/check-workspace-licenses.mjs web && node .github/scripts/check-workspace-licenses.mjs compiler && node .github/scripts/check-workspace-licenses.mjs deploy/preview/contracts"
+    "check:licenses": "node .github/scripts/check-workspace-licenses.mjs web && node .github/scripts/check-workspace-licenses.mjs compiler && node .github/scripts/check-workspace-licenses.mjs preview/contracts"
   },
   "devDependencies": {
     "oxfmt": "0.70.0",

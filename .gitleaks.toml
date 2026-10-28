@@ -50,9 +50,16 @@ regexes = ['''^nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r$''']
 description = "Exact public development keys and token address for local Preview x402"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = ['''^compose\.yaml$''', '''^deploy/preview/x402-init\.sh$''', '''^docs/operations\.md$''']
+paths = ['''^preview/compose/x402\.yaml$''', '''^docs/operations\.md$''']
 regexes = [
   '''^ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''',
   '''^59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d$''',
   '''^0x8464135c8F25Da09e49BC8782676a84730C318bC$'''
 ]
+
+[[allowlists]]
+description = "Exact public mnemonic index 9 key in the Preview-only Rundler launcher"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^preview/bundler-start\.mjs$''']
+regexes = ['''^2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6$''']

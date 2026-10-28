@@ -91,11 +91,14 @@ poll the intent after an uncertain response but never resubmit automatically.
 ## Local Preview integration
 
 The Geth/Lighthouse Preview enables prepaid billing and both top-up methods on
-its private chain (48815). A test-only initializer deploys the existing local
-billing token from a dedicated development account, verifies exact bytecode on
-reuse and never remints balances. The separate local Facilitator has no public
-port, uses only local development funds and is not a core readiness dependency.
-Initialization follows PoS readiness and failures fail the lifecycle command.
+its private chain (48815). The existing local billing token is predeployed in
+genesis with its constructor storage, initial owner balance and funded
+Facilitator account. The pinned offline genesis generator executes construction
+and exports the complete allocation; ordinary startup sends no deployment or
+funding transactions. Network fingerprint validation rejects stale bundles.
+The separate local Facilitator has no public port, uses only local development
+funds and is not a core readiness dependency. Restart preserves spent
+authorizations and balances without reminting.
 The API/all role alone receives the fingerprint pepper. Docker bridge CIDRs and
 plain HTTP are explicit Preview-only transport exceptions; production defaults
 remain strict. Permit2 uses the fixture token's local witness settlement path,

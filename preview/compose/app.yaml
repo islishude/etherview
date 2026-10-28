@@ -1,0 +1,152 @@
+x-etherview-app-env: &etherview-app-env
+  ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS:
+  ETHERVIEW_BYTECODE_DB_ENABLED:
+  ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS:
+  ETHERVIEW_BYTECODE_DB_BASE_URL:
+  ETHERVIEW_BYTECODE_DB_TIMEOUT:
+  ETHERVIEW_BYTECODE_DB_MAX_RESPONSE_BYTES:
+  ETHERVIEW_BYTECODE_DB_MAX_CONCURRENCY:
+  ETHERVIEW_BYTECODE_DB_REQUEST_INTERVAL:
+  ETHERVIEW_BYTECODE_DB_COOLDOWN:
+  ETHERVIEW_TURNSTILE_ENABLED:
+  ETHERVIEW_TURNSTILE_SITE_KEY:
+  ETHERVIEW_PUSH_ENABLED:
+  ETHERVIEW_PUSH_PUBLIC_KEY:
+  ETHERVIEW_PUSH_CONTACT:
+  ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
+  ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
+  # Keep authoritative HTTP polling and add a newHeads wake hint so locally
+  # mined blocks do not wait for the normal polling interval.
+  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://geth:8545,ws://geth:8546}
+  ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
+  ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
+  ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
+  ETHERVIEW_LOG_FORMAT: text
+  ETHERVIEW_SYNC_PROGRESS_LOG_INTERVAL:
+  ETHERVIEW_FEATURE_USER_OPERATIONS:
+  ETHERVIEW_ERC4337_ENTRY_POINTS:
+  # A value-less override preserves the checked-in gateway unless the caller
+  # explicitly selects another HTTPS endpoint.
+  ETHERVIEW_METADATA_IPFS_GATEWAY:
+  ETHERVIEW_METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS:
+
+x-etherview-api-env: &etherview-api-env
+  <<: *etherview-app-env
+  ETHERVIEW_TURNSTILE_SECRET_KEY:
+  ETHERVIEW_TURNSTILE_SECRET_KEY_FILE:
+  ETHERVIEW_X402_FINGERPRINT_PEPPER: "preview-x402-fingerprint-dev-only-0000000000000000000000"
+  ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS:
+  ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
+  ETHERVIEW_VERIFICATION_WORKER_COUNT:
+  ETHERVIEW_VERIFICATION_EXECUTOR_PATH:
+  ETHERVIEW_VERIFICATION_GEAS_PATH:
+  # Docker Desktop fake-IP DNS maps public compiler hosts into 198.18/15.
+  # This Preview-only escape hatch retains exact HTTPS-origin, TLS, size, and
+  # SHA-256 validation and is deliberately absent from every other role.
+  ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
+
+x-etherview-service: &etherview-service
+  image: ${ETHERVIEW_IMAGE:-etherview:local}
+  environment: *etherview-app-env
+
+x-etherview-healthcheck: &etherview-healthcheck
+  test: ["CMD", "/etherview", "healthcheck"]
+  interval: 5s
+  timeout: 3s
+  retries: 34
+  start_period: 10s
+
+x-etherview-runtime-depends-on: &etherview-runtime-depends-on
+  postgres:
+    condition: service_healthy
+  migration:
+    condition: service_completed_successfully
+  geth:
+    condition: service_started
+
+services:
+  migration:
+    <<: *etherview-service
+    command: ["migrate", "up", "--config=/etc/etherview/config.yaml"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    <<: *etherview-service
+    command: ["serve", "--roles=api", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-api-env
+      ETHERVIEW_ROLES: api
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-reader
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_READ_SECRET:-preview-read-dev-only}
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
+    ports:
+      - "127.0.0.1:${ETHERVIEW_METRICS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+  sync:
+    <<: *etherview-service
+    command: ["serve", "--roles=sync", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: sync
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
+    restart: unless-stopped
+
+  enrich:
+    <<: *etherview-service
+    command: ["serve", "--roles=enrich", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: enrich
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_WRITE_SECRET:-preview-write-dev-only}
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
+    restart: unless-stopped
+
+  trace:
+    <<: *etherview-service
+    command: ["serve", "--roles=trace", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: trace
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
+    restart: unless-stopped
+
+  metadata:
+    <<: *etherview-service
+    command: ["serve", "--roles=metadata", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: metadata
+      # The controlled local HTTPS gateway is reachable only by this worker's
+      # explicit development-only private-network exception.
+      ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "true"
+      SSL_CERT_FILE: /run/ipfs-ca/rootCA.pem
+    depends_on:
+      <<: *etherview-runtime-depends-on
+      preview-gateway:
+        condition: service_healthy
+    healthcheck: *etherview-healthcheck
+    restart: unless-stopped
+
+  maintenance:
+    <<: *etherview-service
+    command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: maintenance
+      ETHERVIEW_PUSH_PRIVATE_KEY:
+      ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
+      ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
+    restart: unless-stopped

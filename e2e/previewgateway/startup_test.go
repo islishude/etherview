@@ -31,7 +31,7 @@ func TestInvalidCertificatesFailStartup(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			command := exec.CommandContext(ctx, binary, "run", "--rm", "--network", "none",
-				"-v", root+"/deploy/preview/Caddyfile:/etc/caddy/Caddyfile:ro",
+				"-v", root+"/preview/Caddyfile:/etc/caddy/Caddyfile:ro",
 				"-v", cert+":/run/preview-tls/gateway.crt:ro",
 				"-v", test.key+":/run/preview-tls/gateway.key:ro", image,
 				"caddy", "validate", "--config", "/etc/caddy/Caddyfile")

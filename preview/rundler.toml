@@ -1,0 +1,8 @@
+name = "Etherview Preview"
+id = 48815
+block_gas_limit = 60000000
+# Match the private Geth priority fee floor (0.001 gwei).
+min_max_priority_fee_per_gas = 1000000
+eip7702_enabled = true
+eip7623_enabled = true
+bundle_max_send_interval_millis = 3000

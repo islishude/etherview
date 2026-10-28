@@ -12,7 +12,7 @@ import (
 // The custom Preview genesis must include the system contracts installed by
 // the pinned Geth developer genesis; enabling forks alone cannot deploy them.
 func TestPreviewGenesisSystemContracts(t *testing.T) {
-	data, err := os.ReadFile("../../deploy/preview.genesis.json")
+	data, err := os.ReadFile("../../preview/genesis.json")
 	if err != nil {
 		t.Fatal(err)
 	}

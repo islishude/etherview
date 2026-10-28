@@ -111,7 +111,7 @@ test("default Compose selects Preview and retains its project and volumes", () =
   assert.equal(config.name, "etherview-preview");
   assert.equal(config.services.etherview, undefined);
   for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"]) {
-    assertApplicationPaths(config.services[role], "deploy/preview.config.yaml");
+    assertApplicationPaths(config.services[role], "preview/config.yaml");
     assert.equal(config.services[role].profiles, undefined);
   }
   for (const name of [

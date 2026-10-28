@@ -10,20 +10,23 @@ const root = path.resolve(import.meta.dirname, "../..");
 const inputs = [
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
-  "deploy/preview/bundler.Dockerfile",
-  "deploy/preview/alto-safe-validation.patch",
-  "deploy/preview.genesis.json",
-  "deploy/preview/generate.sh",
-  "deploy/preview/contracts/manifest.json",
-  "deploy/preview/contracts/allocation.json",
-  "deploy/preview/contracts/generate.mjs",
-  "deploy/preview/contracts/upstream.mjs",
-  "deploy/preview/contracts/ens-upstream.mjs",
-  "deploy/preview/contracts/package.json",
+  "preview/bundler.Dockerfile",
+  "preview/rundler-release.json",
+  "preview/rundler.toml",
+  "preview/bundler-start.mjs",
+  "preview/genesis.json",
+  "preview/generate.sh",
+  "preview/contracts/manifest.json",
+  "preview/contracts/allocation.json",
+  "preview/contracts/generate.mjs",
+  "e2e/x402local/contracts/LocalBillingToken.sol",
+  "preview/contracts/upstream.mjs",
+  "preview/contracts/ens-upstream.mjs",
+  "preview/contracts/package.json",
   ...fs
-    .readdirSync(path.join(root, "deploy/preview/contracts/upstream"))
+    .readdirSync(path.join(root, "preview/contracts/upstream"))
     .sort()
-    .map((name) => `deploy/preview/contracts/upstream/${name}`),
+    .map((name) => `preview/contracts/upstream/${name}`),
 ];
 const required = [
   "metadata/genesis.json",
@@ -115,9 +118,7 @@ export function prepareNetwork(directory, { checkOnly = false, env = process.env
   const temporary = fs.mkdtempSync(`${directory}.tmp-`);
   try {
     fs.mkdirSync(path.join(temporary, "metadata"));
-    const genesis = JSON.parse(
-      fs.readFileSync(path.join(root, "deploy/preview.genesis.json"), "utf8"),
-    );
+    const genesis = JSON.parse(fs.readFileSync(path.join(root, "preview/genesis.json"), "utf8"));
     genesis.timestamp = `0x${(BigInt(Math.floor(Date.now() / 1000)) + 90n).toString(16)}`;
     fs.writeFileSync(
       path.join(temporary, "metadata/genesis.json"),
@@ -136,7 +137,7 @@ export function prepareNetwork(directory, { checkOnly = false, env = process.env
       "-v",
       `${temporary}:/data`,
       "-v",
-      `${path.join(root, "deploy/preview/generate.sh")}:/generate.sh:ro`,
+      `${path.join(root, "preview/generate.sh")}:/generate.sh:ro`,
       generatorImage,
       "/generate.sh",
     ]);

@@ -6,6 +6,7 @@ import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import {
+  encodeAbiParameters,
   namehash,
   zeroHash,
   keccak256,
@@ -25,7 +26,7 @@ import {
   readState,
   localName,
 } from "./client.mjs";
-const genesis = JSON.parse(fs.readFileSync(new URL("../../preview.genesis.json", import.meta.url)));
+const genesis = JSON.parse(fs.readFileSync(new URL("../genesis.json", import.meta.url)));
 test("manifest and allocation bind real genesis code and funded isolated identities", () => {
   const alloc = JSON.parse(fs.readFileSync(new URL("allocation.json", import.meta.url)));
   for (const [address, account] of Object.entries(alloc))
@@ -37,7 +38,15 @@ test("manifest and allocation bind real genesis code and funded isolated identit
     "0x433709009b8330fda32311df1c2afa402ed8d009",
   );
   assert.equal(genesis.alloc.f39fd6e51aad88f6f4ce6ab8827279cfffb92266.nonce, undefined);
-  assert.equal(genesis.alloc["70997970c51812dc3a010c7d01b50e0d17dc79c8"]?.nonce, undefined);
+  for (const address of [
+    "322619fcccc741880ee7071cbe4e877fb919ecf8",
+    "8f3acfd2738a732aa1e0367480559f13e8def69c",
+    "ca20cad9ae12f7e5855e07e16c174dedf53d4333",
+    "bcd4042de499d14e55001ccbb24a551f3b954096",
+  ])
+    assert.equal(genesis.alloc[address], undefined, "obsolete Alto allocation");
+
+  assert.equal(genesis.alloc["70997970c51812dc3a010c7d01b50e0d17dc79c8"].nonce, "0x1");
   assert.ok(BigInt(alloc[manifest.devAccounts.ensOwner.address.toLowerCase()].nonce) > 0n);
   assert.throws(() => localName("name.eth"));
   assert.throws(() => localName("x.test"));
@@ -67,7 +76,7 @@ test(
         "--hardfork",
         "cancun",
         "--init",
-        path.resolve(import.meta.dirname, "../../preview.genesis.json"),
+        path.resolve(import.meta.dirname, "../genesis.json"),
         "--silent",
       ],
       { stdio: "ignore" },
@@ -175,3 +184,24 @@ test(
     assert.equal((await quote(ctx, name)).available, true);
   },
 );
+
+test("Preview x402 code, constructor storage and settlement funds exist at genesis", () => {
+  const token = genesis.alloc["8464135c8f25da09e49bc8782676a84730c318bc"];
+  assert.ok(token.code.length > 2);
+  assert.equal(token.nonce, "0x1");
+  const storage = token.storage;
+  const slot = (n) => "0x" + BigInt(n).toString(16).padStart(64, "0");
+  assert.equal(BigInt(storage[slot(2)]), 1000000000000000000n);
+  const balanceSlot = keccak256(
+    encodeAbiParameters(
+      [{ type: "address" }, { type: "uint256" }],
+      ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", 3n],
+    ),
+  );
+  assert.equal(BigInt(storage[balanceSlot]), 1000000000000000000n);
+  assert.equal(Buffer.from(storage[slot(0)].slice(2, 20), "hex").toString(), "Local USD");
+  assert.equal(
+    BigInt(genesis.alloc["70997970c51812dc3a010c7d01b50e0d17dc79c8"].balance),
+    10n ** 19n,
+  );
+});

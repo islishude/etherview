@@ -150,7 +150,7 @@ test("Compose matrix retains every layout and isolates renderer and validator en
     ["monolith"],
     ["distributed"],
     [],
-    ["archive-init", "x402-init"],
+    ["archive-init"],
     [],
     [],
     ["monolith"],

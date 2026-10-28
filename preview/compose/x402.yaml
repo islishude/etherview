@@ -1,0 +1,18 @@
+services:
+  x402-facilitator:
+    image: etherview-x402-local-facilitator:local
+    environment:
+      X402_LOCAL_RPC_URL: http://geth:8545
+      X402_LOCAL_NETWORK: eip155:48815
+      X402_LOCAL_TOKEN: "0x8464135c8F25Da09e49BC8782676a84730C318bC"
+      # Public development key, funded only on the local Preview chain.
+      X402_LOCAL_FACILITATOR_PRIVATE_KEY: 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+    depends_on:
+      geth:
+        condition: service_started
+    healthcheck:
+      test: [CMD, /x402localfacilitator, --healthcheck]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    restart: unless-stopped

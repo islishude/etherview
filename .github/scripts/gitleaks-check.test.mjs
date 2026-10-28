@@ -130,13 +130,12 @@ test("root .local artifacts are ignored while source exceptions retain path and 
 
 test("Preview x402 exceptions permit only exact public identities at exact paths", () => {
   const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-x402-"));
-  const script = readFileSync("deploy/preview/x402-init.sh", "utf8");
-  const identities = ["owner_key", "deployer_key", "token"].map((name) => {
-    const match = script.match(new RegExp(`^${name}=(.+)$`, "m"));
-    assert.ok(match);
-    return match[1];
-  });
-  const paths = ["compose.yaml", "deploy/preview/x402-init.sh", "docs/operations.md"];
+  const compose = readFileSync("preview/compose/x402.yaml", "utf8");
+  const identities = [
+    compose.match(/X402_LOCAL_FACILITATOR_PRIVATE_KEY: (.+)/)[1],
+    "0x8464135c8F25Da09e49BC8782676a84730C318bC",
+  ];
+  const paths = ["preview/compose/x402.yaml", "docs/operations.md"];
   try {
     for (const file of [...paths, "nested/compose.yaml"]) {
       mkdirSync(dirname(join(root, file)), { recursive: true });
@@ -167,8 +166,8 @@ test("Preview x402 exceptions permit only exact public identities at exact paths
     assert.deepEqual(
       findings.map(({ File, StartLine }) => `${File}:${StartLine}`).sort(),
       [
-        ...paths.map((file) => `${file}:4`),
-        ...[1, 2, 3, 4].map((line) => `nested/compose.yaml:${line}`),
+        ...paths.map((file) => `${file}:3`),
+        ...[1, 2, 3].map((line) => `nested/compose.yaml:${line}`),
       ].sort(),
     );
   } finally {

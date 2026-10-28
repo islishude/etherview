@@ -14,6 +14,8 @@ function fixture(t) {
     join(dir, ".github/scripts/preview-env.mjs"),
     readFileSync(new URL("./preview-env.mjs", import.meta.url)),
   );
+  mkdirSync(join(dir, "preview"), { recursive: true });
+  writeFileSync(join(dir, "preview/rundler-download.mjs"), "");
   mkdirSync(join(dir, "bin"));
   mkdirSync(join(dir, ".local/preview-tls"), { recursive: true });
   for (const file of ["gateway.crt", "gateway.key", "rootCA.pem"])
@@ -26,6 +28,7 @@ function fixture(t) {
 import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
 appendFileSync(process.env.COMMAND_LOG, JSON.stringify({ command: ${JSON.stringify(name)}, args }) + "\\n");
+if (${JSON.stringify(name)} === "docker" && args[0] === "info") console.log("aarch64");
 if (${JSON.stringify(name)} === process.env.FAIL_COMMAND) process.exit(9);
 if (${JSON.stringify(name)} === "docker" && args[0] === "image" && args[1] === "inspect" && args[2] === process.env.MISSING_IMAGE) process.exit(1);
 if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAIL_OFFLINE) process.exit(7);
@@ -87,7 +90,7 @@ for (const suite of [
     assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
-      preview ? ["docker", "docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
+      preview ? ["docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
@@ -109,7 +112,6 @@ for (const suite of [
           "etherview:local",
           "caddy:2.11.7-alpine",
           "etherview-preview-bundler:local",
-          "etherview-x402-local-fixture:local",
           "etherview-x402-local-facilitator:local",
         ]
       : ["etherview:local"]) {

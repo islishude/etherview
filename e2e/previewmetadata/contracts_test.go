@@ -36,7 +36,7 @@ func TestPreviewContracts(t *testing.T) {
 	h := newHarness(t)
 	t.Cleanup(h.cleanup)
 	// Use the shipped configuration, with unrelated remote discovery disabled.
-	data, err := os.ReadFile(filepath.Join(h.root, "deploy/preview.config.yaml"))
+	data, err := os.ReadFile(filepath.Join(h.root, "preview/config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestPreviewContracts(t *testing.T) {
 			t.Fatal(err)
 		}
 		reportPath := filepath.Join(h.artifacts, "contracts-"+phase+".json")
-		command := exec.CommandContext(ctx, "node", "deploy/preview/contracts/scenario.mjs", "http://"+rpcBinding, "http://"+bundlerBinding, phase, reportPath)
+		command := exec.CommandContext(ctx, "node", "preview/contracts/scenario.mjs", "http://"+rpcBinding, "http://"+bundlerBinding, phase, reportPath)
 		command.Dir = h.root
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("contract scenario %s: %v\n%s", phase, err, output)

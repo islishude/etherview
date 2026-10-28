@@ -16,7 +16,7 @@ const runtimePathEnvironment = {
 const expectRuntimePathOverride =
   process.env.ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE === "true";
 const previewConfig = fs.readFileSync(
-  new URL("../../deploy/preview.config.yaml", import.meta.url),
+  new URL("../../preview/config.yaml", import.meta.url),
   "utf8",
 );
 const defaultConfig = fs.readFileSync(
@@ -146,7 +146,7 @@ for (const role of roles) {
   );
   assert.equal(configMounts.length, 1, `${role} Preview config mount count`);
   assert.ok(
-    configMounts[0].source.endsWith("/deploy/preview.config.yaml"),
+    configMounts[0].source.endsWith("/preview/config.yaml"),
     `${role} Preview config source`,
   );
   assert.equal(cacheMounts.length, role === "api" ? 1 : 0, `${role} compiler cache scope`);
@@ -386,4 +386,4 @@ for (const role of roles) {
   assert.ok(!services[role].depends_on["x402-init"]);
   assert.ok(!services[role].depends_on["x402-facilitator"]);
 }
-assert.deepEqual(requireService("x402-init").profiles, ["x402-init"]);
+assert.equal(services["x402-init"], undefined);

@@ -1,0 +1,8 @@
+{
+  "version": "0.11.0",
+  "repository": "alchemyplatform/rundler",
+  "linux": {
+    "arm64": {"target": "aarch64-unknown-linux-gnu", "sha256": "3c00812dfc10770d3b7e9ca946e8678927664b65a130a4e47c796380471cfb43"},
+    "amd64": {"target": "x86_64-unknown-linux-gnu", "sha256": "b9d9baf7ee145976aab5c392e3e6de16d6aae2e9126a0b20b10a0acab3d75240"}
+  }
+}

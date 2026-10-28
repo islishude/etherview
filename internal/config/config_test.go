@@ -252,7 +252,7 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 
 func TestPreviewPublicOriginMatchesBrowserAndWalletMetadata(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	data, err := os.ReadFile("../../preview/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

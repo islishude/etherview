@@ -81,7 +81,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/preview-tools"
           docker cp "$container:/usr/local/bin/anvil" "$RUNNER_TEMP/preview-tools/anvil"
           ANVIL="$RUNNER_TEMP/preview-tools/anvil" make preview-contracts-check
-          node deploy/preview/contracts/upstream.mjs --check
+          node preview/contracts/upstream.mjs --check
       - name: Validate Caddy gateway boundaries
         run: make test-preview-gateway
       - name: Run full Preview metadata acceptance

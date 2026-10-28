@@ -136,7 +136,7 @@ deployment block, then run `make recreate-preview` and the
 [bounded UserOperation reindex](../docs/operations.md#erc-4337-useroperation-indexing).
 All Preview roles receive the same registry.
 
-The Preview Geth container mounts `deploy/geth-entrypoint.sh` and initializes
+The Preview Geth container mounts `preview/geth-entrypoint.sh` and initializes
 the read-only Genesis file into the persistent `geth-data` volume before every
 start, then `exec`s Geth with Lighthouse driving block production. Override the
 execution image or published ports with `GETH_IMAGE`, `GETH_HTTP_PORT`, and
@@ -477,3 +477,18 @@ user, executing the binary as UID/GID 65532 with a read-only filesystem,
 dropped capabilities, and no-new-privileges, and scanning the exported root
 filesystem for forbidden build, package-manager, shell, and native compiler
 payloads while validating the bundled executor manifest and self-test.
+
+### Preview configuration layout
+
+The repository-root `compose.yaml` is the single Preview entrypoint. It uses
+Compose `extends` to load service settings from `preview/compose/`:
+`app.yaml`, `chain.yaml`, `storage.yaml`, `gateway.yaml` and `x402.yaml`.
+Host bind mounts and build contexts remain in the root entrypoint so relative
+environment overrides retain repository-root semantics. Named volumes and the
+project identity also remain there. Do not start the service fragments directly.
+
+Preview configuration, genesis, contract artifacts and helper scripts live in
+`preview/`; `deploy/` retains the external-chain production template.
+Local USD code and initial state are part of genesis; no x402 initializer runs
+at startup. Existing network bundles require explicit recreation after genesis
+changes, which discards their local chain and billing data.

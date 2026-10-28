@@ -317,7 +317,7 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-local-fixture:local etherview-x402-local-facilitator:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-local-facilitator:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -502,7 +502,7 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-x402.test.mjs
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-x402.test.mjs .github/scripts/preview-bundler.test.mjs
 
 preview-env:
 	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
@@ -511,7 +511,7 @@ preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
 
 preview-x402-images:
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-init x402-facilitator
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-facilitator
 
 preview-images: preview-env preview-x402-images preview-bundler-image
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
@@ -523,11 +523,10 @@ start-preview: preview-env preview-cert-check docker-build preview-images
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm x402-init
 	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile x402-init --profile archive-init down --volumes --remove-orphans
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
 recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images preview-bundler-image
@@ -537,7 +536,6 @@ recreate-preview: preview-env preview-cert-check preview-network-runtime docker-
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm x402-init
 
 
 # Local x402 lifecycle
@@ -573,16 +571,19 @@ install-preview-tools:
 
 .PHONY: preview-bundler-image preview-contracts-generate preview-contracts-check test-preview-contracts test-preview-contracts-prebuilt
 preview-bundler-image:
-	$(BUILDX) build --load -t etherview-preview-bundler:local -f deploy/preview/bundler.Dockerfile .
+	@arch=$$($(DOCKER) info --format '{{.Architecture}}'); \
+	case "$$arch" in aarch64|arm64) arch=arm64 ;; x86_64|amd64) arch=amd64 ;; *) echo "Unsupported Rundler architecture"; exit 1 ;; esac; \
+	$(NODE) preview/rundler-download.mjs "$$arch" && \
+	$(BUILDX) build --load --build-context rundler=.local/rundler/$$arch -t etherview-preview-bundler:local -f preview/bundler.Dockerfile .
 
-preview-contracts-generate: pnpm-install preview-bundler-image
-	$(NODE) deploy/preview/contracts/ens-upstream.mjs
-	$(NODE) deploy/preview/contracts/upstream.mjs
-	$(NODE) deploy/preview/contracts/generate.mjs
+preview-contracts-generate: pnpm-install
+	$(NODE) preview/contracts/ens-upstream.mjs
+	$(NODE) preview/contracts/upstream.mjs
+	$(NODE) preview/contracts/generate.mjs
 
 preview-contracts-check: pnpm-install
-	$(NODE) deploy/preview/contracts/generate.mjs --check
-	$(NODE) --test deploy/preview/contracts/test.mjs
+	$(NODE) preview/contracts/generate.mjs --check
+	$(NODE) --test preview/contracts/test.mjs
 
 test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt
