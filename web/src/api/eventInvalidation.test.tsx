@@ -49,6 +49,7 @@ class FakeEventSource {
 
 describe("durable chain event invalidation", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     FakeEventSource.instances = [];
     vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
   });
@@ -73,11 +74,46 @@ describe("durable chain event invalidation", () => {
     await act(async () => {
       source.emit("status");
       source.emit("head");
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
     });
     expect(invalidate).toHaveBeenCalledTimes(1);
     view.unmount();
     expect(source.closed).toBe(true);
+  });
+
+  it("batches replay events delivered in separate tasks and cancels pending batches", async () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries").mockResolvedValue();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChainEventInvalidation />
+      </QueryClientProvider>,
+    );
+    const source = FakeEventSource.instances[0]!;
+    await act(async () => {
+      for (let n = 0; n < 20; n++) {
+        source.emit(
+          "status",
+          String(n + 1),
+          '{"reason":"browsing_publication","block_number":"50"}',
+        );
+        await vi.advanceTimersByTimeAsync(5);
+      }
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      source.emit("head", "21");
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    source.emit("head", "22");
+    view.unmount();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidate).toHaveBeenCalledTimes(2);
   });
 
   it("reconnects closed streams with bounded backoff and cleans up timers", async () => {
@@ -128,6 +164,7 @@ describe("durable chain event invalidation", () => {
     );
     await act(async () => {
       FakeEventSource.instances[0]!.emit("reorg", "9007199254740993");
+      await vi.advanceTimersByTimeAsync(0);
     });
     expect(eventWatermark(client)).toBe("9007199254740993");
     expect(eventWatermark(other)).toBe("0");
@@ -180,6 +217,7 @@ describe("durable chain event invalidation", () => {
     );
     await act(async () => {
       FakeEventSource.instances[0]!.emit("status");
+      await vi.advanceTimersByTimeAsync(250);
     });
     expect(pager.result.current.page).toBe(2);
     await act(async () => {
@@ -188,6 +226,7 @@ describe("durable chain event invalidation", () => {
         "2",
         '{"reason":"browsing_publication","block_number":"101"}',
       );
+      await vi.advanceTimersByTimeAsync(250);
     });
     expect(pager.result.current.page).toBe(2);
     expect(client.getQueryData(["address-tokens", "address"])).toBeDefined();
@@ -197,6 +236,7 @@ describe("durable chain event invalidation", () => {
         "3",
         '{"reason":"browsing_publication","block_number":"50"}',
       );
+      await vi.advanceTimersByTimeAsync(250);
     });
     expect(client.getQueryData(["address-tokens", "address"])).toBeUndefined();
     expect(pager.result.current.page).toBe(1);

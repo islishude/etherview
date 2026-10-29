@@ -22,12 +22,12 @@ export function ChainEventInvalidation() {
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     let backoff = 1_000;
     let disposed = false;
-    let scheduled = false;
+    let scheduled: ReturnType<typeof setTimeout> | undefined;
     let refreshing = Promise.resolve();
     const pending = new Set<ChainEventType>();
     const pendingPublications = new Set<string>();
     const flush = () => {
-      scheduled = false;
+      scheduled = undefined;
       if (disposed) return;
       const types = [...pending];
       pending.clear();
@@ -73,9 +73,13 @@ export function ChainEventInvalidation() {
     };
     const schedule = (types: readonly ChainEventType[]) => {
       for (const type of types) pending.add(type);
-      if (scheduled || disposed) return;
-      scheduled = true;
-      queueMicrotask(flush);
+      if (types.includes("reorg") && scheduled !== undefined) {
+        clearTimeout(scheduled);
+        scheduled = undefined;
+      }
+      if (scheduled !== undefined || disposed) return;
+      // EventSource replay delivers separate tasks; a microtask cannot batch it.
+      scheduled = setTimeout(flush, types.includes("reorg") ? 0 : 250);
     };
     const connect = () => {
       if (disposed) return;
@@ -121,6 +125,7 @@ export function ChainEventInvalidation() {
     return () => {
       disposed = true;
       pending.clear();
+      if (scheduled !== undefined) clearTimeout(scheduled);
       if (reconnect !== undefined) clearTimeout(reconnect);
       source?.close();
     };
