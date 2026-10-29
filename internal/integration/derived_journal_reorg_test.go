@@ -518,8 +518,8 @@ func assertOrphanQueriesUnavailable(
 	orphan chainbundle.Bundle,
 ) {
 	t.Helper()
-	if _, err := reader.TokenEvents(ctx, catalog.TokenEventRequest{ChainID: "1", TokenAddress: contract.String()}); !errors.Is(err, catalog.ErrUnavailable) {
-		t.Fatalf("token query after reorg error = %v, want unavailable instead of orphan rows", err)
+	if page, err := reader.TokenEvents(ctx, catalog.TokenEventRequest{ChainID: "1", TokenAddress: contract.String()}); err != nil || len(page.Items) != 0 || page.Snapshot.Browsing.State == "complete" {
+		t.Fatalf("token query after reorg=%+v err=%v", page, err)
 	}
 	reference := mustBlockRef(t, orphan)
 	if _, err := reader.BlockStats(ctx, catalog.BlockStatsRequest{ChainID: "1", FromBlock: "1", ToBlock: fmt.Sprint(reference.Number)}); !errors.Is(err, catalog.ErrUnavailable) {

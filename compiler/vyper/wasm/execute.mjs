@@ -68,7 +68,7 @@ export async function executeVyper(args) {
     const selfTest = mode === "--vyper-self-test";
     if (
       !isSea() ||
-      process.version !== "v26.12.1" ||
+      process.version !== "v26.13.0" ||
       (selfTest ? args.length !== 2 : mode !== "--vyper-compile" || args.length !== 6)
     )
       throw new Error("invalid invocation");

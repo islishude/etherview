@@ -4,8 +4,10 @@ import {
   userOperationQueryMeta,
   eventWatermark,
 } from "./chainEvents";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render } from "@testing-library/react";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { act, render, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { useBrowsingCursorHistory } from "./pagination";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChainEventInvalidation, shouldInvalidateFromChainEvent } from "./eventInvalidation";
@@ -39,14 +41,15 @@ class FakeEventSource {
     this.closed = true;
   }
 
-  emit(type: "head" | "reorg" | "status", lastEventId = "1") {
+  emit(type: "head" | "reorg" | "status", lastEventId = "1", data = "{}") {
     for (const listener of this.listeners.get(type) ?? [])
-      listener(new MessageEvent(type, { lastEventId }));
+      listener(new MessageEvent(type, { lastEventId, data }));
   }
 }
 
 describe("durable chain event invalidation", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     FakeEventSource.instances = [];
     vi.stubGlobal("EventSource", FakeEventSource as unknown as typeof EventSource);
   });
@@ -71,11 +74,46 @@ describe("durable chain event invalidation", () => {
     await act(async () => {
       source.emit("status");
       source.emit("head");
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
     });
     expect(invalidate).toHaveBeenCalledTimes(1);
     view.unmount();
     expect(source.closed).toBe(true);
+  });
+
+  it("batches replay events delivered in separate tasks and cancels pending batches", async () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries").mockResolvedValue();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChainEventInvalidation />
+      </QueryClientProvider>,
+    );
+    const source = FakeEventSource.instances[0]!;
+    await act(async () => {
+      for (let n = 0; n < 20; n++) {
+        source.emit(
+          "status",
+          String(n + 1),
+          '{"reason":"browsing_publication","block_number":"50"}',
+        );
+        await vi.advanceTimersByTimeAsync(5);
+      }
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150);
+    });
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      source.emit("head", "21");
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    source.emit("head", "22");
+    view.unmount();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(invalidate).toHaveBeenCalledTimes(2);
   });
 
   it("reconnects closed streams with bounded backoff and cleans up timers", async () => {
@@ -126,6 +164,7 @@ describe("durable chain event invalidation", () => {
     );
     await act(async () => {
       FakeEventSource.instances[0]!.emit("reorg", "9007199254740993");
+      await vi.advanceTimersByTimeAsync(0);
     });
     expect(eventWatermark(client)).toBe("9007199254740993");
     expect(eventWatermark(other)).toBe("0");
@@ -141,5 +180,70 @@ describe("durable chain event invalidation", () => {
     expect(shouldInvalidateFromChainEvent("reorg", chainQueryMeta)).toBe(true);
     expect(shouldInvalidateFromChainEvent("head", undefined)).toBe(false);
     expect(shouldInvalidateFromChainEvent("head", undefined)).toBe(false);
+  });
+
+  it("drops browsing pages and cursors when late publication arrives without a new head", async () => {
+    const client = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const pager = renderHook(() => useBrowsingCursorHistory("address-tokens"), { wrapper });
+    act(() => pager.result.current.next("old-revision"));
+    expect(pager.result.current.page).toBe(2);
+    client.setQueryDefaults(["address-tokens"], {
+      meta: { ...statusQueryMeta, clearOnStatus: true },
+    });
+    client.setQueryData(["address-tokens", "address"], {
+      pages: [{ items: ["old-publication"], next_cursor: "old-revision" }],
+      pageParams: [undefined],
+      meta: { browsing: { from_block: "0", to_block: "100" } },
+    });
+    const observer = renderHook(
+      () =>
+        useQuery({
+          queryKey: ["address-tokens", "address"],
+          enabled: false,
+          queryFn: async () => {
+            throw new Error("disabled observer must not fetch");
+          },
+        }),
+      { wrapper },
+    );
+    client.setQueryData(["account"], { name: "unchanged" });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChainEventInvalidation />
+      </QueryClientProvider>,
+    );
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit("status");
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(pager.result.current.page).toBe(2);
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit(
+        "status",
+        "2",
+        '{"reason":"browsing_publication","block_number":"101"}',
+      );
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(pager.result.current.page).toBe(2);
+    expect(client.getQueryData(["address-tokens", "address"])).toBeDefined();
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit(
+        "status",
+        "3",
+        '{"reason":"browsing_publication","block_number":"50"}',
+      );
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(client.getQueryData(["address-tokens", "address"])).toBeUndefined();
+    expect(pager.result.current.page).toBe(1);
+    expect(pager.result.current.request.cursor).toBeUndefined();
+    expect(client.getQueryData(["account"])).toEqual({ name: "unchanged" });
+    view.unmount();
+    observer.unmount();
+    pager.unmount();
   });
 });

@@ -29,10 +29,15 @@ func (catalog *Postgres) TokenContract(ctx context.Context, chainID, addressText
 	if err != nil {
 		return TokenContract{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
-		return TokenContract{}, err
-	}
 	contract, err := catalog.tokenContractAtSnapshot(ctx, tx, snapshot, address)
+	if errors.Is(err, ErrNotFound) {
+		if statusErr := readBrowsing(ctx, tx, &snapshot, StageToken, false); statusErr != nil {
+			return TokenContract{}, statusErr
+		}
+		if snapshot.Browsing.State != "complete" {
+			return TokenContract{}, StageUnavailableError{Stage: StageToken, State: StageMissing, BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash}
+		}
+	}
 	if err != nil {
 		return TokenContract{}, err
 	}
@@ -84,7 +89,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 		if decodeErr := decodeCursor(request.Cursor, &cursor); decodeErr != nil || cursor.Version != cursorVersion || cursor.ChainID != request.ChainID {
 			return TokenPage{}, ErrInvalidCursor
 		}
-		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash}
+		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash, Revision: cursor.Revision}
 		afterAddress, err = decodeFixedHex(cursor.AfterAddress, 20)
 		if err != nil || cursor.AfterAddress != "0x"+hex.EncodeToString(afterAddress) {
 			return TokenPage{}, ErrInvalidCursor
@@ -97,7 +102,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 	if err != nil {
 		return TokenPage{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
+	if err := readBrowsing(ctx, tx, &snapshot, StageToken, hasAfter); err != nil {
 		return TokenPage{}, err
 	}
 	rows, err := func() ([]dbgen.CatalogTokenContractsRow, error) {
@@ -136,7 +141,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 		}
 		next, err = encodeCursor(tokenListCursor{
 			Version: cursorVersion, ChainID: request.ChainID,
-			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash,
+			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
 			AfterAddress: "0x" + hex.EncodeToString(lastAddress),
 		})
 		if err != nil {
@@ -288,7 +293,7 @@ func (catalog *Postgres) TokenEvents(ctx context.Context, request TokenEventRequ
 			!canonicalUint256(cursor.BlockNumber) || !canonicalInt64(cursor.LogIndex) || !canonicalInt32(cursor.SubIndex) {
 			return TokenEventPage{}, ErrInvalidCursor
 		}
-		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash}
+		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash, Revision: cursor.Revision}
 		boundaryHash, err = decodeFixedHex(cursor.BlockHash, 32)
 		if err != nil || cursor.BlockHash != "0x"+hex.EncodeToString(boundaryHash) {
 			return TokenEventPage{}, ErrInvalidCursor
@@ -305,7 +310,7 @@ func (catalog *Postgres) TokenEvents(ctx context.Context, request TokenEventRequ
 	if err != nil {
 		return TokenEventPage{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
+	if err := readBrowsing(ctx, tx, &snapshot, StageToken, hasBoundary); err != nil {
 		return TokenEventPage{}, err
 	}
 	rows, err := dbgen.New(catalog.db).WithTx(tx).CatalogTokenEvents(ctx, dbgen.CatalogTokenEventsParams{
@@ -328,7 +333,7 @@ func (catalog *Postgres) TokenEvents(ctx context.Context, request TokenEventRequ
 	if len(items) > limit {
 		items = items[:limit]
 		last := items[len(items)-1]
-		next, err = encodeCursor(tokenEventCursor{Version: cursorVersion, ChainID: request.ChainID, TokenAddress: normalizedToken, SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, BlockNumber: last.BlockNumber, BlockHash: last.BlockHash, LogIndex: last.LogIndex, SubIndex: last.SubIndex})
+		next, err = encodeCursor(tokenEventCursor{Version: cursorVersion, ChainID: request.ChainID, TokenAddress: normalizedToken, SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision, BlockNumber: last.BlockNumber, BlockHash: last.BlockHash, LogIndex: last.LogIndex, SubIndex: last.SubIndex})
 		if err != nil {
 			return TokenEventPage{}, err
 		}

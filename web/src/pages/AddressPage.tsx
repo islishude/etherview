@@ -1,6 +1,7 @@
+import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import "./AddressQRCode.css";
 import { UIIcon } from "@/components/UIIcon";
-import { useCursorHistory } from "@/api/pagination";
+import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
 import { AddressAccountActions } from "@/components/AddressAccountActions";
 import { useEffect, useRef, useState } from "react";
@@ -82,13 +83,13 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   const contractHash = isContractTabHash(requestedHash);
   const delegationHash = isDelegatedAccountTabHash(requestedHash);
   const transactionPager = useCursorHistory(`address-transactions:${address}`);
-  const internalPager = useCursorHistory(`address-internal-transactions:${address}`);
+  const internalPager = useBrowsingCursorHistory(`address-internal-transactions:${address}`);
   const withdrawalPager = useCursorHistory(`address-withdrawals:${address}`);
-  const erc20Pager = useCursorHistory(`address-erc20-transfers:${address}`);
-  const nftTransferPager = useCursorHistory(`address-nft-transfers:${address}`);
-  const erc20BalancePager = useCursorHistory(`address-erc20-balances:${address}`);
-  const nftPager = useCursorHistory(`address-nfts:${address}`);
-  const userOperationPager = useCursorHistory(`address-user-operations:${address}`);
+  const erc20Pager = useBrowsingCursorHistory(`address-erc20-transfers:${address}`);
+  const nftTransferPager = useBrowsingCursorHistory(`address-nft-transfers:${address}`);
+  const erc20BalancePager = useBrowsingCursorHistory(`address-erc20-balances:${address}`);
+  const nftPager = useBrowsingCursorHistory(`address-nfts:${address}`);
+  const userOperationPager = useBrowsingCursorHistory(`address-user-operations:${address}`);
   const account = useAddress(address);
   const publicConfig = usePublicConfig();
   const userOperationsEnabled = publicConfig.data?.features.user_operations === true;
@@ -278,22 +279,24 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
         />
       )}
       {activeTab === "internal-transactions" && (
-        <AddressInternalTransactions
-          address={address}
-          busy={internalTransactions.isFetching}
-          error={internalTransactions.error}
-          hasNext={Boolean(internalTransactions.data?.next_cursor)}
-          items={internalTransactions.data?.items}
-          loading={internalTransactions.isPending}
-          locale={locale}
-          nativeDecimals={nativeDecimals}
-          nativeSymbol={nativeSymbol}
-          onNext={() => internalPager.next(internalTransactions.data?.next_cursor)}
-          onPrevious={internalPager.previous}
-          onReset={internalPager.reset}
-          page={internalPager.page}
-          hasPrevious={internalPager.hasPrevious}
-        />
+        <BrowsingScope status={internalTransactions.data?.meta.browsing}>
+          <AddressInternalTransactions
+            address={address}
+            busy={internalTransactions.isFetching}
+            error={internalTransactions.error}
+            hasNext={Boolean(internalTransactions.data?.next_cursor)}
+            items={internalTransactions.error ? undefined : internalTransactions.data?.items}
+            loading={internalTransactions.isPending}
+            locale={locale}
+            nativeDecimals={nativeDecimals}
+            nativeSymbol={nativeSymbol}
+            onNext={() => internalPager.next(internalTransactions.data?.next_cursor)}
+            onPrevious={internalPager.previous}
+            onReset={internalPager.reset}
+            page={internalPager.page}
+            hasPrevious={internalPager.hasPrevious}
+          />
+        </BrowsingScope>
       )}
       {activeTab === "withdrawals" && (
         <AddressWithdrawals
@@ -311,103 +314,115 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
         />
       )}
       {activeTab === "erc20-transfers" && (
-        <AddressTokenTransfers
-          address={address}
-          busy={erc20Transfers.isFetching}
-          error={erc20Transfers.error}
-          hasNext={Boolean(erc20Transfers.data?.next_cursor)}
-          items={erc20Transfers.data?.items}
-          loading={erc20Transfers.isPending}
-          locale={locale}
-          onNext={() => erc20Pager.next(erc20Transfers.data?.next_cursor)}
-          onPrevious={erc20Pager.previous}
-          onReset={erc20Pager.reset}
-          page={erc20Pager.page}
-          hasPrevious={erc20Pager.hasPrevious}
-          title={t("addressTab.erc20Transfers")}
-        />
+        <BrowsingScope status={erc20Transfers.data?.meta.browsing}>
+          <AddressTokenTransfers
+            address={address}
+            busy={erc20Transfers.isFetching}
+            error={erc20Transfers.error}
+            hasNext={Boolean(erc20Transfers.data?.next_cursor)}
+            items={erc20Transfers.error ? undefined : erc20Transfers.data?.items}
+            loading={erc20Transfers.isPending}
+            locale={locale}
+            onNext={() => erc20Pager.next(erc20Transfers.data?.next_cursor)}
+            onPrevious={erc20Pager.previous}
+            onReset={erc20Pager.reset}
+            page={erc20Pager.page}
+            hasPrevious={erc20Pager.hasPrevious}
+            title={t("addressTab.erc20Transfers")}
+          />
+        </BrowsingScope>
       )}
       {activeTab === "nft-transfers" && (
-        <AddressTokenTransfers
-          address={address}
-          busy={nftTransfers.isFetching}
-          error={nftTransfers.error}
-          hasNext={Boolean(nftTransfers.data?.next_cursor)}
-          items={nftTransfers.data?.items}
-          loading={nftTransfers.isPending}
-          locale={locale}
-          onNext={() => nftTransferPager.next(nftTransfers.data?.next_cursor)}
-          onPrevious={nftTransferPager.previous}
-          onReset={nftTransferPager.reset}
-          page={nftTransferPager.page}
-          hasPrevious={nftTransferPager.hasPrevious}
-          title={t("addressTab.nftTransfers")}
-        />
+        <BrowsingScope status={nftTransfers.data?.meta.browsing}>
+          <AddressTokenTransfers
+            address={address}
+            busy={nftTransfers.isFetching}
+            error={nftTransfers.error}
+            hasNext={Boolean(nftTransfers.data?.next_cursor)}
+            items={nftTransfers.error ? undefined : nftTransfers.data?.items}
+            loading={nftTransfers.isPending}
+            locale={locale}
+            onNext={() => nftTransferPager.next(nftTransfers.data?.next_cursor)}
+            onPrevious={nftTransferPager.previous}
+            onReset={nftTransferPager.reset}
+            page={nftTransferPager.page}
+            hasPrevious={nftTransferPager.hasPrevious}
+            title={t("addressTab.nftTransfers")}
+          />
+        </BrowsingScope>
       )}
       {activeTab === "assets" && (
         <div className="address-assets">
-          <AddressERC20Balances
-            balances={erc20Balances.data?.items}
-            busy={erc20Balances.isFetching}
-            coverageEnd={erc20Balances.data?.meta.coverage_end}
-            error={erc20Balances.error}
-            hasNext={Boolean(erc20Balances.data?.next_cursor)}
-            loading={erc20Balances.isPending}
-            locale={locale}
-            onNext={() => erc20BalancePager.next(erc20Balances.data?.next_cursor)}
-            onPrevious={erc20BalancePager.previous}
-            onReset={erc20BalancePager.reset}
-            page={erc20BalancePager.page}
-            hasPrevious={erc20BalancePager.hasPrevious}
-          />
-          <AddressNFTBalances
-            balances={nfts.data?.items}
-            busy={nfts.isFetching}
-            coverageEnd={nfts.data?.meta.coverage_end}
-            error={nfts.error}
-            hasNext={Boolean(nfts.data?.next_cursor)}
-            loading={nfts.isPending}
-            locale={locale}
-            onNext={() => nftPager.next(nfts.data?.next_cursor)}
-            onPrevious={nftPager.previous}
-            onReset={nftPager.reset}
-            page={nftPager.page}
-            hasPrevious={nftPager.hasPrevious}
-          />
+          <BrowsingScope status={erc20Balances.data?.meta.browsing}>
+            <AddressERC20Balances
+              balances={erc20Balances.error ? undefined : erc20Balances.data?.items}
+              busy={erc20Balances.isFetching}
+              coverageEnd={erc20Balances.data?.meta.coverage_end}
+              error={erc20Balances.error}
+              hasNext={Boolean(erc20Balances.data?.next_cursor)}
+              loading={erc20Balances.isPending}
+              locale={locale}
+              onNext={() => erc20BalancePager.next(erc20Balances.data?.next_cursor)}
+              onPrevious={erc20BalancePager.previous}
+              onReset={erc20BalancePager.reset}
+              page={erc20BalancePager.page}
+              hasPrevious={erc20BalancePager.hasPrevious}
+            />
+          </BrowsingScope>
+          <BrowsingScope status={nfts.data?.meta.browsing}>
+            <AddressNFTBalances
+              balances={nfts.error ? undefined : nfts.data?.items}
+              busy={nfts.isFetching}
+              coverageEnd={nfts.data?.meta.coverage_end}
+              error={nfts.error}
+              hasNext={Boolean(nfts.data?.next_cursor)}
+              loading={nfts.isPending}
+              locale={locale}
+              onNext={() => nftPager.next(nfts.data?.next_cursor)}
+              onPrevious={nftPager.previous}
+              onReset={nftPager.reset}
+              page={nftPager.page}
+              hasPrevious={nftPager.hasPrevious}
+            />
+          </BrowsingScope>
         </div>
       )}
       {activeTab === "native-transfers" && (
         <NativeTransfersPanel kind="address" identity={address} />
       )}
       {activeTab === "user-operations" && (
-        <section
-          className="panel transaction-tab-panel"
-          aria-labelledby="address-user-operations-title"
-        >
-          <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
-          <QueryNotice
-            loading={userOperations.isPending}
-            error={userOperations.error}
-            onReset={userOperationPager.reset}
-          />
-          {userOperations.data?.items.length === 0 ? (
-            <p className="empty-result">{t("state.noUserOperations")}</p>
-          ) : null}
-          {userOperations.data && userOperations.data.items.length > 0 ? (
-            <UserOperationTable items={userOperations.data.items} />
-          ) : null}
-          {userOperations.data ? (
-            <CursorPagination
-              busy={userOperations.isFetching}
-              hasNext={Boolean(userOperations.data.next_cursor)}
-              hasPrevious={userOperationPager.hasPrevious}
-              label={t("pagination.userOperations")}
-              onNext={() => userOperationPager.next(userOperations.data?.next_cursor)}
-              onPrevious={userOperationPager.previous}
-              page={userOperationPager.page}
+        <BrowsingScope status={userOperations.data?.meta.browsing}>
+          <section
+            className="panel transaction-tab-panel"
+            aria-labelledby="address-user-operations-title"
+          >
+            <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
+            <QueryNotice
+              loading={userOperations.isPending}
+              error={userOperations.error}
+              onReset={userOperationPager.reset}
             />
-          ) : null}
-        </section>
+            {userOperations.data?.items.length === 0 ? (
+              <p className="empty-result">
+                <BrowsingEmpty>{t("state.noUserOperations")}</BrowsingEmpty>
+              </p>
+            ) : null}
+            {userOperations.data && userOperations.data.items.length > 0 ? (
+              <UserOperationTable items={userOperations.data.items} />
+            ) : null}
+            {userOperations.data ? (
+              <CursorPagination
+                busy={userOperations.isFetching}
+                hasNext={Boolean(userOperations.data.next_cursor)}
+                hasPrevious={userOperationPager.hasPrevious}
+                label={t("pagination.userOperations")}
+                onNext={() => userOperationPager.next(userOperations.data?.next_cursor)}
+                onPrevious={userOperationPager.previous}
+                page={userOperationPager.page}
+              />
+            ) : null}
+          </section>
+        </BrowsingScope>
       )}
       {activeTab === "contract" && contractAvailable ? <ContractPage address={address} /> : null}
       {activeTab === "delegation" && delegationAvailable ? (
@@ -1015,7 +1030,7 @@ function AddressActivitySection({
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {empty ? (
         <p className="empty-result" role="status">
-          {t("state.noAddressActivity")}
+          <BrowsingEmpty>{t("state.noAddressActivity")}</BrowsingEmpty>
         </p>
       ) : null}
       {children}
@@ -1232,7 +1247,7 @@ function AddressERC20Balances({
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {balances && balances.length === 0 ? (
         <p className="empty-result" role="status">
-          {t("state.noERC20Balances")}
+          <BrowsingEmpty>{t("state.noERC20Balances")}</BrowsingEmpty>
         </p>
       ) : null}
       {balances && balances.length > 0 ? (
@@ -1335,7 +1350,7 @@ function AddressNFTBalances({
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {balances && balances.length === 0 && (
         <p className="empty-result" role="status">
-          {t("state.noNFTBalances")}
+          <BrowsingEmpty>{t("state.noNFTBalances")}</BrowsingEmpty>
         </p>
       )}
       {balances && balances.length > 0 && (

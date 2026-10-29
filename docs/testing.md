@@ -155,11 +155,11 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   `.github/scripts/compose-check.mjs`, with shared in-process assertions for
   compiler ownership, credentials and verification-suite isolation.
   Preview deployment behavior is exercised by its existing business E2E gates.
-- `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
+- `make toolchain-check`: require at least Go 1.27.3, Node 26.13.0, and pnpm
   12.15.0 before generating or validating artifacts. Compatible newer stable
   versions are supported by this minimum-version check; older, malformed, and
   prerelease versions fail. Full pnpm installation and compiler builds additionally
-  enforce the compiler workspace's exact Node 26.12.1 engine.
+  enforce the compiler workspace's exact Node 26.13.0 engine.
 - `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
   and parent/child state.
 - `make docs-check`: compare maintained high-risk documentation with current
@@ -523,7 +523,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   Docker host architecture, run it with the numeric non-root identity and
   hardened runtime flags, validate the exact SEA/compiler runtime manifest,
   recursive ELF closure, and self-test, and scan its exported root filesystem.
-  The image contains one read-only Node 26.12.1 SEA, only the automatically
+  The image contains one read-only Node 26.13.0 SEA, only the automatically
   discovered private libraries missing from the final base rootfs, and the
   read-only Geas v0.3.3 helper, but no general Node executable, wrapper source,
   package metadata, `node_modules`, npm, npx, corepack, shell, Go toolchain,
@@ -534,7 +534,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
   `migrate status`. The domain baseline spans `0001_core` through
-  `0017_schema_bindings`, with one checksummed ledger entry per file. Integration
+  `0018_browsing`, with one checksummed ledger entry per file. Integration
   tests additionally cover repeat/concurrent application, later-file checksum
   and unknown-version rejection, rejection of the previous single-file baseline,
   and isolated-schema function bindings. A conflict in a late file must roll

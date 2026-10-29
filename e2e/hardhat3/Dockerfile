@@ -1,4 +1,4 @@
-FROM node:26.12.1
+FROM node:26.13.0
 
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}/bin:${PATH}"

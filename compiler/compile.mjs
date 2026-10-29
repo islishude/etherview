@@ -7,7 +7,7 @@ import solcWrapper from "solc/wrapper";
 
 import { executeVyper } from "./vyper/wasm/execute.mjs";
 
-const requiredNodeVersion = "v26.12.1";
+const requiredNodeVersion = "v26.13.0";
 const requiredWrapperPackageVersion = "0.8.37";
 const fixedExecArgv = [
   "--permission",

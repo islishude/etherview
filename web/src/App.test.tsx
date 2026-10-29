@@ -491,9 +491,8 @@ describe("embedded explorer shell", () => {
 
     renderExplorer(`/tx/${hash}?tab=trace`);
 
-    expect(await screen.findByText("Trace data is unavailable")).toBeVisible();
-    expect(screen.getByText(/reported Unavailable at block 42/)).toBeVisible();
-    expect(screen.getByText(/Core indexed data remains available\./)).toBeVisible();
+    expect(await screen.findByText("This data is currently unavailable.")).toBeVisible();
+    expect(screen.queryByText("stage_unavailable")).not.toBeInTheDocument();
   });
 
   it("renders a deep-linked metric chart with an accessible exact-value table", async () => {
@@ -623,8 +622,7 @@ describe("embedded explorer shell", () => {
 
     renderExplorer("/charts");
 
-    expect(await screen.findByText("Historical analytics are being rebuilt")).toBeVisible();
-    expect(screen.getByText(/Available history appears newest first/)).toBeVisible();
+    expect(await screen.findByText("No synced data available yet.")).toBeVisible();
   });
 
   it("rejects invalid Standard JSON locally and explains disabled verification", async () => {

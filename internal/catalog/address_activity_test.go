@@ -19,7 +19,7 @@ func TestAddressInternalTransactionsAreCanonicalPaginatedAndReorgBound(t *testin
 	}
 	catalog, backend := openCatalog(t,
 		snapshotStep("100", bytesOf(0xaa, 32)),
-		stageStep("complete"),
+		browsingStep("complete"),
 		catalogQueryStep{
 			contains: "FROM candidates",
 			rows:     catalogRows(17, rows...),
@@ -72,7 +72,7 @@ func TestAddressNFTTransfersMergeERC721AndERC1155(t *testing.T) {
 	subject := "0x" + strings.Repeat("11", 20)
 	catalog, backend := openCatalog(t,
 		snapshotStep("100", bytesOf(0xaa, 32)),
-		stageStep("complete"),
+		browsingStep("complete"),
 		catalogQueryStep{
 			contains: "FROM candidates",
 			rows: catalogRows(16,
@@ -113,7 +113,7 @@ func TestAddressERC20TransfersExposeExactBlockDecimals(t *testing.T) {
 	row := tokenActivityRow("100", "2", "9", "0", "erc20", "transfer", "", "1234500", 0x41)
 	row[12], row[15] = nil, "6"
 	catalog, backend := openCatalog(t,
-		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+		snapshotStep("100", bytesOf(0xaa, 32)), browsingStep("complete"),
 		catalogQueryStep{contains: "LEFT JOIN LATERAL", rows: catalogRows(16, row)},
 	)
 	page, err := catalog.AddressERC20Transfers(context.Background(), AddressActivityRequest{
@@ -125,18 +125,11 @@ func TestAddressERC20TransfersExposeExactBlockDecimals(t *testing.T) {
 	assertCatalogConsumed(t, backend)
 }
 
-func TestAddressActivityStageFailureIsNotAnEmptyPage(t *testing.T) {
-	catalog, backend := openCatalog(t,
-		snapshotStep("100", bytesOf(0xaa, 32)),
-		stageStep("failed"),
-	)
-	_, err := catalog.AddressERC20Transfers(context.Background(), AddressActivityRequest{
-		ChainID: "1", Address: "0x" + strings.Repeat("11", 20), Limit: 2,
-	})
-	var unavailable StageUnavailableError
-	if !errors.As(err, &unavailable) || unavailable.Stage != StageToken ||
-		unavailable.State != StageFailed {
-		t.Fatalf("stage error=%T %+v", err, err)
+func TestAddressActivityPendingIsExplicitAndHasNoRows(t *testing.T) {
+	reader, backend := openCatalog(t, snapshotStep("548", bytesOf(0xaa, 32)), browsingStep("pending"), catalogQueryStep{contains: "FROM candidates", rows: catalogRows(16)})
+	page, err := reader.AddressERC20Transfers(t.Context(), AddressActivityRequest{ChainID: "1", Address: "0x" + strings.Repeat("11", 20), Limit: 2})
+	if err != nil || len(page.Items) != 0 || page.Snapshot.Browsing.State != "pending" {
+		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	assertCatalogConsumed(t, backend)
 }

@@ -39,5 +39,5 @@ func (h *Handler) nativeTransfers(w http.ResponseWriter, r *http.Request, reques
 		meta.CoverageStart = &start
 		meta.CoverageEnd = &end
 	}
-	writeJSON(w, http.StatusOK, gen.NativeTransferListResponse{Data: page.Items, Meta: meta, Applicable: page.Applicable})
+	writeJSON(w, http.StatusOK, gen.NativeTransferListResponse{Data: page.Items, Meta: browsingMeta(meta, page.Browsing), Applicable: page.Applicable})
 }

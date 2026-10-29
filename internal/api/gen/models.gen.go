@@ -711,6 +711,27 @@ func (e BrowserVerificationOutcomeKind) Valid() bool {
 	}
 }
 
+// Defines values for BrowsingStatusState.
+const (
+	BrowsingStatusStateComplete BrowsingStatusState = "complete"
+	BrowsingStatusStatePartial  BrowsingStatusState = "partial"
+	BrowsingStatusStatePending  BrowsingStatusState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the BrowsingStatusState enum.
+func (e BrowsingStatusState) Valid() bool {
+	switch e {
+	case BrowsingStatusStateComplete:
+		return true
+	case BrowsingStatusStatePartial:
+		return true
+	case BrowsingStatusStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BuilderDepositRequestRequestType.
 const (
 	BuilderDepositRequestRequestTypeN0x03 BuilderDepositRequestRequestType = "0x03"
@@ -4653,6 +4674,25 @@ type BrowserVerificationOutcome struct {
 // BrowserVerificationOutcomeKind defines model for BrowserVerificationOutcome.Kind.
 type BrowserVerificationOutcomeKind string
 
+// BrowsingStatus defines model for BrowsingStatus.
+type BrowsingStatus struct {
+	// FromBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	FromBlock Quantity `json:"from_block"`
+
+	// Revision A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Revision Quantity        `json:"revision"`
+	Snapshot CatalogSnapshot `json:"snapshot"`
+
+	// State Completeness of the requested range, independent of matching row count. Pending means no published blocks in the range.
+	State BrowsingStatusState `json:"state"`
+
+	// ToBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ToBlock Quantity `json:"to_block"`
+}
+
+// BrowsingStatusState Completeness of the requested range, independent of matching row count. Pending means no published blocks in the range.
+type BrowsingStatusState string
+
 // BuilderDepositRequest defines model for BuilderDepositRequest.
 type BuilderDepositRequest struct {
 	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -5436,6 +5476,8 @@ type LookupMethodsResponse struct {
 
 // Meta defines model for Meta.
 type Meta struct {
+	Browsing *BrowsingStatus `json:"browsing,omitempty"`
+
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	ChainId Quantity `json:"chain_id"`
 

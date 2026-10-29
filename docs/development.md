@@ -131,7 +131,7 @@ check is not full production acceptance; all existing PR CI gates still apply.
 - Do not preserve backward compatibility during active development. The current
   fresh-database baseline is organized by domain in the numbered SQL files under
   `internal/store/migrations/`, from `0001_core.sql` through
-  `0017_schema_bindings.sql`. Each file has its own version and checksum; the
+  `0018_browsing.sql`. Each file has its own version and checksum; the
   runner applies all pending files in one transaction under an advisory lock.
   Databases created with the earlier development chain or single-file baseline
   must be recreated as described in the
@@ -214,13 +214,13 @@ When switching an existing checkout from npm, remove the generated root and
 workspace `node_modules` directories before installing. Dependency changes use
 `pnpm add` in the owning workspace and commit the updated shared lockfile.
 Workspace manifests retain their runtime constraints: the compiler requires
-exactly Node 26.12.1 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
+exactly Node 26.13.0 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
 
 The workspace policy enforces engines and disables dependency lifecycle scripts.
 Automatic peer installation is disabled, so the artifact-only Safe fixture's
 unused Ethers v5 peer is not installed. Required peers are explicit workspace
 dependencies, including the frontend test DOM library. API generation uses
-TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:26.12.1` image's curl to download the
+TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:26.13.0` image's curl to download the
 [official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
 with `PNPM_VERSION=12.15.0`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
 uses the same workspace policy with frozen, filtered installs. CI pins

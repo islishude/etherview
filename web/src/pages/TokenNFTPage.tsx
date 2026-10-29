@@ -1,6 +1,7 @@
+import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { CircleAlert, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import { useCursorHistory } from "@/api/pagination";
+import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -35,7 +36,7 @@ import {
 
 export function TokenDetailPage({ address }: { address: string }) {
   const { i18n, t } = useTranslation();
-  const transferPager = useCursorHistory(`token-transfers:${address}`);
+  const transferPager = useBrowsingCursorHistory(`token-transfers:${address}`);
   const holderPager = useCursorHistory(`token-holders:${address}`);
   const token = useToken(address);
   const transfers = useTokenTransfers(address, transferPager.request, true, CORE_PAGE_SIZE);
@@ -110,19 +111,21 @@ export function TokenDetailPage({ address }: { address: string }) {
           page={holderPager.page}
         />
       )}
-      <TokenTransfers
-        busy={transfers.isFetching}
-        error={transfers.error}
-        events={transfers.data?.items}
-        hasNext={Boolean(transfers.data?.next_cursor)}
-        hasPrevious={transferPager.hasPrevious}
-        loading={transfers.isPending}
-        locale={locale}
-        onNext={() => transferPager.next(transfers.data?.next_cursor)}
-        onPrevious={transferPager.previous}
-        onReset={transferPager.reset}
-        page={transferPager.page}
-      />
+      <BrowsingScope status={transfers.data?.meta.browsing}>
+        <TokenTransfers
+          busy={transfers.isFetching}
+          error={transfers.error}
+          events={transfers.data?.items}
+          hasNext={Boolean(transfers.data?.next_cursor)}
+          hasPrevious={transferPager.hasPrevious}
+          loading={transfers.isPending}
+          locale={locale}
+          onNext={() => transferPager.next(transfers.data?.next_cursor)}
+          onPrevious={transferPager.previous}
+          onReset={transferPager.reset}
+          page={transferPager.page}
+        />
+      </BrowsingScope>
     </Page>
   );
 }
@@ -254,7 +257,7 @@ function TokenTransfers({
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       {events && events.length === 0 && (
         <p className="empty-result" role="status">
-          {t("state.noTransfers")}
+          <BrowsingEmpty>{t("state.noTransfers")}</BrowsingEmpty>
         </p>
       )}
       {events && events.length > 0 && (

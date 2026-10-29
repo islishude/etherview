@@ -23,7 +23,7 @@ const (
 
 	solcJSRuntimeSchema       = "etherview-solcjs-sea-runtime-v1"
 	solcJSSelfTestSchema      = "etherview-solcjs-sea-self-test-v1"
-	solcJSNodeVersion         = "v26.12.1"
+	solcJSNodeVersion         = "v26.13.0"
 	solcJSWrapperPackage      = "solc@0.8.37"
 	solcJSBundleBuilder       = "esbuild@0.28.2"
 	solcJSRuntimeManifestName = "runtime-manifest.json"

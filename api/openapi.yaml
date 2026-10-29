@@ -3316,10 +3316,29 @@ components:
     Finality:
       type: string
       enum: [pending, latest, safe, finalized, orphan]
+    BrowsingStatus:
+      type: object
+      required: [state, snapshot, from_block, to_block, revision]
+      properties:
+        state:
+          type: string
+          enum: [complete, partial, pending]
+          description: Completeness of the requested range, independent of matching row count. Pending means no published blocks in the range.
+        snapshot:
+          $ref: "#/components/schemas/CatalogSnapshot"
+        from_block:
+          $ref: "#/components/schemas/Quantity"
+        to_block:
+          $ref: "#/components/schemas/Quantity"
+        revision:
+          $ref: "#/components/schemas/Quantity"
+          description: Publication revision for the frozen range. Clients must not construct cursors from it.
     Meta:
       type: object
       required: [request_id, chain_id]
       properties:
+        browsing:
+          $ref: "#/components/schemas/BrowsingStatus"
         request_id:
           type: string
         chain_id:

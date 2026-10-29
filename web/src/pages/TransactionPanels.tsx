@@ -1,6 +1,7 @@
+import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import { useCursorHistory } from "@/api/pagination";
+import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { BlobsPanel, BlobHashList } from "./BlobsPanel";
 import { usePublicConfig } from "@/api/publicConfig";
 import { Link } from "@tanstack/react-router";
@@ -236,34 +237,42 @@ export function TransactionUserOperationsPanel({
   hash: string;
 }) {
   const { t } = useTranslation();
-  const pager = useCursorHistory(`transaction-user-operations:${hash}`);
+  const pager = useBrowsingCursorHistory(`transaction-user-operations:${hash}`);
   const operations = useTransactionUserOperations(hash, pager.request);
   const identityCurrent =
     !blockHash ||
     (operations.data?.items ?? []).every((operation) => operation.block_hash === blockHash);
   return (
     <section className="panel transaction-tab-panel" role="tabpanel">
-      <QueryNotice loading={operations.isPending} error={operations.error} onReset={pager.reset} />
-      {operations.data && !identityCurrent ? (
-        <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
-      ) : null}
-      {identityCurrent && operations.data?.items.length === 0 ? (
-        <p className="empty-result">{t("state.noTransactionUserOperations")}</p>
-      ) : null}
-      {identityCurrent && operations.data && operations.data.items.length > 0 ? (
-        <UserOperationTable items={operations.data.items} />
-      ) : null}
-      {identityCurrent && operations.data ? (
-        <CursorPagination
-          busy={operations.isFetching}
-          hasNext={Boolean(operations.data.next_cursor)}
-          hasPrevious={pager.hasPrevious}
-          label={t("transactionTabs.user-operations")}
-          onNext={() => pager.next(operations.data?.next_cursor)}
-          onPrevious={pager.previous}
-          page={pager.page}
+      <BrowsingScope status={operations.data?.meta.browsing}>
+        <QueryNotice
+          loading={operations.isPending}
+          error={operations.error}
+          onReset={pager.reset}
         />
-      ) : null}
+        {operations.data && !identityCurrent ? (
+          <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+        ) : null}
+        {identityCurrent && operations.data?.items.length === 0 ? (
+          <p className="empty-result">
+            <BrowsingEmpty>{t("state.noTransactionUserOperations")}</BrowsingEmpty>
+          </p>
+        ) : null}
+        {identityCurrent && operations.data && operations.data.items.length > 0 ? (
+          <UserOperationTable items={operations.data.items} />
+        ) : null}
+        {identityCurrent && operations.data ? (
+          <CursorPagination
+            busy={operations.isFetching}
+            hasNext={Boolean(operations.data.next_cursor)}
+            hasPrevious={pager.hasPrevious}
+            label={t("transactionTabs.user-operations")}
+            onNext={() => pager.next(operations.data?.next_cursor)}
+            onPrevious={pager.previous}
+            page={pager.page}
+          />
+        ) : null}
+      </BrowsingScope>
     </section>
   );
 }

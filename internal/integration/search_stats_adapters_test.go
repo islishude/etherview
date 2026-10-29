@@ -44,13 +44,9 @@ func TestCanonicalCatalogSnapshotOrdersNumericHeightsAcrossDecimalBoundaries(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = reader.TokenContracts(ctx, catalog.TokenListRequest{ChainID: "1", Limit: 1})
-	var unavailable catalog.StageUnavailableError
-	if !errors.As(err, &unavailable) {
-		t.Fatalf("token catalog error=%v, want stage unavailable at numeric tip", err)
-	}
-	if unavailable.BlockNumber != "100" {
-		t.Fatalf("canonical snapshot height=%s, want 100 across 9/10/99/100", unavailable.BlockNumber)
+	page, err := reader.TokenContracts(ctx, catalog.TokenListRequest{ChainID: "1", Limit: 1})
+	if err != nil || page.Snapshot.BlockNumber != "100" || page.Snapshot.Browsing.State != "pending" || len(page.Items) != 0 {
+		t.Fatalf("numeric pending snapshot=%+v err=%v", page, err)
 	}
 }
 

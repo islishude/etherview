@@ -72,8 +72,11 @@ components in monolith and split deployments.
 
 - Deployments opt in with an explicit EntryPoint allowlist; an absent or
   mismatched configuration is visibly unavailable rather than an empty result.
-- The API can serve the highest continuous published snapshot while a bounded
-  historical reindex continues, but it never claims absence beyond coverage.
+- Native browsing lists can serve all published canonical islands through their
+  frozen snapshot while reindex continues, with explicit partial/pending
+  metadata and revision-bound cursors under ADR-0003. Search and operational
+  completeness retain the highest continuous published snapshot. No response
+  claims absence beyond proven coverage.
 - New heads use the normal enrichment outbox. Existing canonical history is
   rebuilt only through operator-approved `reindex --stage userop` ranges.
 - Supporting a future EntryPoint wire shape requires a reviewed decoder and a

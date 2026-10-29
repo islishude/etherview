@@ -33,6 +33,7 @@ type Querier interface {
 	AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error
 	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
 	BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error)
+	BrowsingStatus(ctx context.Context, arg BrowsingStatusParams) (BrowsingStatusRow, error)
 	BytecodeDBActiveLookups(ctx context.Context, serviceID []byte) (int64, error)
 	BytecodeDBAddAttempt(ctx context.Context, arg BytecodeDBAddAttemptParams) error
 	BytecodeDBAdmitRequest(ctx context.Context, intervalUs int64, iD []byte) error

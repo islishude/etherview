@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 
 // Cursor and generation travel together: restarting always selects a new cache entry.
 export interface CursorRequest {
@@ -7,6 +8,25 @@ export interface CursorRequest {
 }
 export const firstPage: CursorRequest = { refreshGeneration: 0 };
 let nextRefreshGeneration = 0;
+const browsingPagers = new WeakMap<QueryClient, Set<() => void>>();
+
+export function resetBrowsingPagination(client: QueryClient) {
+  for (const reset of browsingPagers.get(client) ?? []) reset();
+}
+
+export function useBrowsingCursorHistory(identity: string) {
+  const client = useQueryClient();
+  const pager = useCursorHistory(identity);
+  useEffect(() => {
+    const pagers = browsingPagers.get(client) ?? new Set<() => void>();
+    browsingPagers.set(client, pagers);
+    pagers.add(pager.reset);
+    return () => {
+      pagers.delete(pager.reset);
+    };
+  }, [client, pager.reset]);
+  return pager;
+}
 
 export function useCursorHistory(identity: string) {
   const [state, setState] = useState({ identity, cursors: [""], refreshGeneration: 0 });

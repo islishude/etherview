@@ -78,8 +78,8 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 	}
 	assertLogs("unavailable")
 	request := publicquery.NativeTransferRequest{Address: from.Hex(), Limit: 1}
-	if _, err := reader.NativeTransfers(ctx, request); err == nil {
-		t.Fatal("unpublished transfer coverage was readable")
+	if page, err := reader.NativeTransfers(ctx, request); err != nil || len(page.Items) != 0 || page.Browsing.State != "pending" {
+		t.Fatalf("unpublished page=%+v err=%v", page, err)
 	}
 	queue, _ := enrich.NewPostgresJobQueue(db)
 	processor, _ := enrich.NewPostgresNativeTransferProcessor(db)
@@ -160,8 +160,8 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 	assertLogs("unavailable")
 	request.Cursor = ""
 	request.Address = from.Hex()
-	if _, err := reader.NativeTransfers(ctx, request); err == nil {
-		t.Fatal("replay retained stale publication")
+	if page, err := reader.NativeTransfers(ctx, request); err != nil || len(page.Items) != 0 || page.Browsing.State != "pending" {
+		t.Fatalf("replay page=%+v err=%v", page, err)
 	}
 	if found, err := worker.ProcessOne(ctx); err != nil || !found {
 		t.Fatalf("replay found=%t err=%v", found, err)
@@ -186,8 +186,8 @@ func TestNativeTransferPublicationPaginationAndReorg(t *testing.T) {
 		t.Fatalf("empty replacement=%+v err=%v", page, err)
 	}
 	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{replacement}, []chainbundle.Bundle{block}, "native reattach")
-	if _, err := reader.NativeTransfers(ctx, request); err == nil {
-		t.Fatal("reattach reused stale publication")
+	if page, err := reader.NativeTransfers(ctx, request); err != nil || len(page.Items) != 0 || page.Browsing.State != "pending" {
+		t.Fatalf("reattach page=%+v err=%v", page, err)
 	}
 	publish(block, "reattach")
 	assertLogs("decoded")

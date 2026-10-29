@@ -1,6 +1,7 @@
+import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import { useCursorHistory } from "@/api/pagination";
+import { useBrowsingCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -16,39 +17,45 @@ import { CORE_PAGE_SIZE, CursorPagination, Detail, DetailList, FinalityBadge, Pa
 
 export function UserOperationsPage() {
   const { i18n, t } = useTranslation();
-  const pager = useCursorHistory("user-operations");
+  const pager = useBrowsingCursorHistory("user-operations");
   const operations = useUserOperations(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.userOperations")} description={t("page.userOperationsDescription")}>
-      <QueryNotice loading={operations.isPending} error={operations.error} onReset={pager.reset} />
-      {operations.data?.meta.coverage_start && operations.data.meta.coverage_end ? (
-        <p className="context-note" role="note">
-          {t("userOperation.coverage", {
-            start: formatInteger(operations.data.meta.coverage_start, locale),
-            end: formatInteger(operations.data.meta.coverage_end, locale),
-          })}
-        </p>
-      ) : null}
-      {operations.data?.items.length === 0 ? (
-        <p className="empty-result" role="status">
-          {t("state.noUserOperations")}
-        </p>
-      ) : null}
-      {operations.data && operations.data.items.length > 0 ? (
-        <UserOperationTable items={operations.data.items} />
-      ) : null}
-      {operations.data ? (
-        <CursorPagination
-          busy={operations.isFetching}
-          hasNext={Boolean(operations.data.next_cursor)}
-          hasPrevious={pager.hasPrevious}
-          label={t("pagination.userOperations")}
-          onNext={() => pager.next(operations.data?.next_cursor)}
-          onPrevious={pager.previous}
-          page={pager.page}
+      <BrowsingScope status={operations.data?.meta.browsing}>
+        <QueryNotice
+          loading={operations.isPending}
+          error={operations.error}
+          onReset={pager.reset}
         />
-      ) : null}
+        {operations.data?.meta.coverage_start && operations.data.meta.coverage_end ? (
+          <p className="context-note" role="note">
+            {t("userOperation.coverage", {
+              start: formatInteger(operations.data.meta.coverage_start, locale),
+              end: formatInteger(operations.data.meta.coverage_end, locale),
+            })}
+          </p>
+        ) : null}
+        {operations.data?.items.length === 0 ? (
+          <p className="empty-result" role="status">
+            <BrowsingEmpty>{t("state.noUserOperations")}</BrowsingEmpty>
+          </p>
+        ) : null}
+        {operations.data && operations.data.items.length > 0 ? (
+          <UserOperationTable items={operations.data.items} />
+        ) : null}
+        {operations.data ? (
+          <CursorPagination
+            busy={operations.isFetching}
+            hasNext={Boolean(operations.data.next_cursor)}
+            hasPrevious={pager.hasPrevious}
+            label={t("pagination.userOperations")}
+            onNext={() => pager.next(operations.data?.next_cursor)}
+            onPrevious={pager.previous}
+            page={pager.page}
+          />
+        ) : null}
+      </BrowsingScope>
     </Page>
   );
 }

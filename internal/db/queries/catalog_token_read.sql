@@ -14,6 +14,11 @@ tc.observed_block_number::text AS observed_block_number,
 tc.observed_block_hash AS observed_block_hash,
 tc.updated_at AS updated_at
 FROM token_contracts AS tc
+JOIN published_block_stage_results AS published
+ ON published.chain_id = tc.chain_id AND published.block_number = tc.observed_block_number
+ AND published.block_hash = tc.observed_block_hash AND published.stage = 'token'
+ AND published.stage_version = 2 AND published.state = 'complete'
+
 JOIN canonical_blocks AS cb
   ON cb.chain_id = tc.chain_id
  AND cb.number = tc.observed_block_number
@@ -31,6 +36,11 @@ tc.chain_id::text AS chain_id, tc.address, tc.code_hash, tc.standard, tc.confide
 tc.name, tc.symbol, tc.decimals, tc.total_supply AS total_supply, tc.metadata_state,
 tc.observed_block_number::text AS observed_block_number, tc.observed_block_hash, tc.updated_at
     FROM token_contracts AS tc
+JOIN published_block_stage_results AS published
+ ON published.chain_id = tc.chain_id AND published.block_number = tc.observed_block_number
+ AND published.block_hash = tc.observed_block_hash AND published.stage = 'token'
+ AND published.stage_version = 2 AND published.state = 'complete'
+
     JOIN canonical_blocks AS cb
       ON cb.chain_id = tc.chain_id
      AND cb.number = tc.observed_block_number

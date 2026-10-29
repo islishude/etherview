@@ -33,6 +33,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P40-T25 completed published partial browsing with explicit completeness and
+publication-fenced pagination; local API, PostgreSQL race, browser and all/split
+runtime acceptance passed.
+
 P30-T145 completed Preview genesis source verification during startup,
 with local 24-contract publication and manual repeat-run acceptance.
 

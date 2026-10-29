@@ -311,7 +311,7 @@ func TestEmbeddedBaselineIsNamedAndChecksummed(t *testing.T) {
 		"0008_proxy_observations", "0009_proxy_bindings", "0010_proxy_coverage",
 		"0011_tokens_metadata", "0012_ens_search", "0013_erc4337",
 		"0014_transfers_statistics", "0015_mempool", "0016_watchlist",
-		"0017_schema_bindings",
+		"0017_schema_bindings", "0018_browsing",
 	}
 	if len(migrations) != len(wantVersions) {
 		t.Fatalf("baseline has %d migrations, want %d", len(migrations), len(wantVersions))

@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"math"
 	"math/big"
@@ -10,14 +11,17 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/browsing"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
+	"github.com/islishude/etherview/internal/stagecontract"
 	"github.com/jackc/pgx/v5"
 )
 
 type nativeTransferCursor struct {
+	Revision          string `json:"revision"`
 	Version           int    `json:"version"`
 	ChainID           string `json:"chain_id"`
 	IndexStart        uint64 `json:"index_start"`
@@ -105,6 +109,11 @@ func (r *PostgresReader) NativeTransfers(ctx context.Context, request publicquer
 			return page, nil
 		}
 		startText = block.BlockNumber
+		cursor.SnapshotHash = "0x" + hex.EncodeToString(block.BlockHash)
+		cursor.SnapshotNumber, err = parseDecimalUint64(block.BlockNumber)
+		if err != nil {
+			return page, err
+		}
 	}
 	if startText == "" {
 		return page, nil
@@ -123,13 +132,14 @@ func (r *PostgresReader) NativeTransfers(ctx context.Context, request publicquer
 	if start > end {
 		return page, publicquery.ErrInvalidCursor
 	}
-	complete, err := q.NativeTransferCoverage(ctx, chain, numericUint64(start), numericUint64(end))
+	status, err := browsing.Read(ctx, tx, r.chainID, strconv.FormatUint(end, 10), cursor.SnapshotHash, stagecontract.NativeTransfer, strconv.FormatUint(start, 10), "")
 	if err != nil {
 		return page, err
 	}
-	if !complete {
-		return page, publicquery.NewCapabilityUnavailableError("native_transfers", "pending", "coverage_incomplete")
+	if request.Cursor != "" && (cursor.Revision == "" || cursor.Revision != status.Revision) {
+		return page, publicquery.ErrInvalidCursor
 	}
+	cursor.Revision, page.Browsing = status.Revision, status
 	rows, err := q.NativeTransferList(ctx, dbgen.NativeTransferListParams{ChainID: chain, StartNumber: numericUint64(start), SnapshotNumber: numericUint64(end), ByTransaction: hash != nil, TransactionHash: hash, ByAddress: address != nil, Address: address, HasCursor: request.Cursor != "", BeforeBlock: numericUint64(cursor.BeforeBlock), BeforeTransaction: cursor.BeforeTransaction, BeforeLog: cursor.BeforeLog, PageLimit: int32(request.Limit + 1)})
 	if err != nil {
 		return page, err

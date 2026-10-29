@@ -16,7 +16,7 @@ func TestERC20BalancesRejectNonCanonicalDecimalObservations(t *testing.T) {
 				Balance: balance, Confidence: NFTStateConfidenceRPCExact,
 			}}}
 			catalog, backend := openCatalogWithOptions(t, Options{ERC20State: state},
-				snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+				snapshotStep("100", bytesOf(0xaa, 32)), browsingStep("complete"),
 				catalogQueryStep{contains: "FROM token_balance_deltas AS d", rows: catalogRows(1, []any{token})},
 				catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc20", "90"))},
 			)

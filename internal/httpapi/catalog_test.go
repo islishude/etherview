@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/browsing"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/config"
 )
@@ -920,5 +921,27 @@ func TestCanonicalQuantityEnforcesUint256AndCanonicalDecimal(t *testing.T) {
 		if canonicalQuantity(value) {
 			t.Fatalf("accepted invalid quantity %s", value)
 		}
+	}
+}
+
+func TestPartialCatalogMetadataDoesNotClaimContinuousCoverage(t *testing.T) {
+	for _, state := range []string{"complete", "partial", "pending"} {
+		t.Run(state, func(t *testing.T) {
+			snapshot := catalog.Snapshot{ChainID: "1", BlockNumber: "548", BlockHash: "0x" + strings.Repeat("ab", 32)}
+			snapshot.Browsing = &browsing.Status{State: state, ChainID: "1", BlockNumber: snapshot.BlockNumber, BlockHash: snapshot.BlockHash, FromBlock: "0", ToBlock: "548", Revision: "9007199254740993"}
+			fake := &fakeCatalog{tokenPage: catalog.TokenPage{Items: []catalog.TokenContract{}, Snapshot: snapshot}}
+			response := httptest.NewRecorder()
+			testCatalogHandler(t, fake).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/tokens", nil))
+			var body gen.TokenListResponse
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &body) != nil {
+				t.Fatalf("response=%d %s", response.Code, response.Body.String())
+			}
+			if body.Meta.Browsing == nil || string(body.Meta.Browsing.State) != state || body.Meta.Browsing.Revision != "9007199254740993" {
+				t.Fatalf("meta=%+v", body.Meta)
+			}
+			if (body.Meta.CoverageEnd != nil) != (state == "complete") {
+				t.Fatalf("misleading coverage=%+v", body.Meta)
+			}
+		})
 	}
 }

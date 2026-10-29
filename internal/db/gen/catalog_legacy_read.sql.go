@@ -130,6 +130,11 @@ JOIN normalized_traces AS trace
  AND trace.block_hash = candidates.block_hash
  AND trace.transaction_hash = candidates.transaction_hash
  AND trace.trace_path = candidates.trace_path
+
+JOIN published_block_stage_results AS published
+ ON published.chain_id = trace.chain_id AND published.block_number = trace.block_number
+ AND published.block_hash = trace.block_hash AND published.stage = 'trace'
+ AND published.stage_version = 4 AND published.state = 'complete'
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = trace.chain_id
  AND canonical.number = trace.block_number
@@ -268,6 +273,11 @@ JOIN token_events AS event
  AND event.block_hash = candidates.block_hash
  AND event.log_index = candidates.log_index
  AND event.sub_index = candidates.sub_index
+
+JOIN published_block_stage_results AS published
+ ON published.chain_id = event.chain_id AND published.block_number = event.block_number
+ AND published.block_hash = event.block_hash AND published.stage = 'token'
+ AND published.stage_version = 2 AND published.state = 'complete'
 JOIN canonical_blocks AS canonical
   ON canonical.chain_id = event.chain_id
  AND canonical.number = event.block_number
@@ -287,6 +297,11 @@ LEFT JOIN LATERAL (
                THEN contract.decimals
            END)::numeric AS decimals
     FROM token_contracts AS contract
+
+JOIN published_block_stage_results AS metadata_publication
+ ON metadata_publication.chain_id = contract.chain_id AND metadata_publication.block_number = contract.observed_block_number
+ AND metadata_publication.block_hash = contract.observed_block_hash AND metadata_publication.stage = 'token'
+ AND metadata_publication.stage_version = 2 AND metadata_publication.state = 'complete'
     JOIN canonical_blocks AS observation
       ON observation.chain_id = contract.chain_id
      AND observation.number = contract.observed_block_number
@@ -635,6 +650,10 @@ func (q *Queries) CatalogCanonicalTransactionInclusion(ctx context.Context, chai
 const catalogErc20BalanceCandidates = `-- name: CatalogErc20BalanceCandidates :many
 SELECT d.token_address
 FROM token_balance_deltas AS d
+JOIN published_block_stage_results AS published
+ ON published.chain_id = d.chain_id AND published.block_number = d.block_number
+ AND published.block_hash = d.block_hash AND published.stage = 'token'
+ AND published.stage_version = 2 AND published.state = 'complete'
 JOIN canonical_blocks AS cb
   ON cb.chain_id = d.chain_id
  AND cb.number = d.block_number
@@ -827,6 +846,10 @@ func (q *Queries) CatalogLatestStage(ctx context.Context, arg CatalogLatestStage
 const catalogNftBalanceCandidates = `-- name: CatalogNftBalanceCandidates :many
 SELECT d.token_address, d.token_id::text
 FROM token_balance_deltas AS d
+JOIN published_block_stage_results AS published
+ ON published.chain_id = d.chain_id AND published.block_number = d.block_number
+ AND published.block_hash = d.block_hash AND published.stage = 'token'
+ AND published.stage_version = 2 AND published.state = 'complete'
 JOIN canonical_blocks AS cb
   ON cb.chain_id = d.chain_id
  AND cb.number = d.block_number
@@ -907,6 +930,11 @@ e.amount AS amount,
 e.confidence AS confidence,
 metadata.decimals AS decimals
 FROM token_events AS e
+
+JOIN published_block_stage_results AS published
+ ON published.chain_id = e.chain_id AND published.block_number = e.block_number
+ AND published.block_hash = e.block_hash AND published.stage = 'token'
+ AND published.stage_version = 2 AND published.state = 'complete'
 JOIN canonical_blocks AS cb
   ON cb.chain_id = e.chain_id
  AND cb.number = e.block_number
@@ -917,6 +945,11 @@ LEFT JOIN LATERAL (
                THEN contract.decimals
            END)::numeric AS decimals
     FROM token_contracts AS contract
+
+JOIN published_block_stage_results AS metadata_publication
+ ON metadata_publication.chain_id = contract.chain_id AND metadata_publication.block_number = contract.observed_block_number
+ AND metadata_publication.block_hash = contract.observed_block_hash AND metadata_publication.stage = 'token'
+ AND metadata_publication.stage_version = 2 AND metadata_publication.state = 'complete'
     JOIN canonical_blocks AS observation
       ON observation.chain_id = contract.chain_id
      AND observation.number = contract.observed_block_number
@@ -1957,6 +1990,11 @@ LEFT JOIN LATERAL (
                THEN contract.decimals
            END)::numeric AS decimals
     FROM token_contracts AS contract
+
+JOIN published_block_stage_results AS metadata_publication
+ ON metadata_publication.chain_id = contract.chain_id AND metadata_publication.block_number = contract.observed_block_number
+ AND metadata_publication.block_hash = contract.observed_block_hash AND metadata_publication.stage = 'token'
+ AND metadata_publication.stage_version = 2 AND metadata_publication.state = 'complete'
     JOIN canonical_blocks AS observation
       ON observation.chain_id = contract.chain_id
      AND observation.number = contract.observed_block_number

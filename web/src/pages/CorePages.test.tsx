@@ -285,9 +285,8 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/address/${address}`);
 
-    expect(await screen.findByText("Exact state capability is unavailable")).toBeVisible();
-    expect(screen.getByText(/no empty result was inferred/)).toBeVisible();
-    expect(screen.getByText("exact_state_unavailable")).toBeVisible();
+    expect(await screen.findByText("This data is currently unavailable.")).toBeVisible();
+    expect(screen.queryByText("exact_state_unavailable")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Address summary" })).not.toBeInTheDocument();
     expect(screen.queryByText("0", { exact: true })).not.toBeInTheDocument();
   });
@@ -350,9 +349,8 @@ describe("core explorer pages", () => {
 
     renderExplorer(`/tx/${transactionHash}?tab=trace`);
 
-    expect(await screen.findByText("调用追踪 数据不可用", { exact: true })).toBeVisible();
-    expect(screen.getByText(/增强阶段报告为 失败/)).toBeVisible();
-    expect(screen.getByText("stage_unavailable", { exact: true })).toBeVisible();
+    expect(await screen.findByText("此数据当前不可用。", { exact: true })).toBeVisible();
+    expect(screen.queryByText("stage_unavailable", { exact: true })).not.toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "概览" }));

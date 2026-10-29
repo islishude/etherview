@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/islishude/etherview/internal/browsing"
 	dbaccess "github.com/islishude/etherview/internal/db"
+	"github.com/islishude/etherview/internal/stagecontract"
 	pgx "github.com/jackc/pgx/v5"
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
@@ -25,19 +27,21 @@ import (
 )
 
 type userOperationCursor struct {
-	Kind                   string `json:"kind"`
-	ChainID                string `json:"chain_id"`
-	ConfigurationDigest    string `json:"configuration_digest"`
-	IndexStart             uint64 `json:"index_start"`
-	SnapshotNumber         uint64 `json:"snapshot_number"`
-	SnapshotHash           string `json:"snapshot_hash"`
-	Address                string `json:"address,omitempty"`
-	TransactionHash        string `json:"transaction_hash,omitempty"`
-	BeforeBlockNumber      uint64 `json:"before_block_number,omitempty"`
-	BeforeTransactionIndex uint64 `json:"before_transaction_index,omitempty"`
-	BeforeOperationIndex   uint64 `json:"before_operation_index,omitempty"`
-	BeforeUserOpHash       string `json:"before_user_op_hash,omitempty"`
-	AfterOperationIndex    uint64 `json:"after_operation_index,omitempty"`
+	Revision               string           `json:"revision"`
+	Browsing               *browsing.Status `json:"-"`
+	Kind                   string           `json:"kind"`
+	ChainID                string           `json:"chain_id"`
+	ConfigurationDigest    string           `json:"configuration_digest"`
+	IndexStart             uint64           `json:"index_start"`
+	SnapshotNumber         uint64           `json:"snapshot_number"`
+	SnapshotHash           string           `json:"snapshot_hash"`
+	Address                string           `json:"address,omitempty"`
+	TransactionHash        string           `json:"transaction_hash,omitempty"`
+	BeforeBlockNumber      uint64           `json:"before_block_number,omitempty"`
+	BeforeTransactionIndex uint64           `json:"before_transaction_index,omitempty"`
+	BeforeOperationIndex   uint64           `json:"before_operation_index,omitempty"`
+	BeforeUserOpHash       string           `json:"before_user_op_hash,omitempty"`
+	AfterOperationIndex    uint64           `json:"after_operation_index,omitempty"`
 }
 
 type userOperationSummaryRow struct {
@@ -315,7 +319,7 @@ func (r *PostgresReader) prepareUserOperationCursor(
 	kind, address, transactionHash, encoded string,
 ) (userOperationCursor, error) {
 	if encoded == "" {
-		snapshot, err := r.currentUserOperationSnapshot(ctx, tx)
+		snapshot, err := r.currentBrowsingUserOperationSnapshot(ctx, tx)
 		if err != nil {
 			return userOperationCursor{}, err
 		}
@@ -335,31 +339,19 @@ func (r *PostgresReader) prepareUserOperationCursor(
 	if err != nil {
 		return userOperationCursor{}, publicquery.ErrInvalidCursor
 	}
-	var valid bool
-	if err := func() error {
-		var queryValue0 pgtype.Numeric
-		if err := queryValue0.Scan(strconv.FormatUint(cursor.IndexStart, 10)); err != nil {
-			return err
-		}
-		var queryValue1 pgtype.Numeric
-		if err := queryValue1.Scan(strconv.FormatUint(cursor.SnapshotNumber, 10)); err != nil {
-			return err
-		}
-		var queryValue2 pgtype.Numeric
-		if err := queryValue2.Scan(r.chainID); err != nil {
-			return err
-		}
-		queryRow, err := dbgen.New(tx).ERC4337ValidateSnapshot(ctx, dbgen.ERC4337ValidateSnapshotParams{IndexStart: queryValue0, SnapshotNumber: queryValue1, SnapshotHash: snapshotHash[:], ChainID: queryValue2, ConfigurationDigest: r.userOperationDigest})
-		if err != nil {
-			return err
-		}
-		valid = queryRow
-		return nil
-	}(); err != nil {
-		return userOperationCursor{}, fmt.Errorf("validate UserOperation snapshot: %w", err)
+	chain, err := r.chainNumeric()
+	if err != nil {
+		return userOperationCursor{}, err
+	}
+	valid, err := dbgen.New(tx).NativeTransferValidateSnapshot(ctx, chain, numericUint64(cursor.SnapshotNumber), snapshotHash[:])
+	if err != nil {
+		return userOperationCursor{}, err
 	}
 	if !valid {
 		return userOperationCursor{}, publicquery.ErrInvalidCursor
+	}
+	if err := r.userOperationBrowsing(ctx, tx, &cursor, true); err != nil {
+		return userOperationCursor{}, err
 	}
 	if kind != "transaction" {
 		if cursor.BeforeBlockNumber > cursor.SnapshotNumber || cursor.BeforeTransactionIndex > math.MaxInt64 ||
@@ -375,40 +367,28 @@ func (r *PostgresReader) prepareUserOperationCursor(
 	return cursor, nil
 }
 
-func (r *PostgresReader) currentUserOperationSnapshot(ctx context.Context, tx pgx.Tx) (userOperationCursor, error) {
-	var number string
-	var hash []byte
-	if err := func() error {
-		var queryValue0 pgtype.Numeric
-		if err := queryValue0.Scan(strconv.FormatUint(r.userOperationStart, 10)); err != nil {
-			return err
-		}
-		var queryValue1 pgtype.Numeric
-		if err := queryValue1.Scan(r.chainID); err != nil {
-			return err
-		}
-		queryRow, err := dbgen.New(tx).ERC4337CurrentSnapshot(ctx, queryValue0, queryValue1, r.userOperationDigest)
-		if err != nil {
-			return err
-		}
-		number = queryRow.SnapshotNumber
-		hash = queryRow.SnapshotHash
-		return nil
-	}(); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return userOperationCursor{}, publicquery.ErrNotReady
-		}
-		return userOperationCursor{}, fmt.Errorf("read UserOperation coverage snapshot: %w", err)
+func (r *PostgresReader) currentBrowsingUserOperationSnapshot(ctx context.Context, tx pgx.Tx) (userOperationCursor, error) {
+	tip, err := r.currentBlockCursor(ctx, tx)
+	if err != nil {
+		return userOperationCursor{}, err
 	}
-	snapshotNumber, err := parseDecimalUint64(number)
-	if err != nil || snapshotNumber < r.userOperationStart || len(hash) != common.HashLength {
-		return userOperationCursor{}, errors.New("stored UserOperation coverage snapshot is invalid")
+	cursor := userOperationCursor{ChainID: r.chainID, ConfigurationDigest: hex.EncodeToString(r.userOperationDigest), IndexStart: r.userOperationStart, SnapshotNumber: tip.SnapshotNumber, SnapshotHash: tip.SnapshotHash}
+	if err := r.userOperationBrowsing(ctx, tx, &cursor, false); err != nil {
+		return cursor, err
 	}
-	return userOperationCursor{
-		ChainID: r.chainID, ConfigurationDigest: hex.EncodeToString(r.userOperationDigest),
-		IndexStart: r.userOperationStart, SnapshotNumber: snapshotNumber,
-		SnapshotHash: strings.ToLower(common.BytesToHash(hash).Hex()),
-	}, nil
+	return cursor, nil
+}
+
+func (r *PostgresReader) userOperationBrowsing(ctx context.Context, tx pgx.Tx, cursor *userOperationCursor, continuation bool) error {
+	status, err := browsing.Read(ctx, tx, r.chainID, strconv.FormatUint(cursor.SnapshotNumber, 10), cursor.SnapshotHash, stagecontract.UserOperation, strconv.FormatUint(cursor.IndexStart, 10), cursor.ConfigurationDigest)
+	if err != nil {
+		return err
+	}
+	if continuation && (cursor.Revision == "" || cursor.Revision != status.Revision) {
+		return publicquery.ErrInvalidCursor
+	}
+	cursor.Revision, cursor.Browsing = status.Revision, status
+	return nil
 }
 
 type userOperationProjection interface {
@@ -518,7 +498,7 @@ func userOperationPage(
 	cursor userOperationCursor,
 	limit int,
 ) (publicquery.UserOperationPage, error) {
-	page := publicquery.UserOperationPage{CoverageStart: cursor.IndexStart, CoverageEnd: cursor.SnapshotNumber}
+	page := publicquery.UserOperationPage{CoverageStart: cursor.IndexStart, CoverageEnd: cursor.SnapshotNumber, Browsing: cursor.Browsing}
 	if len(items) > limit {
 		items, boundaries = items[:limit], boundaries[:limit]
 		next := cursor
@@ -542,7 +522,7 @@ func transactionUserOperationPage(
 	cursor userOperationCursor,
 	limit int,
 ) (publicquery.UserOperationPage, error) {
-	page := publicquery.UserOperationPage{CoverageStart: cursor.IndexStart, CoverageEnd: cursor.SnapshotNumber}
+	page := publicquery.UserOperationPage{CoverageStart: cursor.IndexStart, CoverageEnd: cursor.SnapshotNumber, Browsing: cursor.Browsing}
 	if len(items) > limit {
 		items, boundaries = items[:limit], boundaries[:limit]
 		next := cursor
@@ -690,4 +670,40 @@ func cursorBoundaryHash(value string) []byte {
 		return make([]byte, common.HashLength)
 	}
 	return hash[:]
+}
+
+func (r *PostgresReader) currentUserOperationSnapshot(ctx context.Context, tx pgx.Tx) (userOperationCursor, error) {
+	var number string
+	var hash []byte
+	if err := func() error {
+		var queryValue0 pgtype.Numeric
+		if err := queryValue0.Scan(strconv.FormatUint(r.userOperationStart, 10)); err != nil {
+			return err
+		}
+		var queryValue1 pgtype.Numeric
+		if err := queryValue1.Scan(r.chainID); err != nil {
+			return err
+		}
+		queryRow, err := dbgen.New(tx).ERC4337CurrentSnapshot(ctx, queryValue0, queryValue1, r.userOperationDigest)
+		if err != nil {
+			return err
+		}
+		number = queryRow.SnapshotNumber
+		hash = queryRow.SnapshotHash
+		return nil
+	}(); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return userOperationCursor{}, publicquery.ErrNotReady
+		}
+		return userOperationCursor{}, fmt.Errorf("read UserOperation coverage snapshot: %w", err)
+	}
+	snapshotNumber, err := parseDecimalUint64(number)
+	if err != nil || snapshotNumber < r.userOperationStart || len(hash) != common.HashLength {
+		return userOperationCursor{}, errors.New("stored UserOperation coverage snapshot is invalid")
+	}
+	return userOperationCursor{
+		ChainID: r.chainID, ConfigurationDigest: hex.EncodeToString(r.userOperationDigest),
+		IndexStart: r.userOperationStart, SnapshotNumber: snapshotNumber,
+		SnapshotHash: strings.ToLower(common.BytesToHash(hash).Hex()),
+	}, nil
 }

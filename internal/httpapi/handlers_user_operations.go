@@ -103,5 +103,5 @@ func userOperationMeta(meta gen.Meta, page publicquery.UserOperationPage) gen.Me
 	}
 	start, end := gen.Quantity(strconv.FormatUint(page.CoverageStart, 10)), gen.Quantity(strconv.FormatUint(page.CoverageEnd, 10))
 	meta.CoverageStart, meta.CoverageEnd = &start, &end
-	return meta
+	return browsingMeta(meta, page.Browsing)
 }
