@@ -1,5 +1,0 @@
-# The test creates this writable parent; API creates its own private cache below it.
-services:
-  api:
-    volumes:
-      - ${PREVIEW_E2E_COMPILER_CACHE_DIR:?test-owned compiler directory is required}:/var/lib/etherview/compilers

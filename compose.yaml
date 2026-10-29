@@ -127,7 +127,11 @@ services:
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-      - ./.local/preview-compilers:/var/lib/etherview/compilers
+      - type: bind
+        source: ${PREVIEW_COMPILER_CACHE_DIR:-./.local/preview-compilers}
+        target: /var/lib/etherview/compilers
+        bind:
+          create_host_path: false
 
   sync:
     <<: *etherview-paths

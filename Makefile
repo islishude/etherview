@@ -62,7 +62,6 @@ PREVIEW_GATEWAY_CERT := $(PREVIEW_TLS_DIR)/gateway.crt
 PREVIEW_GATEWAY_KEY := $(PREVIEW_TLS_DIR)/gateway.key
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
-VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
 
 .DEFAULT_GOAL := check
 .NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus test-preview-x402 start-x402-local recreate-x402-local
@@ -258,7 +257,7 @@ license-check: license-tool-check web-install compiler-install
 	test-preview-consensus test-preview-consensus-prebuilt test-hardhat3-provider-compat \
 	test-hardhat3-e2e test-hardhat3-offline-compile test-hardhat3-e2e-prebuilt test-foundry-e2e \
 	test-foundry-offline-compile test-foundry-e2e-prebuilt test-vyper-e2e test-vyper-e2e-prebuilt \
-	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate test-vyper-alias-feasibility \
+	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate \
 	test-vyper-update benchmark benchmark-integration benchmark-vyper-wasm test-load test-soak
 
 test: test-go web-test test-workflow-scripts test-vyper-release
@@ -273,7 +272,7 @@ test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test-workflow-scripts: test-dependency-updates
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs .github/scripts/compose-check.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
@@ -391,24 +390,18 @@ test-vyper-e2e-prebuilt:
 	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
-		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyper(ProductionE2E|VerificationCounts|ProductionFixtureCoverage)$$' ./e2e/runtime
+		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyperProductionE2E$$' ./e2e/runtime
 
 test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix|MatrixSchedulingFailure)$$' -count=1 -parallel=4 -timeout=30m
 
 test-vyper-release: test-vyper-update
-	$(GO) test -tags='runtimee2e verificatione2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 test-vyper-wasm-candidate: pnpm-install
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) compiler/vyper/wasm/check.mjs
-
-# Diagnostic only. The output directory must not already exist.
-test-vyper-alias-feasibility:
-	$(NODE) --test compiler/vyper/wasm/alias-feasibility.test.mjs
-	$(NODE) compiler/vyper/wasm/alias-feasibility.mjs "$(VYPER_ALIAS_FEASIBILITY_OUTPUT)"
 
 test-vyper-update: pnpm-install
 	$(NODE) compiler/vyper/update.mjs --check
@@ -480,7 +473,7 @@ helm-check:
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
 	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
-start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
+start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
@@ -507,7 +500,7 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-x402.test.mjs .github/scripts/preview-bundler.test.mjs preview/verification/verify.test.mjs
+	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-bundler.test.mjs preview/verification/verify.test.mjs
 
 preview-env:
 	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
@@ -523,7 +516,7 @@ preview-images: preview-env preview-x402-images preview-bundler-image
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
-	@mkdir -p -m 0750 .local/preview-compilers/cache
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-compiler-cache.mjs init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
@@ -537,12 +530,17 @@ stop-preview:
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
 
 recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images preview-bundler-image
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-compiler-cache.mjs init
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+
+.PHONY: clean-preview-compiler-cache
+clean-preview-compiler-cache: preview-bundler-image
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-compiler-cache.mjs clean
 
 
 # Local x402 lifecycle

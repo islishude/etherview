@@ -51,15 +51,27 @@ inodes and spuriously rejects the installation.
   there is no unlocked fallback.
 - Base Compose mounts one project-scoped named volume at the compiler cache
   boundary. Preview instead bind-mounts `.local/preview-compilers` from the
-  repository. `make start-preview` creates the cache directory on the host
-  with mode 0750 and leaves existing ownership and permissions unchanged.
-  Native Linux operators must ensure UID 65532 has access; no helper
-  container or automatic ownership change is required by Preview. Among application
+  repository. Daily Preview and its E2E suites share one explicit bind-cache
+  lifecycle: the host creates an empty parent, and a one-shot management
+  container sets that directory and its `cache` child to UID/GID 65532 and
+  mode 0750 before the API starts. Existing nonempty caches must already have
+  that ownership and mode; initialization never recursively repairs their
+  permissions. One lifecycle script invokes `docker run --rm` directly, outside
+  the Compose service topology. The helper reuses Preview's pinned Node tooling image, has no
+  network, a read-only root filesystem, no application secrets or Docker
+  socket, and only the cache bind and read-only management script. It runs as
+  root with only CHOWN, FOWNER and DAC_OVERRIDE capabilities. Application
+  containers retain UID/GID 65532 and gain no capabilities. Among application
   roles, only `all` or `api` receives the cache. Ordinary restart,
   forced recreation, and image replacement retain it; an explicit Compose
   teardown with volume removal deletes the Base Compose volume but retains
-  the Preview host directory. Preview cache removal is a separate explicit
-  operator action.
+  the Preview host directory. `make clean-preview-compiler-cache` is a separate
+  explicit operator action: host orchestration rejects any running container
+  mounting the directory, then the helper removes only its cache contents,
+  without following symlinks, and the host removes the empty parent. E2E suites
+  use canonical test-owned paths through `PREVIEW_COMPILER_CACHE_DIR`, stop
+  their projects before this same cleanup, and treat cleanup failure as a test
+  failure. They never use the daily cache or world-writable parents.
 - Helm keeps its memory-backed `emptyDir` default. Operators may instead set
   one existing PersistentVolumeClaim shared by every `all` or `api` replica;
   the chart neither creates nor deletes that claim. Multi-node replicas require

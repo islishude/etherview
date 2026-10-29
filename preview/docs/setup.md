@@ -84,8 +84,8 @@ Node process, `curl`, helper image, auxiliary container, or Docker socket.
 Compose's `--wait --wait-timeout 180` invocation waits for container health.
 Both lifecycle targets then run `archive-init` and `preview-ready.mjs`, which
 checks successive real execution/Beacon blocks. Container readiness alone does
-not establish chain progress. Compose render regressions fix the healthcheck
-definition and role topology, while production image checks retain the non-root, native-architecture, and compiler-runtime
+not establish chain progress. Preview E2E gates exercise startup and role
+topology, while production image checks retain the non-root, native-architecture, and compiler-runtime
 boundaries.
 
 NFT metadata defaults to the local `https://ipfs.etherview.localhost` Kubo
@@ -125,12 +125,21 @@ storage, Kubo and its gateway, Rundler and the x402 Facilitator, and reruns
 migration while preserving
 PostgreSQL, chain state, validator slashing protection, blob/IPFS data, and the
 host directory `.local/preview-compilers/cache`, bind-mounted at
-`/var/lib/etherview/compilers/cache`. `make start-preview` uses host `mkdir -p -m 0750` to
-create the cache directory; existing ownership and permissions are unchanged.
-No helper container is started. On native Linux, the operator must ensure the
-API container's UID 65532 can read, write and traverse this directory, without
-group/world write permission. Direct Compose startup requires an already
-prepared cache; `make recreate-preview` reuses it. Cache entries remain ordinary
+`/var/lib/etherview/compilers/cache`. `make start-preview` and `make recreate-preview`
+prepare the cache with a one-shot, network-disabled management container using
+the existing Preview Node tooling image, invoked directly with `docker run --rm`.
+It creates the parent and `cache`
+directory as `65532:65532`, mode `0750`; the application remains non-root.
+The helper has a read-only root filesystem, only the dedicated cache and script
+mounts, and CHOWN/FOWNER/DAC_OVERRIDE capabilities. It receives no application
+secrets or Docker socket. No host user account or host `sudo` is needed.
+`PREVIEW_COMPILER_CACHE_DIR` selects a dedicated alternative host directory;
+symlink paths and directories containing unrelated entries are rejected.
+Existing nonempty caches must already have the expected directory ownership
+and modes. Startup reports a mismatch without recursively changing existing
+data; stop all consumers and explicitly reclaim the rebuildable cache before
+retrying. Direct Compose startup requires an already prepared cache.
+Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They
 do not make an expired compiler catalog usable and do not belong in backups.
 The API downloads a cold miss before coordination, then uses a digest-scoped
@@ -140,10 +149,14 @@ the same writer database lock domain.
 `make stop-preview` removes the deployment and all project volumes, but retains
 this host directory, so Solidity and Vyper artifacts survive even `down --volumes`.
 For manual cache reclamation, stop every `all`/`api` process mounting the directory
-before explicitly deleting `.local/preview-compilers`; the next compiler job
+before running `make clean-preview-compiler-cache`; the next compiler job
 downloads the authenticated artifact again. Do not share this directory between
 concurrent Preview projects using different writer databases. Override
 the application tag with `ETHERVIEW_IMAGE`.
+The clean command checks running containers across projects and refuses to run
+while any mounts that directory. It uses the scoped helper to remove private
+and read-only cache trees, then removes the empty host directory. It never
+changes the ownership of unrelated files or follows cache symlinks.
 
 After chain readiness, startup verifies sources for every genesis contract.
 A failed verification step fails startup's Make target while retaining the

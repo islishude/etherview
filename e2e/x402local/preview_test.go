@@ -35,9 +35,8 @@ func TestPreviewX402(t *testing.T) {
 	defer cancel()
 	root := repositoryRoot(t)
 	artifacts := t.TempDir()
-	compilerDirectory := t.TempDir()
-	// API owns the private cache/ child; explicitly relax only its test parent.
-	if err := os.Chmod(compilerDirectory, 0o777); err != nil {
+	compilerDirectory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
 		t.Fatal(err)
 	}
 	origin := "http://127.0.0.1:" + strconv.Itoa(freePort(t))
@@ -51,13 +50,13 @@ func TestPreviewX402(t *testing.T) {
 `, origin, origin[len("http://"):])), 0600); err != nil {
 		t.Fatal(err)
 	}
-	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", "e2e/preview-compiler-cache.compose.yaml", overlay)
+	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", overlay)
 	project.Env = map[string]string{
-		"PREVIEW_E2E_COMPILER_CACHE_DIR": compilerDirectory,
-		"ETHERVIEW_IMAGE":                os.Getenv("IMAGE"),
-		"ETHERVIEW_CONFIG_FILE":          filepath.Join(root, "preview/config.yaml"),
-		"PREVIEW_NETWORK_DIR":            filepath.Join(artifacts, "network"),
-		"PREVIEW_HTTPS_PORT":             "0", "GETH_HTTP_PORT": "0", "GETH_WS_PORT": "0",
+		"PREVIEW_COMPILER_CACHE_DIR": compilerDirectory,
+		"ETHERVIEW_IMAGE":            os.Getenv("IMAGE"),
+		"ETHERVIEW_CONFIG_FILE":      filepath.Join(root, "preview/config.yaml"),
+		"PREVIEW_NETWORK_DIR":        filepath.Join(artifacts, "network"),
+		"PREVIEW_HTTPS_PORT":         "0", "GETH_HTTP_PORT": "0", "GETH_WS_PORT": "0",
 		"LIGHTHOUSE_HTTP_PORT": "0", "IPFS_API_PORT": "0", "ETHERVIEW_METRICS_PORT": "0",
 		"ETHERVIEW_PUSH_ENABLED": "false", "ETHERVIEW_TURNSTILE_ENABLED": "false",
 	}
@@ -73,8 +72,13 @@ func TestPreviewX402(t *testing.T) {
 		}
 		if err := project.Down(cleanup); err != nil {
 			t.Error(err)
+		} else if err := project.PreviewCompilerCache(cleanup, "clean"); err != nil {
+			t.Error(err)
 		}
 	})
+	if err := project.PreviewCompilerCache(ctx, "init"); err != nil {
+		t.Fatal(err)
+	}
 	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `import {prepareNetwork} from "./.github/scripts/preview-network.mjs"; prepareNetwork(process.argv[1]);`, project.Env["PREVIEW_NETWORK_DIR"])
 	command.Dir = root
 	command.Env = append(os.Environ(), "COMPOSE_PROJECT_NAME="+project.Name, "ETHERVIEW_GENESIS_FILE=", "GETH_GENESIS_FILE=")

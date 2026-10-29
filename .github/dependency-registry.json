@@ -397,11 +397,6 @@
           "count": 1
         },
         {
-          "path": ".github/scripts/preview-compose-check.mjs",
-          "template": "  process.env.PREVIEW_GATEWAY_IMAGE ?? \"caddy:{{version}}-alpine\",",
-          "count": 1
-        },
-        {
           "path": "e2e/previewgateway/gateway_test.go",
           "template": "\t\timage = \"caddy:{{version}}-alpine\"",
           "count": 1
@@ -625,11 +620,6 @@
         {
           "path": "docs/decisions/ADR-0040-sea-packaged-solcjs-executor.md",
           "template": "- The production solc-js executor is a Node {{version}} SEA containing one bundled",
-          "count": 1
-        },
-        {
-          "path": "compiler/vyper/wasm/alias-feasibility.mjs",
-          "template": "  assert.equal(process.version, \"v{{version}}\");",
           "count": 1
         },
         {

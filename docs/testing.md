@@ -151,9 +151,9 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   Git repositories and stub commands, covering metadata, digest export,
   PR flags, command order, prebuilt entry points, production-image/evidence
   handoff and failure propagation without pushing images or PRs.
-  It also tests the Compose check runner's scenario isolation and failure handling
-  with stub commands. `make compose-check` runs the real rendering matrix through
+  `make compose-check` runs the production deployment rendering matrix through
   `.github/scripts/compose-check.mjs`, retaining the domain-specific validators.
+  Preview deployment behavior is exercised by its existing business E2E gates.
 - `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
   12.15.0 before generating or validating artifacts. Compatible newer stable
   versions are supported by this minimum-version check; older, malformed, and
@@ -1029,35 +1029,6 @@ a head event. It removes interception before observing native reconnect headers
 and checks fresh requests separately after the head and cursor recovery. SSE
 readiness alone does not establish that a lazy page has query observers.
 
-### Dual-runtime npm alias feasibility
-
-`make test-vyper-alias-feasibility VYPER_ALIAS_FEASIBILITY_OUTPUT=.local/alias-comparison-new`
-creates a new isolated pnpm project with exact dependencies `pyodide@314.0.7` and
-`pyodide-legacy@npm:pyodide@0.29.5`. It requires the ordinary compiler tooling
-install, but never changes its dependency pins or existing runtime outputs.
-The new output directory must not already exist. Downloads use the normal
-checksum-verified package builders; original/modified references are read-only.
-
-Only Vyper 0.4.0–0.4.3 selects the modern runtime; the other 21 baseline versions
-select the alias. Unknown versions fail without fallback. All checked-in compilations
-use fresh restricted processes with at most four concurrent children, a
-30-second deadline, 128 MiB V8 old-generation heap and 384 MiB WASM cap. Each
-child receives read permission for its selected runtime and package, not the
-sibling runtime. These memory limits do not bound total RSS.
-
-The experiment records the pnpm lockfile, resolved alias paths, runtime and
-package identities, reference digests and every input's output/command. Both
-runtimes get permission, memory, large-input and timeout/forced-cleanup probes.
-Wrong-Python identity rejection and a deliberately misrouted old compiler are
-negative controls. `report.json` contains the aggregate verdict; `results/`
-contains per-input evidence. Setup or compatibility failures return nonzero.
-
-This diagnostic preserves existing production pins and records its isolated
-runtime/package evidence separately. The dual-runtime policy is now implemented
-under ADR-0053, with application-locked distribution under ADR-0054. Passing
-this diagnostic establishes local alias/routing feasibility only; it does not
-replace the current native Linux matrix or production topology acceptance.
-
 ### Vyper update proposals
 
 `make test-vyper-update` runs complete version-set checks, publication allowlist
@@ -1067,10 +1038,10 @@ the required range from `compiler/vyper/pyproject.toml`. Metadata tests and
 update scripts share the
 committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
 Update recipe generation enforces the same range before invoking its isolated
-resolver. `make test-vyper-release` includes these checks, including tagged
-production-fixture/count regressions without starting
-Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
-compatibility, digest mismatch, network failures and unchanged prior recipes.
+resolver. `make test-vyper-release` includes these checks alongside the
+package integrity and release acceptance regressions. Fixtures cover PEP 440
+ordering, prerelease/yanked exclusion, wheel compatibility, digest mismatch,
+network failures and unchanged prior recipes.
 
 The updater only generates reference fixtures for the requested new version.
 Its isolated candidate comparison does not replace the full native Linux matrix

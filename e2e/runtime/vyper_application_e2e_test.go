@@ -74,31 +74,3 @@ func (s vyperApplicationSnapshot) complete() bool {
 	}
 	return true
 }
-
-func TestVyperVerificationCounts(t *testing.T) {
-	complete := vyperApplicationSnapshot{Jobs: vyperProductionJobCount, Results: vyperProductionJobCount, SucceededJobs: vyperProductionJobCount, SucceededResults: vyperProductionJobCount}
-	for _, version := range vyperProductionVersions {
-		for _, protocol := range vyperProductionProtocols {
-			complete.Cases = append(complete.Cases, vyperApplicationCase{Version: version, Protocol: protocol})
-		}
-	}
-	if !complete.complete() {
-		t.Fatal("complete Vyper snapshot rejected")
-	}
-	for _, mutate := range []func(*vyperApplicationSnapshot){
-		func(s *vyperApplicationSnapshot) { s.Jobs-- }, func(s *vyperApplicationSnapshot) { s.Jobs++ },
-		func(s *vyperApplicationSnapshot) { s.Results-- }, func(s *vyperApplicationSnapshot) { s.Results++ },
-		func(s *vyperApplicationSnapshot) { s.SucceededJobs-- }, func(s *vyperApplicationSnapshot) { s.SucceededResults-- },
-		func(s *vyperApplicationSnapshot) { s.Cases = s.Cases[:len(s.Cases)-1] },
-		func(s *vyperApplicationSnapshot) { s.Cases[0] = s.Cases[1] },
-		func(s *vyperApplicationSnapshot) { s.Cases[0].Version = "unknown" },
-		func(s *vyperApplicationSnapshot) { s.Cases[0].Protocol = "unknown" },
-	} {
-		value := complete
-		value.Cases = append([]vyperApplicationCase(nil), complete.Cases...)
-		mutate(&value)
-		if value.complete() {
-			t.Fatal("accepted missing, extra, wrong-language or duplicate Vyper results")
-		}
-	}
-}

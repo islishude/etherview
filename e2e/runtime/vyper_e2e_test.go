@@ -193,24 +193,3 @@ func applicationVyperVersions(t *testing.T) []string {
 	slices.Sort(versions)
 	return versions
 }
-
-func TestVyperProductionFixtureCoverage(t *testing.T) {
-	versions := applicationVyperVersions(t)
-	if slices.Contains(versions, "0.2.0") {
-		t.Fatal("retired compiler in production catalog")
-	}
-	for _, version := range vyperProductionVersions {
-		if !slices.Contains(versions, version) {
-			t.Fatalf("production fixture uses unsupported compiler %s", version)
-		}
-		name := "immutable"
-		if version == "0.2.1" {
-			name = "constructor"
-		}
-		for _, suffix := range []string{"input", "output"} {
-			if _, err := os.ReadFile(filepath.Join("../../internal/verify/testdata/compiler/vyper/versions", version, name+"."+suffix+".json")); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-}

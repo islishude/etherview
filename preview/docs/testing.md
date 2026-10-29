@@ -9,8 +9,6 @@
 It covers domain routing, raw IPFS paths, CORS, TLS, request limits, streaming,
 cancellation, deadlines and WSS/SSE idle connections. The official image is
 pulled through `make preview-images`; no custom gateway binary is built.
-`make compose-check` validates loopback publication, Caddy-only key mounts and
-absence of optional-upstream/core dependency coupling.
 
 Preview browser acceptance requires the locked pnpm workspace and Chrome, or
 `PLAYWRIGHT_USE_BUNDLED=1` with `pnpm --dir web exec playwright install chromium`.
@@ -46,6 +44,14 @@ restart, Amsterdam header and exact native-transfer acceptance in split and
 all-role layouts. Every test owns its generated network bundle, Compose project,
 volumes and ephemeral loopback ports; it never overwrites the daily Preview.
 
+All four Preview E2E gates also own a separate compiler bind directory. They
+use the same restricted initialization and cleanup tool as daily Preview,
+with UID/GID 65532 and mode 0750. Cleanup stops the Compose project before
+removing the private cache and fails the test if either step fails. Reports
+remain host-owned and outside this cache. The existing Preview CI gates verify
+this lifecycle on native Linux; Docker Desktop evidence alone does not establish
+native Linux host cleanup behavior.
+
 `make test-preview-consensus` runs the fixed Geth v1.17.10 / Lighthouse v8.3.2
 combination with Gloas at genesis and the durable RustFS archive. Daily Preview,
 metadata acceptance and consensus acceptance share three-second slots. Both
@@ -74,17 +80,9 @@ configuration drift, tampering, symlinks and rejected single-file overrides.
 It also checks Preview env creation, key-pair reuse and validation, operator-setting
 preservation and 0600 permissions. Deterministic short-scalar cases verify
 32-byte private-key encoding, unchanged public identity and reuse without rotation.
-Compose rendering verifies that a single env file supplies public configuration
-while private keys reach only maintenance/all.
-It also checks Compose command strings, executable paths with spaces, literal
-argument preservation, readiness port lookup and initialization failure propagation.
-`make compose-check` checks Engine JWT and validator-key isolation, scoped
-archive credentials, client images/commands, loopback-only Beacon exposure and
-the absence of direct or transitive optional dependencies from core roles.
-It also checks the default Preview entry point in `compose.yaml` and the
-external-chain template in `deploy/compose.yaml`, including project/volume
-identity and repository-root build and bind-mount resolution. Deployment
-render commands pass `--project-directory .`; the shared Go Compose helper
+Preview Compose behavior is exercised by the metadata, consensus, contracts
+and x402 E2E gates. Production deployment render commands pass
+`--project-directory .`; the shared Go Compose helper
 anchors tests at the repository root, while the standalone x402 fixture
 explicitly retains its own directory. Runtime, compiler, schema and RustFS
 tests continue to exercise the external-chain template.
@@ -167,8 +165,7 @@ pre-broadcast rejection, receipt indexing, reverts, wrong hashes, broadcast
 uncertainty and receipt errors/timeouts. Its HTTP loopback test origin
 isolates payment/runtime acceptance; it does not establish browser wallet or
 production Permit2/proxy compatibility. The existing Preview metadata/browser
-and consensus gates remain required. `make preview-network-check` additionally
-checks the absence of transaction-based initialization. The contract fixture
+and consensus gates remain required. The contract fixture
 checks genesis token storage, owner balance and Facilitator funding. No local test closes P60-T17.
 
 ## Genesis verification inputs

@@ -164,10 +164,8 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compilerDirectory := t.TempDir()
-	// Chmod after creation bypasses the host umask. The API creates cache/ with
-	// its own UID and 0750 permissions; only this test-owned parent is shared.
-	if err := os.Chmod(compilerDirectory, 0o777); err != nil {
+	compilerDirectory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
 		t.Fatal(err)
 	}
 	image := valueOrDefault("IMAGE", "etherview:local")
@@ -185,11 +183,10 @@ func newHarness(t *testing.T) *harness {
 		root,
 		testcompose.UniqueProjectName("etherview-preview-metadata"),
 		"compose.yaml",
-		"e2e/preview-compiler-cache.compose.yaml",
 		"e2e/previewmetadata/compose.yaml",
 	)
 	project.Env = map[string]string{
-		"PREVIEW_E2E_COMPILER_CACHE_DIR":  compilerDirectory,
+		"PREVIEW_COMPILER_CACHE_DIR":      compilerDirectory,
 		"ETHERVIEW_IMAGE":                 image,
 		"ETHERVIEW_CONFIG_FILE":           filepath.Join(root, "preview", "config.yaml"),
 		"GETH_IMAGE":                      "ethereum/client-go:v1.17.10",
@@ -1008,7 +1005,9 @@ func (h *harness) cleanup() {
 	if h.project != nil {
 		h.captureDiagnostics(ctx)
 		if err := h.project.Down(ctx); err != nil {
-			h.t.Logf("Preview metadata cleanup: %v", err)
+			h.t.Errorf("Preview metadata cleanup: %v", err)
+		} else if err := h.project.PreviewCompilerCache(ctx, "clean"); err != nil {
+			h.t.Errorf("Preview compiler cache cleanup: %v", err)
 		}
 	}
 	if h.rpc != nil {

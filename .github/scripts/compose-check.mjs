@@ -8,7 +8,6 @@ import { runCompose } from "./preview-compose.mjs";
 const root = resolve(import.meta.dirname, "../..");
 const topologies = ["monolith", "distributed"];
 const deployment = ["--project-directory", ".", "-f", "deploy/compose.yaml"];
-const preview = ["-f", "compose.yaml"];
 const runtime = [...deployment, "-f", "e2e/runtime/compose.yaml"];
 const verification = [...runtime, "-f", "e2e/runtime/verification.compose.yaml"];
 const compilerPaths = {
@@ -109,36 +108,6 @@ function main() {
         ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE: "true",
       },
     );
-  config("Preview", preview);
-  config("Preview compiler", [...preview, "--profile", "archive-init"], compilerPaths, "preview", {
-    ETHERVIEW_EXPECT_COMPILER_RUNTIME_PATH_OVERRIDE: "true",
-  });
-  config(
-    "Preview metadata gateway",
-    preview,
-    { ETHERVIEW_METADATA_IPFS_GATEWAY: "https://gateway.example.com" },
-    ({ services }) => {
-      for (const role of ["api", "sync", "enrich", "trace", "metadata", "maintenance"])
-        assert.equal(
-          services[role].environment.ETHERVIEW_METADATA_IPFS_GATEWAY,
-          "https://gateway.example.com",
-          `Preview metadata gateway override missing from ${role}`,
-        );
-    },
-  );
-  config(
-    "Preview metadata overlay",
-    [...preview, "-f", "e2e/previewmetadata/compose.yaml"],
-    {
-      IPFS_API_PORT: "0",
-      PREVIEW_HTTPS_PORT: "0",
-      LIGHTHOUSE_HTTP_PORT: "0",
-      ETHERVIEW_METRICS_PORT: "0",
-      GETH_HTTP_PORT: "0",
-      GETH_WS_PORT: "0",
-    },
-    "preview-metadata",
-  );
   for (const topology of topologies)
     config(`runtime ${topology}`, [...runtime, "--profile", topology]);
   for (const topology of topologies) {
@@ -218,7 +187,6 @@ function main() {
       );
   });
   for (const [label, files, owner] of [
-    ["preview", preview, "api"],
     ["monolith", [...deployment, "--profile", "monolith"], "etherview"],
     ["distributed", [...deployment, "--profile", "distributed"], "api"],
   ]) {
