@@ -256,3 +256,23 @@ is capped at 100, and binds cursors to the exact block, type filter and publicat
 A job still awaiting publication, including a scheduled transient retry, is
 `pending`. Terminal source unavailability is `unavailable`; invalid evidence is
 `failed`. No intermediate attempt exposes unverified rows as an empty result.
+
+## Published partial browsing
+
+Native explorer history lists may return HTTP 200 with published canonical rows
+while enrichment is incomplete. `meta.browsing` binds the exact query snapshot,
+requested range and publication revision and reports `complete`, `partial`, or
+`pending`. Empty partial/pending results do not establish absence. Coverage
+fields describe proven continuous coverage only, never a disconnected high block.
+Row visibility still requires the exact current stage/version publication.
+Token observations retain their own observation identity; exact balances,
+ownership, holder totals, aggregate statistics, interaction authority, exports
+and Etherscan compatibility retain their existing strict contracts.
+
+Partial-list cursors bind an indexed per-block publication revision watermark.
+Changes inside the frozen range invalidate traversal, including late publication,
+replay and canonical detach/reattach; later blocks do not. PostgreSQL maintains
+publication coverage and revisions transactionally from the same relations as
+`published_block_stage_results`. They are read accelerators, not independent
+publication authority. The SPA renders a compact status and refresh action and
+never substitutes zero or unverified rows for missing facts.

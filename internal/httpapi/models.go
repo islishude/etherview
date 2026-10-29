@@ -10,6 +10,7 @@ import (
 
 	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/browsing"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/metadata"
 )
@@ -101,7 +102,7 @@ func (h *Handler) catalogPageMeta(r *http.Request, next string, snapshot catalog
 	if snapshot.BlockNumber != "" {
 		meta.CoverageEnd = &snapshot.BlockNumber
 	}
-	return meta
+	return browsingMeta(meta, snapshot.Browsing)
 }
 
 func (h *Handler) tokenHolderMeta(
@@ -625,4 +626,17 @@ func transactionStateChangesModel(
 		TransactionHash: identity.TransactionHash, TransactionIndex: identity.TransactionIndex,
 		State: gen.TransactionStateChangesState(identity.State), Items: items,
 	}
+}
+
+func browsingMeta(meta gen.Meta, status *browsing.Status) gen.Meta {
+	if status == nil {
+		return meta
+	}
+	meta.Browsing = &gen.BrowsingStatus{State: gen.BrowsingStatusState(status.State), FromBlock: status.FromBlock, ToBlock: status.ToBlock, Revision: status.Revision,
+		Snapshot: gen.CatalogSnapshot{ChainId: status.ChainID, BlockNumber: status.BlockNumber, BlockHash: status.BlockHash}}
+	meta.CoverageStart, meta.CoverageEnd = nil, nil
+	if status.State == "complete" {
+		meta.CoverageStart, meta.CoverageEnd = &status.FromBlock, &status.ToBlock
+	}
+	return meta
 }

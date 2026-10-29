@@ -36,7 +36,7 @@ make start-preview
 `preview-cert` installs mkcert's local CA and creates ignored localhost
 certificates. Open <https://app.etherview.localhost>; the operations listener
 is at <http://localhost:9090>. Solidity/Yul compilation uses a bounded,
-permission-restricted Node 26.12.1 SEA subprocess.
+permission-restricted Node 26.13.0 SEA subprocess.
 
 Use `make recreate-preview` to rebuild application roles while preserving data
 and the compiler cache. **`make stop-preview` deletes Preview and all its
@@ -65,8 +65,8 @@ and volumes; choose different published ports if running both concurrently.
 
 ## Development
 
-Toolchains: Go >=1.27.3, Node.js 26.12.1, and pnpm 12.15.0 (pinned in
-`package.json`). The compiler workspace requires exactly Node.js 26.12.1.
+Toolchains: Go >=1.27.3, Node.js 26.13.0, and pnpm 12.15.0 (pinned in
+`package.json`). The compiler workspace requires exactly Node.js 26.13.0.
 
 ```sh
 make toolchain-check

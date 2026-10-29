@@ -135,3 +135,13 @@ public view.
   NATS may later reduce wake latency, but cannot replace the ledger.
 - Changing payload identity, cursor interpretation, or retention ownership
   requires an ADR and compatible API/migration plan.
+
+## Browsing publication invalidation
+
+Native partial browsing also emits a compact `status` invalidation with
+`reason: browsing_publication` and a stage name when a published block becomes
+visible or is revoked. These events never write or claim the elected reporter's
+aggregate sync snapshot. Readers refresh from PostgreSQL rather than treating
+an invalidation payload as a status observation. One deferred transaction-local
+projection emits only actual publication-identity transitions; duplicate source
+triggers do not multiply events for an unchanged identity.

@@ -402,6 +402,25 @@ type BlockStatistic struct {
 	ContractCreationCount  *int64             `db:"contract_creation_count" json:"contract_creation_count"`
 }
 
+type BrowsingBlock struct {
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Stage               string         `db:"stage" json:"stage"`
+	StageVersion        int32          `db:"stage_version" json:"stage_version"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	Identity            string         `db:"identity" json:"identity"`
+	ConfigurationDigest string         `db:"configuration_digest" json:"configuration_digest"`
+	Complete            bool           `db:"complete" json:"complete"`
+	Revision            int64          `db:"revision" json:"revision"`
+}
+
+type BrowsingCoverage struct {
+	ChainID             pgtype.Numeric                                  `db:"chain_id" json:"chain_id"`
+	Stage               string                                          `db:"stage" json:"stage"`
+	StageVersion        int32                                           `db:"stage_version" json:"stage_version"`
+	ConfigurationDigest string                                          `db:"configuration_digest" json:"configuration_digest"`
+	Covered             pgtype.Multirange[pgtype.Range[pgtype.Numeric]] `db:"covered" json:"covered"`
+}
+
 type BytecodeDbAttempt struct {
 	ServiceID       []byte      `db:"service_id" json:"service_id"`
 	TargetDigest    []byte      `db:"target_digest" json:"target_digest"`

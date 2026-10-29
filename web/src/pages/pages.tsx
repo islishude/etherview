@@ -1,6 +1,7 @@
+import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { ArrowRight, CircleAlert, History } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import { useCursorHistory } from "@/api/pagination";
+import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -309,67 +310,69 @@ export function TransactionsPage() {
 
 export function TokensPage() {
   const { i18n, t } = useTranslation();
-  const pager = useCursorHistory("tokens");
+  const pager = useBrowsingCursorHistory("tokens");
   const tokens = useTokens(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
     <Page title={t("page.tokens")} description={t("page.tokensDescription")}>
-      <QueryNotice loading={tokens.isPending} error={tokens.error} onReset={pager.reset} />
-      {tokens.data && tokens.data.items.length === 0 && (
-        <p className="empty-result" role="status">
-          {t("state.noTokens")}
-        </p>
-      )}
-      {tokens.data && tokens.data.items.length > 0 && (
-        <div className="table-scroll" tabIndex={0} aria-label={t("page.tokens")}>
-          <table>
-            <caption className="sr-only">{t("page.tokensDescription")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.token")}</th>
-                <th>{t("table.standard")}</th>
-                <th>{t("table.confidence")}</th>
-                <th className="numeric">{t("table.supply")}</th>
-                <th>{t("table.metadata")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tokens.data.items.map((token) => (
-                <tr key={token.address}>
-                  <td>
-                    <span className="table-primary">
-                      <Link to="/token/$address" params={{ address: token.address }}>
-                        {token.name ?? token.symbol ?? shorten(token.address)}
-                      </Link>
-                      <code>{shorten(token.address)}</code>
-                    </span>
-                  </td>
-                  <td>
-                    <span className="result-kind">{tokenStandardLabel(token.standard, t)}</span>
-                  </td>
-                  <td>{confidenceLabel(token.confidence, t)}</td>
-                  <td className="numeric">
-                    <code>{formatInteger(token.total_supply, locale)}</code>
-                  </td>
-                  <td>{stageStateLabel(token.metadata_state, t)}</td>
+      <BrowsingScope status={tokens.data?.meta.browsing}>
+        <QueryNotice loading={tokens.isPending} error={tokens.error} onReset={pager.reset} />
+        {tokens.data && tokens.data.items.length === 0 && (
+          <p className="empty-result" role="status">
+            <BrowsingEmpty>{t("state.noTokens")}</BrowsingEmpty>
+          </p>
+        )}
+        {tokens.data && tokens.data.items.length > 0 && (
+          <div className="table-scroll" tabIndex={0} aria-label={t("page.tokens")}>
+            <table>
+              <caption className="sr-only">{t("page.tokensDescription")}</caption>
+              <thead>
+                <tr>
+                  <th>{t("table.token")}</th>
+                  <th>{t("table.standard")}</th>
+                  <th>{t("table.confidence")}</th>
+                  <th className="numeric">{t("table.supply")}</th>
+                  <th>{t("table.metadata")}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {tokens.data && (
-        <CursorPagination
-          busy={tokens.isFetching}
-          hasNext={Boolean(tokens.data.next_cursor)}
-          hasPrevious={pager.hasPrevious}
-          label={t("pagination.tokens")}
-          onNext={() => pager.next(tokens.data?.next_cursor)}
-          onPrevious={pager.previous}
-          page={pager.page}
-        />
-      )}
+              </thead>
+              <tbody>
+                {tokens.data.items.map((token) => (
+                  <tr key={token.address}>
+                    <td>
+                      <span className="table-primary">
+                        <Link to="/token/$address" params={{ address: token.address }}>
+                          {token.name ?? token.symbol ?? shorten(token.address)}
+                        </Link>
+                        <code>{shorten(token.address)}</code>
+                      </span>
+                    </td>
+                    <td>
+                      <span className="result-kind">{tokenStandardLabel(token.standard, t)}</span>
+                    </td>
+                    <td>{confidenceLabel(token.confidence, t)}</td>
+                    <td className="numeric">
+                      <code>{formatInteger(token.total_supply, locale)}</code>
+                    </td>
+                    <td>{stageStateLabel(token.metadata_state, t)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {tokens.data && (
+          <CursorPagination
+            busy={tokens.isFetching}
+            hasNext={Boolean(tokens.data.next_cursor)}
+            hasPrevious={pager.hasPrevious}
+            label={t("pagination.tokens")}
+            onNext={() => pager.next(tokens.data?.next_cursor)}
+            onPrevious={pager.previous}
+            page={pager.page}
+          />
+        )}
+      </BrowsingScope>
     </Page>
   );
 }

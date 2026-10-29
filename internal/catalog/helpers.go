@@ -28,6 +28,7 @@ var maximumUint256 = func() *big.Int {
 }()
 
 type tokenListCursor struct {
+	Revision       string `json:"revision"`
 	Version        int    `json:"v"`
 	ChainID        string `json:"chain_id"`
 	SnapshotNumber string `json:"snapshot_number"`
@@ -36,6 +37,7 @@ type tokenListCursor struct {
 }
 
 type tokenEventCursor struct {
+	Revision       string `json:"revision"`
 	Version        int    `json:"v"`
 	ChainID        string `json:"chain_id"`
 	TokenAddress   string `json:"token_address"`
@@ -58,6 +60,7 @@ type tokenHolderCursor struct {
 }
 
 type nftBalanceCursor struct {
+	Revision       string `json:"revision"`
 	Version        int    `json:"v"`
 	ChainID        string `json:"chain_id"`
 	Owner          string `json:"owner"`
@@ -68,6 +71,7 @@ type nftBalanceCursor struct {
 }
 
 type erc20BalanceCursor struct {
+	Revision       string `json:"revision"`
 	Version        int    `json:"v"`
 	ChainID        string `json:"chain_id"`
 	Owner          string `json:"owner"`

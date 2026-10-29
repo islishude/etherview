@@ -10,7 +10,7 @@ and publication authority. See [optional consensus and blob archives](#optional-
 ## Repository build dependencies
 
 Run `pnpm install --frozen-lockfile` at the repository root to install all four pnpm workspaces from
-one lockfile. The compiler workspace requires Node 26.12.1; root pnpm policy
+one lockfile. The compiler workspace requires Node 26.13.0; root pnpm policy
 enforces engines and disables dependency lifecycle scripts. Production and
 Hardhat Docker builds use the same lock and install only their selected
 workspaces. Build the Hardhat client with `make hardhat3-client-image-build`;
@@ -94,7 +94,7 @@ per-file input limit does not increase the allowed initial page weight.
 ## Fresh database initialization
 
 The fresh-database baseline consists of numbered domain migrations from
-`0001_core.sql` through `0017_schema_bindings.sql` in
+`0001_core.sql` through `0018_browsing.sql` in
 `internal/store/migrations/`. Initialize an empty PostgreSQL database with
 `etherview migrate up`, then verify it with `etherview migrate status`. The
 runner applies all pending files in one transaction under an advisory lock;
@@ -1767,3 +1767,19 @@ See [Preview ERC-4337 and local ENS](../preview/docs/contracts.md#preview-erc-43
 ### Preview configuration layout
 
 See [Preview configuration layout](../preview/docs/operations.md#preview-configuration-layout).
+
+## Incomplete explorer lists
+
+A successful native browsing response can contain partial published history.
+Inspect `meta.browsing.state` and its exact snapshot/range before interpreting
+an empty list as absence. `coverage_start` and `coverage_end` are omitted for
+incomplete browsing ranges. The UI shows a compact notice; worker failures and
+missing capabilities remain diagnosable through operational stage/job status.
+An `invalid_cursor` after backfill or replay requires restarting pagination.
+
+Browsing coverage and revisions are maintained inside PostgreSQL publication
+transactions, identically for all and split roles. They require the current
+fresh-database baseline; no startup backfill or legacy readiness path is added.
+Existing balances, holder totals, CSV exports and Etherscan reads retain their
+strict exact-state/coverage rules. Partial browsing is not evidence that a
+release synchronization or payment acceptance gate has passed.

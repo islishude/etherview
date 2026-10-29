@@ -100,7 +100,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 			cursor.ChainID != request.ChainID || cursor.Owner != normalizedOwner || !canonicalUint256(cursor.TokenID) {
 			return NFTBalancePage{}, ErrInvalidCursor
 		}
-		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash}
+		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash, Revision: cursor.Revision}
 		boundaryAddress, err = decodeFixedHex(cursor.TokenAddress, 20)
 		if err != nil || cursor.TokenAddress != "0x"+hex.EncodeToString(boundaryAddress) {
 			return NFTBalancePage{}, ErrInvalidCursor
@@ -114,7 +114,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 	if err != nil {
 		return NFTBalancePage{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
+	if err := readBrowsing(ctx, tx, &snapshot, StageToken, hasBoundary); err != nil {
 		return NFTBalancePage{}, err
 	}
 	rows, err := func() ([]dbgen.CatalogNftBalanceCandidatesRow, error) {
@@ -218,7 +218,7 @@ func (catalog *Postgres) NFTBalances(ctx context.Context, request NFTBalanceRequ
 		last := candidateRows[len(candidateRows)-1]
 		next, err = encodeCursor(nftBalanceCursor{
 			Version: cursorVersion, ChainID: request.ChainID, Owner: normalizedOwner,
-			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash,
+			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
 			TokenAddress: "0x" + hex.EncodeToString(last.address), TokenID: last.tokenID,
 		})
 		if err != nil {

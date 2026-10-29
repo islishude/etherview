@@ -543,6 +543,7 @@ func TestTokenObservationsAndExactNFTStateSurviveRealPostgresReorg(t *testing.T)
 	markTokenStageComplete(t, ctx, db, oldTip)
 
 	contract, codeHash := testAddress(700), testHash(70_000)
+	markTokenStageComplete(t, ctx, db, genesis)
 	insertTokenObservation(t, ctx, db, genesis, contract, codeHash, "Genesis observation")
 	insertTokenObservation(t, ctx, db, oldTip, contract, codeHash, "Old-tip observation")
 	assertRowCount(t, ctx, db, `

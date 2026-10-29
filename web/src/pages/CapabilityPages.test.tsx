@@ -505,11 +505,8 @@ describe("P50 capability pages", () => {
     );
     renderExplorer(`/address/${owner}?tab=assets`);
 
-    expect(await screen.findByText("Token data is unavailable")).toBeVisible();
-    expect(screen.getByText(/reported Unavailable at block 999/)).toBeVisible();
-    expect(screen.getByText("Diagnostic code:").parentElement).toHaveTextContent(
-      "stage_unavailable",
-    );
+    expect(await screen.findByText("This data is currently unavailable.")).toBeVisible();
+    expect(screen.queryByText("stage_unavailable")).not.toBeInTheDocument();
     expect(
       screen.queryByText("No positive NFT balances were observed in this canonical snapshot."),
     ).toBeNull();

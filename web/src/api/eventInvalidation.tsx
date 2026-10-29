@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { sameOriginAPIPath } from "./client";
 import { observeEvent, type ChainEventType, type ChainQueryMeta } from "./chainEvents";
+import { resetBrowsingPagination } from "./pagination";
 
 const eventTypes: readonly ChainEventType[] = ["head", "reorg", "status"];
 
@@ -24,25 +25,48 @@ export function ChainEventInvalidation() {
     let scheduled = false;
     let refreshing = Promise.resolve();
     const pending = new Set<ChainEventType>();
+    const pendingPublications = new Set<string>();
     const flush = () => {
       scheduled = false;
       if (disposed) return;
       const types = [...pending];
       pending.clear();
+      const publications = [...pendingPublications];
+      pendingPublications.clear();
       refreshing = refreshing.then(async () => {
         if (disposed) return;
         const matches = (meta?: ChainQueryMeta) =>
           types.some((type) => shouldInvalidateFromChainEvent(type, meta));
         await queryClient.cancelQueries({ predicate: (query) => matches(query.meta) });
         if (disposed) return;
-        const reset = (meta?: ChainQueryMeta) =>
-          types.includes("reorg") && meta?.clearOnReorg === true;
+        const publicationAffects = (data: unknown) => {
+          const bounds = browsingBounds(data);
+          return publications.some((number) =>
+            bounds ? BigInt(number) >= bounds.from && BigInt(number) <= bounds.to : true,
+          );
+        };
+        const affectedPage = queryClient
+          .getQueryCache()
+          .getAll()
+          .some(
+            (query) =>
+              query.getObserversCount() > 0 &&
+              query.meta?.clearOnStatus === true &&
+              browsingBounds(query.state.data) !== undefined &&
+              publicationAffects(query.state.data),
+          );
+        if (affectedPage || types.includes("reorg")) {
+          resetBrowsingPagination(queryClient);
+        }
+        const reset = (meta: ChainQueryMeta | undefined, data: unknown) =>
+          (types.includes("reorg") && meta?.clearOnReorg === true) ||
+          (meta?.clearOnStatus === true && publicationAffects(data));
         void Promise.all([
           queryClient.resetQueries({
-            predicate: (query) => matches(query.meta) && reset(query.meta),
+            predicate: (query) => matches(query.meta) && reset(query.meta, query.state.data),
           }),
           queryClient.invalidateQueries({
-            predicate: (query) => matches(query.meta) && !reset(query.meta),
+            predicate: (query) => matches(query.meta) && !reset(query.meta, query.state.data),
           }),
         ]);
       });
@@ -61,6 +85,22 @@ export function ChainEventInvalidation() {
         current.addEventListener(type, (event) => {
           if (disposed || current !== source) return;
           observeEvent(queryClient, (event as MessageEvent).lastEventId ?? "");
+          if (type === "status") {
+            try {
+              const payload: unknown = JSON.parse((event as MessageEvent).data);
+              if (
+                typeof payload === "object" &&
+                payload !== null &&
+                "reason" in payload &&
+                payload.reason === "browsing_publication" &&
+                "block_number" in payload &&
+                decimalBlock(payload.block_number)
+              )
+                pendingPublications.add(payload.block_number);
+            } catch {
+              // Other status payloads still invalidate queries normally.
+            }
+          }
           backoff = 1_000;
           schedule([type]);
         });
@@ -86,4 +126,25 @@ export function ChainEventInvalidation() {
     };
   }, [queryClient]);
   return null;
+}
+
+function decimalBlock(value: unknown): value is string {
+  return typeof value === "string" && /^(0|[1-9][0-9]{0,77})$/.test(value);
+}
+
+function browsingBounds(data: unknown): { from: bigint; to: bigint } | undefined {
+  if (typeof data !== "object" || data === null || !("meta" in data)) return;
+  const meta = data.meta;
+  if (typeof meta !== "object" || meta === null || !("browsing" in meta)) return;
+  const browsing = meta.browsing;
+  if (
+    typeof browsing !== "object" ||
+    browsing === null ||
+    !("from_block" in browsing) ||
+    !("to_block" in browsing) ||
+    !decimalBlock(browsing.from_block) ||
+    !decimalBlock(browsing.to_block)
+  )
+    return;
+  return { from: BigInt(browsing.from_block), to: BigInt(browsing.to_block) };
 }

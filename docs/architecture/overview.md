@@ -857,7 +857,7 @@ size alone is not sufficient justification to weaken those invariants.
   published. The helper's exact Go module checksum and executable digest bind
   once under the job lease without a compiler catalog. See
   [ADR-0039](../decisions/ADR-0039-pinned-geas-verification-executor.md).
-- The production image includes one Node 26.12.1 SEA containing the
+- The production image includes one Node 26.13.0 SEA containing the
   `solc@0.8.37` wrapper protocol, plus a canonical read-only runtime manifest
   and any target-rootfs-missing ELF libraries discovered recursively at build
   time. It contains no general Node executable, npm tree, wrapper source, or
@@ -1192,3 +1192,23 @@ own the browser, verification and export contracts respectively.
 ### Preview genesis application contracts
 
 See [Preview genesis application contracts](../../preview/docs/architecture.md#preview-genesis-application-contracts).
+
+## Partial explorer browsing
+
+Native token/address transfer and internal-call lists, token discovery,
+address asset candidates, UserOperation lists and protocol-native transfers
+return published canonical records even while other blocks are incomplete.
+`meta.browsing` distinguishes complete, partial and pending ranges, binds the
+canonical snapshot hash and exposes a publication revision. Empty incomplete
+pages do not prove absence. Precise balances, ownership, holder totals and
+aggregate statistics retain their authoritative-state requirements.
+
+The fresh baseline's browsing projection is maintained by deferred triggers on
+canonical mappings, stage results, jobs, journals and canonical outbox rows.
+It stores compressed completed ranges and per-block monotonic revisions. All
+reads still join the authoritative published-stage view. Snapshot-range changes
+invalidate list cursors, including replay and same-hash reattachment; newer
+blocks above the snapshot do not. Publication changes emit existing `status`
+events so the single browser SSE connection clears revoked cached results and
+refreshes these queries. Search, exports and Etherscan retain their strict
+snapshot and coverage contracts.

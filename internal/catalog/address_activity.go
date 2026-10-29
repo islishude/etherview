@@ -16,6 +16,7 @@ import (
 )
 
 type addressInternalCursor struct {
+	Revision         string `json:"revision"`
 	Version          int    `json:"v"`
 	Kind             string `json:"kind"`
 	ChainID          string `json:"chain_id"`
@@ -30,6 +31,7 @@ type addressInternalCursor struct {
 }
 
 type addressTokenCursor struct {
+	Revision         string `json:"revision"`
 	Version          int    `json:"v"`
 	Kind             string `json:"kind"`
 	ChainID          string `json:"chain_id"`
@@ -71,7 +73,7 @@ func (catalog *Postgres) AddressInternalTransactions(
 	if err != nil {
 		return AddressInternalTransactionPage{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageTrace); err != nil {
+	if err := readBrowsing(ctx, tx, &snapshot, StageTrace, hasBoundary); err != nil {
 		return AddressInternalTransactionPage{}, err
 	}
 	blockHash, txHash, err := addressInternalBoundaryBytes(boundary, hasBoundary)
@@ -119,7 +121,7 @@ func (catalog *Postgres) AddressInternalTransactions(
 		last := items[len(items)-1]
 		next, err = encodeCursor(addressInternalCursor{
 			Version: cursorVersion, Kind: "internal", ChainID: request.ChainID,
-			Address: normalizedAddress, SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash,
+			Address: normalizedAddress, SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
 			BlockNumber: last.BlockNumber, BlockHash: last.BlockHash,
 			TransactionHash: last.TransactionHash, TransactionIndex: last.TransactionIndex,
 			TracePath: tracePathText(last.Path),
@@ -157,7 +159,7 @@ func (catalog *Postgres) resolveAddressInternalCursor(
 		return Snapshot{}, addressInternalCursor{}, false, ErrInvalidCursor
 	}
 	snapshot := Snapshot{
-		ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash,
+		ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash, Revision: cursor.Revision,
 	}
 	if err := validateCanonicalSnapshot(ctx, tx, snapshot); err != nil {
 		return Snapshot{}, addressInternalCursor{}, false, err
@@ -327,7 +329,7 @@ func (catalog *Postgres) addressTokenTransfers(
 	if err != nil {
 		return AddressTokenTransferPage{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
+	if err := readBrowsing(ctx, tx, &snapshot, StageToken, hasBoundary); err != nil {
 		return AddressTokenTransferPage{}, err
 	}
 	blockHash, txHash, err := addressTokenBoundaryBytes(boundary, hasBoundary)
@@ -383,7 +385,7 @@ func (catalog *Postgres) addressTokenTransfers(
 		last := items[len(items)-1]
 		next, err = encodeCursor(addressTokenCursor{
 			Version: cursorVersion, Kind: kind, ChainID: request.ChainID, Address: normalizedAddress,
-			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash,
+			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
 			BlockNumber: last.BlockNumber, BlockHash: last.BlockHash,
 			TransactionHash: last.TransactionHash, TransactionIndex: last.TransactionIndex,
 			LogIndex: last.LogIndex, SubIndex: last.SubIndex,
@@ -420,7 +422,7 @@ func (catalog *Postgres) resolveAddressTokenCursor(
 		return Snapshot{}, addressTokenCursor{}, false, ErrInvalidCursor
 	}
 	snapshot := Snapshot{
-		ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash,
+		ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash, Revision: cursor.Revision,
 	}
 	if err := validateCanonicalSnapshot(ctx, tx, snapshot); err != nil {
 		return Snapshot{}, addressTokenCursor{}, false, err

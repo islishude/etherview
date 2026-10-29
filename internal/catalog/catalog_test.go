@@ -214,7 +214,7 @@ func TestTokenContractsUseCanonicalSnapshotAndOpaqueCursor(t *testing.T) {
 	addresses := [][]byte{bytesOf(0x11, 20), bytesOf(0x22, 20), bytesOf(0x33, 20)}
 	catalog, backend := openCatalog(t,
 		snapshotStep("100", bytesOf(0xaa, 32)),
-		stageStep("complete"),
+		browsingStep("complete"),
 		catalogQueryStep{
 			contains: "WITH current_tokens AS",
 			rows:     catalogRows(13, tokenRow(addresses[0], "erc20", "98"), tokenRow(addresses[1], "erc721", "99"), tokenRow(addresses[2], "erc1155", "100")),
@@ -256,7 +256,7 @@ func TestTokenContractDistinguishesMissingStageFromNotFound(t *testing.T) {
 	t.Run("missing stage", func(t *testing.T) {
 		catalog, backend := openCatalog(t,
 			snapshotStep("10", bytesOf(0xaa, 32)),
-			catalogQueryStep{contains: "FROM published_block_stage_results", rows: catalogRows(1)},
+			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13)}, browsingStep("pending"),
 		)
 		_, err := catalog.TokenContract(context.Background(), "1", address)
 		var stageError StageUnavailableError
@@ -267,8 +267,8 @@ func TestTokenContractDistinguishesMissingStageFromNotFound(t *testing.T) {
 	})
 	t.Run("completed stage", func(t *testing.T) {
 		catalog, backend := openCatalog(t,
-			snapshotStep("10", bytesOf(0xaa, 32)), stageStep("complete"),
-			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13)},
+			snapshotStep("10", bytesOf(0xaa, 32)),
+			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13)}, browsingStep("complete"),
 		)
 		_, err := catalog.TokenContract(context.Background(), "1", address)
 		if !errors.Is(err, ErrNotFound) {
@@ -289,7 +289,7 @@ func tokenEventRow(blockNumber, logIndex, subIndex string, tokenAddress []byte) 
 func TestTokenEventsAreCanonicalAndCursorBecomesStaleAfterReorg(t *testing.T) {
 	token := bytesOf(0xcc, 20)
 	catalog, backend := openCatalog(t,
-		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+		snapshotStep("100", bytesOf(0xaa, 32)), browsingStep("complete"),
 		catalogQueryStep{
 			contains: "FROM token_events AS e",
 			rows: catalogRows(16,
@@ -339,7 +339,7 @@ func TestTokenEventsExposeExactBlockERC20Decimals(t *testing.T) {
 	row := tokenEventRow("100", "7", "0", token)
 	row[7], row[12], row[15] = "erc20", nil, "6"
 	catalog, backend := openCatalog(t,
-		snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+		snapshotStep("100", bytesOf(0xaa, 32)), browsingStep("complete"),
 		catalogQueryStep{contains: "LEFT JOIN LATERAL", rows: catalogRows(16, row)},
 	)
 	page, err := catalog.TokenEvents(context.Background(), TokenEventRequest{
@@ -392,7 +392,7 @@ func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {
 			{Balance: "340282366920938463463374607431768211455", Confidence: NFTStateConfidenceRPCExact},
 		}}
 		catalog, backend := openCatalogWithOptions(t, Options{NFTState: state},
-			snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+			snapshotStep("100", bytesOf(0xaa, 32)), browsingStep("complete"),
 			catalogQueryStep{
 				contains: "SELECT d.token_address",
 				rows: catalogRows(2,
@@ -420,7 +420,7 @@ func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {
 	})
 	t.Run("candidate deltas without reconciler are unavailable", func(t *testing.T) {
 		catalog, backend := openCatalog(t,
-			snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+			snapshotStep("100", bytesOf(0xaa, 32)), browsingStep("complete"),
 			catalogQueryStep{contains: "SELECT d.token_address", rows: catalogRows(2, []any{token, "99"})},
 			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc721", "90"))},
 		)
@@ -444,7 +444,7 @@ func TestERC20BalancesDiscoverCandidatesAndReturnOnlyExactPositiveState(t *testi
 	}}
 	catalog, backend := openCatalogWithOptions(t, Options{ERC20State: state},
 		snapshotStep("100", bytesOf(0xaa, 32)),
-		stageStep("complete"),
+		browsingStep("complete"),
 		catalogQueryStep{
 			contains: "FROM token_balance_deltas AS d",
 			rows: catalogRows(1,
@@ -781,4 +781,8 @@ func TestTransactionTraceDecodesSelectorlessReceiveFromExactHistoricalABI(t *tes
 		t.Fatalf("receive decoding=%+v", decoded)
 	}
 	assertCatalogConsumed(t, backend)
+}
+
+func browsingStep(state string) catalogQueryStep {
+	return catalogQueryStep{contains: "BrowsingStatus", rows: catalogRows(3, []any{"0", "1", state})}
 }

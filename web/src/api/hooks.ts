@@ -525,7 +525,7 @@ export function useAddressInternalTransactions(
 ) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryKey: [
       "address",
       address,
@@ -602,7 +602,7 @@ function useAddressTokenActivity(
 ) {
   return useQuery({
     queryKey: ["address", address, kind, cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryFn: async ({ signal }): Promise<CursorPage<AddressTokenTransfer>> => {
       const response = requireEnvelope(
         path === "/addresses/{address}/erc20-transfers"
@@ -635,7 +635,7 @@ export function useTokens(page: CursorRequest = firstPage, limit = 25) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["tokens", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryFn: async ({ signal }): Promise<CursorPage<TokenContract>> => {
       const response = requireEnvelope(
         await sdk.listTokens({ client: apiClient, signal, query: { limit, cursor } }),
@@ -654,7 +654,7 @@ export function useTokens(page: CursorRequest = firstPage, limit = 25) {
 export function useToken(address: string, enabled = true) {
   return useQuery({
     queryKey: ["token", address],
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryFn: async ({ signal }) =>
       requireEnvelope(await sdk.getToken({ client: apiClient, signal, path: { address } })).data,
     enabled: enabled && address.length > 0,
@@ -672,7 +672,7 @@ export function useTokenTransfers(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["token", address, "transfers", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryFn: async ({ signal }): Promise<CursorPage<TokenEvent>> => {
       const response = requireEnvelope(
         await sdk.listTokenTransfers({
@@ -734,7 +734,7 @@ export function useAddressNFTBalances(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "nfts", cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryFn: async ({ signal }): Promise<CursorPage<NFTBalance>> => {
       const response = requireEnvelope(
         await sdk.listAddressNftBalances({
@@ -765,7 +765,7 @@ export function useAddressERC20Balances(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "erc20-balances", cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
     queryFn: async ({ signal }): Promise<CursorPage<ERC20Balance>> => {
       const response = requireEnvelope(
         await sdk.listAddressErc20Balances({

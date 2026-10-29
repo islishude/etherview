@@ -6,6 +6,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"github.com/islishude/etherview/internal/browsing"
 	"github.com/islishude/etherview/internal/stagecontract"
 	"time"
 )
@@ -70,6 +71,8 @@ func (err StageUnavailableError) Error() string { return "catalog stage unavaila
 func (err StageUnavailableError) Unwrap() error { return ErrUnavailable }
 
 type Snapshot struct {
+	Browsing    *browsing.Status
+	Revision    string
 	ChainID     string
 	BlockNumber string
 	BlockHash   string

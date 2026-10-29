@@ -2,7 +2,7 @@
 
 FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
-FROM node:26.12.1 AS node-builder
+FROM node:26.13.0 AS node-builder
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}/bin:${PATH}"
 RUN curl -fsSL https://get.pnpm.io/install.sh -o /tmp/install-pnpm.sh \

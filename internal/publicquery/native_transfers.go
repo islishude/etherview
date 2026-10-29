@@ -2,7 +2,9 @@ package publicquery
 
 import (
 	"context"
+
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/browsing"
 )
 
 type NativeTransferRequest struct {
@@ -10,6 +12,7 @@ type NativeTransferRequest struct {
 	Limit                            int
 }
 type NativeTransferPage struct {
+	Browsing                   *browsing.Status
 	Items                      []gen.NativeTransfer
 	NextCursor                 string
 	Applicable                 bool

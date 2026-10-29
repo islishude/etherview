@@ -7,6 +7,7 @@ import (
 	"regexp"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/browsing"
 )
 
 var (
@@ -73,6 +74,7 @@ type Reader interface {
 }
 
 type UserOperationPage struct {
+	Browsing      *browsing.Status
 	Items         []gen.UserOperationSummary
 	NextCursor    string
 	CoverageStart uint64

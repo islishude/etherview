@@ -6,7 +6,7 @@ GO_BIN="${GO:-go}"
 NODE_BIN="${NODE:-node}"
 PNPM_BIN="${PNPM:-pnpm}"
 MINIMUM_GO="go1.27.3"
-MINIMUM_NODE="v26.12.1"
+MINIMUM_NODE="v26.13.0"
 MINIMUM_PNPM="12.15.0"
 
 normalize_version() {

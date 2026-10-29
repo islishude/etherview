@@ -261,7 +261,7 @@ const files = [
 ];
 const manifest = {
   schema: "etherview-solcjs-sea-runtime-v1",
-  node_version: "v26.12.1",
+  node_version: "v26.13.0",
   wrapper_package: "solc@0.8.37",
   bundle_builder: "esbuild@0.28.2",
   sea: {

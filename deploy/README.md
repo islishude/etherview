@@ -130,7 +130,7 @@ Verification v2 treats user-supplied Solidity/Yul and Geas input as hostile.
 The `api` process
 owns bounded official `emscripten-wasm32` catalog discovery, approved-origin
 and redirect checks, checksum-pinned download, a rebuildable persistent cache,
-and execution. Each compile starts a fresh Node 26.12.1 SEA subprocess with a minimal
+and execution. Each compile starts a fresh Node 26.13.0 SEA subprocess with a minimal
 environment, private temporary directory, read-only permissions, bounded
 heap/input/output/time, and process-group cleanup. The subprocess receives no
 network, child-process, worker, addon, WASI, FFI, or inspector permission.
@@ -341,7 +341,7 @@ metric staleness, alerts, and repair/reindex response.
 
 The Dockerfile builds the SPA and application/helper Go binaries, and assembles a
 distroless non-root image for BuildKit's target architecture. The production
-stage contains the application binary plus one read-only Node 26.12.1 SEA, its
+stage contains the application binary plus one read-only Node 26.13.0 SEA, its
 canonical runtime manifest and automatically discovered private ELF libraries,
 two authenticated Python WASM runtimes for Vyper, and the read-only Geas v0.3.3
 helper. Vyper compiler packages are assembled from application-locked PyPI inputs

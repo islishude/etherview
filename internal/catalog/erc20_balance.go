@@ -48,7 +48,7 @@ func (catalog *Postgres) ERC20Balances(
 		}
 		snapshot = Snapshot{
 			ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber,
-			BlockHash: cursor.SnapshotHash,
+			BlockHash: cursor.SnapshotHash, Revision: cursor.Revision,
 		}
 		boundaryAddress, err = decodeFixedHex(cursor.TokenAddress, 20)
 		if err != nil || cursor.TokenAddress != "0x"+hex.EncodeToString(boundaryAddress) {
@@ -62,7 +62,7 @@ func (catalog *Postgres) ERC20Balances(
 	if err != nil {
 		return ERC20BalancePage{}, err
 	}
-	if err := requireStage(ctx, tx, snapshot, StageToken); err != nil {
+	if err := readBrowsing(ctx, tx, &snapshot, StageToken, hasBoundary); err != nil {
 		return ERC20BalancePage{}, err
 	}
 	rows, err := func() ([][]byte, error) {
@@ -163,7 +163,7 @@ func (catalog *Postgres) ERC20Balances(
 		last := candidateRows[len(candidateRows)-1]
 		next, err = encodeCursor(erc20BalanceCursor{
 			Version: cursorVersion, ChainID: request.ChainID, Owner: normalizedOwner,
-			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash,
+			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
 			TokenAddress: "0x" + hex.EncodeToString(last),
 		})
 		if err != nil {

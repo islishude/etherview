@@ -286,7 +286,7 @@ runbook for the evidence boundary and tuning formula.
 Public source verification requires NetworkPolicy. The selected `all` or `api`
 Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
-fresh permission-restricted Node 26.12.1 SEA subprocess. The single SEA,
+fresh permission-restricted Node 26.13.0 SEA subprocess. The single SEA,
 canonical read-only runtime manifest, and automatically discovered private ELF
 libraries are part of the production image for its native architecture. The
 image also contains both authenticated Python WASM runtimes for Vyper;

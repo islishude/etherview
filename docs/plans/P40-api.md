@@ -68,6 +68,7 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T22 | done   | P20-T19, P20-T20, P40-T12          | Generated consensus/blob metadata, consensus-first slots with execution fallback, and exact-hash binary downloads                                                                      | generated contracts, HTTP/query, integrity, freshness, and runtime tests                                                |
 | P40-T23 | done   | P60-T18, P40-T08                   | SIWE/CSRF-authenticated address CSV exports, writer snapshot/coverage checks, bounded PostgreSQL admission, and exact complete files                                                   | OpenAPI/generation, snapshot/reorg, row/byte/time limits, JSON-only failure, concurrency, and runtime regressions       |
 | P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                                   |
+| P40-T25 | done   | P40-T08, P40-T20                   | Published partial browsing across native explorer pages with publication-fenced cursors and explicit completeness                                                                      | PostgreSQL publication/replay/reorg, API, bilingual browser and all/split regression gates                              |
 
 P40-T06's authoritative compatibility reads build on P20, the native API,
 P60-T09 user authentication/scoped keys, and P60-T13 prepaid read billing.
@@ -118,9 +119,14 @@ acceptance is independent of P60's still-blocked live-payment gate.
       values; malformed or inconsistent projections fail closed.
 - [x] Inactive anonymous and authenticated local rate buckets stay bounded,
       including during Redis loss, without evicting active or exhausted quota state.
-- [x] UserOperation global/address pagination binds continuous published coverage
+- [x] UserOperation global/address pagination binds canonical publication revision
       and configuration digest; absent detail is not authoritative across a gap.
       Raw operation bytes, decimal-string quantities, and typed errors are preserved.
+- [x] Native browsing lists expose published records across gaps, distinguish
+      complete/partial/pending ranges, and reject stale cursors after late
+      publication or replay. Exact state retains its existing evidence requirements.
+- [x] Browsing pages retain available records with one-line bilingual notices;
+      durable publication events refresh data and pagination without a new head.
 - [x] Native and Etherscan holder reads require current-tip complete PostgreSQL
       snapshots. Empty success is proven; cursors bind chain, token, snapshot,
       holder epoch, and address. Pages are address-ordered without balance ranking.
@@ -171,6 +177,13 @@ acceptance is independent of P60's still-blocked live-payment gate.
 None. P60/P70 retain independent release blockers.
 
 ## Evidence
+
+P40-T25 passed `make check`, full PostgreSQL race integration, all 153 browser
+regressions, fresh production-image schema acceptance and all/split runtime
+acceptance locally on ARM64. Publication islands, late backfill, replay,
+canonical reorg, compact bilingual states and pagination refresh are covered.
+The coordinated Node 26.13.0 upgrade passed local SEA and production checks;
+native AMD64 and the full release compiler matrices remain CI acceptance.
 
 P40-T24 passed generated contracts and handler bounds, PostgreSQL race tests
 for exact-block/filter/publication cursors, disabled/preactivation states and

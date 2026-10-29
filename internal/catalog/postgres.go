@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/islishude/etherview/internal/browsing"
+	"github.com/islishude/etherview/internal/stagecontract"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
@@ -226,5 +228,18 @@ func commitRead(ctx context.Context, tx pgx.Tx) error {
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit catalog snapshot: %w", err)
 	}
+	return nil
+}
+
+func readBrowsing(ctx context.Context, tx pgx.Tx, snapshot *Snapshot, stage Stage, continuation bool) error {
+	status, err := browsing.Read(ctx, tx, snapshot.ChainID, snapshot.BlockNumber, snapshot.BlockHash, stagecontract.ID{Name: string(stage), Version: uint32(stage.Version())}, "", "")
+	if err != nil {
+		return err
+	}
+	revision := status.FromBlock + ":" + status.Revision
+	if continuation && (snapshot.Revision == "" || snapshot.Revision != revision) {
+		return ErrInvalidCursor
+	}
+	snapshot.Revision, snapshot.Browsing = revision, status
 	return nil
 }

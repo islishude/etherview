@@ -352,7 +352,19 @@ export type StageState = 'complete' | 'pending' | 'unavailable' | 'failed';
 
 export type Finality = 'pending' | 'latest' | 'safe' | 'finalized' | 'orphan';
 
+export type BrowsingStatus = {
+    /**
+     * Completeness of the requested range, independent of matching row count. Pending means no published blocks in the range.
+     */
+    state: 'complete' | 'partial' | 'pending';
+    snapshot: CatalogSnapshot;
+    from_block: Quantity;
+    to_block: Quantity;
+    revision: Quantity;
+};
+
 export type Meta = {
+    browsing?: BrowsingStatus;
     request_id: string;
     chain_id: Quantity;
     next_cursor?: OpaqueCursor;
