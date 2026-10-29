@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -85,13 +86,32 @@ func (r *Repository) Publish(ctx context.Context, input dbgen.PublishENSSyncObse
 		if _, err := q.LockENSSyncSource(ctx, input.SourceID); err != nil {
 			return err
 		}
-		if _, err := q.LockENSSyncCandidate(ctx, input.SourceID, input.CandidateID); err != nil {
+		c, err := q.LockENSSyncCandidate(ctx, input.SourceID, input.CandidateID)
+		if err != nil {
 			return err
 		}
-		var err error
 		id, err = q.PublishENSSyncObservation(ctx, input)
 		if err != nil {
 			return err
+		}
+		if c.Direction == "primary" && input.Outcome == "resolved" {
+			if input.Name == nil {
+				return ErrInvalidInput
+			}
+			name, valid := normalizedName(*input.Name)
+			if !valid {
+				return ErrInvalidInput
+			}
+			coin, err := uint256Value(c.CoinType)
+			if err != nil {
+				return err
+			}
+			// Discovery commits with the fenced primary result. A stable origin
+			// coalesces refreshes without resetting forward generations or budgets;
+			// a separate forward job must still resolve and publish this name.
+			if err = candidateOrigin(ctx, q, input.SourceID, coin.String(), candidate{"forward", name}, "reverse_result", strconv.FormatInt(c.ID, 10)); err != nil {
+				return err
+			}
 		}
 		return publishEffective(ctx, q, input.SourceID, input.CandidateID, input.RetainUntil)
 	})

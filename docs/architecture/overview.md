@@ -677,8 +677,10 @@ P20-T25 extends this collector with reviewed ENSv2 factory and implementation
 profiles. It retrieves bounded block logs, authenticates newly created proxies
 and processes their earlier initialization logs in original order. A continuously
 covered trusted factory history preserves records created before name links;
-unverified linked instances remain unsupported. Implementation contracts never
-become user registries. Registry lifecycle projections key names by label and
+unverified linked subregistries remain unsupported. Arbitrary resolver links
+are retained for background Universal Resolver resolution without granting
+standard-event emitter trust. Implementation contracts never become user
+registries. Registry lifecycle projections key names by label and
 keep token/resource mappings across regeneration; resolver bundles, node links
 and defaults remain separate. A durable graph cursor expands shared parent
 paths after ancestor updates, with cycle, depth, fanout and input bounds.

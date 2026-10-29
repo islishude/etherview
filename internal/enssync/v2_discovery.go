@@ -129,7 +129,9 @@ func (c *Collector) discoverV2(ctx context.Context, source int64, session rpcSes
 		c.profiles[address] = p
 		discovered = append(discovered, verifiedDeployment{Deployment: instance, Header: header})
 	}
-	// Links cannot promote an unverified emitter or an implementation-only address.
+	// Subregistry traversal needs a reviewed implementation. Resolver links may
+	// target arbitrary contracts resolved through the Universal Resolver; the
+	// link itself never grants standard-event emitter trust.
 	for _, log := range block.Logs {
 		d, known := c.deploymentAt(log.Address, log.BlockNumber)
 		if !known || d.Profile != "v2_registry" || len(log.Topics) == 0 {
@@ -145,7 +147,7 @@ func (c *Collector) discoverV2(ctx context.Context, source int64, session rpcSes
 		case "SubregistryUpdated":
 			field, profile = "subregistry", "v2_registry"
 		case "ResolverUpdated":
-			field, profile = "resolver", "v2_resolver"
+			continue
 		default:
 			continue
 		}

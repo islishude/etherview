@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -61,6 +62,8 @@ func TestENSV2RealContractsDiscoveryAndSharedPaths(t *testing.T) {
 	real.Call(real.ResolverContract(), "setAddress", []byte("\x06wallet\x05alice\x03eth\x00"), big.NewInt(60), real.Owner.Bytes())
 	real.Call(real.Registry, "register", "alice", real.Owner, real.Child, real.Resolver, big.NewInt(0), expiry)
 	real.Call(real.Registry, "register", "alias", real.Owner, real.Child, real.Resolver, big.NewInt(0), expiry)
+	customResolver := testAddress(152098)
+	real.Call(real.Registry, "register", "custom", real.Owner, common.Address{}, customResolver, big.NewInt(0), expiry)
 	real.Call(real.Registry, "register", "reserved", common.Address{}, common.Address{}, common.Address{}, big.NewInt(0), expiry)
 	real.Call(real.Registry, "register", "gone", real.Owner, common.Address{}, common.Address{}, big.NewInt(0), expiry)
 	gone := new(big.Int).SetBytes(crypto.Keccak256([]byte("gone")))
@@ -74,6 +77,15 @@ func TestENSV2RealContractsDiscoveryAndSharedPaths(t *testing.T) {
 	// A cycle is retained as a graph fact but cannot recurse forever.
 	wallet := new(big.Int).SetBytes(crypto.Keccak256([]byte("wallet")))
 	real.Call(real.ChildContract(), "setSubregistry", wallet, real.Registry.Address)
+	// A custom resolver can emit a standard-looking event without becoming a
+	// trusted emitter merely because a reviewed registry links to it.
+	for _, log := range real.Logs {
+		if log.Address == real.Resolver {
+			spoof := *log
+			spoof.Address = customResolver
+			real.Logs = append(real.Logs, &spoof)
+		}
+	}
 
 	mainnet := core.DefaultGenesisBlock().ToBlock().Header()
 	block, e := newIntegrationBundle(integrationBundleOptions{Number: 1, Timestamp: real.Config.Time, ParentHash: mainnet.Hash(), ExtraData: []byte("real-v2"), Transactions: []integrationTransactionOptions{{Type: types.DynamicFeeTxType, To: &real.Factory.Address, Logs: real.Logs}}})
@@ -109,6 +121,9 @@ func TestENSV2RealContractsDiscoveryAndSharedPaths(t *testing.T) {
 		t.Fatalf("collect real v2: %+v %v", result, e)
 	}
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_deployments`, 4)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_events WHERE emitter=$1`, 0, customResolver.Bytes())
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_candidates WHERE direction='forward' AND lookup_key='custom.eth'`, 1)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_projections WHERE kind='registration' AND payload->>'label'='custom' AND payload->>'resolver'=$1`, 1, strings.ToLower(customResolver.Hex()))
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_deployments WHERE address IN ($1,$2)`, 0, real.ChildImplementation.Address.Bytes(), real.ResolverImplementation.Address.Bytes())
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_candidates WHERE direction='forward' AND lookup_key IN ('wallet.alice.eth','wallet.alias.eth','alice.eth','alias.eth')`, 4)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_projections WHERE kind='resolver_record' AND key LIKE '%/addr/60'`, 2)

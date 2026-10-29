@@ -447,7 +447,7 @@ CREATE TABLE ens_sync_candidates (
 CREATE TABLE ens_sync_candidate_origins (
     source_id bigint NOT NULL,
     candidate_id bigint NOT NULL,
-    kind text NOT NULL CHECK (kind IN ('event', 'indexed_address', 'import', 'genesis')),
+    kind text NOT NULL CHECK (kind IN ('event', 'indexed_address', 'import', 'genesis', 'reverse_result')),
     identity text NOT NULL CHECK (octet_length(identity) BETWEEN 1 AND 512),
     discovered_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     PRIMARY KEY (source_id, candidate_id, kind, identity),
