@@ -12,7 +12,7 @@ import {
   prepareNetwork,
   rejectLegacyOverrides,
   composeEnvironment,
-} from "./preview-network.mjs";
+} from "./network.mjs";
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-preview-network-"));

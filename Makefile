@@ -272,7 +272,7 @@ test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test-workflow-scripts: test-dependency-updates
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/make-targets.test.mjs
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
@@ -500,13 +500,13 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-env.test.mjs .github/scripts/preview-bundler.test.mjs preview/verification/verify.test.mjs
+	$(NODE) --test preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/bundler-start.test.mjs preview/verification/verify.test.mjs
 
 preview-env:
-	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
+	$(NODE) preview/scripts/env.mjs "$(PREVIEW_ENV_FILE)"
 
 preview-network-runtime: preview-env
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs check
 
 preview-x402-images:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-facilitator
@@ -516,31 +516,31 @@ preview-images: preview-env preview-x402-images preview-bundler-image
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-compiler-cache.mjs init
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs prepare
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-verify.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/verify.mjs
 	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs clean
 
 recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images preview-bundler-image
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-compiler-cache.mjs init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs init
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
 
 .PHONY: clean-preview-compiler-cache
 clean-preview-compiler-cache: preview-bundler-image
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-compiler-cache.mjs clean
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs clean
 
 
 # Local x402 lifecycle
@@ -596,7 +596,7 @@ test-preview-contracts-prebuilt: preview-e2e-check
 
 .PHONY: verify-preview-genesis preview-verification-check
 verify-preview-genesis: preview-env
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-verify.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/verify.mjs
 
 preview-verification-check: pnpm-install
 	$(NODE) preview/verification/generate.mjs --check

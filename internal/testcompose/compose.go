@@ -213,7 +213,7 @@ func (p *Project) PreviewCompilerCache(ctx context.Context, action string) error
 	// Command includes arguments belonging to COMPOSE itself (e.g. "compose"
 	// in "docker compose"); runCompose already supplies that command prefix.
 	composeArgs := command.Args[len(strings.Fields(p.Compose))-1:]
-	command.Args = append([]string{filepath.Join(p.Root, ".github/scripts/preview-compiler-cache.mjs"), action}, composeArgs...)
+	command.Args = append([]string{filepath.Join(p.Root, "preview/scripts/compiler-cache.mjs"), action}, composeArgs...)
 	command.Env = append(command.Env, "COMPOSE="+p.Compose)
 	output, err := p.Executor.Run(ctx, command)
 	if err != nil {

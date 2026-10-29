@@ -82,7 +82,7 @@ Every long-lived application container has a Docker healthcheck that runs
 endpoint. The command loads no configuration or Secrets and needs no shell,
 Node process, `curl`, helper image, auxiliary container, or Docker socket.
 Compose's `--wait --wait-timeout 180` invocation waits for container health.
-Both lifecycle targets then run `archive-init` and `preview-ready.mjs`, which
+Both lifecycle targets then run `archive-init` and `preview/scripts/ready.mjs`, which
 checks successive real execution/Beacon blocks. Container readiness alone does
 not establish chain progress. Preview E2E gates exercise startup and role
 topology, while production image checks retain the non-root, native-architecture, and compiler-runtime

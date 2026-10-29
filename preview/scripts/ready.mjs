@@ -1,4 +1,4 @@
-import { composeEndpoint } from "./preview-compose.mjs";
+import { runCompose } from "../../.github/scripts/compose.mjs";
 const execution = composeEndpoint("geth", 8545),
   beacon = composeEndpoint("lighthouse", 5052);
 const deadline = Date.now() + 180_000;
@@ -34,3 +34,8 @@ while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 1500));
 }
 throw new Error(`Preview did not produce successive real PoS blocks: ${last}`);
+
+function composeEndpoint(service, port) {
+  const output = runCompose(["-f", "compose.yaml", "port", service, String(port)]);
+  return `http://${output.trim().replace(/^0\.0\.0\.0:/, "127.0.0.1:")}`;
+}

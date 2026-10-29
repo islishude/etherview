@@ -71,7 +71,7 @@ jobs:
         env:
           CAROOT: ${{ runner.temp }}/preview-ca
           TRUST_STORES: system
-        run: bash .github/scripts/preview-ci-certificates.sh
+        run: make preview-cert
       - name: Prepare Preview gateway and external images once
         run: make preview-images
       - name: Verify reproducible genesis and controlled contract edge cases

@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import { runCompose } from "./preview-compose.mjs";
+import { runCompose } from "../../.github/scripts/compose.mjs";
 
 export function verifyPreview(compose = runCompose) {
   // Credential stays in memory and stdin, never command arguments, env, or files.

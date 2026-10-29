@@ -196,9 +196,11 @@ for (const [name, change, pattern] of [
 test("startup verifies after chain readiness and recreation skips verification", () => {
   const make = fs.readFileSync(new URL("../../Makefile", import.meta.url), "utf8");
   const startup = make.split("\nstart-preview:")[1].split(/\n\S/)[0];
-  assert.ok(startup.indexOf("preview-verify.mjs") > startup.indexOf("preview-ready.mjs"));
+  assert.ok(
+    startup.indexOf("preview/scripts/verify.mjs") > startup.indexOf("preview/scripts/ready.mjs"),
+  );
   const recreation = make.split("\nrecreate-preview:")[1].split(/\n\S/)[0];
-  assert.doesNotMatch(recreation, /preview-verify|verify-preview-genesis|genesis-verify/);
+  assert.doesNotMatch(recreation, /preview\/scripts\/verify|verify-preview-genesis|genesis-verify/);
   const compose = fs.readFileSync(new URL("../../compose.yaml", import.meta.url), "utf8");
   const service = compose.split("  genesis-verify:\n")[1].split("\n  bundler:")[0];
   assert.match(service, /profiles: \["genesis-verify"\]/);
@@ -207,7 +209,7 @@ test("startup verifies after chain readiness and recreation skips verification",
 });
 
 test("temporary key is passed only through stdin and revoked on success or failure", async () => {
-  const { verifyPreview } = await import("../../.github/scripts/preview-verify.mjs");
+  const { verifyPreview } = await import("../scripts/verify.mjs");
   for (const fail of [false, true]) {
     const calls = [];
     const invoke = (args, options) => {

@@ -75,6 +75,7 @@ Diagnostics and `consensus-report.json` remain in the test's temporary artifacts
 directory. These local private-network results do not prove public historical
 retention, production backup/restore, or native CI execution.
 
+Preview lifecycle helpers and their unit tests live in `preview/scripts/`.
 `make preview-network-check` exercises immutable reuse, incomplete material,
 configuration drift, tampering, symlinks and rejected single-file overrides.
 It also checks Preview env creation, key-pair reuse and validation, operator-setting

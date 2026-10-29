@@ -149,10 +149,11 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
   Git repositories and stub commands, covering metadata, digest export,
-  PR flags, command order, prebuilt entry points, production-image/evidence
+  PR flags, toolchain versions, Makefile entry points, production-image/evidence
   handoff and failure propagation without pushing images or PRs.
   `make compose-check` runs the production deployment rendering matrix through
-  `.github/scripts/compose-check.mjs`, retaining the domain-specific validators.
+  `.github/scripts/compose-check.mjs`, with shared in-process assertions for
+  compiler ownership, credentials and verification-suite isolation.
   Preview deployment behavior is exercised by its existing business E2E gates.
 - `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
   12.15.0 before generating or validating artifacts. Compatible newer stable
@@ -676,8 +677,8 @@ configuration enters that shared overlay:
    the always-on Holder and native-transfer stages make the UserOperation
    runtime publish nine stages, while feature-off Hardhat and Foundry
    verification topologies publish eight.
-4. Extend both `.github/scripts/hardhat3-compose-check.mjs` and
-   `.github/scripts/foundry-compose-check.mjs` to assert the feature-off value
+4. Extend the shared verification assertions in `.github/scripts/compose-check.mjs`
+   to assert the feature-off value
    and absence or empty value of its companion configuration on every
    application service. A successful render without these assertions is not
    isolation evidence.

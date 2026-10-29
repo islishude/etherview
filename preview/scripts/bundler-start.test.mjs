@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { verifyGenesis } from "../../preview/bundler-start.mjs";
+import { verifyGenesis } from "../bundler-start.mjs";
 test("Bundler verifies chain and exact block-zero code before starting", async () => {
   const manifest = { contracts: { EntryPoint: { address: "0xAB" } } };
   const alloc = { "0xab": { code: "0x1234" } };

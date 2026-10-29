@@ -6,6 +6,80 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
+
+test("toolchain minimums accept stable upgrades and reject invalid or unavailable tools", () =>
+  sandbox(({ dir, env }) => {
+    const checker = join(root, ".github/scripts/toolchain-check.sh");
+    const source = readFileSync(checker, "utf8");
+    const minimums = ["GO", "NODE", "PNPM"].map(
+      (tool) => source.match(new RegExp(`^MINIMUM_${tool}="([^"]+)"`, "m"))[1],
+    );
+    const run = (versions, failure = "") => {
+      const overrides = {};
+      for (const [index, tool] of ["GO", "NODE", "PNPM"].entries()) {
+        const executable = join(dir, tool);
+        overrides[tool] = failure === `missing-${tool}` ? `${executable}-missing` : executable;
+        writeFileSync(
+          executable,
+          `#!${process.execPath}\n${failure === tool ? "process.exit(9)" : `console.log(${JSON.stringify(versions[index])})`};\n`,
+          { mode: 0o700 },
+        );
+      }
+      return spawnSync("bash", [checker], {
+        env: { ...env, ...overrides },
+        encoding: "utf8",
+      });
+    };
+    assert.equal(run(minimums).status, 0);
+    for (const [index, label] of ["Go", "Node", "pnpm"].entries()) {
+      const [, prefix, numeric] = minimums[index].match(/^(go|v)?([0-9.]+)$/);
+      const parts = numeric.split(".").map(Number);
+      for (const component of [0, 1, 2]) {
+        const newer = parts.map((value, i) =>
+          i < component ? value : i === component ? value + 1 : 0,
+        );
+        const versions = [...minimums];
+        versions[index] = (prefix ?? "") + newer.join(".");
+        const result = run(versions);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+      }
+      for (const [version, message] of [
+        [(prefix ?? "") + "0.0.0", /below minimum/],
+        ...parts.flatMap((value, component) =>
+          value === 0
+            ? []
+            : [
+                [
+                  (prefix ?? "") +
+                    parts
+                      .map((part, i) => (i < component ? part : i === component ? part - 1 : 999))
+                      .join("."),
+                  /below minimum/,
+                ],
+              ],
+        ),
+        [minimums[index] + "-rc.1", /unsupported .* version format/],
+        ["latest", /unsupported .* version format/],
+        [(prefix ?? "") + "0" + numeric, /unsupported .* version format/],
+      ]) {
+        const versions = [...minimums];
+        versions[index] = version;
+        const result = run(versions);
+        assert.notEqual(result.status, 0, `${label}: ${version}`);
+        assert.match(result.stdout, message);
+      }
+      const tool = ["GO", "NODE", "PNPM"][index];
+      for (const [failure, message] of [
+        [tool, `failed to read current ${label} version`],
+        [`missing-${tool}`, `${label} executable not found`],
+      ]) {
+        const result = run(minimums, failure);
+        assert.notEqual(result.status, 0);
+        assert.ok(result.stdout.includes(message), result.stdout);
+      }
+    }
+  }));
+
 function sandbox(fn) {
   const dir = mkdtempSync(join(tmpdir(), "workflow scripts "));
   const bin = join(dir, "bin"),
@@ -118,24 +192,6 @@ test("Vyper PR wrapper retains manual flag and paths with spaces", () =>
     );
     assert.equal(readFileSync(output, "utf8"), before);
   }));
-
-test("CI command groups preserve sequence and stop after the first failure", () => {
-  for (const [script, expected] of [
-    ["vyper-ci-packages.sh", ["pnpm", "node", "node", "node"]],
-    ["vyper-ci-native.sh", ["pnpm", "node", "pnpm"]],
-    ["preview-ci-certificates.sh", ["make"]],
-  ])
-    sandbox(({ fake, run, commands }) => {
-      for (const command of new Set(expected)) fake(command);
-      assert.equal(run(script).status, 0);
-      assert.deepEqual(
-        commands().map((c) => c.command),
-        expected,
-      );
-      assert.equal(run(script, [], { FAIL_COMMAND: expected[0] }).status, 9);
-      assert.equal(commands().length, expected.length + 1);
-    });
-});
 
 test("production image handoff checks revision, architecture, identity and failures", () => {
   for (const architecture of ["amd64", "arm64"])

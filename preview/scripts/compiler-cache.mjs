@@ -33,7 +33,7 @@ function assertCacheStopped(source) {
 }
 
 async function managePreviewCache(action, composeArgs = ["-f", "compose.yaml"]) {
-  const { runCompose } = await import("./preview-compose.mjs");
+  const { runCompose } = await import("../../.github/scripts/compose.mjs");
   if (!["init", "clean"].includes(action)) throw new Error("Expected init or clean");
   const config = JSON.parse(runCompose([...composeArgs, "config", "--format", "json"]));
   const mount = config.services.api.volumes.find(
@@ -71,7 +71,7 @@ async function managePreviewCache(action, composeArgs = ["-f", "compose.yaml"]) 
       "--mount",
       `type=bind,src=${source},dst=/compiler-cache`,
       "--mount",
-      `type=bind,src=${path.join(root, ".github/scripts/preview-compiler-cache.mjs")},dst=/compiler-cache.mjs,readonly`,
+      `type=bind,src=${path.join(root, "preview/scripts/compiler-cache.mjs")},dst=/compiler-cache.mjs,readonly`,
       "--entrypoint=node",
       "etherview-preview-bundler:local",
       "/compiler-cache.mjs",

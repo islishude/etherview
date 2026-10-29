@@ -382,17 +382,17 @@
           "count": 1
         },
         {
-          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "path": ".github/scripts/make-targets.test.mjs",
           "template": "          \"PREVIEW_GATEWAY_IMAGE=caddy:{{version}}-alpine\",",
           "count": 1
         },
         {
-          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "path": ".github/scripts/make-targets.test.mjs",
           "template": "          \"caddy:{{version}}-alpine\",",
           "count": 1
         },
         {
-          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "path": ".github/scripts/make-targets.test.mjs",
           "template": "      assert.deepEqual(prebuilt.commands[1].args, [\"image\", \"inspect\", \"caddy:{{version}}-alpine\"]);",
           "count": 1
         },
@@ -665,7 +665,7 @@
       },
       "reviewFiles": [
         "internal/verify/solcjs_test.go",
-        ".github/scripts/toolchain-check_test.sh"
+        ".github/scripts/workflow-scripts.test.mjs"
       ]
     },
     {

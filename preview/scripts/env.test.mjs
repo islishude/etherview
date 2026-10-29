@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { parseEnv } from "node:util";
 
-import { prepareEnvironment } from "./preview-env.mjs";
+import { prepareEnvironment } from "./env.mjs";
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "preview-env-"));

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { runCompose } from "./preview-compose.mjs";
+import { runCompose } from "../../.github/scripts/compose.mjs";
 
 export const generatorImage = "ethpandaops/ethereum-genesis-generator:6.2.7";
 const root = path.resolve(import.meta.dirname, "../..");

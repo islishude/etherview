@@ -1,13 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  mkdtempSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-  rmSync,
-  cpSync,
-  existsSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import test from "node:test";

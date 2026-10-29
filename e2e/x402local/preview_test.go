@@ -79,7 +79,7 @@ func TestPreviewX402(t *testing.T) {
 	if err := project.PreviewCompilerCache(ctx, "init"); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `import {prepareNetwork} from "./.github/scripts/preview-network.mjs"; prepareNetwork(process.argv[1]);`, project.Env["PREVIEW_NETWORK_DIR"])
+	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `import {prepareNetwork} from "./preview/scripts/network.mjs"; prepareNetwork(process.argv[1]);`, project.Env["PREVIEW_NETWORK_DIR"])
 	command.Dir = root
 	command.Env = append(os.Environ(), "COMPOSE_PROJECT_NAME="+project.Name, "ETHERVIEW_GENESIS_FILE=", "GETH_GENESIS_FILE=")
 	if output, err := command.CombinedOutput(); err != nil {
