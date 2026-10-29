@@ -25,7 +25,7 @@
     "priceOracleSourceSha256": "f79df80b515465dec44cc6c42757134690cd7a427695743f56c275c5ca0dadc3",
     "billingSourceSha256": "fbd57d3959abf7ffe8b043ff7170fc550b991c13718d976af441b37a452c34fa"
   },
-  "allocationSha256": "35e7e0fc13576b13dac7b7b2104bf65573fd1b778adf387873f57c779766e395",
+  "allocationSha256": "93957f08154c84696bae861bfb5b24bf09351ed32bf37d42624577a5fedcac0e",
   "sources": {
     "accountAbstraction": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410",
     "ens": "9b034936a42f462fc04bc0a929a419ede5e18d59"
@@ -2941,7 +2941,7 @@
     },
     "DefaultReverseRegistrar": {
       "address": "0x6d925938edb8a16b3035a4cf34faa090f490202a",
-      "codeHash": "0xd07509d1d738cdbc0450f792981b7dcb10d5436f8159da3073b8814da70838bb",
+      "codeHash": "0x3d13f8070a1dbcadac6e8b8c40350706372ee2790e87a95ab632855d2395610a",
       "abi": [
         {
           "inputs": [],
@@ -3186,7 +3186,7 @@
     },
     "DefaultReverseResolver": {
       "address": "0xed8cab8a931a4c0489ad3e3fb5bdea84f74fd23e",
-      "codeHash": "0x48b8d72e21bcadf9f36c9febcde2acc4b13f1557ecb20f9102305719af5a21f6",
+      "codeHash": "0x6391a1d5fa726941fdc326e3b29fbdce7d52fedb1e468bfb5332d84a102d06f3",
       "abi": [
         {
           "inputs": [

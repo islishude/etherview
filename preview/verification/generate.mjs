@@ -3,6 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 
+import { resolveENSImport } from "../contracts/ens-imports.mjs";
+
 const require = createRequire(new URL("../contracts/package.json", import.meta.url));
 const solc = require("solc");
 const { namehash, keccak256 } = require("viem");
@@ -52,7 +54,7 @@ const input = {
 const output = JSON.parse(
   solc.compile(JSON.stringify(input), {
     import(p) {
-      const content = ens.sources[p]?.content ?? fs.readFileSync(require.resolve(p), "utf8");
+      const content = ens.sources[p]?.content ?? fs.readFileSync(resolveENSImport(p), "utf8");
       input.sources[p] = { content };
       return { contents: content };
     },

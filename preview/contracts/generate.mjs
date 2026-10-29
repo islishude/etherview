@@ -2,7 +2,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -24,9 +23,10 @@ import {
 } from "viem";
 import { entryPoint09Abi, entryPoint09Address } from "viem/account-abstraction";
 import { mnemonicToAccount } from "viem/accounts";
+
+import { resolveENSImport } from "./ens-imports.mjs";
 const here = import.meta.dirname;
 const root = path.resolve(here, "../..");
-const require = createRequire(import.meta.url);
 const ensSources = JSON.parse(
   fs.readFileSync(new URL("upstream/ens-sources.json", import.meta.url)),
 );
@@ -109,7 +109,7 @@ const compilation = JSON.parse(
       try {
         if (ensSources.sources[p]) return { contents: ensSources.sources[p].content };
         return {
-          contents: fs.readFileSync(require.resolve(p), "utf8"),
+          contents: fs.readFileSync(resolveENSImport(p), "utf8"),
         };
       } catch {
         return { error: `Missing pinned source ${p}` };
