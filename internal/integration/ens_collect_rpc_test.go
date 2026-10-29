@@ -13,12 +13,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/chainbundle"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/enssync"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
@@ -28,6 +26,7 @@ type ensCollectorRPC struct {
 	genesis                        *types.Header
 	block                          chainbundle.Bundle
 	calls                          int
+	logCalls                       int
 	conflict, upgrade, badIdentity bool
 }
 
@@ -61,6 +60,9 @@ func (s *ensCollectorRPC) GetBlockByHash(hash common.Hash, _ bool) (*types.Heade
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
+	if s.genesis.Hash() == hash {
+		return s.genesis, nil
+	}
 	h := s.block.Block.Header()
 	if s.conflict {
 		h.Extra = []byte("finalized-conflict")
@@ -86,6 +88,7 @@ func (s *ensCollectorRPC) GetLogs(filter map[string]json.RawMessage) ([]*types.L
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
+	s.logCalls++
 	var hash common.Hash
 	if json.Unmarshal(filter["blockHash"], &hash) != nil || hash != s.block.Block.Hash() || len(filter) != 2 {
 		return nil, errors.New("logs must be exact")
@@ -99,7 +102,7 @@ func (s *ensCollectorRPC) GetLogs(filter map[string]json.RawMessage) ([]*types.L
 
 func TestENSCollectorRoundOutlivesIndividualRequestBudget(t *testing.T) {
 	f := newENSCollectorFixture(t)
-	mainnet := core.DefaultGenesisBlock().ToBlock().Header()
+	mainnet := f.genesis.Block.Header()
 	state := &ensCollectorRPC{genesis: mainnet, block: f.original}
 	server := rpc.NewServer()
 	if err := server.RegisterName("eth", state); err != nil {
@@ -121,12 +124,12 @@ func TestENSCollectorRoundOutlivesIndividualRequestBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(client.Close)
-	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "history", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHistory: true}}}, ethrpc.PoolOptions{})
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "history", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}}}, ethrpc.PoolOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := f.manifest
-	m.Genesis, m.Namespace, m.ParentName = mainnet.Hash(), enscontract.Official, "eth"
+	m.Genesis = mainnet.Hash()
 	m.Start, m.StartHash = 1, f.original.Block.Hash()
 	m.Deployments = append([]enssync.Deployment(nil), m.Deployments...)
 	for i := range m.Deployments {
@@ -137,8 +140,22 @@ func TestENSCollectorRoundOutlivesIndividualRequestBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Advance the core head while the bounded historical round is in flight.
+	// Its pinned block remains canonical and must still commit.
+	advanced := make(chan error, 1)
+	go func() {
+		time.Sleep(3 * time.Second)
+		next, e := newIntegrationBundle(integrationBundleOptions{Number: 2, ParentHash: f.original.Block.Hash(), ExtraData: []byte("ens-next-head")})
+		if e == nil {
+			_, e = f.core.CommitCanonicalSegment(t.Context(), "1", []chainbundle.Bundle{next})
+		}
+		advanced <- e
+	}()
 	started := time.Now()
 	result, err := collector.Step(t.Context(), true)
+	if e := <-advanced; e != nil {
+		t.Fatal(e)
+	}
 	if err != nil || result.Scanned != 1 {
 		t.Fatalf("bounded calls must commit after a longer collection round: %+v %v", result, err)
 	}
@@ -148,10 +165,10 @@ func TestENSCollectorRoundOutlivesIndividualRequestBudget(t *testing.T) {
 	assertRowCount(t, t.Context(), f.db, `SELECT count(*) FROM ens_sync_events`, 5)
 }
 
-func TestENSCollectorOfficialPinnedSourceAndFinalizedConflict(t *testing.T) {
+func TestENSCollectorCurrentChainPinnedStateAndCoreGap(t *testing.T) {
 	f := newENSCollectorFixture(t)
 	ctx := t.Context()
-	mainnet := core.DefaultGenesisBlock().ToBlock().Header()
+	mainnet := f.genesis.Block.Header()
 	state := &ensCollectorRPC{genesis: mainnet, block: f.original}
 	server := rpc.NewServer()
 	if e := server.RegisterName("eth", state); e != nil {
@@ -159,14 +176,12 @@ func TestENSCollectorOfficialPinnedSourceAndFinalizedConflict(t *testing.T) {
 	}
 	client := rpc.DialInProc(server)
 	t.Cleanup(client.Close)
-	pool, e := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "history", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHistory: true}}}, ethrpc.PoolOptions{})
+	pool, e := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "history", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}}}, ethrpc.PoolOptions{})
 	if e != nil {
 		t.Fatal(e)
 	}
 	m := f.manifest
 	m.Genesis = mainnet.Hash()
-	m.Namespace = enscontract.Official
-	m.ParentName = "eth"
 	m.Start = 1
 	m.StartHash = f.original.Block.Hash()
 	m.Policy = testHash(151001)
@@ -191,25 +206,18 @@ func TestENSCollectorOfficialPinnedSourceAndFinalizedConflict(t *testing.T) {
 		t.Fatalf("official %+v %v", r, e)
 	}
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_events`, 5)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE direction='forward' AND lookup_key='alice.eth'`, 1)
-	state.mu.Lock()
-	state.conflict = true
-	state.mu.Unlock()
-	if _, e = collector.Step(ctx, true); !errors.Is(e, enssync.ErrSourceIntegrity) {
-		t.Fatalf("finalized conflict: %v", e)
+	if state.logCalls != 0 {
+		t.Fatal("ENS acquired logs independently of core sync")
 	}
-	p, e := dbgen.New(f.db).GetENSSyncProgress(ctx, r.SourceID)
-	if e != nil || p.State != "halted" {
-		t.Fatalf("%+v %v", p, e)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM pg_class WHERE oid IN ('ens_sync_blocks'::regclass,'ens_sync_events'::regclass) AND relkind='v'`, 2)
+	if n, err := dbgen.New(f.db).PutENSSyncBlock(ctx, dbgen.PutENSSyncBlockParams{SourceID: r.SourceID, Number: ensNumber("2"), Hash: testHash(199999).Bytes(), ParentHash: f.original.Block.Hash().Bytes(), BlockTime: ensTime(time.Now()), Canonical: true}); err != nil || n != 0 {
+		t.Fatalf("ENS fabricated a block: %d %v", n, err)
 	}
-	state.mu.Lock()
-	state.conflict = false
-	calls := state.calls
-	state.mu.Unlock()
-	if _, e = collector.Step(ctx, true); !errors.Is(e, enssync.ErrSourceIntegrity) {
-		t.Fatal(e)
-	}
-	if state.calls != calls {
-		t.Fatal("halted source retried silently")
+
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE direction='forward' AND lookup_key='alice.test'`, 1)
+	// A core coverage gap cannot be repaired by fetching logs from this RPC.
+	execFixture(t, ctx, f.db, `DELETE FROM core_coverage_ranges WHERE chain_id=1`)
+	if _, err := collector.Step(ctx, true); !errors.Is(err, enssync.ErrCoverageGap) {
+		t.Fatalf("missing core coverage: %v", err)
 	}
 }

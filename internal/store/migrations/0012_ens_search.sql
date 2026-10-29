@@ -335,28 +335,33 @@ CREATE TABLE ens_sync_sources (
     target_chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
     source_chain_id numeric(78,0) NOT NULL CHECK (source_chain_id > 0),
     genesis_hash bytea NOT NULL CHECK (octet_length(genesis_hash) = 32),
-    namespace text NOT NULL CHECK (namespace IN ('ens', 'custom_ens')),
     policy_digest bytea NOT NULL CHECK (octet_length(policy_digest) = 32),
     manifest_digest bytea NOT NULL CHECK (octet_length(manifest_digest) = 32),
     start_number numeric(78,0) NOT NULL CHECK (start_number >= 0),
     start_hash bytea NOT NULL CHECK (octet_length(start_hash) = 32),
-    CHECK (namespace <> 'custom_ens' OR source_chain_id = target_chain_id),
-    CHECK (namespace <> 'ens' OR source_chain_id = 1),
+    CHECK (source_chain_id = target_chain_id),
     CHECK (start_number <> 0 OR start_hash = genesis_hash),
-    UNIQUE (target_chain_id, source_chain_id, genesis_hash, namespace, policy_digest)
+    UNIQUE (id, source_chain_id),
+    UNIQUE (target_chain_id, source_chain_id, genesis_hash, policy_digest)
 );
 
-CREATE TABLE ens_sync_blocks (
-    source_id bigint NOT NULL REFERENCES ens_sync_sources(id),
-    number numeric(78,0) NOT NULL CHECK (number >= 0),
-    hash bytea NOT NULL CHECK (octet_length(hash) = 32),
-    parent_hash bytea NOT NULL CHECK (octet_length(parent_hash) = 32),
-    block_time timestamptz NOT NULL,
-    canonical boolean NOT NULL,
+-- ENS stores only references and attachment evidence, never a second chain.
+CREATE TABLE ens_sync_block_refs (
+    source_id bigint NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    hash bytea NOT NULL,
+    core_canonical_at timestamptz NOT NULL,
     PRIMARY KEY (source_id, hash),
-    UNIQUE (source_id, number, hash)
+    FOREIGN KEY (source_id, chain_id) REFERENCES ens_sync_sources(id, source_chain_id),
+    FOREIGN KEY (chain_id, hash) REFERENCES blocks(chain_id, hash)
 );
-CREATE UNIQUE INDEX ens_sync_blocks_canonical ON ens_sync_blocks(source_id, number) WHERE canonical;
+
+CREATE VIEW ens_sync_blocks AS
+SELECT r.source_id,b.number,b.hash,b.parent_hash,
+       to_timestamp(b.timestamp::double precision)::timestamptz AS block_time,
+       COALESCE(c.block_hash=b.hash AND c.updated_at=r.core_canonical_at,false)::boolean AS canonical
+FROM ens_sync_block_refs r JOIN blocks b ON b.chain_id=r.chain_id AND b.hash=r.hash
+LEFT JOIN canonical_blocks c ON c.chain_id=b.chain_id AND c.number=b.number;
 
 -- A cursor is evidence only from the manifest's exact start through consecutive
 -- parent-linked blocks. A target or successful poll alone is not coverage.
@@ -374,14 +379,14 @@ CREATE TABLE ens_sync_progress (
     CHECK ((target_number IS NULL) = (target_hash IS NULL)),
     CHECK ((scanned_number IS NULL) = (scanned_hash IS NULL)),
     CHECK (scanned_number IS NULL OR (target_number IS NOT NULL AND scanned_number <= target_number)),
-    FOREIGN KEY (source_id, target_number, target_hash) REFERENCES ens_sync_blocks(source_id, number, hash),
-    FOREIGN KEY (source_id, scanned_number, scanned_hash) REFERENCES ens_sync_blocks(source_id, number, hash)
+    FOREIGN KEY (source_id, target_hash) REFERENCES ens_sync_block_refs(source_id, hash),
+    FOREIGN KEY (source_id, scanned_hash) REFERENCES ens_sync_block_refs(source_id, hash)
 );
 
 CREATE TABLE ens_sync_deployments (
     source_id bigint NOT NULL REFERENCES ens_sync_sources(id),
     address bytea NOT NULL CHECK (octet_length(address) = 20),
-    protocol text NOT NULL CHECK (protocol IN ('v1', 'v2', 'custom')),
+    protocol text NOT NULL CHECK (protocol IN ('v1', 'v2')),
     block_hash bytea NOT NULL,
     code_hash bytea NOT NULL CHECK (octet_length(code_hash) = 32),
     abi_digest bytea NOT NULL CHECK (octet_length(abi_digest) = 32),
@@ -389,7 +394,7 @@ CREATE TABLE ens_sync_deployments (
     implementation_code_hash bytea CHECK (octet_length(implementation_code_hash) = 32),
     CHECK ((implementation_address IS NULL) = (implementation_code_hash IS NULL)),
     PRIMARY KEY (source_id, address),
-    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_blocks(source_id, hash)
+    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_block_refs(source_id, hash)
 );
 
 CREATE FUNCTION valid_ens_sync_topics(topics bytea[]) RETURNS boolean
@@ -399,19 +404,23 @@ LANGUAGE sql IMMUTABLE SET search_path = pg_catalog AS $$
       AND NOT EXISTS (SELECT 1 FROM unnest(topics) AS topic WHERE topic IS NULL OR octet_length(topic) <> 32)
 $$;
 
-CREATE TABLE ens_sync_events (
+CREATE TABLE ens_sync_event_refs (
     source_id bigint NOT NULL,
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
     block_hash bytea NOT NULL,
-    log_index integer NOT NULL CHECK (log_index >= 0),
-    transaction_hash bytea NOT NULL CHECK (octet_length(transaction_hash) = 32),
-    transaction_index integer NOT NULL CHECK (transaction_index >= 0),
-    emitter bytea NOT NULL,
-    topics bytea[] NOT NULL CHECK (valid_ens_sync_topics(topics)),
-    data bytea NOT NULL CHECK (octet_length(data) <= 1048576),
+    log_index bigint NOT NULL,
     PRIMARY KEY (source_id, block_hash, log_index),
-    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_blocks(source_id, hash),
-    FOREIGN KEY (source_id, emitter) REFERENCES ens_sync_deployments(source_id, address)
+    FOREIGN KEY (source_id, chain_id) REFERENCES ens_sync_sources(id, source_chain_id),
+    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_block_refs(source_id, hash),
+    FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index)
 );
+
+CREATE VIEW ens_sync_events AS
+SELECT r.source_id,r.block_hash,r.log_index,l.tx_hash AS transaction_hash,
+       l.tx_index AS transaction_index,l.address AS emitter
+FROM ens_sync_event_refs r JOIN logs l ON l.chain_id=r.chain_id
+ AND l.block_number=r.block_number AND l.block_hash=r.block_hash AND l.log_index=r.log_index;
 
 -- Versioned protocol facts include graph edges, record bundles, lifecycle and
 -- preimages. Projectors own each bounded payload's protocol-specific shape.
@@ -427,13 +436,13 @@ CREATE TABLE ens_sync_projections (
     payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object' AND octet_length(payload::text) <= 65536),
     PRIMARY KEY (source_id, kind, key, revision),
     FOREIGN KEY (source_id, deployment) REFERENCES ens_sync_deployments(source_id, address),
-    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_blocks(source_id, hash)
+    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_block_refs(source_id, hash)
 );
 
 CREATE TABLE ens_sync_candidates (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_id bigint NOT NULL REFERENCES ens_sync_sources(id),
-    direction text NOT NULL CHECK (direction IN ('forward', 'primary')),
+    direction text NOT NULL CHECK (direction IN ('forward', 'primary', 'profile')),
     lookup_key text NOT NULL CHECK (octet_length(lookup_key) BETWEEN 1 AND 512),
     coin_type numeric(78,0) NOT NULL CHECK (coin_type >= 0),
     requested_generation bigint NOT NULL DEFAULT 1 CHECK (requested_generation > 0),
@@ -466,6 +475,7 @@ CREATE TABLE ens_sync_jobs (
     attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     max_attempts integer NOT NULL CHECK (max_attempts BETWEEN 1 AND 100),
     retry_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    queued_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     deadline timestamptz NOT NULL,
     lease_token uuid,
     lease_until timestamptz,
@@ -478,7 +488,7 @@ CREATE TABLE ens_sync_jobs (
     UNIQUE (source_id, candidate_id, id, generation),
     UNIQUE (source_id, id),
     FOREIGN KEY (source_id, candidate_id) REFERENCES ens_sync_candidates(source_id, id),
-    FOREIGN KEY (source_id, target_hash) REFERENCES ens_sync_blocks(source_id, hash)
+    FOREIGN KEY (source_id, target_hash) REFERENCES ens_sync_block_refs(source_id, hash)
 );
 CREATE INDEX ens_sync_jobs_due ON ens_sync_jobs(source_id, retry_at, id) WHERE state IN ('queued', 'leased');
 CREATE INDEX ens_sync_candidates_refresh ON ens_sync_candidates(source_id, refresh_at, id);
@@ -494,6 +504,35 @@ CREATE TABLE ens_sync_job_dependencies (
     FOREIGN KEY (source_id, kind, key, revision) REFERENCES ens_sync_projections(source_id, kind, key, revision)
 );
 
+-- Exact-state observations watch relevant core log emitters. These references
+-- are independent of the historical projection cursor and never copy logs.
+CREATE TABLE ens_sync_job_watches (
+ source_id bigint NOT NULL, job_id bigint NOT NULL, address bytea NOT NULL CHECK(octet_length(address)=20),
+ PRIMARY KEY(source_id,job_id,address),
+ FOREIGN KEY(source_id,job_id) REFERENCES ens_sync_jobs(source_id,id) ON DELETE CASCADE
+);
+CREATE FUNCTION ens_sync_job_current(job bigint) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT EXISTS(SELECT 1 FROM ens_sync_jobs j
+ JOIN ens_sync_sources s ON s.id=j.source_id
+ JOIN ens_sync_progress p ON p.source_id=s.id AND p.revision=j.source_revision
+ JOIN ens_sync_candidates c ON c.id=j.candidate_id AND c.source_id=s.id
+ JOIN ens_sync_blocks b ON b.source_id=s.id AND b.hash=j.target_hash AND b.canonical
+ JOIN canonical_blocks cb ON cb.chain_id=s.source_chain_id AND cb.number=b.number AND cb.block_hash=b.hash AND cb.updated_at=j.core_canonical_at
+ JOIN chains ch ON ch.chain_id=s.source_chain_id AND ch.genesis_hash=s.genesis_hash
+ WHERE j.id=job AND j.generation>=c.minimum_generation AND p.state NOT IN ('halted','unsupported')
+ AND NOT EXISTS(SELECT 1 FROM ens_sync_job_watches w
+  JOIN logs l ON l.chain_id=s.source_chain_id AND l.address=w.address AND l.block_number>b.number
+  JOIN canonical_blocks live ON live.chain_id=l.chain_id AND live.number=l.block_number AND live.block_hash=l.block_hash
+  WHERE w.source_id=j.source_id AND w.job_id=j.id)
+ AND NOT EXISTS(SELECT 1 FROM ens_sync_job_dependencies d
+  JOIN ens_sync_projections f ON f.source_id=d.source_id AND f.kind=d.kind AND f.key=d.key AND f.revision=d.revision
+  JOIN ens_sync_blocks fb ON fb.source_id=f.source_id AND fb.hash=f.block_hash
+  WHERE d.source_id=j.source_id AND d.job_id=j.id AND (NOT fb.canonical OR fb.number>b.number OR EXISTS(
+   SELECT 1 FROM ens_sync_projections n JOIN ens_sync_blocks nb ON nb.source_id=n.source_id AND nb.hash=n.block_hash AND nb.canonical
+   WHERE n.source_id=d.source_id AND n.kind=d.kind AND n.key=d.key AND n.revision>d.revision)))
+ );
+$$;
+
 CREATE TABLE ens_sync_observations (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_id bigint NOT NULL,
@@ -503,7 +542,7 @@ CREATE TABLE ens_sync_observations (
     generation bigint NOT NULL,
     source_revision bigint NOT NULL CHECK (source_revision > 0),
     block_hash bytea NOT NULL,
-    deployment bytea NOT NULL,
+    deployment bytea NOT NULL CHECK(octet_length(deployment)=20),
     endpoint text NOT NULL CHECK (endpoint ~ '^[a-zA-Z0-9_-]{1,64}$'),
     evidence text NOT NULL CHECK (evidence IN ('projection', 'resolver')),
     outcome text NOT NULL CHECK (outcome IN ('resolved', 'not_found')),
@@ -511,20 +550,20 @@ CREATE TABLE ens_sync_observations (
     address bytea CHECK (octet_length(address) = 20),
     resolver bytea CHECK (octet_length(resolver) = 20),
     reverse_resolver bytea CHECK (octet_length(reverse_resolver) = 20),
+    profile_data jsonb CHECK (profile_data IS NULL OR (jsonb_typeof(profile_data)='object' AND octet_length(profile_data::text)<8192)),
     observed_at timestamptz NOT NULL,
     valid_until timestamptz NOT NULL,
     CHECK (valid_until > observed_at),
-    CHECK ((outcome = 'resolved' AND name IS NOT NULL AND address IS NOT NULL AND resolver IS NOT NULL)
+    CHECK ((profile_data IS NOT NULL AND outcome='resolved' AND name IS NOT NULL AND address IS NULL AND resolver IS NULL) OR (outcome = 'resolved' AND name IS NOT NULL AND address IS NOT NULL AND resolver IS NOT NULL)
         OR (outcome = 'not_found' AND resolver IS NULL AND reverse_resolver IS NULL)),
     UNIQUE (source_id, candidate_id, generation),
     UNIQUE (source_id, candidate_id, id),
     FOREIGN KEY (source_id, candidate_id, job_id, generation) REFERENCES ens_sync_jobs(source_id, candidate_id, id, generation),
-    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_blocks(source_id, hash),
-    FOREIGN KEY (source_id, deployment) REFERENCES ens_sync_deployments(source_id, address)
+    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_block_refs(source_id, hash)
 );
 
--- Source publications are immutable building blocks. T26 owns effective
--- official/custom selection, catalog and durable names-event publication.
+-- Source publications are immutable building blocks for effective
+-- effective selection, catalog and durable names-event publication.
 CREATE TABLE ens_sync_publications (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     source_id bigint NOT NULL,
@@ -548,22 +587,10 @@ END
 $$;
 CREATE TRIGGER ens_sync_sources_immutable BEFORE UPDATE ON ens_sync_sources FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_deployments_immutable BEFORE UPDATE ON ens_sync_deployments FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
-CREATE TRIGGER ens_sync_events_immutable BEFORE UPDATE ON ens_sync_events FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
+CREATE TRIGGER ens_sync_events_immutable BEFORE UPDATE ON ens_sync_event_refs FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_projections_immutable BEFORE UPDATE ON ens_sync_projections FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_observations_immutable BEFORE UPDATE ON ens_sync_observations FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_publications_immutable BEFORE UPDATE ON ens_sync_publications FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
-
--- Header content is immutable; canonical detach retains the exact orphan facts.
-CREATE FUNCTION reject_ens_sync_header_mutation() RETURNS trigger
-LANGUAGE plpgsql SET search_path = pg_catalog AS $$
-BEGIN
-    IF (to_jsonb(OLD) - 'canonical') IS DISTINCT FROM (to_jsonb(NEW) - 'canonical') THEN
-        RAISE EXCEPTION 'ENS source header is immutable' USING ERRCODE = '23514';
-    END IF;
-    RETURN NEW;
-END
-$$;
-CREATE TRIGGER ens_sync_blocks_immutable BEFORE UPDATE ON ens_sync_blocks FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_header_mutation();
 
 CREATE TRIGGER ens_sync_job_dependencies_immutable BEFORE UPDATE ON ens_sync_job_dependencies FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 
@@ -575,7 +602,7 @@ CREATE TABLE ens_sync_scans (
     block_hash bytea NOT NULL,
     core_canonical_at timestamptz,
     PRIMARY KEY (source_id, block_hash),
-    FOREIGN KEY (source_id, block_number, block_hash) REFERENCES ens_sync_blocks(source_id, number, hash)
+    FOREIGN KEY (source_id, block_hash) REFERENCES ens_sync_block_refs(source_id, hash)
 );
 CREATE INDEX ens_sync_scans_rewind ON ens_sync_scans(source_id, block_number DESC);
 
@@ -611,15 +638,9 @@ CREATE TABLE ens_sync_graph_work (
 CREATE TABLE ens_effective_policies (
     target_chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
     policy_digest bytea NOT NULL CHECK (octet_length(policy_digest)=32),
-    mode text NOT NULL CHECK (mode IN ('official_first','custom_only')),
-    official_source_id bigint REFERENCES ens_sync_sources(id),
-    custom_source_id bigint REFERENCES ens_sync_sources(id),
-    unsupported_coin boolean NOT NULL DEFAULT false,
+    source_id bigint NOT NULL REFERENCES ens_sync_sources(id),
     coin_type numeric(78,0) NOT NULL CHECK (coin_type>=0),
-    custom_coin_type numeric(78,0) NOT NULL CHECK (custom_coin_type>=0),
-    PRIMARY KEY(target_chain_id,policy_digest),
-    CHECK ((mode='custom_only' AND official_source_id IS NULL AND custom_source_id IS NOT NULL AND NOT unsupported_coin)
-      OR (mode='official_first' AND ((official_source_id IS NOT NULL AND NOT unsupported_coin) OR (official_source_id IS NULL AND unsupported_coin AND custom_source_id IS NOT NULL))))
+    PRIMARY KEY(target_chain_id,policy_digest)
 );
 CREATE TRIGGER ens_effective_policies_immutable BEFORE UPDATE ON ens_effective_policies FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 
@@ -627,24 +648,21 @@ CREATE TABLE ens_effective_publications (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     target_chain_id numeric(78,0) NOT NULL,
     policy_digest bytea NOT NULL,
-    direction text NOT NULL CHECK (direction IN ('forward','primary')),
+    direction text NOT NULL CHECK (direction IN ('forward','primary','profile')),
     lookup_key text NOT NULL CHECK (octet_length(lookup_key) BETWEEN 1 AND 512),
-    official_publication_id bigint REFERENCES ens_sync_publications(id),
-    custom_publication_id bigint REFERENCES ens_sync_publications(id),
     selected_publication_id bigint REFERENCES ens_sync_publications(id),
     state text NOT NULL CHECK (state IN ('resolved','not_found','unavailable')),
     code text CHECK (code ~ '^[a-z][a-z0-9_]{0,63}$'),
     name text CHECK (octet_length(name) BETWEEN 1 AND 255),
     address bytea CHECK (octet_length(address)=20),
-    namespace text CHECK (namespace IN ('ens','custom_ens')),
     valid_until timestamptz,
     retain_until timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY(target_chain_id,policy_digest) REFERENCES ens_effective_policies(target_chain_id,policy_digest),
     CHECK (retain_until>created_at),
-    CHECK ((state='unavailable' AND selected_publication_id IS NULL AND name IS NULL AND address IS NULL AND namespace IS NULL AND valid_until IS NULL AND code IS NOT NULL)
-      OR (state<>'unavailable' AND selected_publication_id IS NOT NULL AND valid_until IS NOT NULL AND namespace IS NOT NULL AND code IS NULL)),
-    CHECK (state<>'resolved' OR (name IS NOT NULL AND address IS NOT NULL)),
+    CHECK ((state='unavailable' AND selected_publication_id IS NULL AND name IS NULL AND address IS NULL AND valid_until IS NULL AND code IS NOT NULL)
+      OR (state<>'unavailable' AND selected_publication_id IS NOT NULL AND valid_until IS NOT NULL AND code IS NULL)),
+    CHECK (state<>'resolved' OR (name IS NOT NULL AND (address IS NOT NULL OR direction='profile'))),
     CHECK (valid_until IS NULL OR retain_until>=valid_until)
 );
 CREATE INDEX ens_effective_publications_lookup ON ens_effective_publications(target_chain_id,policy_digest,direction,lookup_key,id DESC);
@@ -653,57 +671,59 @@ CREATE TRIGGER ens_effective_publications_immutable BEFORE UPDATE ON ens_effecti
 -- Effective publication validity is shared by catalog reads and housekeeping.
 -- No network state or request-time mutation participates in these predicates.
 CREATE FUNCTION ens_sync_publication_current(publication bigint) RETURNS boolean LANGUAGE sql STABLE AS $$
-SELECT EXISTS (
- SELECT 1 FROM ens_sync_publications pub
+SELECT EXISTS(SELECT 1 FROM ens_sync_publications pub
  JOIN ens_sync_observations o ON o.id=pub.observation_id
  JOIN ens_sync_jobs j ON j.id=o.job_id AND j.state='complete'
- JOIN ens_sync_candidates c ON c.id=o.candidate_id AND c.source_id=o.source_id
- JOIN ens_sync_sources s ON s.id=o.source_id
- JOIN ens_sync_progress p ON p.source_id=s.id
- JOIN ens_sync_blocks b ON b.source_id=o.source_id AND b.hash=o.block_hash AND b.canonical
- JOIN ens_sync_blocks target ON target.source_id=p.source_id AND target.hash=p.target_hash AND target.canonical
- WHERE pub.id=publication AND o.generation>=c.minimum_generation AND o.source_revision=p.revision
- AND p.state='active' AND p.healthy_until>clock_timestamp() AND p.target_hash=p.scanned_hash
- AND pub.retain_until>clock_timestamp() AND o.valid_until>clock_timestamp()
- AND (s.namespace<>'custom_ens' OR (
-  EXISTS(SELECT 1 FROM canonical_blocks cb JOIN chains ch ON ch.chain_id=cb.chain_id AND ch.genesis_hash=s.genesis_hash
-   WHERE cb.chain_id=s.target_chain_id AND cb.block_hash=b.hash AND cb.number=b.number AND cb.updated_at=j.core_canonical_at)
-  AND EXISTS(SELECT 1 FROM canonical_blocks cb WHERE cb.chain_id=s.target_chain_id AND cb.block_hash=target.hash AND cb.number=target.number)))
- AND NOT EXISTS(SELECT 1 FROM ens_sync_job_dependencies d
-  JOIN ens_sync_projections f ON f.source_id=d.source_id AND f.kind=d.kind AND f.key=d.key AND f.revision=d.revision
-  JOIN ens_sync_blocks fb ON fb.source_id=f.source_id AND fb.hash=f.block_hash
-  WHERE d.source_id=j.source_id AND d.job_id=j.id AND (NOT fb.canonical OR fb.number>b.number OR EXISTS(
-   SELECT 1 FROM ens_sync_projections n JOIN ens_sync_blocks nb ON nb.source_id=n.source_id AND nb.hash=n.block_hash AND nb.canonical
-   WHERE n.source_id=d.source_id AND n.kind=d.kind AND n.key=d.key AND n.revision>d.revision)))
-);
+ WHERE pub.id=publication AND pub.retain_until>clock_timestamp() AND o.valid_until>clock_timestamp()
+ AND ens_sync_job_current(j.id));
 $$;
 CREATE FUNCTION ens_effective_publication_current(publication bigint) RETURNS boolean LANGUAGE sql STABLE AS $$
  SELECT EXISTS(SELECT 1 FROM ens_effective_publications e
  JOIN ens_effective_policies p ON p.target_chain_id=e.target_chain_id AND p.policy_digest=e.policy_digest
  WHERE e.id=publication AND e.state<>'unavailable' AND e.valid_until>clock_timestamp() AND e.retain_until>clock_timestamp()
- AND ens_sync_publication_current(e.selected_publication_id)
- AND (p.mode='custom_only' OR p.unsupported_coin OR ens_sync_publication_current(e.official_publication_id)));
+ AND ens_sync_publication_current(e.selected_publication_id));
 $$;
 
-CREATE FUNCTION record_ens_effective_search_document() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE next_generation bigint;
+-- Directory membership is canonical discovery evidence, independent of resolver
+-- success and registration lifecycle. Imports remain explicitly operator facts.
+CREATE FUNCTION ens_name_known(source bigint, requested_name text) RETURNS boolean LANGUAGE sql STABLE AS $$
+ SELECT EXISTS(SELECT 1 FROM ens_sync_candidates c JOIN ens_sync_candidate_origins o ON o.source_id=c.source_id AND o.candidate_id=c.id
+ WHERE c.source_id=source AND c.direction='forward' AND c.lookup_key=requested_name AND (
+ o.kind IN ('import','genesis') OR (o.kind='event' AND EXISTS(SELECT 1 FROM ens_sync_blocks b WHERE b.source_id=source AND b.canonical AND '0x'||encode(b.hash,'hex')=split_part(o.identity,'/',1)))
+ OR (o.kind='reverse_result' AND EXISTS(SELECT 1 FROM ens_sync_observations r JOIN ens_sync_blocks b ON b.source_id=r.source_id AND b.hash=r.block_hash AND b.canonical WHERE r.source_id=source AND r.candidate_id::text=o.identity AND r.name=requested_name))));
+$$;
+CREATE FUNCTION record_ens_name_document(source bigint, requested_name text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE next_generation bigint; chain numeric; policy bytea; forward_id bigint; profile_id bigint;
 BEGIN
- IF NEW.direction<>'forward' THEN RETURN NEW; END IF;
- INSERT INTO search_catalog_generations(chain_id) VALUES(NEW.target_chain_id) ON CONFLICT DO NOTHING;
- UPDATE search_catalog_generations SET generation=generation+1,updated_at=now()
- WHERE chain_id=NEW.target_chain_id RETURNING generation INTO next_generation;
- UPDATE search_catalog_documents SET valid_to_generation=next_generation
- WHERE chain_id=NEW.target_chain_id AND source_kind='name' AND logical_identity=NEW.lookup_key AND valid_to_generation IS NULL;
- IF NEW.state<>'resolved' THEN RETURN NEW; END IF;
- INSERT INTO search_catalog_documents(chain_id,source_kind,source_identity,logical_identity,valid_from_generation,
- result_kind,result_key,result_label,exact_terms,partial_terms,target_address,source_canonical,name_publication_id,name_source)
- VALUES(NEW.target_chain_id,'name','publication:'||NEW.id,NEW.lookup_key,next_generation,
- 'address','0x'||encode(NEW.address,'hex'),NEW.name,ARRAY[NEW.name],ARRAY[NEW.name],NEW.address,true,NEW.id,NEW.namespace);
+ SELECT target_chain_id,policy_digest INTO chain,policy FROM ens_sync_sources WHERE id=source;
+ SELECT max(id) INTO forward_id FROM ens_effective_publications WHERE target_chain_id=chain AND policy_digest=policy AND direction='forward' AND lookup_key=requested_name;
+ SELECT max(id) INTO profile_id FROM ens_effective_publications WHERE target_chain_id=chain AND policy_digest=policy AND direction='profile' AND lookup_key=requested_name;
+ INSERT INTO search_catalog_generations(chain_id) VALUES(chain) ON CONFLICT DO NOTHING;
+ UPDATE search_catalog_generations SET generation=generation+1,updated_at=now() WHERE chain_id=chain RETURNING generation INTO next_generation;
+ UPDATE search_catalog_documents SET valid_to_generation=next_generation WHERE chain_id=chain AND source_kind='name' AND logical_identity=requested_name AND valid_to_generation IS NULL;
+ INSERT INTO search_catalog_documents(chain_id,source_kind,source_identity,logical_identity,valid_from_generation,result_kind,result_key,result_label,exact_terms,partial_terms,source_canonical,name_source_id,name_publication_id,name_profile_publication_id)
+ VALUES(chain,'name','name:'||source||':'||requested_name,requested_name,next_generation,'name',requested_name,requested_name,ARRAY[requested_name],ARRAY[requested_name],true,source,forward_id,profile_id);
+ INSERT INTO runtime_events(chain_id,event_type,payload) VALUES(chain,'names',jsonb_build_object('directory',next_generation::text));
+END;
+$$;
+CREATE FUNCTION record_ens_effective_search_document() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE source bigint;
+BEGIN
+ IF NEW.direction='primary' THEN RETURN NEW; END IF;
+ SELECT source_id INTO source FROM ens_effective_policies WHERE target_chain_id=NEW.target_chain_id AND policy_digest=NEW.policy_digest;
+ PERFORM record_ens_name_document(source,NEW.lookup_key); RETURN NEW;
+END;
+$$;
+CREATE TRIGGER ens_effective_search_catalog AFTER INSERT ON ens_effective_publications FOR EACH ROW EXECUTE FUNCTION record_ens_effective_search_document();
+CREATE FUNCTION record_ens_discovered_name() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE candidate ens_sync_candidates;
+BEGIN
+ SELECT * INTO candidate FROM ens_sync_candidates WHERE id=NEW.candidate_id;
+ IF candidate.direction='forward' THEN PERFORM record_ens_name_document(NEW.source_id,candidate.lookup_key); END IF;
  RETURN NEW;
 END;
 $$;
-CREATE TRIGGER ens_effective_search_catalog AFTER INSERT ON ens_effective_publications
- FOR EACH ROW EXECUTE FUNCTION record_ens_effective_search_document();
+CREATE TRIGGER ens_discovered_name AFTER INSERT ON ens_sync_candidate_origins FOR EACH ROW EXECUTE FUNCTION record_ens_discovered_name();
 
 CREATE FUNCTION notify_ens_source_change() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -711,7 +731,7 @@ BEGIN
     OR ((NEW.target_hash IS DISTINCT FROM NEW.scanned_hash) IS DISTINCT FROM (OLD.target_hash IS DISTINCT FROM OLD.scanned_hash)) THEN
   INSERT INTO runtime_events(chain_id,event_type,payload)
   SELECT DISTINCT target_chain_id,'names',jsonb_build_object('source',NEW.source_id::text,'invalidated',true)
-  FROM ens_effective_policies WHERE official_source_id=NEW.source_id OR custom_source_id=NEW.source_id;
+  FROM ens_effective_policies WHERE source_id=NEW.source_id;
  END IF;
  RETURN NEW;
 END;
@@ -784,8 +804,9 @@ CREATE TABLE search_catalog_documents (
     verification_match_type text,
     verification_request_digest bytea,
     verification_job_id uuid,
+    name_source_id bigint REFERENCES ens_sync_sources(id),
+    name_profile_publication_id bigint REFERENCES ens_effective_publications(id),
     name_publication_id bigint REFERENCES ens_effective_publications(id),
-    name_source text,
     CONSTRAINT search_catalog_documents_block_hash_check CHECK (((block_hash IS NULL) OR (octet_length(block_hash) = 32))),
     CONSTRAINT search_catalog_documents_check CHECK (((valid_to_generation IS NULL) OR (valid_to_generation > valid_from_generation))),
     CONSTRAINT search_catalog_documents_check1 CHECK (((result_kind IS NULL) = (result_key IS NULL))),
@@ -797,7 +818,7 @@ CREATE TABLE search_catalog_documents (
     CONSTRAINT search_catalog_documents_code_hash_check CHECK (((code_hash IS NULL) OR (octet_length(code_hash) = 32))),
     CONSTRAINT search_catalog_documents_logical_identity_check CHECK (((length(logical_identity) >= 1) AND (length(logical_identity) <= 1024))),
     CONSTRAINT search_catalog_documents_result_key_check CHECK (((result_key IS NULL) OR ((length(result_key) >= 1) AND (length(result_key) <= 256)))),
-    CONSTRAINT search_catalog_documents_result_kind_check CHECK (((result_kind IS NULL) OR (result_kind = ANY (ARRAY['address'::text, 'block'::text, 'transaction'::text, 'token'::text, 'contract'::text])))),
+    CONSTRAINT search_catalog_documents_result_kind_check CHECK (((result_kind IS NULL) OR (result_kind = ANY (ARRAY['address'::text, 'block'::text, 'transaction'::text, 'token'::text, 'contract'::text, 'name'::text])))),
     CONSTRAINT search_catalog_documents_result_label_check CHECK (((result_label IS NULL) OR ((length(result_label) >= 1) AND (length(result_label) <= 4096)))),
     CONSTRAINT search_catalog_documents_source_identity_check CHECK (((length(source_identity) >= 1) AND (length(source_identity) <= 1024))),
     CONSTRAINT search_catalog_documents_source_kind_check CHECK ((source_kind = ANY (ARRAY['label'::text, 'name'::text, 'token'::text, 'verified_contract'::text, 'code'::text]))),
@@ -826,7 +847,7 @@ CREATE TABLE search_catalog_generations (
 -- Dependency completion
 
 -- Preserve NOT VALID catalog state; inline CHECK is validated by CREATE TABLE.
-ALTER TABLE search_catalog_documents ADD CONSTRAINT search_catalog_documents_name_source_check CHECK ((source_kind='name' AND name_publication_id IS NOT NULL AND name_source IN ('ens','custom_ens')) OR (source_kind<>'name' AND name_publication_id IS NULL AND name_source IS NULL)) NOT VALID;
+ALTER TABLE search_catalog_documents ADD CONSTRAINT search_catalog_documents_name_identity_check CHECK ((source_kind='name' AND name_source_id IS NOT NULL) OR (source_kind<>'name' AND name_source_id IS NULL AND name_publication_id IS NULL AND name_profile_publication_id IS NULL)) NOT VALID;
 
 
 -- Indexes
@@ -851,3 +872,8 @@ CREATE TRIGGER operator_labels_search_catalog_trigger AFTER INSERT OR DELETE OR 
 CREATE TRIGGER token_contracts_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON token_contracts FOR EACH ROW EXECUTE FUNCTION record_search_catalog_document('token');
 
 CREATE TRIGGER verified_contracts_search_catalog_trigger AFTER INSERT OR DELETE OR UPDATE ON verified_contracts FOR EACH ROW EXECUTE FUNCTION record_verified_contract_search_catalog_document();
+
+-- Bounded address-keyset discovery consumes core inclusions and receipts.
+CREATE INDEX ens_core_sender_discovery ON transaction_inclusions(chain_id,lower(raw->>'from'));
+CREATE INDEX ens_core_recipient_discovery ON transaction_inclusions(chain_id,lower(raw->>'to'));
+CREATE INDEX ens_core_creation_discovery ON receipts(chain_id,lower(raw->>'contractAddress'));

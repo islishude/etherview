@@ -47,7 +47,7 @@ func (w *Worker) bindRecordDependencies(ctx context.Context, q *dbgen.Queries, j
 	}
 	// An empty reverse result may omit its resolver entirely. A newly written
 	// reverse record must withdraw that negative before a replacement job runs,
-	// otherwise it can continue authorizing an official-to-custom fallback.
+	// otherwise the previously verified negative could hide the new primary.
 	if o.Outcome == "not_found" && len(o.Address) == common.AddressLength {
 		for _, deployment := range w.options.Manifest.Deployments {
 			switch deployment.Profile {

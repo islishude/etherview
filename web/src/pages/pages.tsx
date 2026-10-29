@@ -1,3 +1,4 @@
+import { expirationText } from "@/ens/nameDetails";
 import { useNameFreshness } from "@/ens/useNameFreshness";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { ArrowRight, CircleAlert, History } from "lucide-react";
@@ -703,6 +704,8 @@ export function verificationLanguageLabel(value: string, t: Translate): string {
 
 export function searchKindLabel(value: SearchResult["kind"], t: Translate): string {
   switch (value) {
+    case "name":
+      return t("names.name");
     case "block":
       return t("searchKind.block");
     case "transaction":
@@ -884,7 +887,7 @@ export function SearchPage({ query }: { query: string }) {
 }
 
 function SearchResultLink({ result }: { result: SearchResult }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const content = (
     <>
       <span className="result-kind">{searchKindLabel(result.kind, t)}</span>
@@ -892,9 +895,6 @@ function SearchResultLink({ result }: { result: SearchResult }) {
         <strong>
           <bdi>{result.label}</bdi>
         </strong>
-        {result.name_source === "custom_ens" ? (
-          <small className="custom-ens-badge">Custom ENS</small>
-        ) : null}
         <small>{result.key}</small>
       </span>
       <span className="search-result-tail">
@@ -908,6 +908,29 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     </>
   );
 
+  if (result.kind === "name")
+    return (
+      <div className="search-result search-name-result">
+        <Link to="/name/$name" params={{ name: result.key }}>
+          {content}
+        </Link>
+        {result.name_details && (
+          <div className="search-name-summary">
+            <span>{t(`names.${result.name_details.registration_state}`)}</span>
+            {result.name_details.expiration_time.state === "value" && (
+              <small>
+                {t("names.expiration")}:{" "}
+                {expirationText(result.name_details.expiration_time.value, i18n.language)}
+              </small>
+            )}
+            {result.name_details.resolved_address.state === "value" &&
+              result.name_details.resolved_address.value && (
+                <AddressIdentity address={result.name_details.resolved_address.value} copy />
+              )}
+          </div>
+        )}
+      </div>
+    );
   switch (result.kind) {
     case "block":
       return (

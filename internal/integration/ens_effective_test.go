@@ -17,7 +17,7 @@ func TestENSEffectivePublicationAtomicSnapshotAndWithdrawal(t *testing.T) {
 	ctx := t.Context()
 	f.discover(t)
 	f.cover(t, f.block, 1)
-	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Mode: "official_first", Digest: testHash(160001), OfficialSourceID: f.source}
+	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Digest: f.lookup.PolicyDigest, SourceID: f.source}
 	if e := f.repo.RegisterPolicy(ctx, policy); e != nil {
 		t.Fatal(e)
 	}
@@ -81,7 +81,7 @@ func TestENSEffectiveHousekeepingPreservesActiveDependenciesAndSnapshotFloor(t *
 	ctx := t.Context()
 	f.discover(t)
 	f.cover(t, f.block, 1)
-	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Mode: "official_first", Digest: testHash(160011), OfficialSourceID: f.source}
+	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Digest: f.lookup.PolicyDigest, SourceID: f.source}
 	if e := f.repo.RegisterPolicy(ctx, policy); e != nil {
 		t.Fatal(e)
 	}

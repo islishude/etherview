@@ -5,7 +5,7 @@ listed as runnable commands here; future gates remain in their owning plan
 until the Makefile target exists.
 
 The accepted [background ENS design](decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
-has a persistence foundation in P20-T23. Its `TestENSSync` PostgreSQL regressions
+has a persistence foundation in P20-T27. Its `TestENSSync` PostgreSQL regressions
 cover source identity, coverage gaps, immutable facts and publications,
 idempotency, retry exhaustion, lease/generation/dependency fencing, local
 canonical detach/reattach, and read-only unknown-name lookups. Run them through
@@ -13,35 +13,44 @@ canonical detach/reattach, and read-only unknown-name lookups. Run them through
 they also run in the maintained full integration/race suites. Schema changes
 continue to require the production-image `make test-schema-e2e` gate.
 
-P20-T24 adds `TestENSCollector` PostgreSQL race regressions for autonomous
+P20-T28 adds `TestENSCollector` PostgreSQL race regressions for autonomous
 discovery, ordered versions/deletions/renewal, restart and concurrent cursors,
-history/deployment gaps, reorg/reattachment and official finalized-conflict
-halting. Run the combined suite with
+history/deployment gaps, core attachment changes and reorg/reattachment. Run the combined suite with
 `go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS(Sync|Collector)'`.
 The RPC fixture is local evidence, not live Mainnet acceptance.
 
-P20-T25/P20-T26 and P40-T26 add real pinned v2 lifecycle/projection fixtures,
+P20-T28/P20-T29 and P40-T27 add real pinned v2 lifecycle/projection fixtures,
 background worker/publication and database-only reader tests. Run the combined
 PostgreSQL race suite with
 `go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
 It includes source/canonical fences, immutable empty snapshots, HTTP-independent
 candidate discovery, catalog withdrawal and bounded idempotent import/replay.
 `make test-runtime-e2e` runs the production image in all/split mode with real
-pinned v2 Registry/factory/resolver/Universal Resolver EVM execution behind an
-isolated local RPC. `make test-preview-contracts` verifies the shipped `.test`
+pinned v1/v2 registration, migration, factory and resolver transactions on the
+same isolated Anvil chain consumed by core sync. `make test-preview-contracts` verifies the shipped `.test`
 genesis, autonomous publication before name HTTP reads and split/all restarts.
 Neither local RPC identity fixtures nor contract deployment establish actual
-Mainnet activation, continuity or independent reconciliation. P30-T148 retains
-[separate live evidence](reviews/P30-ens-mainnet-acceptance.md), including exact
-source/image identities, declared scan windows, independent comparisons and
-restart recovery. Bounded windows do not satisfy full historical coverage or
-database publication acceptance.
+Mainnet activation or independent reconciliation. P30-T150/P30-T151 retain
+[separate acceptance evidence](reviews/ens-current-chain-acceptance.md), including
+exact source/image identities, core-to-database/API publication, declared scan
+windows, candidate provenance and independent comparisons. Bounded samples do
+not satisfy full historical coverage; direct resolver success alone does not
+satisfy the publication gate.
 
 `make test-e2e` covers the generated-client ENS contract, existing single SSE
 stream, proactive publication replacement, exact address disclosure, expiry
 without requests, bilingual accessibility and mobile layout. Unit tests cover
 multi-chunk atomicity and stale responses. API tests reject ENS calls and writes,
 including enqueue and snapshot inserts, without changing authentication/billing.
+
+P20-T30/P40-T28/P50-T82 extend these gates with exact independent registration
+profiles, canonical known-name search and `/api/v1/names/{name}`. Real-contract
+profile tests cover registrant/controller separation, wrapper expiry, grace,
+renewal, regeneration, migration and re-registration. PostgreSQL tests require
+partial profile publication before forward resolution, read-only detail/search,
+independent invalidation, retained expired names and canonical discovery fences.
+Runtime/Preview exercise the same profile worker and generated detail contract.
+Earlier Mainnet samples do not establish acceptance of the new profile fields.
 
 ## Restricted automation hosts
 
@@ -330,7 +339,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   address activity against the generated client, including a decoded failure
   reason and feature-gated navigation.
   The suite also enables a deterministic generated-client ENS fixture to prove
-  Viem normalization, current official/custom presentation, exact address
+  Viem normalization, name-detail navigation without source classifications, exact address
   disclosure, snapshot reuse, bilingual accessibility, and 390px overflow.
 - `make test-integration`: build the embedded SPA, then run real migrations and
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
@@ -519,9 +528,9 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   matches, no catalog generation, `go-module`, `etherview_geas_v1`, empty ABI,
   and monolith/six-role publication parity.
   Both Hardhat and Foundry verification overlays explicitly disable ENS on
-  every application role and inject no ENS Mainnet RPC. Their isolated Anvil
+  every application role and construct no ENS workers. Their isolated Anvil
   fixture is verification input, not an ENS source; ENS behavior remains owned
-  by `make test-runtime-e2e` and its exact Mainnet-identity fixture.
+  by `make test-runtime-e2e` and real v1/v2 transactions on the same current-chain Anvil fixture.
 - `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
   (including `standard`, `modernize`, `unparam`, `depguard`, `forbidigo`, and `revive`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type

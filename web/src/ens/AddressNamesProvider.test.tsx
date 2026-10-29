@@ -43,7 +43,6 @@ function response(url: URL, name: string, version: string, expiry = Date.now() +
           state: "resolved",
           primary_name: {
             name,
-            source: "custom_ens",
             publication: version,
             valid_until: new Date(expiry).toISOString(),
           },

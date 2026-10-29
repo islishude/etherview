@@ -353,6 +353,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getChartOverview",
 		"getNFTMetadata",
 		"getNFTOwner",
+		"getName",
 		"getToken",
 		"getTokenHolderCount",
 		"getTransaction",

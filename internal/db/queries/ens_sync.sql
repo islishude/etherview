@@ -3,11 +3,11 @@
 -- it while contacting a resolver. Public reads use only the read queries.
 
 -- name: CreateENSSyncSource :one
-INSERT INTO ens_sync_sources(target_chain_id, source_chain_id, genesis_hash, namespace,
+INSERT INTO ens_sync_sources(target_chain_id, source_chain_id, genesis_hash,
         policy_digest, manifest_digest, start_number, start_hash)
-    VALUES (@target_chain_id, @source_chain_id, @genesis_hash, @namespace,
+    VALUES (@target_chain_id, @source_chain_id, @genesis_hash,
         @policy_digest, @manifest_digest, @start_number, @start_hash)
-    ON CONFLICT (target_chain_id, source_chain_id, genesis_hash, namespace, policy_digest)
+    ON CONFLICT (target_chain_id, source_chain_id, genesis_hash, policy_digest)
     DO UPDATE SET manifest_digest = EXCLUDED.manifest_digest, start_number = EXCLUDED.start_number,
         start_hash = EXCLUDED.start_hash
 RETURNING id;
@@ -21,13 +21,13 @@ ON CONFLICT (source_id) DO NOTHING;
 SELECT * FROM ens_sync_progress WHERE source_id = @source_id FOR UPDATE;
 
 -- name: PutENSSyncBlock :execrows
-INSERT INTO ens_sync_blocks(source_id, number, hash, parent_hash, block_time, canonical)
-VALUES (@source_id, @number, @hash, @parent_hash, @block_time, @canonical)
-ON CONFLICT (source_id, hash) DO UPDATE SET hash = EXCLUDED.hash
-WHERE ens_sync_blocks.number = EXCLUDED.number
-  AND ens_sync_blocks.parent_hash = EXCLUDED.parent_hash
-  AND ens_sync_blocks.block_time = EXCLUDED.block_time
-  AND ens_sync_blocks.canonical = EXCLUDED.canonical;
+INSERT INTO ens_sync_block_refs(source_id,chain_id,hash,core_canonical_at)
+SELECT s.id,b.chain_id,b.hash,c.updated_at
+FROM ens_sync_sources s JOIN blocks b ON b.chain_id=s.source_chain_id
+JOIN canonical_blocks c ON c.chain_id=b.chain_id AND c.number=b.number AND c.block_hash=b.hash
+WHERE s.id= @source_id AND b.number= @number AND b.hash= @hash AND b.parent_hash= @parent_hash
+ AND to_timestamp(b.timestamp::double precision)= @block_time::timestamptz AND @canonical::boolean
+ON CONFLICT(source_id,hash) DO UPDATE SET core_canonical_at=EXCLUDED.core_canonical_at;
 
 -- name: PutENSSyncDeployment :exec
 INSERT INTO ens_sync_deployments(source_id, address, protocol, block_hash, code_hash, abi_digest, implementation_address, implementation_code_hash)
@@ -36,11 +36,12 @@ ON CONFLICT (source_id, address) DO UPDATE SET protocol = EXCLUDED.protocol,
     block_hash = EXCLUDED.block_hash, code_hash = EXCLUDED.code_hash, abi_digest = EXCLUDED.abi_digest,
     implementation_address = EXCLUDED.implementation_address, implementation_code_hash = EXCLUDED.implementation_code_hash;
 
--- name: PutENSSyncEvent :exec
-INSERT INTO ens_sync_events(source_id, block_hash, log_index, transaction_hash, transaction_index, emitter, topics, data)
-VALUES (@source_id, @block_hash, @log_index, @transaction_hash, @transaction_index, @emitter, @topics, @data)
-ON CONFLICT (source_id, block_hash, log_index) DO UPDATE SET transaction_hash = EXCLUDED.transaction_hash,
-    transaction_index = EXCLUDED.transaction_index, emitter = EXCLUDED.emitter, topics = EXCLUDED.topics, data = EXCLUDED.data;
+-- name: PutENSSyncEvent :execrows
+INSERT INTO ens_sync_event_refs(source_id,chain_id,block_number,block_hash,log_index)
+SELECT s.id,l.chain_id,l.block_number,l.block_hash,l.log_index
+FROM ens_sync_sources s JOIN logs l ON l.chain_id=s.source_chain_id
+WHERE s.id= @source_id AND l.block_hash= @block_hash AND l.log_index= @log_index
+ON CONFLICT(source_id,block_hash,log_index) DO UPDATE SET log_index=EXCLUDED.log_index;
 
 -- name: SetENSSyncTarget :execrows
 UPDATE ens_sync_progress p SET target_number = b.number, target_hash = b.hash,
@@ -132,35 +133,29 @@ INSERT INTO ens_sync_jobs(source_id, candidate_id, generation, source_revision, 
 SELECT c.source_id, c.id, c.requested_generation, p.revision, p.target_hash, cb.updated_at, @max_attempts, @deadline
 FROM ens_sync_candidates c JOIN ens_sync_progress p ON p.source_id = c.source_id
 JOIN ens_sync_sources s ON s.id = c.source_id
-LEFT JOIN canonical_blocks cb ON s.namespace = 'custom_ens' AND cb.chain_id = s.target_chain_id AND cb.block_hash = p.target_hash
+LEFT JOIN canonical_blocks cb ON cb.chain_id = s.target_chain_id AND cb.block_hash = p.target_hash
 WHERE c.source_id = @source_id AND c.id = @candidate_id AND p.target_hash IS NOT NULL
 ON CONFLICT (source_id, candidate_id, generation) DO NOTHING;
 
 -- name: ClaimENSSyncJob :one
 WITH next AS (
-    SELECT j.id FROM ens_sync_jobs j
+    -- Queue latency is coverage backlog, not a failed resolver attempt. Start
+    -- the bounded execution budget only when a worker first claims the job.
+    SELECT j.id, CASE WHEN j.attempts=0 THEN clock_timestamp()+GREATEST(j.deadline-j.queued_at,interval '1 second') ELSE j.deadline END AS execution_deadline
+    FROM ens_sync_jobs j
     JOIN ens_sync_candidates c ON c.source_id = j.source_id AND c.id = j.candidate_id
     JOIN ens_sync_progress p ON p.source_id = j.source_id
     WHERE j.source_id = @source_id AND j.generation = c.requested_generation
       AND j.source_revision = p.revision AND p.state = 'active'
-      AND j.target_hash = p.target_hash AND NOT EXISTS (
-          SELECT 1 FROM ens_sync_job_dependencies dep
-          JOIN ens_sync_projections fact ON fact.source_id = dep.source_id AND fact.kind = dep.kind AND fact.key = dep.key AND fact.revision = dep.revision
-          JOIN ens_sync_blocks fact_block ON fact_block.source_id = fact.source_id AND fact_block.hash = fact.block_hash
-          JOIN ens_sync_blocks target_block ON target_block.source_id = j.source_id AND target_block.hash = j.target_hash
-          WHERE dep.source_id = j.source_id AND dep.job_id = j.id
-            AND (NOT fact_block.canonical OR fact_block.number > target_block.number OR EXISTS (
-                SELECT 1 FROM ens_sync_projections newer
-                  JOIN ens_sync_blocks newer_block ON newer_block.source_id = newer.source_id AND newer_block.hash = newer.block_hash AND newer_block.canonical
-                  WHERE newer.source_id = dep.source_id
-                  AND newer.kind = dep.kind AND newer.key = dep.key AND newer.revision > dep.revision)))
-      AND j.attempts < j.max_attempts AND j.deadline > clock_timestamp()
+      AND ens_sync_job_current(j.id)
+      AND j.attempts < j.max_attempts AND (j.attempts=0 OR j.deadline > clock_timestamp())
       AND ((j.state = 'queued' AND j.retry_at <= clock_timestamp())
         OR (j.state = 'leased' AND j.lease_until <= clock_timestamp()))
     ORDER BY j.retry_at, j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED
 )
 UPDATE ens_sync_jobs j SET state = 'leased', attempts = attempts + 1,
-    lease_token = @lease_token, lease_until = LEAST(j.deadline, clock_timestamp() + sqlc.arg(lease_seconds)::integer * interval '1 second')
+    deadline = next.execution_deadline,
+    lease_token = @lease_token, lease_until = LEAST(next.execution_deadline, clock_timestamp() + sqlc.arg(lease_seconds)::integer * interval '1 second')
 FROM next WHERE j.id = next.id AND sqlc.arg(lease_seconds)::integer BETWEEN 1 AND 300
 RETURNING j.*;
 
@@ -175,7 +170,7 @@ WITH expired AS (
     SELECT e.id FROM ens_sync_jobs e WHERE e.source_id = @source_id
       AND e.state IN ('queued', 'leased')
       AND (e.state <> 'leased' OR e.lease_until <= clock_timestamp())
-      AND (e.attempts >= e.max_attempts OR e.deadline <= clock_timestamp())
+      AND (e.attempts >= e.max_attempts OR (e.attempts>0 AND e.deadline <= clock_timestamp()))
     ORDER BY e.id LIMIT 100 FOR UPDATE SKIP LOCKED
 )
 UPDATE ens_sync_jobs j SET state = 'failed', failure_code = 'retry_exhausted', lease_token = NULL, lease_until = NULL
@@ -192,40 +187,28 @@ WITH finished AS (
       AND j.state = 'leased' AND j.lease_token = @lease_token AND j.lease_until > clock_timestamp()
       AND j.deadline > clock_timestamp() AND j.generation = @generation
       AND j.generation = c.requested_generation AND j.source_revision = p.revision
-      AND NOT EXISTS (
-          SELECT 1 FROM ens_sync_job_dependencies dep
-          JOIN ens_sync_projections fact ON fact.source_id = dep.source_id AND fact.kind = dep.kind AND fact.key = dep.key AND fact.revision = dep.revision
-          JOIN ens_sync_blocks fact_block ON fact_block.source_id = fact.source_id AND fact_block.hash = fact.block_hash
-          JOIN ens_sync_blocks target_block ON target_block.source_id = j.source_id AND target_block.hash = j.target_hash
-          WHERE dep.source_id = j.source_id AND dep.job_id = j.id
-            AND (NOT fact_block.canonical OR fact_block.number > target_block.number OR EXISTS (
-                SELECT 1 FROM ens_sync_projections newer
-                  JOIN ens_sync_blocks newer_block ON newer_block.source_id = newer.source_id AND newer_block.hash = newer.block_hash AND newer_block.canonical
-                  WHERE newer.source_id = dep.source_id
-                  AND newer.kind = dep.kind AND newer.key = dep.key AND newer.revision > dep.revision)))
-      AND (@evidence::text <> 'projection' OR EXISTS (SELECT 1 FROM ens_sync_job_dependencies dep WHERE dep.source_id = j.source_id AND dep.job_id = j.id))
-      AND p.state = 'active' AND p.healthy_until > clock_timestamp()
-      AND p.target_hash = j.target_hash AND p.scanned_hash = j.target_hash
+      AND ens_sync_job_current(j.id)
+      AND (@evidence::text <> 'projection' OR (p.scanned_hash = j.target_hash AND p.target_hash = j.target_hash
+        AND p.state='active' AND p.healthy_until>clock_timestamp()
+        AND EXISTS (SELECT 1 FROM ens_sync_job_dependencies dep WHERE dep.source_id=j.source_id AND dep.job_id=j.id)))
       AND @observed_at::timestamptz <= clock_timestamp() AND @valid_until::timestamptz > clock_timestamp()
       AND @refresh_at::timestamptz > @observed_at::timestamptz AND @refresh_at::timestamptz < @valid_until::timestamptz
       AND @retain_until::timestamptz >= @valid_until::timestamptz
-      AND EXISTS (SELECT 1 FROM ens_sync_deployments d JOIN ens_sync_blocks db
-          ON db.source_id = d.source_id AND db.hash = d.block_hash
-          WHERE d.source_id = j.source_id AND d.address = @deployment AND db.canonical)
+      AND ((c.direction='profile') = (sqlc.narg(profile_data)::jsonb IS NOT NULL))
       AND ((@outcome::text = 'resolved') OR
         (c.direction = 'forward' AND @address::bytea IS NULL) OR
         (c.direction = 'primary' AND sqlc.narg(name)::text IS NULL))
-      AND ((c.direction = 'forward' AND sqlc.narg(name)::text = c.lookup_key AND @reverse_resolver::bytea IS NULL)
+      AND ((c.direction = 'profile' AND sqlc.narg(profile_data)::jsonb IS NOT NULL AND sqlc.narg(name)::text=c.lookup_key AND @address::bytea IS NULL AND @resolver::bytea IS NULL) OR (c.direction = 'forward' AND sqlc.narg(name)::text = c.lookup_key AND @reverse_resolver::bytea IS NULL)
         OR (c.direction = 'primary' AND '0x' || encode(@address::bytea, 'hex') = c.lookup_key
             AND (@outcome::text = 'not_found' OR @reverse_resolver::bytea IS NOT NULL)))
-      AND (s.namespace <> 'custom_ens' OR EXISTS (
+      AND (EXISTS (
           SELECT 1 FROM canonical_blocks cb JOIN chains core ON core.chain_id = cb.chain_id AND core.genesis_hash = s.genesis_hash WHERE cb.chain_id = s.target_chain_id AND cb.number = b.number AND cb.block_hash = b.hash AND cb.updated_at = j.core_canonical_at))
     RETURNING j.*
 ), observation AS (
     INSERT INTO ens_sync_observations(source_id, candidate_id, job_id, lease_token, generation, source_revision,
-        block_hash, deployment, endpoint, evidence, outcome, name, address, resolver, reverse_resolver, observed_at, valid_until)
+        block_hash, deployment, endpoint, evidence, outcome, name, address, resolver, reverse_resolver, profile_data, observed_at, valid_until)
     SELECT source_id, candidate_id, id, @lease_token, generation, source_revision, target_hash, @deployment, @endpoint, @evidence,
-        @outcome::text, sqlc.narg(name), @address, @resolver, @reverse_resolver, @observed_at, @valid_until FROM finished
+        @outcome::text, sqlc.narg(name), @address, @resolver, @reverse_resolver, sqlc.narg(profile_data), @observed_at, @valid_until FROM finished
     RETURNING *
 ), refreshed AS (
     UPDATE ens_sync_candidates c SET refresh_at = @refresh_at FROM observation o
@@ -236,24 +219,13 @@ SELECT source_id, candidate_id, id, @retain_until FROM observation
 RETURNING id;
 
 -- name: ReadENSSyncCandidate :one
-SELECT c.id, c.requested_generation, c.minimum_generation, s.namespace, p.state AS source_state, p.revision,
+SELECT c.id, c.requested_generation, c.minimum_generation, p.state AS source_state, p.revision,
     p.healthy_until, p.target_hash, p.scanned_hash,
-    COALESCE(target.canonical AND (s.namespace <> 'custom_ens' OR EXISTS (
+    COALESCE(target.canonical AND (EXISTS (
         SELECT 1 FROM canonical_blocks cb JOIN chains core ON core.chain_id = cb.chain_id AND core.genesis_hash = s.genesis_hash WHERE cb.chain_id = s.target_chain_id AND cb.number = target.number AND cb.block_hash = target.hash)), false)::boolean AS coverage_canonical,
     o.generation, o.source_revision, o.outcome, o.name, o.address, o.resolver, o.reverse_resolver,
     o.valid_until, o.block_hash, COALESCE(pub.id, 0)::bigint AS publication_id, pub.retain_until,
-    COALESCE(b.canonical AND j.state = 'complete' AND j.target_hash = o.block_hash AND j.source_revision = o.source_revision AND NOT EXISTS (
-          SELECT 1 FROM ens_sync_job_dependencies dep
-          JOIN ens_sync_projections fact ON fact.source_id = dep.source_id AND fact.kind = dep.kind AND fact.key = dep.key AND fact.revision = dep.revision
-          JOIN ens_sync_blocks fact_block ON fact_block.source_id = fact.source_id AND fact_block.hash = fact.block_hash
-          JOIN ens_sync_blocks target_block ON target_block.source_id = j.source_id AND target_block.hash = j.target_hash
-          WHERE dep.source_id = j.source_id AND dep.job_id = j.id
-            AND (NOT fact_block.canonical OR fact_block.number > target_block.number OR EXISTS (
-                SELECT 1 FROM ens_sync_projections newer
-                  JOIN ens_sync_blocks newer_block ON newer_block.source_id = newer.source_id AND newer_block.hash = newer.block_hash AND newer_block.canonical
-                  WHERE newer.source_id = dep.source_id
-                  AND newer.kind = dep.kind AND newer.key = dep.key AND newer.revision > dep.revision))) AND (s.namespace <> 'custom_ens' OR EXISTS (
-        SELECT 1 FROM canonical_blocks cb JOIN chains core ON core.chain_id = cb.chain_id AND core.genesis_hash = s.genesis_hash WHERE cb.chain_id = s.target_chain_id AND cb.number = b.number AND cb.block_hash = b.hash AND cb.updated_at = j.core_canonical_at)), false)::boolean AS canonical
+    COALESCE(j.state='complete' AND ens_sync_job_current(j.id),false)::boolean AS canonical
 FROM ens_sync_sources s
 JOIN ens_sync_progress p ON p.source_id = s.id
 LEFT JOIN ens_sync_blocks target ON target.source_id = s.id AND target.hash = p.target_hash
@@ -273,3 +245,13 @@ WHERE s.id = @source_id AND s.target_chain_id = @target_chain_id AND s.policy_di
 SELECT p.id FROM ens_sync_publications p
 JOIN ens_sync_observations o ON o.id = p.observation_id AND o.source_id = p.source_id AND o.candidate_id = p.candidate_id
 WHERE o.source_id = @source_id AND o.job_id = @job_id AND o.generation = @generation AND o.lease_token = @lease_token;
+
+-- name: WatchENSSyncJob :execrows
+INSERT INTO ens_sync_job_watches(source_id,job_id,address)
+SELECT j.source_id,j.id,unnest(@addresses::bytea[]) FROM ens_sync_jobs j
+WHERE j.source_id= @source_id AND j.id= @job_id AND j.state='leased'
+ AND j.lease_token= @lease_token AND j.lease_until>clock_timestamp()
+ON CONFLICT DO NOTHING;
+
+-- name: CheckENSSyncJobCurrent :one
+SELECT ens_sync_job_current(@job_id)::boolean;

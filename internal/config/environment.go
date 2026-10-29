@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var allowedRoles = []string{"api", "sync", "enrich", "trace", "metadata", "ens", "maintenance"}
+var allowedRoles = []string{"api", "sync", "enrich", "trace", "metadata", "maintenance"}
 
 // NormalizeRoles validates roles, expands all, removes duplicates, and returns
 // roles in stable architectural order.

@@ -2,6 +2,8 @@
 
 package runtimee2e
 
+import "github.com/ethereum/go-ethereum/common/hexutil"
+
 type modeResult struct {
 	durable durableSnapshot
 	api     apiSnapshot
@@ -28,6 +30,7 @@ type rpcReceipt struct {
 	Status          string `json:"status"`
 	ContractAddress string `json:"contractAddress"`
 	Logs            []struct {
-		Topics []string `json:"topics"`
+		Topics   []string       `json:"topics"`
+		LogIndex hexutil.Uint64 `json:"logIndex"`
 	} `json:"logs"`
 }

@@ -193,18 +193,12 @@ billing:
   operations: {}
 
 # Official Ethereum Mainnet RPC endpoints are ENS-role secrets supplied through
-# ETHERVIEW_ENS_RPC_URLS(_FILE), never ConfigMap-backed YAML.
+# ENS shares the current-chain RPC pool in enrich; the manifest is public.
 ens:
   policy_digest: ""
-  official_manifest: ""
-  custom_manifest: ""
-  mode: official_first
-  official_gateways: ["https://ccip-v3.ens.xyz"]
-  custom:
-    registry: ""
-    universal_resolver: ""
-    coin_type: ""
-    gateways: []
+  manifest: ""
+
+  gateways: ["https://ccip-v3.ens.xyz"]
   resolution_freshness: 15m
   snapshot_ttl: 30m
   failure_ttl: 30s

@@ -106,7 +106,7 @@ for (const mode of ["monolith", "distributed"]) {
     const roles =
       mode === "monolith"
         ? ["etherview"]
-        : ["api", "sync", "enrich", "trace", "metadata", "ens", "maintenance"];
+        : ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
     for (const role of [...roles, "migration"]) {
       assertApplicationPaths(config.services[role], "deploy/config.example.yaml");
     }

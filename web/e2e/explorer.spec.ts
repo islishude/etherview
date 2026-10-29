@@ -271,7 +271,6 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
                 name: "alice-with-an-intentionally-long-name.custom",
                 publication: "1",
                 valid_until: new Date(Date.now() + 60000).toISOString(),
-                source: "custom_ens",
               },
             }
           : { address: value, state: "not_found" },
@@ -288,7 +287,11 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
     .first();
   await expect(primary).toBeVisible();
   await expect(primary).toHaveAttribute("title", "alice-with-an-intentionally-long-name.custom");
-  await expect(page.getByText("Custom ENS", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Custom ENS", { exact: true })).toHaveCount(0);
+  await expect(primary.locator("..")).toHaveAttribute(
+    "href",
+    "/name/alice-with-an-intentionally-long-name.custom",
+  );
   await expect(page.getByTitle(address).first()).toBeVisible();
 
   expect(snapshots).toContain("<initial>");

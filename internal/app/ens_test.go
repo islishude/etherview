@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/components"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/enssync"
+	"github.com/islishude/etherview/internal/ethrpc"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -27,8 +28,8 @@ func TestENSReaderConstructionDoesNotAccessUpstream(t *testing.T) {
 	cfg := config.Default()
 	cfg.Features.ENS = true
 	cfg.ENS.PolicyDigest = "0x" + strings.Repeat("1", 64)
-	cfg.ENS.OfficialRPCEndpoints = []config.RPCEndpoint{{Name: "never-called", URL: forbidden.URL}}
-	cfg.ENS.OfficialGateways = []string{forbidden.URL}
+	cfg.RPC.Endpoints = []config.RPCEndpoint{{Name: "never-called", URL: forbidden.URL}}
+	cfg.ENS.Gateways = []string{forbidden.URL}
 	reader, e := newENSReader(&pgxpool.Pool{}, cfg)
 	if e != nil || reader == nil {
 		t.Fatal(e)
@@ -42,8 +43,8 @@ func TestENSComponentManifestMatchesAllAndSplit(t *testing.T) {
 	cfg := config.Default()
 	cfg.Features.ENS = true
 	cfg.ENS.MaxConcurrency = 2
-	all := productionComponentKeys(cfg, []components.Role{components.RoleAPI, components.RoleSync, components.RoleEnrich, components.RoleTrace, components.RoleMetadata, components.RoleENS, components.RoleMaintenance}, false)
-	split := productionComponentKeys(cfg, []components.Role{components.RoleENS}, false)
+	all := productionComponentKeys(cfg, []components.Role{components.RoleAPI, components.RoleSync, components.RoleEnrich, components.RoleTrace, components.RoleMetadata, components.RoleMaintenance}, false)
+	split := productionComponentKeys(cfg, []components.Role{components.RoleEnrich}, false)
 	for _, key := range []string{"38-ens-collection", "39-ens-resolution-01", "39-ens-resolution-02"} {
 		if !slices.Contains(all, key) || !slices.Contains(split, key) {
 			t.Fatalf("missing %s all=%v split=%v", key, all, split)
@@ -53,7 +54,7 @@ func TestENSComponentManifestMatchesAllAndSplit(t *testing.T) {
 		}
 	}
 	cfg.Features.ENS = false
-	if keys := productionComponentKeys(cfg, []components.Role{components.RoleENS}, false); !slices.Contains(keys, "50-role-ens") || slices.Contains(keys, "38-ens-collection") {
+	if keys := productionComponentKeys(cfg, []components.Role{components.RoleEnrich}, false); slices.Contains(keys, "38-ens-collection") {
 		t.Fatal(keys)
 	}
 }
@@ -67,28 +68,36 @@ func TestENSAssemblyDoesNotProbeAndCanceledServicesDrain(t *testing.T) {
 	defer forbidden.Close()
 	cfg := config.Default()
 	cfg.Features.ENS = true
-	cfg.ENS.Mode = "custom_only"
 	cfg.ENS.MaxConcurrency = 2
 	cfg.ENS.PolicyDigest = "0x" + strings.Repeat("1", 64)
-	cfg.ENS.Custom.Registry = common.HexToAddress("0x1").Hex()
-	cfg.ENS.Custom.UniversalResolver = common.HexToAddress("0x2").Hex()
-	cfg.ENS.CustomManifest = filepath.Join(t.TempDir(), "custom.json")
+	registryAddress := common.HexToAddress("0x1")
+	resolverAddress := common.HexToAddress("0x2")
+	cfg.ENS.Manifest = filepath.Join(t.TempDir(), "custom.json")
 	cfg.RPC.Endpoints = []config.RPCEndpoint{{Name: "offline", URL: forbidden.URL, Purposes: []string{"state", "history"}, MaxRequests: 10}}
 	genesis := common.HexToHash("0x1")
-	m := enssync.Manifest{Registry: common.HexToAddress(cfg.ENS.Custom.Registry), UniversalResolver: common.HexToAddress(cfg.ENS.Custom.UniversalResolver), Namespace: enscontract.Custom, TargetChainID: "1", SourceChainID: "1", Genesis: genesis, StartHash: genesis, Policy: common.HexToHash(cfg.ENS.PolicyDigest), CoinType: "60", ParentName: "test", Deployments: []enssync.Deployment{{Address: common.HexToAddress("0x1"), Profile: "registry", Hash: genesis, CodeHash: genesis}, {Address: common.HexToAddress("0x2"), Profile: "universal", Hash: genesis, CodeHash: genesis}}}
+	m := enssync.Manifest{Registry: registryAddress, UniversalResolver: resolverAddress, TargetChainID: "1", SourceChainID: "1", Genesis: genesis, StartHash: genesis, Policy: common.HexToHash(cfg.ENS.PolicyDigest), CoinType: "60", ParentName: "test", Deployments: []enssync.Deployment{{Address: common.HexToAddress("0x1"), Profile: "registry", Hash: genesis, CodeHash: genesis}, {Address: common.HexToAddress("0x2"), Profile: "universal", Hash: genesis, CodeHash: genesis}}}
 	raw, e := json.Marshal(m)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = os.WriteFile(cfg.ENS.CustomManifest, raw, 0600); e != nil {
+	if e = os.WriteFile(cfg.ENS.Manifest, raw, 0600); e != nil {
+		t.Fatal(e)
+	}
+	client, e := rpc.Dial(forbidden.URL)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer client.Close()
+	pool, e := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "current", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}}}, ethrpc.PoolOptions{})
+	if e != nil {
 		t.Fatal(e)
 	}
 	registry := components.NewRegistry()
-	assembly := runtimeAssembly{ctx: t.Context(), cfg: cfg, roleSet: map[components.Role]bool{components.RoleENS: true}, componentRegistry: registry, db: &pgxpool.Pool{}}
+	assembly := runtimeAssembly{ctx: t.Context(), cfg: cfg, roleSet: map[components.Role]bool{components.RoleEnrich: true}, componentRegistry: registry, db: &pgxpool.Pool{}, rpcBuild: &RPCBuild{Pool: pool}}
 	if e = assembly.registerENSComponents(); e != nil {
 		t.Fatal(e)
 	}
-	services, e := registry.Build([]components.Role{components.RoleENS})
+	services, e := registry.Build([]components.Role{components.RoleEnrich})
 	if e != nil || len(services) != 3 {
 		t.Fatal(services, e)
 	}

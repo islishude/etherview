@@ -94,6 +94,15 @@ test("root .local artifacts are ignored while source exceptions retain path and 
     write(".local/new-artifacts/credentials.json", { api_key: publicHash });
     write(".locality/credentials.json", { api_key: publicHash });
     write("nested/.local/credentials.json", { api_key: publicHash });
+    const ensReport = "docs/reviews/ens-current-chain-mainnet.json";
+    const publicAddress = "0xd8da6bf26964af9d7eed9e03e53415d37aa96045";
+    write(
+      ensReport,
+      [{ key: publicAddress }, { key: publicHash }, { api_key: publicAddress }],
+      true,
+    );
+    write("elsewhere-ens.json", { key: publicAddress });
+    write(`nested/${ensReport}`, { key: publicAddress });
     const result = spawnSync(
       process.env.GITLEAKS ?? "gitleaks",
       [
@@ -120,6 +129,10 @@ test("root .local artifacts are ignored while source exceptions retain path and 
         "elsewhere.json:generic-api-key",
         ".locality/credentials.json:generic-api-key",
         "nested/.local/credentials.json:generic-api-key",
+        `${ensReport}:generic-api-key`,
+        `${ensReport}:generic-api-key`,
+        "elsewhere-ens.json:generic-api-key",
+        `nested/${ensReport}:generic-api-key`,
       ].sort(),
     );
     assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 1);

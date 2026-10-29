@@ -35,7 +35,7 @@ const bindENSSyncJobDependency = `-- name: BindENSSyncJobDependency :execrows
 WITH source_lock AS (
     SELECT p.source_id FROM ens_sync_progress p WHERE p.source_id = $4 FOR UPDATE
 ), job AS (
-    SELECT j.id, j.source_id, j.candidate_id, j.generation, j.source_revision, j.target_hash, j.core_canonical_at, j.state, j.attempts, j.max_attempts, j.retry_at, j.deadline, j.lease_token, j.lease_until, j.failure_code FROM ens_sync_jobs j JOIN source_lock l ON l.source_id = j.source_id
+    SELECT j.id, j.source_id, j.candidate_id, j.generation, j.source_revision, j.target_hash, j.core_canonical_at, j.state, j.attempts, j.max_attempts, j.retry_at, j.queued_at, j.deadline, j.lease_token, j.lease_until, j.failure_code FROM ens_sync_jobs j JOIN source_lock l ON l.source_id = j.source_id
     WHERE j.id = $5 AND
       (j.state = 'queued' OR (j.state = 'leased' AND j.lease_token = $6 AND j.lease_until > clock_timestamp()))
     FOR UPDATE OF j
@@ -71,33 +71,38 @@ func (q *Queries) BindENSSyncJobDependency(ctx context.Context, arg BindENSSyncJ
 	return result.RowsAffected(), nil
 }
 
+const checkENSSyncJobCurrent = `-- name: CheckENSSyncJobCurrent :one
+SELECT ens_sync_job_current($1)::boolean
+`
+
+func (q *Queries) CheckENSSyncJobCurrent(ctx context.Context, jobID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, checkENSSyncJobCurrent, jobID)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const claimENSSyncJob = `-- name: ClaimENSSyncJob :one
 WITH next AS (
-    SELECT j.id FROM ens_sync_jobs j
+    -- Queue latency is coverage backlog, not a failed resolver attempt. Start
+    -- the bounded execution budget only when a worker first claims the job.
+    SELECT j.id, CASE WHEN j.attempts=0 THEN clock_timestamp()+GREATEST(j.deadline-j.queued_at,interval '1 second') ELSE j.deadline END AS execution_deadline
+    FROM ens_sync_jobs j
     JOIN ens_sync_candidates c ON c.source_id = j.source_id AND c.id = j.candidate_id
     JOIN ens_sync_progress p ON p.source_id = j.source_id
     WHERE j.source_id = $3 AND j.generation = c.requested_generation
       AND j.source_revision = p.revision AND p.state = 'active'
-      AND j.target_hash = p.target_hash AND NOT EXISTS (
-          SELECT 1 FROM ens_sync_job_dependencies dep
-          JOIN ens_sync_projections fact ON fact.source_id = dep.source_id AND fact.kind = dep.kind AND fact.key = dep.key AND fact.revision = dep.revision
-          JOIN ens_sync_blocks fact_block ON fact_block.source_id = fact.source_id AND fact_block.hash = fact.block_hash
-          JOIN ens_sync_blocks target_block ON target_block.source_id = j.source_id AND target_block.hash = j.target_hash
-          WHERE dep.source_id = j.source_id AND dep.job_id = j.id
-            AND (NOT fact_block.canonical OR fact_block.number > target_block.number OR EXISTS (
-                SELECT 1 FROM ens_sync_projections newer
-                  JOIN ens_sync_blocks newer_block ON newer_block.source_id = newer.source_id AND newer_block.hash = newer.block_hash AND newer_block.canonical
-                  WHERE newer.source_id = dep.source_id
-                  AND newer.kind = dep.kind AND newer.key = dep.key AND newer.revision > dep.revision)))
-      AND j.attempts < j.max_attempts AND j.deadline > clock_timestamp()
+      AND ens_sync_job_current(j.id)
+      AND j.attempts < j.max_attempts AND (j.attempts=0 OR j.deadline > clock_timestamp())
       AND ((j.state = 'queued' AND j.retry_at <= clock_timestamp())
         OR (j.state = 'leased' AND j.lease_until <= clock_timestamp()))
     ORDER BY j.retry_at, j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED
 )
 UPDATE ens_sync_jobs j SET state = 'leased', attempts = attempts + 1,
-    lease_token = $1, lease_until = LEAST(j.deadline, clock_timestamp() + $2::integer * interval '1 second')
+    deadline = next.execution_deadline,
+    lease_token = $1, lease_until = LEAST(next.execution_deadline, clock_timestamp() + $2::integer * interval '1 second')
 FROM next WHERE j.id = next.id AND $2::integer BETWEEN 1 AND 300
-RETURNING j.id, j.source_id, j.candidate_id, j.generation, j.source_revision, j.target_hash, j.core_canonical_at, j.state, j.attempts, j.max_attempts, j.retry_at, j.deadline, j.lease_token, j.lease_until, j.failure_code
+RETURNING j.id, j.source_id, j.candidate_id, j.generation, j.source_revision, j.target_hash, j.core_canonical_at, j.state, j.attempts, j.max_attempts, j.retry_at, j.queued_at, j.deadline, j.lease_token, j.lease_until, j.failure_code
 `
 
 func (q *Queries) ClaimENSSyncJob(ctx context.Context, leaseToken pgtype.UUID, leaseSeconds int32, sourceID int64) (EnsSyncJob, error) {
@@ -115,6 +120,7 @@ func (q *Queries) ClaimENSSyncJob(ctx context.Context, leaseToken pgtype.UUID, l
 		&i.Attempts,
 		&i.MaxAttempts,
 		&i.RetryAt,
+		&i.QueuedAt,
 		&i.Deadline,
 		&i.LeaseToken,
 		&i.LeaseUntil,
@@ -150,11 +156,11 @@ func (q *Queries) ConfirmENSSyncPublication(ctx context.Context, arg ConfirmENSS
 
 const createENSSyncSource = `-- name: CreateENSSyncSource :one
 
-INSERT INTO ens_sync_sources(target_chain_id, source_chain_id, genesis_hash, namespace,
+INSERT INTO ens_sync_sources(target_chain_id, source_chain_id, genesis_hash,
         policy_digest, manifest_digest, start_number, start_hash)
-    VALUES ($1, $2, $3, $4,
-        $5, $6, $7, $8)
-    ON CONFLICT (target_chain_id, source_chain_id, genesis_hash, namespace, policy_digest)
+    VALUES ($1, $2, $3,
+        $4, $5, $6, $7)
+    ON CONFLICT (target_chain_id, source_chain_id, genesis_hash, policy_digest)
     DO UPDATE SET manifest_digest = EXCLUDED.manifest_digest, start_number = EXCLUDED.start_number,
         start_hash = EXCLUDED.start_hash
 RETURNING id
@@ -164,7 +170,6 @@ type CreateENSSyncSourceParams struct {
 	TargetChainID  pgtype.Numeric `db:"target_chain_id" json:"target_chain_id"`
 	SourceChainID  pgtype.Numeric `db:"source_chain_id" json:"source_chain_id"`
 	GenesisHash    []byte         `db:"genesis_hash" json:"genesis_hash"`
-	Namespace      string         `db:"namespace" json:"namespace"`
 	PolicyDigest   []byte         `db:"policy_digest" json:"policy_digest"`
 	ManifestDigest []byte         `db:"manifest_digest" json:"manifest_digest"`
 	StartNumber    pgtype.Numeric `db:"start_number" json:"start_number"`
@@ -179,7 +184,6 @@ func (q *Queries) CreateENSSyncSource(ctx context.Context, arg CreateENSSyncSour
 		arg.TargetChainID,
 		arg.SourceChainID,
 		arg.GenesisHash,
-		arg.Namespace,
 		arg.PolicyDigest,
 		arg.ManifestDigest,
 		arg.StartNumber,
@@ -195,7 +199,7 @@ INSERT INTO ens_sync_jobs(source_id, candidate_id, generation, source_revision, 
 SELECT c.source_id, c.id, c.requested_generation, p.revision, p.target_hash, cb.updated_at, $1, $2
 FROM ens_sync_candidates c JOIN ens_sync_progress p ON p.source_id = c.source_id
 JOIN ens_sync_sources s ON s.id = c.source_id
-LEFT JOIN canonical_blocks cb ON s.namespace = 'custom_ens' AND cb.chain_id = s.target_chain_id AND cb.block_hash = p.target_hash
+LEFT JOIN canonical_blocks cb ON cb.chain_id = s.target_chain_id AND cb.block_hash = p.target_hash
 WHERE c.source_id = $3 AND c.id = $4 AND p.target_hash IS NOT NULL
 ON CONFLICT (source_id, candidate_id, generation) DO NOTHING
 `
@@ -287,7 +291,7 @@ WITH expired AS (
     SELECT e.id FROM ens_sync_jobs e WHERE e.source_id = $1
       AND e.state IN ('queued', 'leased')
       AND (e.state <> 'leased' OR e.lease_until <= clock_timestamp())
-      AND (e.attempts >= e.max_attempts OR e.deadline <= clock_timestamp())
+      AND (e.attempts >= e.max_attempts OR (e.attempts>0 AND e.deadline <= clock_timestamp()))
     ORDER BY e.id LIMIT 100 FOR UPDATE SKIP LOCKED
 )
 UPDATE ens_sync_jobs j SET state = 'failed', failure_code = 'retry_exhausted', lease_token = NULL, lease_until = NULL
@@ -394,41 +398,29 @@ WITH finished AS (
       AND j.state = 'leased' AND j.lease_token = $5 AND j.lease_until > clock_timestamp()
       AND j.deadline > clock_timestamp() AND j.generation = $6
       AND j.generation = c.requested_generation AND j.source_revision = p.revision
-      AND NOT EXISTS (
-          SELECT 1 FROM ens_sync_job_dependencies dep
-          JOIN ens_sync_projections fact ON fact.source_id = dep.source_id AND fact.kind = dep.kind AND fact.key = dep.key AND fact.revision = dep.revision
-          JOIN ens_sync_blocks fact_block ON fact_block.source_id = fact.source_id AND fact_block.hash = fact.block_hash
-          JOIN ens_sync_blocks target_block ON target_block.source_id = j.source_id AND target_block.hash = j.target_hash
-          WHERE dep.source_id = j.source_id AND dep.job_id = j.id
-            AND (NOT fact_block.canonical OR fact_block.number > target_block.number OR EXISTS (
-                SELECT 1 FROM ens_sync_projections newer
-                  JOIN ens_sync_blocks newer_block ON newer_block.source_id = newer.source_id AND newer_block.hash = newer.block_hash AND newer_block.canonical
-                  WHERE newer.source_id = dep.source_id
-                  AND newer.kind = dep.kind AND newer.key = dep.key AND newer.revision > dep.revision)))
-      AND ($7::text <> 'projection' OR EXISTS (SELECT 1 FROM ens_sync_job_dependencies dep WHERE dep.source_id = j.source_id AND dep.job_id = j.id))
-      AND p.state = 'active' AND p.healthy_until > clock_timestamp()
-      AND p.target_hash = j.target_hash AND p.scanned_hash = j.target_hash
+      AND ens_sync_job_current(j.id)
+      AND ($7::text <> 'projection' OR (p.scanned_hash = j.target_hash AND p.target_hash = j.target_hash
+        AND p.state='active' AND p.healthy_until>clock_timestamp()
+        AND EXISTS (SELECT 1 FROM ens_sync_job_dependencies dep WHERE dep.source_id=j.source_id AND dep.job_id=j.id)))
       AND $8::timestamptz <= clock_timestamp() AND $9::timestamptz > clock_timestamp()
       AND $10::timestamptz > $8::timestamptz AND $10::timestamptz < $9::timestamptz
       AND $1::timestamptz >= $9::timestamptz
-      AND EXISTS (SELECT 1 FROM ens_sync_deployments d JOIN ens_sync_blocks db
-          ON db.source_id = d.source_id AND db.hash = d.block_hash
-          WHERE d.source_id = j.source_id AND d.address = $11 AND db.canonical)
+      AND ((c.direction='profile') = ($11::jsonb IS NOT NULL))
       AND (($12::text = 'resolved') OR
         (c.direction = 'forward' AND $13::bytea IS NULL) OR
         (c.direction = 'primary' AND $14::text IS NULL))
-      AND ((c.direction = 'forward' AND $14::text = c.lookup_key AND $15::bytea IS NULL)
+      AND ((c.direction = 'profile' AND $11::jsonb IS NOT NULL AND $14::text=c.lookup_key AND $13::bytea IS NULL AND $15::bytea IS NULL) OR (c.direction = 'forward' AND $14::text = c.lookup_key AND $16::bytea IS NULL)
         OR (c.direction = 'primary' AND '0x' || encode($13::bytea, 'hex') = c.lookup_key
-            AND ($12::text = 'not_found' OR $15::bytea IS NOT NULL)))
-      AND (s.namespace <> 'custom_ens' OR EXISTS (
+            AND ($12::text = 'not_found' OR $16::bytea IS NOT NULL)))
+      AND (EXISTS (
           SELECT 1 FROM canonical_blocks cb JOIN chains core ON core.chain_id = cb.chain_id AND core.genesis_hash = s.genesis_hash WHERE cb.chain_id = s.target_chain_id AND cb.number = b.number AND cb.block_hash = b.hash AND cb.updated_at = j.core_canonical_at))
-    RETURNING j.id, j.source_id, j.candidate_id, j.generation, j.source_revision, j.target_hash, j.core_canonical_at, j.state, j.attempts, j.max_attempts, j.retry_at, j.deadline, j.lease_token, j.lease_until, j.failure_code
+    RETURNING j.id, j.source_id, j.candidate_id, j.generation, j.source_revision, j.target_hash, j.core_canonical_at, j.state, j.attempts, j.max_attempts, j.retry_at, j.queued_at, j.deadline, j.lease_token, j.lease_until, j.failure_code
 ), observation AS (
     INSERT INTO ens_sync_observations(source_id, candidate_id, job_id, lease_token, generation, source_revision,
-        block_hash, deployment, endpoint, evidence, outcome, name, address, resolver, reverse_resolver, observed_at, valid_until)
-    SELECT source_id, candidate_id, id, $5, generation, source_revision, target_hash, $11, $16, $7,
-        $12::text, $14, $13, $17, $15, $8, $9 FROM finished
-    RETURNING id, source_id, candidate_id, job_id, lease_token, generation, source_revision, block_hash, deployment, endpoint, evidence, outcome, name, address, resolver, reverse_resolver, observed_at, valid_until
+        block_hash, deployment, endpoint, evidence, outcome, name, address, resolver, reverse_resolver, profile_data, observed_at, valid_until)
+    SELECT source_id, candidate_id, id, $5, generation, source_revision, target_hash, $17, $18, $7,
+        $12::text, $14, $13, $15, $16, $11, $8, $9 FROM finished
+    RETURNING id, source_id, candidate_id, job_id, lease_token, generation, source_revision, block_hash, deployment, endpoint, evidence, outcome, name, address, resolver, reverse_resolver, profile_data, observed_at, valid_until
 ), refreshed AS (
     UPDATE ens_sync_candidates c SET refresh_at = $10 FROM observation o
     WHERE c.id = o.candidate_id
@@ -449,13 +441,14 @@ type PublishENSSyncObservationParams struct {
 	ObservedAt      pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 	ValidUntil      pgtype.Timestamptz `db:"valid_until" json:"valid_until"`
 	RefreshAt       pgtype.Timestamptz `db:"refresh_at" json:"refresh_at"`
-	Deployment      []byte             `db:"deployment" json:"deployment"`
+	ProfileData     []byte             `db:"profile_data" json:"profile_data"`
 	Outcome         string             `db:"outcome" json:"outcome"`
 	Address         []byte             `db:"address" json:"address"`
 	Name            *string            `db:"name" json:"name"`
-	ReverseResolver []byte             `db:"reverse_resolver" json:"reverse_resolver"`
-	Endpoint        string             `db:"endpoint" json:"endpoint"`
 	Resolver        []byte             `db:"resolver" json:"resolver"`
+	ReverseResolver []byte             `db:"reverse_resolver" json:"reverse_resolver"`
+	Deployment      []byte             `db:"deployment" json:"deployment"`
+	Endpoint        string             `db:"endpoint" json:"endpoint"`
 }
 
 func (q *Queries) PublishENSSyncObservation(ctx context.Context, arg PublishENSSyncObservationParams) (int64, error) {
@@ -470,13 +463,14 @@ func (q *Queries) PublishENSSyncObservation(ctx context.Context, arg PublishENSS
 		arg.ObservedAt,
 		arg.ValidUntil,
 		arg.RefreshAt,
-		arg.Deployment,
+		arg.ProfileData,
 		arg.Outcome,
 		arg.Address,
 		arg.Name,
-		arg.ReverseResolver,
-		arg.Endpoint,
 		arg.Resolver,
+		arg.ReverseResolver,
+		arg.Deployment,
+		arg.Endpoint,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -484,13 +478,13 @@ func (q *Queries) PublishENSSyncObservation(ctx context.Context, arg PublishENSS
 }
 
 const putENSSyncBlock = `-- name: PutENSSyncBlock :execrows
-INSERT INTO ens_sync_blocks(source_id, number, hash, parent_hash, block_time, canonical)
-VALUES ($1, $2, $3, $4, $5, $6)
-ON CONFLICT (source_id, hash) DO UPDATE SET hash = EXCLUDED.hash
-WHERE ens_sync_blocks.number = EXCLUDED.number
-  AND ens_sync_blocks.parent_hash = EXCLUDED.parent_hash
-  AND ens_sync_blocks.block_time = EXCLUDED.block_time
-  AND ens_sync_blocks.canonical = EXCLUDED.canonical
+INSERT INTO ens_sync_block_refs(source_id,chain_id,hash,core_canonical_at)
+SELECT s.id,b.chain_id,b.hash,c.updated_at
+FROM ens_sync_sources s JOIN blocks b ON b.chain_id=s.source_chain_id
+JOIN canonical_blocks c ON c.chain_id=b.chain_id AND c.number=b.number AND c.block_hash=b.hash
+WHERE s.id= $1 AND b.number= $2 AND b.hash= $3 AND b.parent_hash= $4
+ AND to_timestamp(b.timestamp::double precision)= $5::timestamptz AND $6::boolean
+ON CONFLICT(source_id,hash) DO UPDATE SET core_canonical_at=EXCLUDED.core_canonical_at
 `
 
 type PutENSSyncBlockParams struct {
@@ -550,36 +544,20 @@ func (q *Queries) PutENSSyncDeployment(ctx context.Context, arg PutENSSyncDeploy
 	return err
 }
 
-const putENSSyncEvent = `-- name: PutENSSyncEvent :exec
-INSERT INTO ens_sync_events(source_id, block_hash, log_index, transaction_hash, transaction_index, emitter, topics, data)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-ON CONFLICT (source_id, block_hash, log_index) DO UPDATE SET transaction_hash = EXCLUDED.transaction_hash,
-    transaction_index = EXCLUDED.transaction_index, emitter = EXCLUDED.emitter, topics = EXCLUDED.topics, data = EXCLUDED.data
+const putENSSyncEvent = `-- name: PutENSSyncEvent :execrows
+INSERT INTO ens_sync_event_refs(source_id,chain_id,block_number,block_hash,log_index)
+SELECT s.id,l.chain_id,l.block_number,l.block_hash,l.log_index
+FROM ens_sync_sources s JOIN logs l ON l.chain_id=s.source_chain_id
+WHERE s.id= $1 AND l.block_hash= $2 AND l.log_index= $3
+ON CONFLICT(source_id,block_hash,log_index) DO UPDATE SET log_index=EXCLUDED.log_index
 `
 
-type PutENSSyncEventParams struct {
-	SourceID         int64    `db:"source_id" json:"source_id"`
-	BlockHash        []byte   `db:"block_hash" json:"block_hash"`
-	LogIndex         int32    `db:"log_index" json:"log_index"`
-	TransactionHash  []byte   `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex int32    `db:"transaction_index" json:"transaction_index"`
-	Emitter          []byte   `db:"emitter" json:"emitter"`
-	Topics           [][]byte `db:"topics" json:"topics"`
-	Data             []byte   `db:"data" json:"data"`
-}
-
-func (q *Queries) PutENSSyncEvent(ctx context.Context, arg PutENSSyncEventParams) error {
-	_, err := q.db.Exec(ctx, putENSSyncEvent,
-		arg.SourceID,
-		arg.BlockHash,
-		arg.LogIndex,
-		arg.TransactionHash,
-		arg.TransactionIndex,
-		arg.Emitter,
-		arg.Topics,
-		arg.Data,
-	)
-	return err
+func (q *Queries) PutENSSyncEvent(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) (int64, error) {
+	result, err := q.db.Exec(ctx, putENSSyncEvent, sourceID, blockHash, logIndex)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const putENSSyncProjection = `-- name: PutENSSyncProjection :one
@@ -632,24 +610,13 @@ func (q *Queries) PutENSSyncProjection(ctx context.Context, arg PutENSSyncProjec
 }
 
 const readENSSyncCandidate = `-- name: ReadENSSyncCandidate :one
-SELECT c.id, c.requested_generation, c.minimum_generation, s.namespace, p.state AS source_state, p.revision,
+SELECT c.id, c.requested_generation, c.minimum_generation, p.state AS source_state, p.revision,
     p.healthy_until, p.target_hash, p.scanned_hash,
-    COALESCE(target.canonical AND (s.namespace <> 'custom_ens' OR EXISTS (
+    COALESCE(target.canonical AND (EXISTS (
         SELECT 1 FROM canonical_blocks cb JOIN chains core ON core.chain_id = cb.chain_id AND core.genesis_hash = s.genesis_hash WHERE cb.chain_id = s.target_chain_id AND cb.number = target.number AND cb.block_hash = target.hash)), false)::boolean AS coverage_canonical,
     o.generation, o.source_revision, o.outcome, o.name, o.address, o.resolver, o.reverse_resolver,
     o.valid_until, o.block_hash, COALESCE(pub.id, 0)::bigint AS publication_id, pub.retain_until,
-    COALESCE(b.canonical AND j.state = 'complete' AND j.target_hash = o.block_hash AND j.source_revision = o.source_revision AND NOT EXISTS (
-          SELECT 1 FROM ens_sync_job_dependencies dep
-          JOIN ens_sync_projections fact ON fact.source_id = dep.source_id AND fact.kind = dep.kind AND fact.key = dep.key AND fact.revision = dep.revision
-          JOIN ens_sync_blocks fact_block ON fact_block.source_id = fact.source_id AND fact_block.hash = fact.block_hash
-          JOIN ens_sync_blocks target_block ON target_block.source_id = j.source_id AND target_block.hash = j.target_hash
-          WHERE dep.source_id = j.source_id AND dep.job_id = j.id
-            AND (NOT fact_block.canonical OR fact_block.number > target_block.number OR EXISTS (
-                SELECT 1 FROM ens_sync_projections newer
-                  JOIN ens_sync_blocks newer_block ON newer_block.source_id = newer.source_id AND newer_block.hash = newer.block_hash AND newer_block.canonical
-                  WHERE newer.source_id = dep.source_id
-                  AND newer.kind = dep.kind AND newer.key = dep.key AND newer.revision > dep.revision))) AND (s.namespace <> 'custom_ens' OR EXISTS (
-        SELECT 1 FROM canonical_blocks cb JOIN chains core ON core.chain_id = cb.chain_id AND core.genesis_hash = s.genesis_hash WHERE cb.chain_id = s.target_chain_id AND cb.number = b.number AND cb.block_hash = b.hash AND cb.updated_at = j.core_canonical_at)), false)::boolean AS canonical
+    COALESCE(j.state='complete' AND ens_sync_job_current(j.id),false)::boolean AS canonical
 FROM ens_sync_sources s
 JOIN ens_sync_progress p ON p.source_id = s.id
 LEFT JOIN ens_sync_blocks target ON target.source_id = s.id AND target.hash = p.target_hash
@@ -680,7 +647,6 @@ type ReadENSSyncCandidateRow struct {
 	ID                  int64              `db:"id" json:"id"`
 	RequestedGeneration int64              `db:"requested_generation" json:"requested_generation"`
 	MinimumGeneration   int64              `db:"minimum_generation" json:"minimum_generation"`
-	Namespace           string             `db:"namespace" json:"namespace"`
 	SourceState         string             `db:"source_state" json:"source_state"`
 	Revision            int64              `db:"revision" json:"revision"`
 	HealthyUntil        pgtype.Timestamptz `db:"healthy_until" json:"healthy_until"`
@@ -716,7 +682,6 @@ func (q *Queries) ReadENSSyncCandidate(ctx context.Context, arg ReadENSSyncCandi
 		&i.ID,
 		&i.RequestedGeneration,
 		&i.MinimumGeneration,
-		&i.Namespace,
 		&i.SourceState,
 		&i.Revision,
 		&i.HealthyUntil,
@@ -780,6 +745,34 @@ WHERE p.source_id = $2 AND b.source_id = p.source_id AND b.hash = $3
 
 func (q *Queries) SetENSSyncTarget(ctx context.Context, healthyUntil pgtype.Timestamptz, sourceID int64, blockHash []byte) (int64, error) {
 	result, err := q.db.Exec(ctx, setENSSyncTarget, healthyUntil, sourceID, blockHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const watchENSSyncJob = `-- name: WatchENSSyncJob :execrows
+INSERT INTO ens_sync_job_watches(source_id,job_id,address)
+SELECT j.source_id,j.id,unnest($1::bytea[]) FROM ens_sync_jobs j
+WHERE j.source_id= $2 AND j.id= $3 AND j.state='leased'
+ AND j.lease_token= $4 AND j.lease_until>clock_timestamp()
+ON CONFLICT DO NOTHING
+`
+
+type WatchENSSyncJobParams struct {
+	Addresses  [][]byte    `db:"addresses" json:"addresses"`
+	SourceID   int64       `db:"source_id" json:"source_id"`
+	JobID      int64       `db:"job_id" json:"job_id"`
+	LeaseToken pgtype.UUID `db:"lease_token" json:"lease_token"`
+}
+
+func (q *Queries) WatchENSSyncJob(ctx context.Context, arg WatchENSSyncJobParams) (int64, error) {
+	result, err := q.db.Exec(ctx, watchENSSyncJob,
+		arg.Addresses,
+		arg.SourceID,
+		arg.JobID,
+		arg.LeaseToken,
+	)
 	if err != nil {
 		return 0, err
 	}

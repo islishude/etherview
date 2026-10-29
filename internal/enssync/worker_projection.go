@@ -43,6 +43,13 @@ func dependencyExpiry(dependencies []dbgen.EnsSyncProjection) time.Time {
 }
 func (w *Worker) tryProjection(ctx context.Context, job dbgen.EnsSyncJob, blockTime time.Time) (bool, error) {
 	q := dbgen.New(w.repo.db)
+	progress, e := q.GetENSSyncProgress(ctx, job.SourceID)
+	if e != nil {
+		return false, ErrStorage
+	}
+	if !bytes.Equal(progress.ScannedHash, job.TargetHash) || !bytes.Equal(progress.TargetHash, job.TargetHash) {
+		return false, nil
+	}
 	previous, e := q.GetENSSyncPreviousProjectionObservation(ctx, job.SourceID, job.CandidateID)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return false, nil
@@ -70,7 +77,7 @@ func (w *Worker) tryProjection(ctx context.Context, job dbgen.EnsSyncJob, blockT
 		if e != nil {
 			return e
 		}
-		if progress.Revision != job.SourceRevision || !bytes.Equal(progress.TargetHash, job.TargetHash) {
+		if progress.Revision != job.SourceRevision || !bytes.Equal(progress.TargetHash, job.TargetHash) || !bytes.Equal(progress.ScannedHash, job.TargetHash) {
 			return ErrFenceLost
 		}
 		for _, dep := range dependencies {

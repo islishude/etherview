@@ -115,12 +115,7 @@ billing:
   max_captured_header_bytes: 65536
 
 ens:
-  official_gateways: ["https://ccip-v3.ens.xyz"]
-  custom:
-    registry: ""
-    universal_resolver: ""
-    coin_type: ""
-    gateways: []
+  gateways: ["https://ccip-v3.ens.xyz"]
   resolution_freshness: 15m
   snapshot_ttl: 30m
   failure_ttl: 30s

@@ -30,7 +30,7 @@ func TestENSSyncReverseResultDiscoveryAndSearch(t *testing.T) {
 	name := "offchain.eth" // No plaintext event or explicit import for this name.
 	input.Name = &name
 	input.ReverseResolver = f.deployment.Bytes()
-	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Mode: "official_first", Digest: testHash(160090), OfficialSourceID: f.source}
+	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Digest: f.lookup.PolicyDigest, SourceID: f.source}
 	if err := f.repo.RegisterPolicy(ctx, policy); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestENSSyncReverseResultDiscoveryAndSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := query.NewPostgresReader(&ensReadOnlyDB{Pool: f.db}, query.Options{ChainID: 31337, NameResolver: names, NamePolicy: policy.Digest})
+	reader, err := query.NewPostgresReader(&ensReadOnlyDB{Pool: f.db}, query.Options{ChainID: 31337, NamePolicy: policy.Digest})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,10 +57,10 @@ func TestENSSyncReverseResultDiscoveryAndSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE source_id=$1 AND direction='forward' AND lookup_key=$2 AND coin_type=60`, 1, f.source, name)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidate_origins WHERE kind='reverse_result'`, 1)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidate_origins WHERE kind='reverse_result'`, 2)
 	// Discovery does not turn a primary publication into a forward answer.
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_publications p JOIN ens_sync_candidates c ON c.id=p.candidate_id WHERE c.direction='forward'`, 0)
-	if _, err = names.ResolveForward(ctx, name); err == nil {
+	if detail, err := names.NameDetail(ctx, name); err != nil || detail.ResolvedAddress.State != "pending" {
 		t.Fatal("reverse discovery published an unverified forward answer")
 	}
 	var forwardID, generation int64
@@ -79,7 +79,7 @@ func TestENSSyncReverseResultDiscoveryAndSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE id=$1 AND requested_generation=$2`, 1, forwardID, generation)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidate_origins WHERE kind='reverse_result'`, 1)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidate_origins WHERE kind='reverse_result'`, 2)
 	// Only the separately leased forward job may populate exact and prefix search.
 	f.candidate = forwardID
 	f.enqueue(t, 3)

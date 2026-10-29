@@ -980,6 +980,27 @@ paths:
                 $ref: "#/components/schemas/TransactionAuthorizationResponse"
         default:
           $ref: "#/components/responses/Error"
+  /names/{name}:
+    get:
+      operationId: getName
+      tags: [ens]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      responses:
+        "200":
+          description: Known name with independently valid partial fields, or explicit not_indexed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameDetailResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /address-names:
     get:
       operationId: listAddressNames
@@ -3383,17 +3404,14 @@ components:
           $ref: "#/components/schemas/Completeness"
         names:
           type: array
-          maxItems: 2
+          maxItems: 1
           items:
             $ref: "#/components/schemas/NameSourceStatus"
     NameSourceStatus:
       type: object
       additionalProperties: false
-      required: [source, state, protocols, pending]
+      required: [state, protocols, pending, coverage]
       properties:
-        source:
-          type: string
-          enum: [ens, custom_ens]
         state:
           type: string
           enum: [not_indexed, sync_pending, resolution_pending, current, stale, unsupported_source]
@@ -3403,12 +3421,18 @@ components:
           uniqueItems: true
           items:
             type: string
-            enum: [v1, v2, custom]
+            enum: [v1, v2]
+        coverage:
+          type: string
+          enum: [not_started, incomplete, complete]
+          description: Directory coverage from the configured protocol start, independent of exact resolution validity.
+        coverage_start:
+          $ref: "#/components/schemas/Quantity"
         target:
           $ref: "#/components/schemas/Quantity"
         scanned:
           $ref: "#/components/schemas/Quantity"
-        published:
+        last_published_block:
           $ref: "#/components/schemas/Quantity"
         pending:
           $ref: "#/components/schemas/Quantity"
@@ -5570,13 +5594,85 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/EIP7702Authorization"
+    NameField:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [value, pending, not_applicable, unsupported, multi_account, not_set]
+        value:
+          type: string
+          description: Address or unsigned Unix seconds for expiration_time, never a fabricated empty value.
+        model:
+          type: string
+          enum: [registry_manager, wrapped_manager, permissioned_registry]
+    NameObservation:
+      type: object
+      additionalProperties: false
+      required: [publication, observed_block_number, observed_block_hash, valid_until]
+      properties:
+        publication:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_number:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_hash:
+          $ref: "#/components/schemas/Hash"
+        valid_until:
+          type: string
+          format: date-time
+    NameDetail:
+      type: object
+      additionalProperties: false
+      required:
+        [name, state, registration_state, registrant, controller, expiration_time, resolved_address]
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+          enum: [indexed, not_indexed]
+        registration_state:
+          type: string
+          enum:
+            [
+              pending,
+              unsupported,
+              not_applicable,
+              unregistered,
+              registered,
+              reserved,
+              grace_period,
+              expired,
+            ]
+        registrant:
+          $ref: "#/components/schemas/NameField"
+        controller:
+          $ref: "#/components/schemas/NameField"
+        expiration_time:
+          $ref: "#/components/schemas/NameField"
+        resolved_address:
+          $ref: "#/components/schemas/NameField"
+        profile_observation:
+          $ref: "#/components/schemas/NameObservation"
+        resolution_observation:
+          $ref: "#/components/schemas/NameObservation"
+    NameDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NameDetail"
+        meta:
+          $ref: "#/components/schemas/Meta"
     SearchResult:
       type: object
       required: [kind, key, label, rank]
       properties:
         kind:
           type: string
-          enum: [block, transaction, user_operation, address, contract, token, nft, label]
+          enum: [block, transaction, user_operation, address, contract, token, nft, label, name]
         key:
           type: string
         label:
@@ -5585,28 +5681,23 @@ components:
           type: integer
         canonical:
           type: boolean
-        name_source:
-          type: string
-          enum: [ens, custom_ens]
-        name_publication:
-          $ref: "#/components/schemas/Quantity"
-        name_valid_until:
-          type: string
-          format: date-time
+        name_details:
+          $ref: "#/components/schemas/NameDetail"
     PrimaryName:
       type: object
       additionalProperties: false
-      required: [name, source, publication, valid_until]
+      required: [name, publication, valid_until, observed_block_number, observed_block_hash]
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 255
-        source:
-          type: string
-          enum: [ens, custom_ens]
         publication:
           $ref: "#/components/schemas/Quantity"
+        observed_block_number:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_hash:
+          $ref: "#/components/schemas/Hash"
         valid_until:
           type: string
           format: date-time

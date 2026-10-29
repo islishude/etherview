@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/enssync"
 )
 
@@ -56,7 +55,7 @@ func run() error {
 		return fmt.Errorf("preview chain identity mismatch")
 	}
 	hash := genesis.ToBlock().Hash()
-	m := enssync.Manifest{Namespace: enscontract.Custom, TargetChainID: genesis.Config.ChainID.String(), SourceChainID: genesis.Config.ChainID.String(), Genesis: hash, StartHash: hash, ParentName: inventory.TLD, CoinType: inventory.CoinType, Policy: crypto.Keccak256Hash([]byte("etherview-preview-ens-policy-v1")), Registry: inventory.Contracts["ENSRegistry"].Address, UniversalResolver: inventory.Contracts["UniversalResolver"].Address}
+	m := enssync.Manifest{TargetChainID: genesis.Config.ChainID.String(), SourceChainID: genesis.Config.ChainID.String(), Genesis: hash, StartHash: hash, ParentName: inventory.TLD, CoinType: inventory.CoinType, Policy: crypto.Keccak256Hash([]byte("etherview-preview-ens-policy-v1")), Registry: inventory.Contracts["ENSRegistry"].Address, UniversalResolver: inventory.Contracts["UniversalResolver"].Address}
 	for _, entry := range []struct{ name, profile string }{{"ENSRegistry", "registry"}, {"BaseRegistrarImplementation", "registrar"}, {"PreviewRegistrarController", "controller"}, {"ReverseRegistrar", "reverse"}, {"DefaultReverseRegistrar", "default_reverse"}, {"PublicResolver", "resolver"}, {"UniversalResolver", "universal"}} {
 		contract, ok := inventory.Contracts[entry.name]
 		if !ok || crypto.Keccak256Hash(genesis.Alloc[contract.Address].Code) != contract.CodeHash {

@@ -17,7 +17,7 @@ func (h *Handler) nameSourceStatus(ctx context.Context) []gen.NameSourceStatus {
 	} // Optional name health never changes core readiness.
 	result := make([]gen.NameSourceStatus, 0, len(rows))
 	for _, row := range rows {
-		item := gen.NameSourceStatus{Source: gen.NameSourceStatusSource(row.Source), State: gen.NameSourceStatusState(row.State), Pending: gen.Quantity(row.Pending), Target: (*gen.Quantity)(row.Target), Scanned: (*gen.Quantity)(row.Scanned), Published: (*gen.Quantity)(row.Published), Protocols: []gen.NameSourceStatusProtocols{}}
+		item := gen.NameSourceStatus{State: gen.NameSourceStatusState(row.State), Pending: gen.Quantity(row.Pending), Target: (*gen.Quantity)(row.Target), Scanned: (*gen.Quantity)(row.Scanned), LastPublishedBlock: (*gen.Quantity)(row.Published), Coverage: gen.NameSourceStatusCoverage(row.Coverage), CoverageStart: (*gen.Quantity)(row.CoverageStart), Protocols: []gen.NameSourceStatusProtocols{}}
 		for _, protocol := range row.Protocols {
 			item.Protocols = append(item.Protocols, gen.NameSourceStatusProtocols(protocol))
 		}

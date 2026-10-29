@@ -711,9 +711,10 @@ func TestOfflineCommandsDoNotLoadPushSecrets(t *testing.T) {
 	}
 }
 
-func TestENSOperationsDoNotLoadNetworkSecrets(t *testing.T) {
+func TestENSOperationsDispatchWithoutRPCConfiguration(t *testing.T) {
 	t.Setenv("ETHERVIEW_DATABASE_URL", "postgres://localhost/etherview")
-	t.Setenv("ETHERVIEW_ENS_RPC_URLS_FILE", "/does-not-exist-ens-secret")
+	unsetCLIEnvironment(t, "ETHERVIEW_RPC_URLS_FILE")
+	unsetCLIEnvironment(t, "ETHERVIEW_RPC_URLS")
 	for _, action := range []string{"import", "replay"} {
 		backend := &fakeBackend{}
 		var stderr bytes.Buffer
@@ -722,7 +723,7 @@ func TestENSOperationsDoNotLoadNetworkSecrets(t *testing.T) {
 		if code := program.Run(t.Context(), args); code != 0 {
 			t.Fatal(code, stderr.String())
 		}
-		if backend.repairKind != "ens" || !slices.Equal(backend.repairArgs, args[1:]) || len(backend.repairConfig.ENS.OfficialRPCEndpoints) != 0 {
+		if backend.repairKind != "ens" || !slices.Equal(backend.repairArgs, args[1:]) {
 			t.Fatal(backend.repairArgs)
 		}
 	}

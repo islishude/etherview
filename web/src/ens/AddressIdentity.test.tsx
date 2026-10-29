@@ -9,6 +9,21 @@ import { I18nextProvider } from "react-i18next";
 import { AddressIdentity } from "./AddressIdentity";
 import { AddressNamesProvider } from "./AddressNamesProvider";
 
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({
+    params,
+    children,
+    className,
+  }: {
+    params: { name: string };
+    children: React.ReactNode;
+    className?: string;
+  }) => (
+    <a className={className} href={`/name/${encodeURIComponent(params.name)}`}>
+      {children}
+    </a>
+  ),
+}));
 const address = "0x1111111111111111111111111111111111111111";
 const secondAddress = "0x2222222222222222222222222222222222222222";
 
@@ -16,7 +31,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("renders a snapshot-resolved custom primary name while retaining the exact address", async () => {
+it("renders a snapshot-resolved primary name while retaining the exact address", async () => {
   const requestedSnapshots: Array<string | null> = [];
   const fetcher = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");
@@ -47,7 +62,6 @@ it("renders a snapshot-resolved custom primary name while retaining the exact ad
                   state: "resolved",
                   primary_name: {
                     name: "alice.custom",
-                    source: "custom_ens",
                     publication: "1",
                     valid_until: new Date(Date.now() + 60000).toISOString(),
                   },
@@ -74,7 +88,11 @@ it("renders a snapshot-resolved custom primary name while retaining the exact ad
     </QueryClientProvider>,
   );
   expect(await screen.findByText("alice.custom")).toHaveAttribute("title", "alice.custom");
-  expect(screen.getByText("Custom ENS")).toBeVisible();
+  expect(screen.queryByText("Custom ENS")).toBeNull();
+  expect(screen.getByRole("link", { name: "alice.custom" })).toHaveAttribute(
+    "href",
+    "/name/alice.custom",
+  );
   expect(screen.getByTitle(address)).toBeVisible();
   await userEvent.setup().click(screen.getByRole("button", { name: "Show second" }));
   expect(await screen.findByTitle(secondAddress)).toBeVisible();

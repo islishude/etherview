@@ -36,9 +36,7 @@ x-runtime-e2e-environment: &runtime-e2e-environment
   ETHERVIEW_FEATURE_PRICING: "false"
   ETHERVIEW_FEATURE_ENS: "true"
   ETHERVIEW_ENS_POLICY_DIGEST: ${ETHERVIEW_ENS_POLICY_DIGEST:-}
-  ETHERVIEW_ENS_OFFICIAL_MANIFEST: ${ETHERVIEW_ENS_OFFICIAL_MANIFEST:-}
-  ETHERVIEW_ENS_CUSTOM_REGISTRY: ""
-  ETHERVIEW_ENS_CUSTOM_UNIVERSAL_RESOLVER: ""
+  ETHERVIEW_ENS_MANIFEST: ${ETHERVIEW_ENS_MANIFEST:-}
   ETHERVIEW_FEATURE_SAFE_PROXY_DETECTION: "true"
   ETHERVIEW_FEATURE_DIAMOND_PROXY_DETECTION: "true"
   ETHERVIEW_FEATURE_USER_OPERATIONS: ${ETHERVIEW_RUNTIME_FEATURE_USER_OPERATIONS:-false}
@@ -86,7 +84,6 @@ services:
     environment:
       <<: *runtime-e2e-environment
       ETHERVIEW_SESSION_PEPPER: ${ETHERVIEW_RUNTIME_SESSION_PEPPER:-}
-      ETHERVIEW_ENS_RPC_URLS: ${ETHERVIEW_RUNTIME_ENS_RPC_URL:-}
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
 
@@ -124,13 +121,6 @@ services:
 
   metadata:
     environment: *runtime-e2e-environment
-    depends_on: *runtime-fixture-dependency
-    extra_hosts: ["host.docker.internal:host-gateway"]
-
-  ens:
-    environment:
-      <<: *runtime-e2e-environment
-      ETHERVIEW_ENS_RPC_URLS: ${ETHERVIEW_RUNTIME_ENS_RPC_URL:-}
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
 

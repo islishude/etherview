@@ -63,3 +63,11 @@ condition = "AND"
 targetRules = ["generic-api-key"]
 paths = ['''^preview/bundler-start\.mjs$''']
 regexes = ['''^2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6$''']
+
+[[allowlists]]
+description = "Exact public Ethereum address used as a lookup key in the preserved ENS Mainnet report"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^docs/reviews/ens-current-chain-mainnet\.json$''']
+regexTarget = "match"
+regexes = ['''^key"[ \t]*:[ \t]*"0xd8da6bf26964af9d7eed9e03e53415d37aa96045"$''']

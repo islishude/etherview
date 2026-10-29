@@ -46,6 +46,12 @@ func (s *ensWorkerRPC) Call(request map[string]json.RawMessage, block rpc.BlockN
 	if json.Unmarshal(request["data"], &input) != nil || len(input) < 4 {
 		return nil, errors.New("invalid call")
 	}
+	if hexutil.Encode(input[:4]) == "0x02571be3" {
+		return common.LeftPadBytes(s.address.Bytes(), 32), nil
+	}
+	if hexutil.Encode(input[:4]) == "0x0178b8bf" {
+		return common.LeftPadBytes(s.resolver.Bytes(), 32), nil
+	}
 	method, e := s.abi.MethodById(input[:4])
 	if e != nil {
 		return nil, e
@@ -101,6 +107,8 @@ func TestENSWorkerAutonomousResolutionAndTerminalBudget(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	// Exact state remains publishable while historical processing is behind.
+	execFixture(t, ctx, f.db, `UPDATE ens_sync_progress SET scanned_number=NULL,scanned_hash=NULL WHERE source_id=$1`, result.SourceID)
 	if e = worker.Schedule(ctx, 100); e != nil {
 		t.Fatal(e)
 	}
@@ -161,8 +169,103 @@ func TestENSWorkerAutonomousResolutionAndTerminalBudget(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_jobs j JOIN ens_sync_candidates c ON c.id=j.candidate_id WHERE c.direction='forward'`, 3)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_jobs j JOIN ens_sync_candidates c ON c.id=j.candidate_id WHERE c.direction='forward'`, 2)
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_jobs WHERE failure_code LIKE '%private%'`, 0)
+}
+
+func TestENSWorkerLateRelevantLogSchedulesReplacement(t *testing.T) {
+	f := newENSCollectorFixture(t)
+	ctx := t.Context()
+	f.manifest.Deployments[1].Profile = "universal"
+	repo, _ := enssync.NewRepository(f.db)
+	collector, e := enssync.NewCollector(repo, f.manifest, nil, enssync.CollectorOptions{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	result, e := collector.Step(ctx, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	parsed, e := abi.JSON(strings.NewReader(ensWorkerABI))
+	if e != nil {
+		t.Fatal(e)
+	}
+	service := &ensWorkerRPC{ensCollectorRPC: &ensCollectorRPC{genesis: f.genesis.Block.Header(), block: f.original}, abi: parsed, address: f.owner, resolver: f.manifest.Deployments[1].Address}
+	server := rpc.NewServer()
+	if e = server.RegisterName("eth", service); e != nil {
+		t.Fatal(e)
+	}
+	client := rpc.DialInProc(server)
+	t.Cleanup(client.Close)
+	pool, e := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "worker-fixture", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}}}, ethrpc.PoolOptions{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	normalizer, e := ensresolver.NewNormalizer()
+	if e != nil {
+		t.Fatal(e)
+	}
+	resolver, e := ensresolver.NewResolver(normalizer, nil, 4)
+	if e != nil {
+		t.Fatal(e)
+	}
+	worker, e := enssync.NewWorker(repo, enssync.WorkerOptions{SourceID: result.SourceID, Manifest: f.manifest, Registry: f.manifest.Deployments[0].Address, UniversalResolver: service.resolver, Pool: pool, Resolver: resolver, FailureDelay: time.Second, MaxAttempts: 2})
+	if e != nil {
+		t.Fatal(e)
+	}
+
+	if e = worker.Schedule(ctx, 100); e != nil {
+		t.Fatal(e)
+	}
+	// The core learns of a resolver change after scheduling the old exact target.
+	// The worker only learns this resolver's identity when its RPC result returns.
+	node, _ := ensresolver.Namehash("alice.test")
+	changed, e := newIntegrationBundle(integrationBundleOptions{Number: 2, ParentHash: f.original.Block.Hash(), ExtraData: []byte("late-resolver-log"), Transactions: []integrationTransactionOptions{{Type: types.DynamicFeeTxType, To: &service.resolver, Logs: []*types.Log{ensCollectorLog(t, "resolver", "AddrChanged", service.resolver, node, f.owner)}}}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.core.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{changed}); e != nil {
+		t.Fatal(e)
+	}
+	for range 20 {
+		worked, err := worker.Step(ctx)
+		if err != nil && !errors.Is(err, enssync.ErrFenceLost) {
+			var typed *ensresolver.ResolutionError
+			if !errors.As(err, &typed) || typed.Code != ensresolver.CodeForwardMismatch {
+				t.Fatal(err)
+			}
+		}
+		if !worked {
+			break
+		}
+	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_observations WHERE outcome='resolved'`, 0)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_jobs j JOIN ens_sync_candidates c ON c.id=j.candidate_id WHERE c.direction='forward' AND NOT ens_sync_job_current(j.id)`, 1)
+	if _, e = collector.Step(ctx, true); e != nil {
+		t.Fatal(e)
+	}
+	service.mu.Lock()
+	service.block = changed
+	service.mu.Unlock()
+	if e = worker.Schedule(ctx, 100); e != nil {
+		t.Fatal(e)
+	}
+	for range 20 {
+		worked, err := worker.Step(ctx)
+		if err != nil {
+			var typed *ensresolver.ResolutionError
+			if !errors.As(err, &typed) || typed.Code != ensresolver.CodeForwardMismatch {
+				t.Fatal(err)
+			}
+		}
+		if !worked {
+			break
+		}
+	}
+	got, e := repo.Lookup(ctx, enscontract.Lookup{SourceID: result.SourceID, TargetChainID: "1", PolicyDigest: f.manifest.Policy, Direction: enscontract.Forward, Key: "alice.test", CoinType: "60"})
+	if e != nil || got.State != enscontract.Resolved || got.BlockHash != changed.Block.Hash() {
+		t.Fatalf("replacement publication: %+v %v", got, e)
+	}
 }
 
 func TestENSWorkerStandardRefreshKeepsValidLabelAndAvoidsRPC(t *testing.T) {
@@ -350,7 +453,7 @@ func TestENSWorkerNegativeRecordsWithdrawBeforeRefresh(t *testing.T) {
 				t.Fatal(e)
 			}
 			// No scheduler or resolver has run since the record changed. In particular,
-			// this old negative must no longer authorize an official-to-custom fallback.
+			// this old negative must no longer remain publicly authoritative.
 			got, e = repo.Lookup(ctx, lookup)
 			if e != nil || got.State != enscontract.Unavailable {
 				t.Fatalf("changed record retained negative publication: %+v %v", got, e)

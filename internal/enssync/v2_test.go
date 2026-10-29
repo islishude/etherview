@@ -7,13 +7,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/enscontract"
 )
 
 func TestV2RejectsUnboundIdentitiesAndHostileLabels(t *testing.T) {
 	address := common.HexToAddress("0x1234")
 	hash := crypto.Keccak256Hash([]byte("fixture"))
-	m := Manifest{Namespace: enscontract.Official, Deployments: []Deployment{{Address: address, Profile: "v2_registry"}}, Roots: []RegistryRoot{{address, "eth"}}, Implementations: []Implementation{{Address: common.HexToAddress("0x5678"), CodeHash: hash, ProxyCodeHash: hash, Profile: "v2_registry"}}}
+	m := Manifest{Deployments: []Deployment{{Address: address, Profile: "v2_registry"}}, Roots: []RegistryRoot{{address, "eth"}}, Implementations: []Implementation{{Address: common.HexToAddress("0x5678"), CodeHash: hash, ProxyCodeHash: hash, Profile: "v2_registry"}}}
 	if e := validateV2Manifest(m); e != nil {
 		t.Fatal(e)
 	}

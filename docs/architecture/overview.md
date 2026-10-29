@@ -7,11 +7,11 @@ selected by roles and are instantiated identically whether all roles share one
 process or run in separate deployments.
 
 [ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
-defines the ENS background role in this shared component graph. P20-T23 through
-P20-T26 supply persistence, discovery, projections and publication; P30-T146
-supplies the executable role and operations. P40-T26 reads writer publications
-without ENS network calls or writes; P50-T80 owns proactive Web display.
-P30-T147/P30-T148 retain separate local and live acceptance gates.
+defines ENS background workers under enrich in this shared component graph. P20-T27 through
+P20-T29 supply persistence, discovery, projections and publication; P30-T149
+supplies the shared runtime and operations. P40-T27 reads writer publications
+without ENS network calls or writes; P50-T81 owns proactive Web display.
+P30-T150/P30-T151 retain separate local and live acceptance gates.
 
 The feature-aware production component manifest is executable architecture:
 startup compares it with the exact deduplicated keys registered by the runtime.
@@ -631,60 +631,40 @@ size alone is not sufficient justification to weaken those invariants.
 
 ## Background ENS persistence foundation
 
-P20-T23 adds `ens_sync_*` tables in the ENS/search fresh baseline and typed
-SQL in `internal/db/queries/ens_sync.sql`. Source identities separate the
-explored chain from the source chain/genesis, namespace, manifest and policy.
-Reviewed start block/hash anchors the contiguous parent-linked scan cursor;
-a target or poll timestamp alone cannot advertise coverage. Deployment and
-event facts, bounded versioned protocol payloads, discovery provenance,
-retry-budgeted jobs, observations and source publications remain distinct.
-Jobs retain immutable dependencies on specific projection keys and versions.
-A shared-record change invalidates only dependent publications before later
-bounded fanout rebuilds them; source-wide epochs remain separate for policy
-and canonical recovery. Exact projection replay retains its existing version.
+The current-chain indexer under `internal/enssync` consumes core canonical
+blocks, log identities and coverage. `ens_sync_block_refs` and
+`ens_sync_event_refs` retain references and attachment evidence; their read
+views do not store a second copy of headers, raw logs or canonical truth.
+Protocol projections, discovery origins, independent cursors, retry budgets,
+leases and observations remain PostgreSQL-owned. A reviewed manifest binds the
+current chain/genesis, v1/v2 revisions, deployments, implementations and coin type.
 
-`internal/enssync` closes claim transactions before returning work. Publication
-locks source progress and the candidate, then atomically checks lease, deadline,
-requested generation, source revision, exact canonical blocks and coverage
-before storing the observation/publication and completing the job. Local jobs
-also bind core canonical attachment timestamps, so same-hash reattachment
-cannot revive an earlier attempt. Immutable lease evidence permits read-only
-commit confirmation even after a newer generation supersedes the result.
+The bounded collector authenticates factories and proxies before replaying
+same-transaction initialization logs. Implementations are never instances.
+Parent-to-child links determine shared registry paths; parent hints do not.
+Registry token/resource lifecycle, reserved names, migration/WrapperRegistry,
+record bundles, links, defaults and reverse mirroring remain separate facts.
+Depth, cycles, fanout, hostile input and batch work are bounded.
 
-`internal/enscontract` owns source lookup, result and unavailable-state contracts.
-Its repository reader uses a writer-backed read-only repeatable-read snapshot;
-unknown, pending, unsupported and stale states never become negative results.
-Exact publication reads cannot silently switch versions, and retention does
-not extend observation/source freshness. Effective official/custom selection,
-catalog updates and names events publish atomically. The shared `ens`/`all`
-components collect and resolve names; API readers consume publications without
-ENS network calls or writes.
+Workers close database snapshots before exact RPC/CCIP calls. Core canonical
+attachment, configuration, generation, lease and known invalidation fences are
+rechecked on publication. Exact observations can publish before history catches
+up; event-only reuse additionally requires complete relevant projections. Old
+events cannot invalidate newer exact reads. Relevant later core logs and reorgs
+withdraw results independently of the scan cursor. Finite validity, half-period
+refresh and no renewal on failure bound unobserved changes.
 
-P20-T24 adds a bounded collector in `internal/enssync`. Official steps verify
-Mainnet identity and finalized anchors on one endpoint, reuse continuously
-covered core facts when exploring Mainnet, and fill uncovered blocks by exact
-hash RPC. Custom steps read only canonical core headers and stored logs. Both
-validate reviewed deployment/ABI/code identities and persist ordered facts,
-projection versions, candidate origins and contiguous progress atomically.
-Genesis code requires authenticated import evidence; its deployment baseline
-does not fabricate registrations. Indexed-address discovery has a durable
-bounded cursor and proceeds independently of log coverage. Re-enabling a
-custom collector checks attachment timestamps and rewinds in bounded pages,
-retaining orphan facts. A previously accepted finalized conflict halts official
-collection. Neither path publishes address labels from registration ownership.
-
-P20-T25 extends this collector with reviewed ENSv2 factory and implementation
-profiles. It retrieves bounded block logs, authenticates newly created proxies
-and processes their earlier initialization logs in original order. A continuously
-covered trusted factory history preserves records created before name links;
-unverified linked subregistries remain unsupported. Arbitrary resolver links
-are retained for background Universal Resolver resolution without granting
-standard-event emitter trust. Implementation contracts never become user
-registries. Registry lifecycle projections key names by label and
-keep token/resource mappings across regeneration; resolver bundles, node links
-and defaults remain separate. A durable graph cursor expands shared parent
-paths after ancestor updates, with cycle, depth, fanout and input bounds.
-This supplies discovery facts, not a public name or inferred Mainnet activation.
+`enrich` and `all` construct the same workers using the current-chain RPC pool.
+Source publication, immutable catalog version and `names` outbox event commit
+atomically. API reads are database-only and retain exact snapshot identity.
+One configured source retains manifest/policy and deployment identity without
+official/custom classification. Unknown is distinct from not found. Independent
+profile jobs publish current registration rights, management semantics and protocol
+expiry without requiring a successful forward address. Canonical discovery owns
+name directory membership, so expired and unresolved names remain searchable.
+Name detail and search compose immutable profile and resolution references in
+one read-only snapshot; their validity windows are independent. Names SSE and
+local expiry withdraw stale fields without manufacturing a new negative.
 
 ## Public Boundaries
 
@@ -749,19 +729,15 @@ This supplies discovery facts, not a public name or inferred Mainnet activation.
   `capability`, `state`, and `code` identifiers; an empty successful list means
   the capability was available and observed no matching objects.
 - Price adapters retain their bounded HTTPS observation contract. ENS workers
-  independently collect official v1/v2 sources and custom canonical core logs,
-  discover candidates, resolve dynamic/CCIP records and publish immutable
-  effective results under ADR-0058. Exact source blocks, sticky endpoints and
-  reverse/forward agreement remain mandatory; external calls occur outside
-  PostgreSQL snapshots.
-- Official definitive no-record may select a configured custom namespace.
-  Unknown, stale, failed and unsupported deployment evidence cannot authorize
-  fallback. Only an explicitly unsupported coin policy bypasses official lookup.
+  consume current-chain core facts under enrich and publish independently valid
+  exact observations. The one configured source has no fallback namespace.
+  Sticky exact-hash RPC and reverse/forward agreement remain mandatory;
+  external calls occur outside PostgreSQL snapshots.
 - API detail, batch and search paths read the writer using read-only transactions
   and neutral contracts. They construct no ENS clients and write no candidates,
   jobs, observations or snapshots. Opaque tokens reference retained effective
   publications, including immutable empty snapshots; dependencies, canonicality,
-  source health and freshness are checked independently of retention.
+  known invalidations and observation freshness are checked independently of retention.
 - Durable `names` events share the existing SSE stream. Visible address batches
   replace atomically at one publication; old responses cannot restore stale
   labels. Local validity timers hide expired names without a network request.

@@ -58,7 +58,8 @@ merging distinct invariants.
 ## API, Web, external boundaries, and identity
 
 - [ADR-0058 — Background ENS Synchronization and Database-Only Reads](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
-  is accepted for implementation; its linked plans track the pending cutover.
+  is accepted; the current-chain cutover is complete and its linked plans track
+  registration-profile and name-directory extensions.
 
 - [ADR-0003 — Spec-First API and Canonical Public Identifiers](ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0005 — Safe NFT Metadata and Media Boundary](ADR-0005-safe-nft-metadata-and-media-boundary.md)
@@ -76,8 +77,8 @@ merging distinct invariants.
 ## Retired decisions
 
 - [ADR-0041 — Snapshot-Stable ENS Primary Names](ADR-0041-snapshot-stable-ens-primary-names.md):
-  superseded by ADR-0058; retained as historical documentation of the current
-  request-time implementation until the planned cutover is delivered.
+  superseded by ADR-0058; retained as historical documentation of the retired
+  request-time implementation.
 
 - ADR-0014 — durable verification identity and publication: replaced by the
   maintained verifier-v2, compiler-executor, and publication boundaries in

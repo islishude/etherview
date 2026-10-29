@@ -471,11 +471,7 @@ func primaryNameModel(value enscontract.PrimaryResolution) *gen.PrimaryName {
 	if value.Outcome != enscontract.Resolved || value.Name == "" {
 		return nil
 	}
-	source := gen.PrimaryNameSource(value.Source)
-	if !source.Valid() {
-		return nil
-	}
-	return &gen.PrimaryName{Name: value.Name, Source: source, Publication: gen.Quantity(strconv.FormatInt(value.ObservationID, 10)), ValidUntil: value.ValidUntil}
+	return &gen.PrimaryName{Name: value.Name, Publication: gen.Quantity(strconv.FormatInt(value.ObservationID, 10)), ObservedBlockNumber: gen.Quantity(value.BlockNumber), ObservedBlockHash: gen.Hash(value.BlockHash.Hex()), ValidUntil: value.ValidUntil}
 }
 
 func (h *Handler) handleENSReaderError(w http.ResponseWriter, r *http.Request, err error) {

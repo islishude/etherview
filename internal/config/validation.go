@@ -196,16 +196,10 @@ func (c Config) ValidateForRoles(roles []string) error {
 			errs = append(errs, errors.New("API role x402 billing requires facilitator_allowed_cidrs"))
 		}
 	}
-	if slices.Contains(normalized, "ens") && c.Features.ENS {
-		if c.ENS.Mode != "custom_only" && len(c.ENS.OfficialRPCEndpoints) == 0 && (c.Chain.ID != 1 || len(c.RPC.Endpoints) == 0) {
-			errs = append(errs, errors.New(
-				"ENS role requires ETHERVIEW_ENS_RPC_URLS or an explored Ethereum Mainnet RPC endpoint",
-			))
-		}
-		if c.ENS.Custom.UniversalResolver != "" && len(c.RPC.Endpoints) == 0 {
-			errs = append(errs, errors.New("ENS role custom source requires a current-chain RPC endpoint"))
-		}
+	if slices.Contains(normalized, "enrich") && c.Features.ENS && strings.TrimSpace(c.ENS.Manifest) == "" {
+		errs = append(errs, errors.New("enrich ENS requires ens.manifest"))
 	}
+
 	return errors.Join(errs...)
 }
 
@@ -214,12 +208,6 @@ func validateENSConfig(cfg ENSConfig, enabled bool) error {
 	digest, digestErr := hex.DecodeString(strings.TrimPrefix(cfg.PolicyDigest, "0x"))
 	if enabled && (digestErr != nil || len(digest) != 32 || len(cfg.PolicyDigest) != 66 || !strings.HasPrefix(cfg.PolicyDigest, "0x") || common.BytesToHash(digest) == (common.Hash{})) {
 		errs = append(errs, errors.New("ens.policy_digest must be a nonzero 32-byte hex identity"))
-	}
-	if cfg.Mode != "official_first" && cfg.Mode != "custom_only" {
-		errs = append(errs, errors.New("ens.mode must be official_first or custom_only"))
-	}
-	if cfg.Mode == "custom_only" && (cfg.Custom.Registry == "" || cfg.Custom.UniversalResolver == "") {
-		errs = append(errs, errors.New("ens.mode custom_only requires a custom registry and universal resolver"))
 	}
 	if cfg.ResolutionFreshness < time.Minute || cfg.ResolutionFreshness > 24*time.Hour {
 		errs = append(errs, errors.New("ens.resolution_freshness must be between 1m and 24h"))
@@ -245,15 +233,11 @@ func validateENSConfig(cfg ENSConfig, enabled bool) error {
 	if cfg.MaxConcurrency <= 0 || cfg.MaxConcurrency > 16 {
 		errs = append(errs, errors.New("ens.max_concurrency must be between 1 and 16"))
 	}
-	if enabled && cfg.Mode != "custom_only" && len(cfg.OfficialGateways) == 0 {
-		errs = append(errs, errors.New("ens.official_gateways is required when ENS is enabled"))
-	}
-	if len(cfg.OfficialGateways) > 4 || len(cfg.Custom.Gateways) > 4 {
-		errs = append(errs, errors.New("ENS gateway lists must contain at most 4 URLs"))
+	if len(cfg.Gateways) > 4 {
+		errs = append(errs, errors.New("ens.gateways must contain at most 4 URLs"))
 	}
 	for field, gateways := range map[string][]string{
-		"ens.official_gateways": cfg.OfficialGateways,
-		"ens.custom.gateways":   cfg.Custom.Gateways,
+		"ens.gateways": cfg.Gateways,
 	} {
 		seen := make(map[string]struct{}, len(gateways))
 		for index, raw := range gateways {
@@ -271,35 +255,6 @@ func validateENSConfig(cfg ENSConfig, enabled bool) error {
 			}
 			seen[canonical] = struct{}{}
 		}
-	}
-	registrySet := cfg.Custom.Registry != ""
-	resolverSet := cfg.Custom.UniversalResolver != ""
-	if registrySet != resolverSet {
-		errs = append(errs, errors.New("ens.custom.registry and ens.custom.universal_resolver must be configured together"))
-	}
-	for field, value := range map[string]string{
-		"ens.custom.registry":           cfg.Custom.Registry,
-		"ens.custom.universal_resolver": cfg.Custom.UniversalResolver,
-	} {
-		if value != "" && (!validFixedHex(value, 20) || strings.EqualFold(value, "0x"+strings.Repeat("0", 40))) {
-			errs = append(errs, fmt.Errorf("%s must be a non-zero 20-byte address", field))
-		}
-	}
-	if cfg.Custom.CoinType != "" {
-		coinType, ok := new(big.Int).SetString(cfg.Custom.CoinType, 10)
-		if !resolverSet || !ok || coinType.Sign() <= 0 || coinType.BitLen() > 256 || coinType.String() != cfg.Custom.CoinType {
-			errs = append(errs, errors.New("ens.custom.coin_type must be a canonical positive uint256 and requires a custom resolver"))
-		}
-	}
-	seenEndpoints := make(map[string]struct{}, len(cfg.OfficialRPCEndpoints))
-	for index, endpoint := range cfg.OfficialRPCEndpoints {
-		if err := endpoint.Validate(); err != nil {
-			errs = append(errs, fmt.Errorf("ENS RPC endpoint %d: %w", index, err))
-		}
-		if _, exists := seenEndpoints[endpoint.Name]; exists && endpoint.Name != "" {
-			errs = append(errs, fmt.Errorf("ENS RPC endpoint name %q is duplicated", endpoint.Name))
-		}
-		seenEndpoints[endpoint.Name] = struct{}{}
 	}
 	return errors.Join(errs...)
 }

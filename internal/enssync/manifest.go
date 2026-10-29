@@ -5,14 +5,12 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"math/big"
 	"sort"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/islishude/etherview/internal/enscontract"
 )
 
 // Event profiles are reviewed subsets of go-ens/v4 v4.0.0 and ENS contracts
@@ -33,20 +31,19 @@ type Deployment struct {
 }
 
 type Manifest struct {
-	Registry          common.Address        `json:"registry,omitempty"`
-	UniversalResolver common.Address        `json:"universal_resolver,omitempty"`
-	TargetChainID     string                `json:"target_chain_id"`
-	SourceChainID     string                `json:"source_chain_id"`
-	Genesis           common.Hash           `json:"genesis"`
-	Namespace         enscontract.Namespace `json:"namespace"`
-	Policy            common.Hash           `json:"policy"`
-	Start             uint64                `json:"start"`
-	StartHash         common.Hash           `json:"start_hash"`
-	ParentName        string                `json:"parent_name"`
-	CoinType          string                `json:"coin_type"`
-	Deployments       []Deployment          `json:"deployments"`
-	Roots             []RegistryRoot        `json:"roots,omitempty"`
-	Implementations   []Implementation      `json:"implementations,omitempty"`
+	Registry          common.Address   `json:"registry,omitempty"`
+	UniversalResolver common.Address   `json:"universal_resolver,omitempty"`
+	TargetChainID     string           `json:"target_chain_id"`
+	SourceChainID     string           `json:"source_chain_id"`
+	Genesis           common.Hash      `json:"genesis"`
+	Policy            common.Hash      `json:"policy"`
+	Start             uint64           `json:"start"`
+	StartHash         common.Hash      `json:"start_hash"`
+	ParentName        string           `json:"parent_name"`
+	CoinType          string           `json:"coin_type"`
+	Deployments       []Deployment     `json:"deployments"`
+	Roots             []RegistryRoot   `json:"roots,omitempty"`
+	Implementations   []Implementation `json:"implementations,omitempty"`
 }
 
 type contractProfile struct {
@@ -89,16 +86,9 @@ func validateManifest(input Manifest) (Manifest, common.Hash, map[common.Address
 	source, ok := unsignedNumeric(m.SourceChainID)
 	_, targetOK := unsignedNumeric(m.TargetChainID)
 	_, coinOK := unsignedNumeric(m.CoinType)
-	if !ok || !targetOK || !coinOK || source.Int.Sign() == 0 || m.TargetChainID == "0" || m.Genesis == (common.Hash{}) || m.Policy == (common.Hash{}) || m.StartHash == (common.Hash{}) ||
+	if !ok || !targetOK || !coinOK || m.SourceChainID != m.TargetChainID || source.Int.Sign() == 0 || m.TargetChainID == "0" || m.Genesis == (common.Hash{}) || m.Policy == (common.Hash{}) || m.StartHash == (common.Hash{}) ||
 		len(m.Deployments) == 0 || len(m.Deployments) > 64 || m.Start == 0 && m.StartHash != m.Genesis {
 		return m, common.Hash{}, nil, ErrInvalidInput
-	}
-	if m.Namespace == enscontract.Official {
-		if source.Int.Cmp(big.NewInt(1)) != 0 || m.Genesis != common.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3") || m.ParentName != "eth" {
-			return m, common.Hash{}, nil, ErrSourceIdentity
-		}
-	} else if m.Namespace != enscontract.Custom || m.SourceChainID != m.TargetChainID || m.Start != 0 {
-		return m, common.Hash{}, nil, ErrSourceIdentity
 	}
 	if name, valid := normalizedName(m.ParentName); !valid || name != m.ParentName {
 		return m, common.Hash{}, nil, ErrInvalidInput
@@ -116,9 +106,6 @@ func validateManifest(input Manifest) (Manifest, common.Hash, map[common.Address
 		if _, exists := profiles[d.Address]; exists {
 			return m, common.Hash{}, nil, ErrInvalidInput
 		}
-		if m.Namespace == enscontract.Custom && d.Implementation != (common.Address{}) {
-			return m, common.Hash{}, nil, ErrUnsupportedDeployment
-		}
 		profile, err := loadProfile(d.Profile)
 		if err != nil {
 			return m, common.Hash{}, nil, err
@@ -135,6 +122,17 @@ func validateManifest(input Manifest) (Manifest, common.Hash, map[common.Address
 			return m, common.Hash{}, nil, err
 		}
 		digests = append(digests, profile.digest)
+	}
+	entries, err := profileABIs.ReadDir("profileabi")
+	if err != nil {
+		return m, common.Hash{}, nil, ErrUnsupportedDeployment
+	}
+	for _, entry := range entries {
+		raw, err := profileABIs.ReadFile("profileabi/" + entry.Name())
+		if err != nil {
+			return m, common.Hash{}, nil, ErrUnsupportedDeployment
+		}
+		digests = append(digests, sha256.Sum256(raw))
 	}
 	raw, err := json.Marshal(struct {
 		Manifest Manifest

@@ -12,6 +12,7 @@ import { lazyRouteComponent } from "@/lazyRouteComponent";
 import { AppShell } from "@/components/AppShell";
 import { isChartMetric, type ChartSearch } from "@/pages/chartRoute";
 
+const NamePage = lazyRouteComponent(() => import("@/pages/NamePage"), "NamePage");
 const BlobPage = lazyRouteComponent(() => import("@/pages/BlobPage"), "BlobPage");
 const HomePage = lazyRouteComponent(() => import("@/pages/HomePage"), "HomePage");
 const BlocksPage = lazyRouteComponent(() => import("@/pages/pages"), "BlocksPage");
@@ -139,6 +140,11 @@ const transactionRoute = createRoute({
     };
   },
   component: TransactionRoutePage,
+});
+const nameRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/name/$name",
+  component: NameRoutePage,
 });
 const addressRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -274,6 +280,7 @@ const routeTree = rootRoute.addChildren([
   userOperationsRoute,
   userOperationRoute,
   addressRoute,
+  nameRoute,
   tokensRoute,
   tokenRoute,
   nftRoute,
@@ -379,4 +386,9 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
+}
+
+function NameRoutePage() {
+  const { name } = nameRoute.useParams();
+  return <NamePage name={name} />;
 }

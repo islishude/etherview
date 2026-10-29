@@ -13,8 +13,6 @@ roles:
     enabled: true
   metadata:
     enabled: true
-  ens:
-    enabled: true
   maintenance:
     enabled: true
 

@@ -796,10 +796,10 @@ func TestENSConfigurationIsExplicitBoundedAndSourceScoped(t *testing.T) {
 		mutate func(*Config)
 	}{
 		{name: "gateway credentials", mutate: func(cfg *Config) {
-			cfg.ENS.OfficialGateways = []string{"https://user:secret@ccip.example"}
+			cfg.ENS.Gateways = []string{"https://user:secret@ccip.example"}
 		}},
 		{name: "gateway private scheme", mutate: func(cfg *Config) {
-			cfg.ENS.OfficialGateways = []string{"http://ccip.example"}
+			cfg.ENS.Gateways = []string{"http://ccip.example"}
 		}},
 		{name: "snapshot shorter than generation", mutate: func(cfg *Config) {
 			cfg.ENS.SnapshotTTL = cfg.ENS.ResolutionFreshness - time.Second
@@ -807,18 +807,6 @@ func TestENSConfigurationIsExplicitBoundedAndSourceScoped(t *testing.T) {
 		{name: "oversized response", mutate: func(cfg *Config) { cfg.ENS.MaxResponseBytes = 8<<20 + 1 }},
 		{name: "unbounded depth", mutate: func(cfg *Config) { cfg.ENS.MaxCCIPDepth = 9 }},
 		{name: "unbounded batch", mutate: func(cfg *Config) { cfg.ENS.MaxBatchAddresses = 101 }},
-		{name: "partial custom deployment", mutate: func(cfg *Config) {
-			cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
-		}},
-		{name: "zero custom deployment", mutate: func(cfg *Config) {
-			cfg.ENS.Custom.Registry = "0x0000000000000000000000000000000000000000"
-			cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
-		}},
-		{name: "noncanonical coin type", mutate: func(cfg *Config) {
-			cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
-			cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
-			cfg.ENS.Custom.CoinType = "060"
-		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
@@ -832,42 +820,22 @@ func TestENSConfigurationIsExplicitBoundedAndSourceScoped(t *testing.T) {
 	cfg := Default()
 	cfg.Features.ENS = true
 	cfg.ENS.PolicyDigest = "0x" + strings.Repeat("1", 64)
-	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
-	cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
-	cfg.ENS.Custom.CoinType = "60"
-	cfg.ENS.Custom.Gateways = []string{"https://custom-ccip.example/v1"}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestENSRPCEnvironmentIsSecretOnlyAndENSRoleScoped(t *testing.T) {
-	values := map[string]string{
-		"ETHERVIEW_FEATURE_ENS":                   "true",
-		"ETHERVIEW_ENS_RPC_URLS":                  "https://mainnet.example",
-		"ETHERVIEW_ENS_OFFICIAL_GATEWAYS":         "https://one.example,https://two.example",
-		"ETHERVIEW_ENS_CUSTOM_REGISTRY":           "0x1111111111111111111111111111111111111111",
-		"ETHERVIEW_ENS_CUSTOM_UNIVERSAL_RESOLVER": "0x2222222222222222222222222222222222222222",
+func TestENSCurrentChainEnvironment(t *testing.T) {
+	values := map[string]string{"ETHERVIEW_FEATURE_ENS": "true", "ETHERVIEW_ENS_MANIFEST": "/ens/current.json", "ETHERVIEW_ENS_GATEWAYS": "https://one.example,https://two.example"}
+	cfg := Default()
+	if e := applyEnvironmentForRoles(&cfg, func(k string) (string, bool) { v, ok := values[k]; return v, ok }, os.ReadFile, []string{"enrich"}); e != nil {
+		t.Fatal(e)
 	}
-	lookup := func(key string) (string, bool) {
-		value, ok := values[key]
-		return value, ok
+	if !cfg.Features.ENS || cfg.ENS.Manifest != "/ens/current.json" || len(cfg.ENS.Gateways) != 2 {
+		t.Fatal(cfg.ENS)
 	}
-	api := Default()
-	if err := applyEnvironmentForRoles(&api, lookup, os.ReadFile, []string{"ens"}); err != nil {
-		t.Fatal(err)
-	}
-	if !api.Features.ENS || len(api.ENS.OfficialRPCEndpoints) != 1 ||
-		!reflect.DeepEqual(api.ENS.OfficialRPCEndpoints[0].Purposes, []string{"state", "history"}) ||
-		len(api.ENS.OfficialGateways) != 2 || api.ENS.Custom.UniversalResolver == "" {
-		t.Fatalf("ENS worker environment = %#v", api.ENS)
-	}
-	worker := Default()
-	if err := applyEnvironmentForRoles(&worker, lookup, os.ReadFile, []string{"api"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(worker.ENS.OfficialRPCEndpoints) != 0 {
-		t.Fatalf("API role retained ENS RPC secrets: %#v", worker.ENS.OfficialRPCEndpoints)
+	if _, e := NormalizeRoles([]string{"ens"}); e == nil {
+		t.Fatal("removed ENS role accepted")
 	}
 }
 
@@ -1599,24 +1567,14 @@ func unsetHostEnvironment(t *testing.T, name string) {
 	})
 }
 
-func TestENSModeConfiguration(t *testing.T) {
+func TestENSManifestRequiredOnlyByEnrich(t *testing.T) {
 	cfg := Default()
 	cfg.Features.ENS = true
 	cfg.ENS.PolicyDigest = "0x" + strings.Repeat("1", 64)
-	cfg.ENS.Mode = "custom_only"
-	cfg.ENS.OfficialGateways = nil
-	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
-	cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
-	if err := cfg.Validate(); err != nil {
-		t.Fatal(err)
+	if e := cfg.Validate(); e != nil {
+		t.Fatal(e)
 	}
-	cfg.ENS.Mode = "unknown"
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("unknown ENS mode accepted")
-	}
-	cfg.ENS.Mode = "custom_only"
-	cfg.ENS.Custom = ENSCustomConfig{}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("custom-only mode without deployment accepted")
+	if e := cfg.ValidateForRoles([]string{"enrich"}); e == nil || !strings.Contains(e.Error(), "ens.manifest") {
+		t.Fatalf("missing manifest accepted: %v", e)
 	}
 }

@@ -197,6 +197,8 @@ var catalog = []Spec{
 		cursorParameter(), limitParameter("25")),
 	spec("getAddress", "GET", "/addresses/{address}", true,
 		pathParameter("address", ParameterAddress)),
+	spec("getName", "GET", "/names/{name}", true, nameParameter()),
+
 	spec("listAddressNames", "GET", "/address-names", true,
 		boundedTextParameter("addresses", true, 42, 4299, false),
 		snapshotParameter()),
@@ -432,5 +434,12 @@ func EligibleIDs() []string {
 func watchResourceIDParameter() ParameterSpec {
 	p := pathParameter("id", ParameterText)
 	p.MaximumBytes = 64
+	return p
+}
+
+func nameParameter() ParameterSpec {
+	p := pathParameter("name", ParameterText)
+	p.MinimumBytes = 1
+	p.MaximumBytes = 255
 	return p
 }

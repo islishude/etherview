@@ -180,17 +180,6 @@ SELECT COALESCE(generation, 0)::bigint AS generation,
 FROM (SELECT 1) AS singleton
 LEFT JOIN search_catalog_generations ON chain_id = sqlc.arg('chain_id')::numeric;
 
--- name: ValidateResolvedSearchName :one
-SELECT EXISTS(SELECT 1 FROM ens_effective_publications e
-WHERE e.target_chain_id=sqlc.arg('chain_id')::numeric AND e.policy_digest=sqlc.arg('name_policy')::bytea
-AND e.id=sqlc.arg('id')::bigint AND e.direction='forward' AND e.lookup_key=sqlc.arg('lookup_key') AND e.namespace=sqlc.arg('source')
-AND ens_effective_publication_current(e.id)
-AND ((e.state='not_found' AND sqlc.arg('address')::bytea IS NULL)
- OR (e.state='resolved' AND e.address=sqlc.arg('address')::bytea AND EXISTS(
- SELECT 1 FROM search_catalog_documents d WHERE d.name_publication_id=e.id AND d.source_canonical
- AND d.valid_from_generation<=sqlc.arg('valid_from_generation')
- AND (d.valid_to_generation IS NULL OR d.valid_to_generation>sqlc.arg('valid_from_generation'))))))::boolean AS valid;
-
 -- name: GetHomeRuntimeEventID :one
 SELECT COALESCE(MAX(id),0)::bigint AS event_id
 FROM runtime_events

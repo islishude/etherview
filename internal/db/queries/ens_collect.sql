@@ -38,12 +38,6 @@ SELECT code,code_hash,document_digest FROM (
  WHERE o.chain_id= @chain_id AND o.address= @address AND o.block_hash= @block_hash AND o.canonical AND o.block_number > 0 AND o.code IS NOT NULL
 ) evidence ORDER BY document_digest NULLS LAST LIMIT 1;
 
--- name: ReattachENSSyncBlock :execrows
-UPDATE ens_sync_blocks SET canonical=true WHERE source_id= @source_id AND hash= @hash;
-
--- name: DetachENSSyncBlock :execrows
-UPDATE ens_sync_blocks SET canonical=false WHERE source_id= @source_id AND hash= @hash;
-
 -- name: SaveENSSyncScan :exec
 INSERT INTO ens_sync_scans(source_id,block_number,block_hash,core_canonical_at)
 VALUES (@source_id,@block_number,@block_hash,@core_canonical_at)
@@ -53,12 +47,18 @@ ON CONFLICT(source_id,block_hash) DO UPDATE SET core_canonical_at=EXCLUDED.core_
 SELECT * FROM ens_sync_scans WHERE source_id= @source_id AND block_hash= @block_hash;
 
 -- name: ListENSSyncRewindBlocks :many
+WITH RECURSIVE lineage AS (
+ SELECT b.*,0 AS depth FROM ens_sync_blocks b WHERE b.source_id= @source_id AND b.hash= @through_hash
+ UNION ALL
+ SELECT parent.*,child.depth+1 FROM lineage child JOIN ens_sync_blocks parent
+ ON parent.source_id=child.source_id AND parent.hash=child.parent_hash AND parent.number=child.number-1
+ WHERE child.depth+1 < @row_limit
+)
 SELECT b.number,b.hash,s.core_canonical_at,c.updated_at AS current_attachment,
        COALESCE(c.block_hash=b.hash,false)::boolean AS current_canonical
-FROM ens_sync_scans s JOIN ens_sync_blocks b ON b.source_id=s.source_id AND b.hash=s.block_hash
+FROM lineage b JOIN ens_sync_scans s ON b.source_id=s.source_id AND b.hash=s.block_hash
 LEFT JOIN canonical_blocks c ON c.chain_id= @chain_id AND c.number=b.number
-WHERE s.source_id= @source_id AND b.canonical AND b.number<= @through_number
-ORDER BY b.number DESC LIMIT @row_limit;
+ORDER BY b.depth LIMIT @row_limit;
 
 -- name: RewindENSSyncProgress :execrows
 UPDATE ens_sync_progress SET revision=revision+1,scanned_number=sqlc.narg(scanned_number),scanned_hash=sqlc.narg(scanned_hash),
@@ -71,7 +71,7 @@ FROM ens_sync_blocks b WHERE p.source_id= @source_id AND b.source_id=p.source_id
   AND p.state NOT IN ('halted','unsupported') AND (p.scanned_number IS NULL OR b.number>=p.scanned_number) AND p.revision= @revision;
 
 -- name: FailENSSyncCollection :execrows
-UPDATE ens_sync_progress SET state= @state, failure_code= @failure_code
+UPDATE ens_sync_progress SET state= CASE WHEN @state::text='pending' AND target_hash IS NOT NULL THEN state ELSE @state::text END, failure_code= @failure_code
 WHERE source_id= @source_id AND state NOT IN ('halted','unsupported') AND revision= @revision;
 
 -- name: GetENSSyncLatestProjection :one
@@ -79,7 +79,7 @@ SELECT p.* FROM ens_sync_projections p
 JOIN ens_sync_blocks b ON b.source_id=p.source_id AND b.hash=p.block_hash AND b.canonical
 JOIN ens_sync_sources s ON s.id=p.source_id
 WHERE p.source_id= @source_id AND p.kind= @kind AND p.key= @key
-  AND (s.namespace<>'custom_ens' OR EXISTS(SELECT 1 FROM canonical_blocks c WHERE c.chain_id=s.target_chain_id AND c.number=b.number AND c.block_hash=b.hash))
+  AND (EXISTS(SELECT 1 FROM canonical_blocks c WHERE c.chain_id=s.target_chain_id AND c.number=b.number AND c.block_hash=b.hash))
 ORDER BY p.revision DESC LIMIT 1;
 
 -- name: EnsureENSSyncDiscoveredCandidate :one
@@ -95,7 +95,7 @@ VALUES (@source_id,@candidate_id,@kind,@identity) ON CONFLICT DO NOTHING;
 -- name: AdvanceENSSyncCandidateDiscovery :execrows
 UPDATE ens_sync_candidates c SET requested_generation=requested_generation+1,discovery_revision=p.revision,refresh_at=NULL
 FROM ens_sync_progress p WHERE c.source_id= @source_id AND c.id= @candidate_id AND p.source_id=c.source_id
-AND (@changed::boolean OR c.discovery_revision<>p.revision);
+AND c.discovery_revision<>p.revision;
 
 -- name: GetENSSyncAddressCursor :one
 INSERT INTO ens_sync_address_cursors(source_id) VALUES (@source_id)
@@ -107,27 +107,36 @@ UPDATE ens_sync_address_cursors SET after_address= @after_address,cycle=cycle + 
 
 -- name: ListENSSyncKnownAddresses :many
 WITH activity AS (
- SELECT DISTINCT a.address FROM address_activities a JOIN canonical_blocks c ON c.chain_id=a.chain_id AND c.number=a.block_number AND c.block_hash=a.block_hash
- WHERE a.chain_id= @chain_id AND a.canonical AND a.address> @after_address ORDER BY a.address LIMIT @row_limit
+(SELECT DISTINCT decode(substr(lower(t.raw->>'from'),3),'hex') AS address
+ FROM transaction_inclusions t JOIN canonical_blocks c ON c.chain_id=t.chain_id AND c.number=t.block_number AND c.block_hash=t.block_hash
+ WHERE t.chain_id= @chain_id AND lower(t.raw->>'from') ~ '^0x[0-9a-f]{40}$'
+ AND lower(t.raw->>'from') > '0x'||encode(@after_address::bytea,'hex')
+ ORDER BY address LIMIT @row_limit)
+ UNION
+(SELECT DISTINCT decode(substr(lower(t.raw->>'to'),3),'hex') AS address
+ FROM transaction_inclusions t JOIN canonical_blocks c ON c.chain_id=t.chain_id AND c.number=t.block_number AND c.block_hash=t.block_hash
+ WHERE t.chain_id= @chain_id AND lower(t.raw->>'to') ~ '^0x[0-9a-f]{40}$'
+ AND lower(t.raw->>'to') > '0x'||encode(@after_address::bytea,'hex')
+ ORDER BY address LIMIT @row_limit)
+ UNION
+(SELECT DISTINCT decode(substr(lower(t.raw->>'contractAddress'),3),'hex') AS address
+ FROM receipts t JOIN canonical_blocks c ON c.chain_id=t.chain_id AND c.number=t.block_number AND c.block_hash=t.block_hash
+ WHERE t.chain_id= @chain_id AND lower(t.raw->>'contractAddress') ~ '^0x[0-9a-f]{40}$'
+ AND lower(t.raw->>'contractAddress') > '0x'||encode(@after_address::bytea,'hex')
+ ORDER BY address LIMIT @row_limit)
+ UNION
+ (SELECT DISTINCT w.address FROM withdrawals w JOIN canonical_blocks c ON c.chain_id=w.chain_id AND c.number=w.block_number AND c.block_hash=w.block_hash
+ WHERE w.chain_id= @chain_id AND w.address> @after_address ORDER BY w.address LIMIT @row_limit)
 ), genesis AS (
  SELECT g.address FROM genesis_account_observations g JOIN genesis_state_imports i ON i.chain_id=g.chain_id AND i.block_hash=g.block_hash AND i.state='complete'
  JOIN canonical_blocks c ON c.chain_id=g.chain_id AND c.number=0 AND c.block_hash=g.block_hash
  WHERE g.chain_id= @chain_id AND g.address> @after_address ORDER BY g.address LIMIT @row_limit
 )
 SELECT address, (CASE WHEN EXISTS(SELECT 1 FROM genesis g WHERE g.address=known.address) THEN 'genesis' ELSE 'indexed_address' END)::text AS kind
-FROM (SELECT address FROM activity UNION SELECT address FROM genesis) known ORDER BY address LIMIT @row_limit;
+FROM (SELECT address FROM activity UNION SELECT address FROM genesis) known
+WHERE address<>decode(repeat('00',20),'hex') ORDER BY address LIMIT @row_limit;
 
 -- name: PutENSSyncGenesisBaseline :exec
 INSERT INTO ens_sync_genesis_baselines(source_id,deployment,genesis_hash,document_digest)
 VALUES (@source_id,@deployment,@genesis_hash,@document_digest)
 ON CONFLICT(source_id,deployment) DO UPDATE SET genesis_hash=EXCLUDED.genesis_hash,document_digest=EXCLUDED.document_digest;
-
--- name: DetachENSSyncUnscannedBlocks :execrows
-WITH invalid AS (
- SELECT b.hash FROM ens_sync_blocks b
- WHERE b.source_id= @source_id AND b.canonical
- AND NOT EXISTS(SELECT 1 FROM ens_sync_scans s WHERE s.source_id=b.source_id AND s.block_hash=b.hash)
- AND NOT EXISTS(SELECT 1 FROM canonical_blocks c WHERE c.chain_id= @chain_id AND c.number=b.number AND c.block_hash=b.hash)
- ORDER BY b.number DESC LIMIT @row_limit
-)
-UPDATE ens_sync_blocks b SET canonical=false FROM invalid i WHERE b.source_id= @source_id AND b.hash=i.hash;

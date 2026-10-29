@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm/runtime"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -26,12 +27,20 @@ type Contract struct {
 	ABI     abi.ABI
 	Code    []byte
 }
+
+// Execution is a replayable transaction against the same pinned contracts.
+// Nil To denotes creation; all executions use Fixture.Owner as sender.
+type Execution struct {
+	To   *common.Address
+	Data []byte
+}
 type Fixture struct {
 	Registry, ChildImplementation, ResolverImplementation, Factory, LabelStore Contract
 	Owner, Child, Resolver                                                     common.Address
 	State                                                                      *state.StateDB
 	Config                                                                     *runtime.Config
 	Logs                                                                       []*types.Log
+	Executions                                                                 []Execution
 	next                                                                       uint64
 	t                                                                          testing.TB
 }
@@ -42,11 +51,17 @@ type grant struct {
 
 func New(t testing.TB) *Fixture {
 	t.Helper()
+	return NewWithOwner(t, common.HexToAddress("0x000000000000000000000000000000000000cafe"))
+}
+
+// NewWithOwner supports replay with authentic signed transactions on a local chain.
+func NewWithOwner(t testing.TB, owner common.Address) *Fixture {
+	t.Helper()
 	db, e := state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
 	if e != nil {
 		t.Fatal(e)
 	}
-	f := &Fixture{t: t, Owner: common.HexToAddress("0x000000000000000000000000000000000000cafe"), State: db}
+	f := &Fixture{t: t, Owner: owner, State: db}
 	f.Config = &runtime.Config{State: db, Origin: f.Owner, GasLimit: 30_000_000, BlockNumber: big.NewInt(1), Time: 1_800_000_000}
 	f.LabelStore = f.deploy("LabelStore", common.Address{})
 	roles, _ := new(big.Int).SetString(strings.Repeat("1", 64), 16)
@@ -91,7 +106,7 @@ func (f *Fixture) deploy(name string, args ...any) Contract {
 	if e = json.Unmarshal(raw, &artifact); e != nil {
 		f.t.Fatal(e)
 	}
-	if artifact.Revision != "4f47cbcc11462fb413196e6b5c0f8090247a6c08" {
+	if artifact.Revision != "4f47cbcc11462fb413196e6b5c0f8090247a6c08" && artifact.Revision != "9b034936a42f462fc04bc0a929a419ede5e18d59" {
 		f.t.Fatal("unexpected contract revision")
 	}
 	parsed, e := abi.JSON(strings.NewReader(string(artifact.ABI)))
@@ -107,7 +122,9 @@ func (f *Fixture) deploy(name string, args ...any) Contract {
 		f.t.Fatal(e)
 	}
 	hash := f.begin()
-	runtimeCode, address, _, e := runtime.Create(append(code, data...), f.Config)
+	input := append(code, data...)
+	f.Executions = append(f.Executions, Execution{Data: append([]byte(nil), input...)})
+	runtimeCode, address, _, e := runtime.Create(input, f.Config)
 	if e != nil {
 		for _, definition := range parsed.Errors {
 			if len(runtimeCode) >= 4 && string(definition.ID[:4]) == string(runtimeCode[:4]) {
@@ -119,6 +136,20 @@ func (f *Fixture) deploy(name string, args ...any) Contract {
 	f.end(hash)
 	return Contract{address, parsed, runtimeCode}
 }
+
+// DeployTestCode supplements the pinned protocol with an explicit custom test contract.
+func (f *Fixture) DeployTestCode(creation []byte) Contract {
+	f.t.Helper()
+	hash := f.begin()
+	f.Executions = append(f.Executions, Execution{Data: append([]byte(nil), creation...)})
+	code, address, _, err := runtime.Create(creation, f.Config)
+	if err != nil {
+		f.t.Fatalf("custom fixture creation: %v", err)
+	}
+	f.end(hash)
+	return Contract{Address: address, Code: code}
+}
+
 func (f *Fixture) Call(contract Contract, method string, args ...any) []byte {
 	f.t.Helper()
 	input, e := contract.ABI.Pack(method, args...)
@@ -126,6 +157,8 @@ func (f *Fixture) Call(contract Contract, method string, args ...any) []byte {
 		f.t.Fatal(e)
 	}
 	hash := f.begin()
+	f.Executions = append(f.Executions, Execution{To: &contract.Address, Data: append([]byte(nil), input...)})
+	f.State.SetNonce(f.Owner, f.State.GetNonce(f.Owner)+1, tracing.NonceChangeEoACall)
 	out, _, e := runtime.Call(contract.Address, input, f.Config)
 	if e != nil {
 		f.t.Fatalf("%s: %v (%x)", method, e, out)

@@ -27,7 +27,6 @@ type Options struct {
 	Policy      common.Hash
 	MaxBatch    int
 	SnapshotTTL time.Duration
-	Sources     []enscontract.Namespace
 }
 type Reader struct {
 	db      dbaccess.Database
@@ -39,7 +38,6 @@ func New(db dbaccess.Database, o Options) (*Reader, error) {
 	if db == nil || o.ChainID == 0 || o.Policy == (common.Hash{}) || o.MaxBatch < 1 || o.MaxBatch > 100 || o.SnapshotTTL < time.Minute || o.SnapshotTTL > 24*time.Hour {
 		return nil, errors.New("invalid ENS reader options")
 	}
-	o.Sources = append([]enscontract.Namespace(nil), o.Sources...)
 	return &Reader{db: db, options: o, chain: pgtype.Numeric{Int: new(big.Int).SetUint64(o.ChainID), Valid: true}}, nil
 }
 
@@ -114,11 +112,12 @@ func (r *Reader) read(ctx context.Context, q *dbgen.Queries, direction, key stri
 	result.Outcome = enscontract.State(row.State)
 	result.Code = ""
 	result.ValidUntil = row.ValidUntil.Time
+	result.BlockHash = common.BytesToHash(row.ObservedBlockHash)
+	if n := numberText(row.ObservedBlockNumber); n != nil {
+		result.BlockNumber = *n
+	}
 	if row.Name != nil {
 		result.Name = *row.Name
-	}
-	if row.Namespace != nil {
-		result.Source = enscontract.Namespace(*row.Namespace)
 	}
 	result.Address = common.BytesToAddress(row.Address)
 	return result, nil
@@ -165,28 +164,6 @@ func (r *Reader) ResolveCurrentPrimary(ctx context.Context, address common.Addre
 		return enscontract.PrimaryResolution{}, e
 	}
 	return result[0], nil
-}
-func (r *Reader) ResolveForward(ctx context.Context, input string) (enscontract.ForwardResolution, error) {
-	name, e := normalize(input)
-	if e != nil {
-		return enscontract.ForwardResolution{}, e
-	}
-	var result enscontract.PrimaryResolution
-	e = dbaccess.WithTransactionOptions(ctx, r.db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(q *dbgen.Queries) error {
-		version, _, e := r.snapshot(ctx, q, "")
-		if e != nil {
-			return e
-		}
-		result, e = r.read(ctx, q, "forward", name, version)
-		return e
-	})
-	if e != nil {
-		return enscontract.ForwardResolution{}, readError(e)
-	}
-	if result.Outcome == enscontract.Unavailable {
-		return enscontract.ForwardResolution{}, &enscontract.UnavailableError{State: "unavailable", Code: result.Code}
-	}
-	return enscontract.ForwardResolution{ObservationID: result.ObservationID, Outcome: result.Outcome, Name: name, Address: result.Address, Source: result.Source, ValidUntil: result.ValidUntil}, nil
 }
 func normalize(input string) (string, error) {
 	input = strings.TrimSpace(input)

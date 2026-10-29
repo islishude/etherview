@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -31,7 +30,7 @@ func collectionError(err error) error {
 	return ErrStorage
 }
 func (c *Collector) lock(ctx context.Context, q *dbgen.Queries, source int64) (dbgen.EnsSyncProgress, error) {
-	if c.manifest.Namespace == enscontract.Custom {
+	{
 		if err := q.StoreLegacyLockChainStatement1(ctx, &c.manifest.SourceChainID); err != nil {
 			return dbgen.EnsSyncProgress{}, err
 		}
@@ -76,11 +75,14 @@ func candidateOrigin(ctx context.Context, q *dbgen.Queries, source int64, coin s
 	if e != nil {
 		return e
 	}
-	n, e := q.InsertENSSyncDiscoveryOrigin(ctx, dbgen.InsertENSSyncDiscoveryOriginParams{SourceID: source, CandidateID: row.ID, Kind: kind, Identity: identity})
+	_, e = q.InsertENSSyncDiscoveryOrigin(ctx, dbgen.InsertENSSyncDiscoveryOriginParams{SourceID: source, CandidateID: row.ID, Kind: kind, Identity: identity})
 	if e != nil {
 		return e
 	}
-	_, e = q.AdvanceENSSyncCandidateDiscovery(ctx, source, row.ID, n != 0)
+	_, e = q.AdvanceENSSyncCandidateDiscovery(ctx, source, row.ID)
+	if e == nil && value.Direction == "forward" {
+		return candidateOrigin(ctx, q, source, coin, candidate{"profile", value.Key}, kind, identity)
+	}
 	return e
 }
 func (c *Collector) rewind(ctx context.Context, source int64, expected dbgen.EnsSyncProgress) (bool, error) {
@@ -94,15 +96,10 @@ func (c *Collector) rewind(ctx context.Context, source int64, expected dbgen.Ens
 			return ErrFenceLost
 		}
 		chain, _ := unsignedNumeric(c.manifest.SourceChainID)
-		n, e := q.DetachENSSyncUnscannedBlocks(ctx, source, chain, int32(c.options.MaxBlocks))
-		if e != nil {
-			return e
-		}
-		changed = n > 0
 		if !current.ScannedNumber.Valid {
 			return nil
 		}
-		rows, e := q.ListENSSyncRewindBlocks(ctx, dbgen.ListENSSyncRewindBlocksParams{SourceID: source, ChainID: chain, ThroughNumber: current.ScannedNumber, RowLimit: int32(c.options.MaxBlocks + 1)})
+		rows, e := q.ListENSSyncRewindBlocks(ctx, dbgen.ListENSSyncRewindBlocksParams{SourceID: source, ChainID: chain, ThroughHash: current.ScannedHash, RowLimit: int32(c.options.MaxBlocks + 1)})
 		if e != nil {
 			return e
 		}
@@ -114,16 +111,13 @@ func (c *Collector) rewind(ctx context.Context, source int64, expected dbgen.Ens
 				rewind.ScannedHash = row.Hash
 				break
 			}
-			if _, e = q.DetachENSSyncBlock(ctx, source, row.Hash); e != nil {
-				return e
-			}
 			invalid++
 		}
 		if invalid == 0 {
 			return nil
 		}
 		changed = true
-		n, e = q.RewindENSSyncProgress(ctx, rewind)
+		n, e := q.RewindENSSyncProgress(ctx, rewind)
 		if e != nil {
 			return e
 		}
@@ -137,10 +131,6 @@ func (c *Collector) rewind(ctx context.Context, source int64, expected dbgen.Ens
 func putHeader(ctx context.Context, q *dbgen.Queries, source int64, h *types.Header) error {
 	if h.Time > 253402300799 {
 		return ErrSourceIdentity
-	}
-	// A reattached hash keeps its immutable identity and retained orphan facts.
-	if _, e := q.ReattachENSSyncBlock(ctx, source, h.Hash().Bytes()); e != nil {
-		return e
 	}
 	n, e := q.PutENSSyncBlock(ctx, dbgen.PutENSSyncBlockParams{SourceID: source, Number: numeric(h.Number.Uint64()), Hash: h.Hash().Bytes(), ParentHash: h.ParentHash.Bytes(), BlockTime: stamp(time.Unix(int64(h.Time), 0)), Canonical: true})
 	if e != nil {
@@ -161,8 +151,11 @@ func (c *Collector) commit(ctx context.Context, source int64, expected dbgen.Ens
 			return ErrFenceLost
 		}
 		chain, _ := unsignedNumeric(c.manifest.SourceChainID)
-		if c.manifest.Namespace == enscontract.Custom {
-			tip, e := q.GetENSSyncCoreTip(ctx, chain, c.manifest.Genesis.Bytes())
+		{
+			tip, e := q.GetENSSyncCoreBlock(ctx, chain, c.manifest.Genesis.Bytes(), numeric(target.Number.Uint64()))
+			if errors.Is(e, pgx.ErrNoRows) {
+				return ErrCoverageGap
+			}
 			if e != nil {
 				return e
 			}
@@ -196,9 +189,6 @@ func (c *Collector) commit(ctx context.Context, source int64, expected dbgen.Ens
 			protocol := "v1"
 			if strings.HasPrefix(d.Profile, "v2_") {
 				protocol = "v2"
-			}
-			if c.manifest.Namespace == enscontract.Custom {
-				protocol = "custom"
 			}
 			input := dbgen.PutENSSyncDeploymentParams{SourceID: source, Address: d.Address.Bytes(), Protocol: protocol, BlockHash: d.Hash.Bytes(), CodeHash: d.CodeHash.Bytes(), AbiDigest: c.profiles[d.Address].digest.Bytes()}
 			if d.Implementation != (common.Address{}) {
@@ -284,16 +274,10 @@ func (c *Collector) projectBlock(ctx context.Context, q *dbgen.Queries, source i
 		if e != nil {
 			return e
 		}
-		topics := make([][]byte, len(log.Topics))
-		for j, t := range log.Topics {
-			topics[j] = t.Bytes()
-		}
-		data := log.Data
-		if data == nil {
-			data = []byte{}
-		}
-		if e = q.PutENSSyncEvent(ctx, dbgen.PutENSSyncEventParams{SourceID: source, BlockHash: log.BlockHash.Bytes(), LogIndex: int32(log.Index), TransactionHash: log.TxHash.Bytes(), TransactionIndex: int32(log.TxIndex), Emitter: log.Address.Bytes(), Topics: topics, Data: data}); e != nil {
-			return e
+		if n, err := q.PutENSSyncEvent(ctx, source, log.BlockHash.Bytes(), int64(log.Index)); err != nil {
+			return err
+		} else if n != 1 {
+			return ErrSourceIdentity
 		}
 		if strings.HasPrefix(deployment.Profile, "v2_") && len(log.Topics) > 0 {
 			if e = c.projectV2(ctx, q, source, deployment, log, revision); e != nil {

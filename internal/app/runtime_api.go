@@ -51,7 +51,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			canonicalState state.CanonicalSource
 			nftState       catalog.NFTStateReconciler
 			erc20State     catalog.ERC20StateReconciler
-			nameResolver   query.NameResolver
+			namePolicy     common.Hash
 			addressNames   httpapi.AddressNameReader
 			priceProvider  etherscan.PriceProvider
 		)
@@ -65,7 +65,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			return err
 		}
 		if ensService != nil {
-			nameResolver = ensService
+			namePolicy = common.HexToHash(cfg.ENS.PolicyDigest)
 			addressNames = ensService
 		}
 		priceProvider, err = newAPIPriceProvider(db, cfg)
@@ -116,7 +116,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 					BackfillComplete:    status.BackfillComplete, Ready: status.Ready,
 				}, exists, err
 			},
-			OptionalStages: completeness, NameResolver: nameResolver, NamePolicy: common.HexToHash(cfg.ENS.PolicyDigest),
+			OptionalStages: completeness, NamePolicy: namePolicy,
 			UserOperationRegistry: userOperationRegistry,
 		}
 		reader, err := query.NewPostgresReader(readDB, queryOptions)
@@ -142,7 +142,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			return err
 		}
 		var baseReader httpapi.Reader = reader
-		if readDB != db && nameResolver != nil {
+		if readDB != db && ensService != nil {
 			writerSearchReader, err := query.NewPostgresReader(db, queryOptions)
 			if err != nil {
 				return err

@@ -2,7 +2,6 @@ package enssync
 
 import (
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/islishude/etherview/internal/enscontract"
 )
 
 // RegistryRoot establishes a reviewed registry-to-DNS path. Empty Name is root.
@@ -47,7 +46,7 @@ func validateV2Manifest(m Manifest) error {
 		}
 	}
 	for _, impl := range m.Implementations {
-		if m.Namespace != enscontract.Official || impl.Address == (common.Address{}) || impl.CodeHash == (common.Hash{}) || impl.ProxyCodeHash == (common.Hash{}) || implementations[impl.Address] || (impl.Profile != "v2_registry" && impl.Profile != "v2_resolver") {
+		if impl.Address == (common.Address{}) || impl.CodeHash == (common.Hash{}) || impl.ProxyCodeHash == (common.Hash{}) || implementations[impl.Address] || (impl.Profile != "v2_registry" && impl.Profile != "v2_resolver") {
 			return ErrInvalidInput
 		}
 		implementations[impl.Address] = true

@@ -21,7 +21,6 @@ const (
 	RoleTrace       Role = "trace"
 	RoleMetadata    Role = "metadata"
 	RoleMaintenance Role = "maintenance"
-	RoleENS         Role = "ens"
 )
 
 // Service is a long-lived component. Run must return after ctx is canceled.

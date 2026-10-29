@@ -166,14 +166,9 @@ billing:
 
 ens:
   policy_digest: "0x6d94e1acb808af0f86043074183b6e26069550f2f2a0501c67b3e350f75d44c6"
-  custom_manifest: /etc/etherview/ens/custom.json
-  mode: custom_only
-  official_gateways: []
-  custom:
-    registry: "0xc469e7ae4ad962c30c7111dc580b4adbc7e914dd"
-    universal_resolver: "0x446c29fbfef829f81e236a2376191f648dbef995"
-    coin_type: "2147532463"
-    gateways: []
+  manifest: /etc/etherview/ens/current.json
+
+  gateways: []
   resolution_freshness: 1m
   snapshot_ttl: 30m
   failure_ttl: 30s

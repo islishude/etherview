@@ -1,15 +1,12 @@
 package enssync
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -41,9 +38,6 @@ func NewCollector(repo *Repository, manifest Manifest, pool *ethrpc.Pool, option
 	m, digest, profiles, err := validateManifest(manifest)
 	if err != nil {
 		return nil, err
-	}
-	if (m.Namespace == enscontract.Official) != (pool != nil) {
-		return nil, ErrInvalidInput
 	}
 	if options.MaxBlocks == 0 {
 		options.MaxBlocks = 8
@@ -119,39 +113,21 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 	if err = c.discoverAddresses(ctx, source); err != nil {
 		return result, err
 	}
-	if c.manifest.Namespace == enscontract.Custom {
-		result.Rewound, err = c.rewind(ctx, source, progress)
-		if err != nil || result.Rewound {
-			return result, err
-		}
+	result.Rewound, err = c.rewind(ctx, source, progress)
+	if err != nil || result.Rewound {
+		return result, err
 	}
+	target, err := c.repo.localTarget(ctx, c.manifest)
 	var session rpcSession
-	var target *types.Header
-	if c.pool != nil {
-		endpoint, e := c.pool.Acquire(ethrpc.PurposeHistory)
+	if err == nil && c.pool != nil {
+		endpoint, e := c.pool.Acquire(ethrpc.PurposeState)
 		if e != nil {
 			return result, ErrRPCUnavailable
 		}
 		session = rpcSession{endpoint, c.options}
-		target, err = session.target(ctx, c.manifest)
-		if err == nil && progress.TargetNumber.Valid {
-			previous, e := uintNumber(progress.TargetNumber)
-			if e != nil {
-				return result, e
-			}
-			if target.Number.Uint64() < previous {
-				return result, ErrSourceIntegrity
-			}
-			accepted, e := session.byNumber(ctx, previous)
-			if e != nil {
-				return result, e
-			}
-			if !bytes.Equal(accepted.Hash().Bytes(), progress.TargetHash) {
-				return result, ErrSourceIntegrity
-			}
+		if e = session.verifyIdentity(ctx, c.manifest); e != nil {
+			return result, e
 		}
-	} else {
-		target, err = c.repo.localTarget(ctx, c.manifest)
 	}
 	if err != nil {
 		return result, err
@@ -159,14 +135,27 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 	if target.Number.Uint64() < c.manifest.Start {
 		return result, ErrCoverageGap
 	}
+	// Publish the current core target independently of historical collection.
+	// Workers authenticate all reviewed entrypoints at their own exact block.
+	if err = c.commit(ctx, source, progress, target, nil, nil); err != nil {
+		return result, err
+	}
 	deployments := make([]verifiedDeployment, 0, len(c.manifest.Deployments))
 	for _, d := range c.manifest.Deployments {
 		if d.Number > target.Number.Uint64() {
 			continue
 		}
 		var verified verifiedDeployment
-		if c.pool != nil {
-			verified.Header, err = session.verifyDeployment(ctx, d, target)
+		if session.endpoint != nil {
+			// Historical identities must already exist in core storage.
+			var local collectedBlock
+			local, err = c.repo.localBlock(ctx, c.manifest, d.Number, c.options.MaxLogs)
+			if err == nil && local.Header.Hash() != d.Hash {
+				err = ErrSourceIdentity
+			}
+			if err == nil {
+				verified.Header, err = session.verifyDeployment(ctx, d, target)
+			}
 			verified.Deployment = d
 		} else {
 			verified, err = c.repo.localDeployment(ctx, c.manifest, d)
@@ -190,15 +179,7 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 	blocks := make([]collectedBlock, 0, c.options.MaxBlocks)
 	parent := common.BytesToHash(progress.ScannedHash)
 	for number := next; number <= target.Number.Uint64() && len(blocks) < c.options.MaxBlocks; number++ {
-		var block collectedBlock
-		if c.pool == nil || c.manifest.SourceChainID == c.manifest.TargetChainID {
-			block, err = c.repo.localBlock(ctx, c.manifest, number, c.options.MaxLogs)
-		} else {
-			err = ErrCoverageGap
-		}
-		if c.pool != nil && errors.Is(err, ErrCoverageGap) {
-			block, err = session.block(ctx, c.manifest, number)
-		}
+		block, err := c.repo.localBlock(ctx, c.manifest, number, c.options.MaxLogs)
 		if err != nil {
 			return result, err
 		}
@@ -222,15 +203,6 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 			break
 		}
 	}
-	if c.pool != nil {
-		anchor, e := session.byNumber(ctx, target.Number.Uint64())
-		if e != nil {
-			return result, e
-		}
-		if anchor.Hash() != target.Hash() {
-			return result, ErrSourceIntegrity
-		}
-	}
 	if err = c.commit(ctx, source, progress, target, deployments, blocks); err != nil {
 		return result, err
 	}
@@ -245,5 +217,5 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 func (c *Collector) EnsureSource(ctx context.Context) (int64, error) {
 	targetChain, _ := unsignedNumeric(c.manifest.TargetChainID)
 	sourceChain, _ := unsignedNumeric(c.manifest.SourceChainID)
-	return c.repo.CreateSource(ctx, dbgen.CreateENSSyncSourceParams{TargetChainID: targetChain, SourceChainID: sourceChain, GenesisHash: c.manifest.Genesis.Bytes(), Namespace: string(c.manifest.Namespace), PolicyDigest: c.manifest.Policy.Bytes(), ManifestDigest: c.digest.Bytes(), StartNumber: numeric(c.manifest.Start), StartHash: c.manifest.StartHash.Bytes()})
+	return c.repo.CreateSource(ctx, dbgen.CreateENSSyncSourceParams{TargetChainID: targetChain, SourceChainID: sourceChain, GenesisHash: c.manifest.Genesis.Bytes(), PolicyDigest: c.manifest.Policy.Bytes(), ManifestDigest: c.digest.Bytes(), StartNumber: numeric(c.manifest.Start), StartHash: c.manifest.StartHash.Bytes()})
 }

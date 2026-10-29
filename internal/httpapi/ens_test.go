@@ -54,8 +54,8 @@ func TestAddressNamesReturnsOrderedPartialSnapshot(t *testing.T) {
 		AddressNames: addressNameReaderStub{
 			snapshot: "snapshot-token",
 			results: []ensresolver.PrimaryResolution{
-				{Outcome: ensresolver.OutcomeResolved, Name: "alice.eth", Source: ensresolver.SourceOfficial},
-				{Outcome: ensresolver.OutcomeNoRecord, Source: ensresolver.SourceCustom},
+				{Outcome: ensresolver.OutcomeResolved, Name: "alice.eth"},
+				{Outcome: ensresolver.OutcomeNoRecord},
 				{Code: ensresolver.CodeCCIPUnavailable},
 			},
 		},
@@ -80,7 +80,7 @@ func TestAddressNamesReturnsOrderedPartialSnapshot(t *testing.T) {
 	if response.Data.Snapshot != "snapshot-token" || len(response.Data.Items) != 3 ||
 		response.Data.Items[0].State != gen.AddressNameLookupStateResolved ||
 		response.Data.Items[0].PrimaryName == nil || response.Data.Items[0].PrimaryName.Name != "alice.eth" ||
-		response.Data.Items[0].PrimaryName.Source != gen.PrimaryNameSourceEns ||
+
 		response.Data.Items[1].State != gen.AddressNameLookupStateNotFound ||
 		response.Data.Items[2].State != gen.AddressNameLookupStateUnavailable ||
 		response.Data.Items[2].Code == nil || *response.Data.Items[2].Code != ensresolver.CodeCCIPUnavailable {
@@ -152,5 +152,50 @@ func TestENSResolutionErrorNeverExposesNestedText(t *testing.T) {
 	err := &ensresolver.ResolutionError{Code: ensresolver.CodeRPCUnavailable}
 	if !errors.Is(err, err) || strings.Contains(err.Error(), "rpc") {
 		t.Fatalf("resolution error leaked detail: %v", err)
+	}
+}
+
+type nameDetailReaderStub struct {
+	addressNameReaderStub
+	detail enscontract.NameDetail
+}
+
+func (r nameDetailReaderStub) NameDetail(_ context.Context, name string) (enscontract.NameDetail, error) {
+	if name == "invalid" {
+		return enscontract.NameDetail{}, enscontract.ErrInvalidName
+	}
+	return r.detail, nil
+}
+func TestNameDetailReturnsPartialAndNotIndexedWithoutResolution(t *testing.T) {
+	for _, state := range []string{"indexed", "not_indexed"} {
+		t.Run(state, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Features.ENS = true
+			reader := nameDetailReaderStub{detail: enscontract.NameDetail{Name: "alice.eth", State: state, RegistrationProfile: enscontract.PendingProfile(), ResolvedAddress: enscontract.Field{State: "pending"}}}
+			h, e := New(Options{Config: cfg, Reader: fakeReader{}, AddressNames: reader})
+			if e != nil {
+				t.Fatal(e)
+			}
+			response := httptest.NewRecorder()
+			h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/names/alice.eth", nil))
+			if response.Code != http.StatusOK {
+				t.Fatal(response.Code, response.Body.String())
+			}
+			var got gen.NameDetailResponse
+			if e = json.Unmarshal(response.Body.Bytes(), &got); e != nil {
+				t.Fatal(e)
+			}
+			if string(got.Data.State) != state || got.Data.Registrant.State != "pending" || got.Data.ResolvedAddress.State != "pending" || got.Data.ProfileObservation != nil {
+				t.Fatalf("detail %+v", got.Data)
+			}
+			if strings.Contains(response.Body.String(), "custom_ens") || strings.Contains(response.Body.String(), "\"source\"") {
+				t.Fatal("classification exposed")
+			}
+			bad := httptest.NewRecorder()
+			h.ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/api/v1/names/invalid", nil))
+			if bad.Code != 400 {
+				t.Fatal(bad.Code)
+			}
+		})
 	}
 }

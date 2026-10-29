@@ -9,13 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-type Namespace string
-
-const (
-	Official Namespace = "ens"
-	Custom   Namespace = "custom_ens"
-)
-
 type Direction string
 
 const (
@@ -59,9 +52,9 @@ type Lookup struct {
 // A missing candidate is unavailable/not_indexed, never a definitive negative.
 // Publications are retained evidence; ValidUntil independently limits display.
 type Result struct {
-	State           State
-	Code            Code
-	Source          Namespace
+	State State
+	Code  Code
+
 	PublicationID   int64
 	Generation      int64
 	Name            string

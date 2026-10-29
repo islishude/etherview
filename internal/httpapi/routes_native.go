@@ -19,6 +19,7 @@ func (h *Handler) registerNativeRoutes() {
 	h.handleBillable("listPendingTransactions", h.pendingTransactions)
 	h.handleBillable("getAddress", h.address)
 	h.handleBillable("listAddressNames", h.addressNamesPage)
+	h.handleBillable("getName", h.nameDetail)
 	h.handleBillable("getAddressDelegation", h.addressDelegation)
 	h.handleBillable("listAddressTransactions", h.addressTransactions)
 	h.handleBillable("listAddressUserOperations", h.addressUserOperations)

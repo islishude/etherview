@@ -138,7 +138,7 @@ func TestPreviewX402(t *testing.T) {
 	key := createUserAPIKey(t, client, origin, csrf, "preview")
 	for index, mode := range []string{"split", "all"} {
 		if index > 0 {
-			run("stop", "sync", "enrich", "trace", "metadata", "ens", "maintenance")
+			run("stop", "sync", "enrich", "trace", "metadata", "maintenance")
 			all := filepath.Join(artifacts, "all.yaml")
 			if err := os.WriteFile(all, []byte(`services:
   api:

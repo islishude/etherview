@@ -23,42 +23,11 @@ func (q *Queries) AdvanceENSSyncAddressCursor(ctx context.Context, afterAddress 
 const advanceENSSyncCandidateDiscovery = `-- name: AdvanceENSSyncCandidateDiscovery :execrows
 UPDATE ens_sync_candidates c SET requested_generation=requested_generation+1,discovery_revision=p.revision,refresh_at=NULL
 FROM ens_sync_progress p WHERE c.source_id= $1 AND c.id= $2 AND p.source_id=c.source_id
-AND ($3::boolean OR c.discovery_revision<>p.revision)
+AND c.discovery_revision<>p.revision
 `
 
-func (q *Queries) AdvanceENSSyncCandidateDiscovery(ctx context.Context, sourceID int64, candidateID int64, changed bool) (int64, error) {
-	result, err := q.db.Exec(ctx, advanceENSSyncCandidateDiscovery, sourceID, candidateID, changed)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const detachENSSyncBlock = `-- name: DetachENSSyncBlock :execrows
-UPDATE ens_sync_blocks SET canonical=false WHERE source_id= $1 AND hash= $2
-`
-
-func (q *Queries) DetachENSSyncBlock(ctx context.Context, sourceID int64, hash []byte) (int64, error) {
-	result, err := q.db.Exec(ctx, detachENSSyncBlock, sourceID, hash)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
-const detachENSSyncUnscannedBlocks = `-- name: DetachENSSyncUnscannedBlocks :execrows
-WITH invalid AS (
- SELECT b.hash FROM ens_sync_blocks b
- WHERE b.source_id= $1 AND b.canonical
- AND NOT EXISTS(SELECT 1 FROM ens_sync_scans s WHERE s.source_id=b.source_id AND s.block_hash=b.hash)
- AND NOT EXISTS(SELECT 1 FROM canonical_blocks c WHERE c.chain_id= $2 AND c.number=b.number AND c.block_hash=b.hash)
- ORDER BY b.number DESC LIMIT $3
-)
-UPDATE ens_sync_blocks b SET canonical=false FROM invalid i WHERE b.source_id= $1 AND b.hash=i.hash
-`
-
-func (q *Queries) DetachENSSyncUnscannedBlocks(ctx context.Context, sourceID int64, chainID pgtype.Numeric, rowLimit int32) (int64, error) {
-	result, err := q.db.Exec(ctx, detachENSSyncUnscannedBlocks, sourceID, chainID, rowLimit)
+func (q *Queries) AdvanceENSSyncCandidateDiscovery(ctx context.Context, sourceID int64, candidateID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, advanceENSSyncCandidateDiscovery, sourceID, candidateID)
 	if err != nil {
 		return 0, err
 	}
@@ -103,7 +72,7 @@ func (q *Queries) EnsureENSSyncDiscoveredCandidate(ctx context.Context, arg Ensu
 }
 
 const failENSSyncCollection = `-- name: FailENSSyncCollection :execrows
-UPDATE ens_sync_progress SET state= $1, failure_code= $2
+UPDATE ens_sync_progress SET state= CASE WHEN $1::text='pending' AND target_hash IS NOT NULL THEN state ELSE $1::text END, failure_code= $2
 WHERE source_id= $3 AND state NOT IN ('halted','unsupported') AND revision= $4
 `
 
@@ -229,7 +198,7 @@ SELECT p.source_id, p.revision, p.kind, p.key, p.deployment, p.block_hash, p.pay
 JOIN ens_sync_blocks b ON b.source_id=p.source_id AND b.hash=p.block_hash AND b.canonical
 JOIN ens_sync_sources s ON s.id=p.source_id
 WHERE p.source_id= $1 AND p.kind= $2 AND p.key= $3
-  AND (s.namespace<>'custom_ens' OR EXISTS(SELECT 1 FROM canonical_blocks c WHERE c.chain_id=s.target_chain_id AND c.number=b.number AND c.block_hash=b.hash))
+  AND (EXISTS(SELECT 1 FROM canonical_blocks c WHERE c.chain_id=s.target_chain_id AND c.number=b.number AND c.block_hash=b.hash))
 ORDER BY p.revision DESC LIMIT 1
 `
 
@@ -287,7 +256,7 @@ func (q *Queries) GetENSSyncScan(ctx context.Context, sourceID int64, blockHash 
 }
 
 const getENSSyncSource = `-- name: GetENSSyncSource :one
-SELECT id, target_chain_id, source_chain_id, genesis_hash, namespace, policy_digest, manifest_digest, start_number, start_hash FROM ens_sync_sources WHERE id = $1
+SELECT id, target_chain_id, source_chain_id, genesis_hash, policy_digest, manifest_digest, start_number, start_hash FROM ens_sync_sources WHERE id = $1
 `
 
 func (q *Queries) GetENSSyncSource(ctx context.Context, sourceID int64) (EnsSyncSource, error) {
@@ -298,7 +267,6 @@ func (q *Queries) GetENSSyncSource(ctx context.Context, sourceID int64) (EnsSync
 		&i.TargetChainID,
 		&i.SourceChainID,
 		&i.GenesisHash,
-		&i.Namespace,
 		&i.PolicyDigest,
 		&i.ManifestDigest,
 		&i.StartNumber,
@@ -408,15 +376,34 @@ func (q *Queries) ListENSSyncCoreLogs(ctx context.Context, arg ListENSSyncCoreLo
 
 const listENSSyncKnownAddresses = `-- name: ListENSSyncKnownAddresses :many
 WITH activity AS (
- SELECT DISTINCT a.address FROM address_activities a JOIN canonical_blocks c ON c.chain_id=a.chain_id AND c.number=a.block_number AND c.block_hash=a.block_hash
- WHERE a.chain_id= $2 AND a.canonical AND a.address> $3 ORDER BY a.address LIMIT $1
+(SELECT DISTINCT decode(substr(lower(t.raw->>'from'),3),'hex') AS address
+ FROM transaction_inclusions t JOIN canonical_blocks c ON c.chain_id=t.chain_id AND c.number=t.block_number AND c.block_hash=t.block_hash
+ WHERE t.chain_id= $2 AND lower(t.raw->>'from') ~ '^0x[0-9a-f]{40}$'
+ AND lower(t.raw->>'from') > '0x'||encode($3::bytea,'hex')
+ ORDER BY address LIMIT $1)
+ UNION
+(SELECT DISTINCT decode(substr(lower(t.raw->>'to'),3),'hex') AS address
+ FROM transaction_inclusions t JOIN canonical_blocks c ON c.chain_id=t.chain_id AND c.number=t.block_number AND c.block_hash=t.block_hash
+ WHERE t.chain_id= $2 AND lower(t.raw->>'to') ~ '^0x[0-9a-f]{40}$'
+ AND lower(t.raw->>'to') > '0x'||encode($3::bytea,'hex')
+ ORDER BY address LIMIT $1)
+ UNION
+(SELECT DISTINCT decode(substr(lower(t.raw->>'contractAddress'),3),'hex') AS address
+ FROM receipts t JOIN canonical_blocks c ON c.chain_id=t.chain_id AND c.number=t.block_number AND c.block_hash=t.block_hash
+ WHERE t.chain_id= $2 AND lower(t.raw->>'contractAddress') ~ '^0x[0-9a-f]{40}$'
+ AND lower(t.raw->>'contractAddress') > '0x'||encode($3::bytea,'hex')
+ ORDER BY address LIMIT $1)
+ UNION
+ (SELECT DISTINCT w.address FROM withdrawals w JOIN canonical_blocks c ON c.chain_id=w.chain_id AND c.number=w.block_number AND c.block_hash=w.block_hash
+ WHERE w.chain_id= $2 AND w.address> $3 ORDER BY w.address LIMIT $1)
 ), genesis AS (
  SELECT g.address FROM genesis_account_observations g JOIN genesis_state_imports i ON i.chain_id=g.chain_id AND i.block_hash=g.block_hash AND i.state='complete'
  JOIN canonical_blocks c ON c.chain_id=g.chain_id AND c.number=0 AND c.block_hash=g.block_hash
  WHERE g.chain_id= $2 AND g.address> $3 ORDER BY g.address LIMIT $1
 )
 SELECT address, (CASE WHEN EXISTS(SELECT 1 FROM genesis g WHERE g.address=known.address) THEN 'genesis' ELSE 'indexed_address' END)::text AS kind
-FROM (SELECT address FROM activity UNION SELECT address FROM genesis) known ORDER BY address LIMIT $1
+FROM (SELECT address FROM activity UNION SELECT address FROM genesis) known
+WHERE address<>decode(repeat('00',20),'hex') ORDER BY address LIMIT $1
 `
 
 type ListENSSyncKnownAddressesRow struct {
@@ -445,19 +432,25 @@ func (q *Queries) ListENSSyncKnownAddresses(ctx context.Context, rowLimit int32,
 }
 
 const listENSSyncRewindBlocks = `-- name: ListENSSyncRewindBlocks :many
+WITH RECURSIVE lineage AS (
+ SELECT b.source_id, b.number, b.hash, b.parent_hash, b.block_time, b.canonical,0 AS depth FROM ens_sync_blocks b WHERE b.source_id= $3 AND b.hash= $4
+ UNION ALL
+ SELECT parent.source_id, parent.number, parent.hash, parent.parent_hash, parent.block_time, parent.canonical,child.depth+1 FROM lineage child JOIN ens_sync_blocks parent
+ ON parent.source_id=child.source_id AND parent.hash=child.parent_hash AND parent.number=child.number-1
+ WHERE child.depth+1 < $2
+)
 SELECT b.number,b.hash,s.core_canonical_at,c.updated_at AS current_attachment,
        COALESCE(c.block_hash=b.hash,false)::boolean AS current_canonical
-FROM ens_sync_scans s JOIN ens_sync_blocks b ON b.source_id=s.source_id AND b.hash=s.block_hash
+FROM lineage b JOIN ens_sync_scans s ON b.source_id=s.source_id AND b.hash=s.block_hash
 LEFT JOIN canonical_blocks c ON c.chain_id= $1 AND c.number=b.number
-WHERE s.source_id= $2 AND b.canonical AND b.number<= $3
-ORDER BY b.number DESC LIMIT $4
+ORDER BY b.depth LIMIT $2
 `
 
 type ListENSSyncRewindBlocksParams struct {
-	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	SourceID      int64          `db:"source_id" json:"source_id"`
-	ThroughNumber pgtype.Numeric `db:"through_number" json:"through_number"`
-	RowLimit      int32          `db:"row_limit" json:"row_limit"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	RowLimit    int32          `db:"row_limit" json:"row_limit"`
+	SourceID    int64          `db:"source_id" json:"source_id"`
+	ThroughHash []byte         `db:"through_hash" json:"through_hash"`
 }
 
 type ListENSSyncRewindBlocksRow struct {
@@ -471,9 +464,9 @@ type ListENSSyncRewindBlocksRow struct {
 func (q *Queries) ListENSSyncRewindBlocks(ctx context.Context, arg ListENSSyncRewindBlocksParams) ([]ListENSSyncRewindBlocksRow, error) {
 	rows, err := q.db.Query(ctx, listENSSyncRewindBlocks,
 		arg.ChainID,
-		arg.SourceID,
-		arg.ThroughNumber,
 		arg.RowLimit,
+		arg.SourceID,
+		arg.ThroughHash,
 	)
 	if err != nil {
 		return nil, err
@@ -520,18 +513,6 @@ func (q *Queries) PutENSSyncGenesisBaseline(ctx context.Context, arg PutENSSyncG
 		arg.DocumentDigest,
 	)
 	return err
-}
-
-const reattachENSSyncBlock = `-- name: ReattachENSSyncBlock :execrows
-UPDATE ens_sync_blocks SET canonical=true WHERE source_id= $1 AND hash= $2
-`
-
-func (q *Queries) ReattachENSSyncBlock(ctx context.Context, sourceID int64, hash []byte) (int64, error) {
-	result, err := q.db.Exec(ctx, reattachENSSyncBlock, sourceID, hash)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
 const rewindENSSyncProgress = `-- name: RewindENSSyncProgress :execrows

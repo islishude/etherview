@@ -14,7 +14,7 @@ type Querier interface {
 	AdjustBillingAccount(ctx context.Context, arg AdjustBillingAccountParams) (AdjustBillingAccountRow, error)
 	AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) (AdminWriteEnqueueRepairStatement1Row, error)
 	AdvanceENSSyncAddressCursor(ctx context.Context, afterAddress []byte, completedCycle int64, sourceID int64) error
-	AdvanceENSSyncCandidateDiscovery(ctx context.Context, sourceID int64, candidateID int64, changed bool) (int64, error)
+	AdvanceENSSyncCandidateDiscovery(ctx context.Context, sourceID int64, candidateID int64) (int64, error)
 	AdvanceENSSyncCoverage(ctx context.Context, sourceID int64, blockHash []byte, revision int64) (int64, error)
 	AdvanceENSSyncGraphWork(ctx context.Context, afterKey string, complete bool, sourceID int64) error
 	AnalyticsWriteDeferDirty(ctx context.Context, arg AnalyticsWriteDeferDirtyParams) error
@@ -103,6 +103,7 @@ type Querier interface {
 	CatalogTransactionTraceExecution(ctx context.Context, arg CatalogTransactionTraceExecutionParams) ([]CatalogTransactionTraceExecutionRow, error)
 	CatalogTransactionVerifiedAddressSelectors(ctx context.Context, arg CatalogTransactionVerifiedAddressSelectorsParams) ([]CatalogTransactionVerifiedAddressSelectorsRow, error)
 	CatalogValidateCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	CheckENSSyncJobCurrent(ctx context.Context, jobID int64) (bool, error)
 	ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error)
 	ClaimENSSyncJob(ctx context.Context, leaseToken pgtype.UUID, leaseSeconds int32, sourceID int64) (EnsSyncJob, error)
 	CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error)
@@ -176,8 +177,6 @@ type Querier interface {
 	DerivedVerifyRequestBackfill(ctx context.Context, chainID pgtype.Numeric, creatorAddress []byte, reason string) (DerivedVerifyRequestBackfillRow, error)
 	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) (int64, error)
 	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) (int64, error)
-	DetachENSSyncBlock(ctx context.Context, sourceID int64, hash []byte) (int64, error)
-	DetachENSSyncUnscannedBlocks(ctx context.Context, sourceID int64, chainID pgtype.Numeric, rowLimit int32) (int64, error)
 	DirtyENSSyncGraph(ctx context.Context, sourceID int64) error
 	ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (bool, error)
 	ERC4337CanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte) (ERC4337CanonicalTransactionBlockRow, error)
@@ -481,7 +480,7 @@ type Querier interface {
 	ListBlockTransactions(ctx context.Context, arg ListBlockTransactionsParams) ([]ListBlockTransactionsRow, error)
 	ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error)
 	ListDiamondCutHistory(ctx context.Context, arg ListDiamondCutHistoryParams) ([]ListDiamondCutHistoryRow, error)
-	ListENSEffectivePoliciesForSource(ctx context.Context, sourceID *int64) ([]EnsEffectivePolicy, error)
+	ListENSEffectivePoliciesForSource(ctx context.Context, sourceID int64) ([]EnsEffectivePolicy, error)
 	ListENSSyncCoreLogs(ctx context.Context, arg ListENSSyncCoreLogsParams) ([]ListENSSyncCoreLogsRow, error)
 	ListENSSyncEmitterDeployments(ctx context.Context, sourceID int64, addresses [][]byte) ([]ListENSSyncEmitterDeploymentsRow, error)
 	ListENSSyncJobDependencies(ctx context.Context, sourceID int64, jobID int64) ([]EnsSyncProjection, error)
@@ -489,7 +488,6 @@ type Querier interface {
 	ListENSSyncLatestContractDependencies(ctx context.Context, sourceID int64, deployment []byte, key string) ([]EnsSyncProjection, error)
 	ListENSSyncReplayCandidates(ctx context.Context, sourceID int64, afterCandidate int64, rowLimit int32) ([]ListENSSyncReplayCandidatesRow, error)
 	ListENSSyncRewindBlocks(ctx context.Context, arg ListENSSyncRewindBlocksParams) ([]ListENSSyncRewindBlocksRow, error)
-	// Interleave changed work, indexed addresses, due refreshes and name backfill.
 	ListENSSyncSchedulableCandidates(ctx context.Context, sourceID int64, rowLimit int32) ([]ListENSSyncSchedulableCandidatesRow, error)
 	ListENSSyncV2Parents(ctx context.Context, sourceID int64, registry string, rowLimit int32) ([]EnsSyncProjection, error)
 	ListENSSyncV2Registrations(ctx context.Context, sourceID int64, afterKey string, rowLimit int32) ([]EnsSyncProjection, error)
@@ -602,7 +600,7 @@ type Querier interface {
 	PutENSEffectivePublication(ctx context.Context, arg PutENSEffectivePublicationParams) (int64, error)
 	PutENSSyncBlock(ctx context.Context, arg PutENSSyncBlockParams) (int64, error)
 	PutENSSyncDeployment(ctx context.Context, arg PutENSSyncDeploymentParams) error
-	PutENSSyncEvent(ctx context.Context, arg PutENSSyncEventParams) error
+	PutENSSyncEvent(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) (int64, error)
 	PutENSSyncGenesisBaseline(ctx context.Context, arg PutENSSyncGenesisBaselineParams) error
 	PutENSSyncProjection(ctx context.Context, arg PutENSSyncProjectionParams) (int64, error)
 	QueryAddressOriginCoverage(ctx context.Context, minRangeEnd pgtype.Numeric, chainID pgtype.Numeric) (*bool, error)
@@ -626,13 +624,16 @@ type Querier interface {
 	QueryTransactionByHash(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (QueryTransactionByHashRow, error)
 	QueryTransactionSelectorCandidates(ctx context.Context, maxCandidateNumber int64, requests []byte, chainID pgtype.Numeric) ([]QueryTransactionSelectorCandidatesRow, error)
 	QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) (*bool, error)
+	ReadENSDirectoryFence(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte) (ReadENSDirectoryFenceRow, error)
 	ReadENSEffectiveName(ctx context.Context, arg ReadENSEffectiveNameParams) (ReadENSEffectiveNameRow, error)
 	ReadENSEffectivePublication(ctx context.Context, arg ReadENSEffectivePublicationParams) (EnsEffectivePublication, error)
 	ReadENSEffectiveSnapshot(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (ReadENSEffectiveSnapshotRow, error)
+	ReadENSKnownName(ctx context.Context, name string, chainID pgtype.Numeric, policyDigest []byte) (bool, error)
+	ReadENSLatestProfileIDs(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte, name string) (ReadENSLatestProfileIDsRow, error)
 	ReadENSNameSourceStatus(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) ([]ReadENSNameSourceStatusRow, error)
 	ReadENSPendingNameCode(ctx context.Context, arg ReadENSPendingNameCodeParams) (string, error)
+	ReadENSProfilePublications(ctx context.Context, arg ReadENSProfilePublicationsParams) ([]ReadENSProfilePublicationsRow, error)
 	ReadENSSyncCandidate(ctx context.Context, arg ReadENSSyncCandidateParams) (ReadENSSyncCandidateRow, error)
-	ReattachENSSyncBlock(ctx context.Context, sourceID int64, hash []byte) (int64, error)
 	ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error)
 	ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error)
 	ReconcileBillingTopupFailed(ctx context.Context, arg ReconcileBillingTopupFailedParams) (pgtype.UUID, error)
@@ -744,7 +745,6 @@ type Querier interface {
 	ValidateBlockTransactionCursor(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, hash []byte) (bool, error)
 	ValidateENSEffectiveSnapshotVersion(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte, version int64) (bool, error)
 	ValidateProxyAPISnapshot(ctx context.Context, arg ValidateProxyAPISnapshotParams) (bool, error)
-	ValidateResolvedSearchName(ctx context.Context, arg ValidateResolvedSearchNameParams) (bool, error)
 	ValidateSearchCursor(ctx context.Context, arg ValidateSearchCursorParams) (*bool, error)
 	VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) (int64, error)
 	VerifiedSelectorWritePersistStatement2(ctx context.Context, arg VerifiedSelectorWritePersistStatement2Params) error
@@ -788,6 +788,7 @@ type Querier interface {
 	WatchCount(ctx context.Context, userID pgtype.UUID) (int64, error)
 	WatchCreate(ctx context.Context, arg WatchCreateParams) (AddressWatch, error)
 	WatchDelete(ctx context.Context, iD pgtype.UUID, userID pgtype.UUID) (int64, error)
+	WatchENSSyncJob(ctx context.Context, arg WatchENSSyncJobParams) (int64, error)
 	WatchList(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) ([]AddressWatch, error)
 	WatchLockOwner(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) (pgtype.UUID, error)
 	WatchTip(ctx context.Context, chainID pgtype.Numeric) (WatchTipRow, error)

@@ -3,7 +3,6 @@
 package enssync
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -79,10 +78,22 @@ func (r *Repository) Claim(ctx context.Context, sourceID int64, lease time.Durat
 
 // Publish is the only source-publication writer. Its result, job completion and
 // refresh deadline commit together. Callers must finish external work first.
-// Effective namespace selection, catalog and SSE publication belong to T26.
+// Effective publication, catalog and SSE events share the same transaction.
 func (r *Repository) Publish(ctx context.Context, input dbgen.PublishENSSyncObservationParams) (int64, error) {
 	var id int64
 	err := dbaccess.WithTransaction(ctx, r.db, func(q *dbgen.Queries) error {
+		source, err := q.GetENSSyncSource(ctx, input.SourceID)
+		if err != nil {
+			return err
+		}
+		chainValue, err := uint256Value(source.SourceChainID)
+		if err != nil {
+			return err
+		}
+		chain := chainValue.String()
+		if err := q.StoreLegacyLockChainStatement1(ctx, &chain); err != nil {
+			return err
+		}
 		if _, err := q.LockENSSyncSource(ctx, input.SourceID); err != nil {
 			return err
 		}
@@ -153,14 +164,12 @@ func (r *Repository) Lookup(ctx context.Context, input enscontract.Lookup) (ensc
 }
 
 func readResult(row dbgen.ReadENSSyncCandidateRow, now time.Time) enscontract.Result {
-	result := enscontract.Result{State: enscontract.Unavailable, Source: enscontract.Namespace(row.Namespace)}
+	result := enscontract.Result{State: enscontract.Unavailable}
 	switch {
 	case row.SourceState == "unsupported" || row.SourceState == "halted":
 		result.Code = enscontract.UnsupportedSource
-	case row.SourceState != "active" || !row.CoverageCanonical || len(row.TargetHash) == 0 || !bytes.Equal(row.TargetHash, row.ScannedHash):
+	case row.PublicationID == 0 && len(row.TargetHash) == 0:
 		result.Code = enscontract.SyncPending
-	case !row.HealthyUntil.Valid || !now.Before(row.HealthyUntil.Time):
-		result.Code = enscontract.Stale
 	case row.PublicationID == 0:
 		result.Code = enscontract.ResolutionPending
 	case row.Generation == nil || *row.Generation < row.MinimumGeneration || row.SourceRevision == nil || *row.SourceRevision != row.Revision || !row.Canonical:
@@ -181,9 +190,6 @@ func readResult(row dbgen.ReadENSSyncCandidateRow, now time.Time) enscontract.Re
 		result.ReverseResolver = common.BytesToAddress(row.ReverseResolver)
 		result.BlockHash = common.BytesToHash(row.BlockHash)
 		result.ValidUntil = row.ValidUntil.Time
-		if row.HealthyUntil.Time.Before(result.ValidUntil) {
-			result.ValidUntil = row.HealthyUntil.Time
-		}
 		if row.RetainUntil.Time.Before(result.ValidUntil) {
 			result.ValidUntil = row.RetainUntil.Time
 		}

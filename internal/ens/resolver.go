@@ -18,14 +18,7 @@ import (
 	"github.com/islishude/etherview/internal/metadata"
 )
 
-const OfficialUniversalResolverAddress = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
-
-type Source = enscontract.Namespace
-
-const (
-	SourceOfficial Source = "ens"
-	SourceCustom   Source = "custom_ens"
-)
+const MainnetUniversalResolverAddress = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
 
 type Outcome = enscontract.State
 
@@ -44,7 +37,6 @@ const (
 	CodeResolverFailure     = "resolver_failure"
 	CodeForwardMismatch     = "forward_mismatch"
 	CodeSourceIdentity      = "source_identity_mismatch"
-	CodeCustomDeployment    = "custom_deployment_unavailable"
 )
 
 type ResolutionError = enscontract.UnavailableError
@@ -57,7 +49,6 @@ type BlockRef struct {
 }
 
 type Profile struct {
-	Source            Source
 	Registry          common.Address
 	UniversalResolver common.Address
 	CoinType          *big.Int
@@ -246,16 +237,13 @@ func validateProfile(caller RPCCaller, profile Profile) error {
 	if caller == nil {
 		return errors.New("ENS RPC caller is nil")
 	}
-	if profile.Source != SourceOfficial && profile.Source != SourceCustom {
-		return errors.New("ENS profile source is invalid")
-	}
 	if profile.UniversalResolver == (common.Address{}) || profile.Block.Hash == (common.Hash{}) ||
 		profile.CoinType == nil || profile.CoinType.Sign() <= 0 || profile.CoinType.BitLen() > 256 ||
 		len(profile.Gateways) > 4 {
 		return errors.New("ENS profile is invalid")
 	}
-	if profile.Source == SourceCustom && profile.Registry == (common.Address{}) {
-		return errors.New("custom ENS registry is invalid")
+	if profile.Registry == (common.Address{}) {
+		return errors.New("ENS registry is invalid")
 	}
 	return nil
 }

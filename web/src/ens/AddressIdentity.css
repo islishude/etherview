@@ -39,17 +39,6 @@
   white-space: nowrap;
 }
 
-.custom-ens-badge {
-  flex: none;
-  padding: 0.08rem 0.28rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-soft);
-  font-size: 0.58rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
 .address-system-identity {
   display: inline-flex;
   align-items: flex-end;

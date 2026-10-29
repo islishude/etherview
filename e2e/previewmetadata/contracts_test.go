@@ -119,14 +119,14 @@ func TestPreviewContracts(t *testing.T) {
 }
 
 func (h *harness) contractsAllRoles(ctx context.Context) {
-	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "ens", "maintenance"); err != nil {
+	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "maintenance"); err != nil {
 		h.t.Fatal(err)
 	}
 	override := filepath.Join(h.artifacts, "contracts-all.yaml")
 	config := `services:
   api:
     volumes:
-      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/custom.json:ro
+      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
       ETHERVIEW_ROLES: all
@@ -176,8 +176,7 @@ func (h *harness) assertContractAPI(ctx context.Context, report contractScenario
 				Items []struct {
 					State   string `json:"state"`
 					Primary *struct {
-						Name   string `json:"name"`
-						Source string `json:"source"`
+						Name string `json:"name"`
 					} `json:"primary_name"`
 				} `json:"items"`
 			}
@@ -187,27 +186,40 @@ func (h *harness) assertContractAPI(ctx context.Context, report contractScenario
 			return false, fmt.Sprint(err), nil
 		}
 		item := result.Data.Items[0]
-		return item.State == "resolved" && item.Primary != nil && item.Primary.Name == report.Name && item.Primary.Source == "custom_ens", fmt.Sprintf("%+v", item), nil
+		return item.State == "resolved" && item.Primary != nil && item.Primary.Name == report.Name, fmt.Sprintf("%+v", item), nil
 	})
 	waitFor(h.t, ctx, "local forward name search", func() (bool, string, error) {
 		var result struct {
 			Data []struct {
-				Key    string `json:"key"`
-				Label  string `json:"label"`
-				Source string `json:"name_source"`
+				Key   string `json:"key"`
+				Label string `json:"label"`
 			} `json:"data"`
 		}
 		err := h.getJSON(ctx, h.apiURL+"/api/v1/search?q="+report.Name, &result)
 		for _, item := range result.Data {
-			if strings.EqualFold(item.Key, report.NameOwner) && item.Label == report.Name && item.Source == "custom_ens" {
-				return true, "custom name published", nil
+			if item.Key == report.Name && item.Label == report.Name {
+				return true, "name directory published", nil
 			}
 		}
 		return false, fmt.Sprintf("%+v %v", result, err), nil
 	})
-	var total, official int
-	if err := h.db.QueryRow(ctx, "SELECT count(*),count(*) FILTER(WHERE s.namespace='ens') FROM ens_sync_observations o JOIN ens_sync_sources s ON s.id=o.source_id WHERE s.target_chain_id=48815").Scan(&total, &official); err != nil || total == 0 || official != 0 {
-		h.t.Fatalf("ENS background observations total=%d official=%d: %v", total, official, err)
+	waitFor(h.t, ctx, "name registration profile", func() (bool, string, error) {
+		var response struct {
+			Data struct {
+				Registrant struct {
+					State string
+					Value string
+				}
+				ProfileObservation any `json:"profile_observation"`
+			}
+		}
+		err := h.getJSON(ctx, h.apiURL+"/api/v1/names/"+report.Name, &response)
+		return err == nil && response.Data.ProfileObservation != nil && response.Data.Registrant.State == "value" && strings.EqualFold(response.Data.Registrant.Value, report.NameOwner), fmt.Sprintf("%+v %v", response.Data, err), nil
+	})
+
+	var total, sources int
+	if err := h.db.QueryRow(ctx, "SELECT count(*),count(DISTINCT s.id) FROM ens_sync_observations o JOIN ens_sync_sources s ON s.id=o.source_id WHERE s.target_chain_id=48815").Scan(&total, &sources); err != nil || total == 0 || sources != 1 {
+		h.t.Fatalf("ENS background observations total=%d sources=%d: %v", total, sources, err)
 	}
 }
 

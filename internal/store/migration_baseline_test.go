@@ -61,7 +61,7 @@ func TestBaselineGuardRejectsScatteredDefinitions(t *testing.T) {
 // named UNIQUE equivalent to the primary key. Seven sequence ownership statements need
 // both sequence and table. Function bindings must capture the migration schema.
 const baselineAllowedAlters = `
-ALTER TABLE search_catalog_documents ADD CONSTRAINT search_catalog_documents_name_source_check CHECK ((source_kind='name' AND name_publication_id IS NOT NULL AND name_source IN ('ens','custom_ens')) OR (source_kind<>'name' AND name_publication_id IS NULL AND name_source IS NULL)) NOT VALID;
+ALTER TABLE search_catalog_documents ADD CONSTRAINT search_catalog_documents_name_identity_check CHECK ((source_kind='name' AND name_source_id IS NOT NULL) OR (source_kind<>'name' AND name_source_id IS NULL AND name_publication_id IS NULL AND name_profile_publication_id IS NULL)) NOT VALID;
 ALTER TABLE ONLY verified_contracts ADD CONSTRAINT verified_contracts_selector_identity_unique UNIQUE (chain_id, address, code_hash, valid_from_block, verification_job_id);
 ALTER TABLE ONLY billing_topup_intents ADD CONSTRAINT billing_topup_intents_active_payment_fk FOREIGN KEY (active_payment_id) REFERENCES billing_payments(id);
 ALTER SEQUENCE beacon_observation_generations_id_seq OWNED BY beacon_observation_generations.id;

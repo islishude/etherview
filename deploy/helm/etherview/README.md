@@ -126,7 +126,6 @@ Additional keys in `secrets.existingSecret` are selected through these values:
 
 | Value                                                                                 | Default Secret key                                                                    | Application roles and enablement                                              |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `ensRPCURLsKey`                                                                       | `ens-rpc-urls`                                                                        | `all`/`api`, when ENS uses `official_first`                                   |
 | `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when `config.turnstile.enabled` is true                          |
 | `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                     |
 | `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`enrich`, when consensus is enabled                        |
@@ -262,12 +261,12 @@ hard hostname-spread constraint with at least two eligible domains. Optional
 trace and metadata roles plus public verification remain
 disabled so their external capability budgets can be measured separately. The
 profile's maximum 20 Pods
-and 12-connection writer pool cap require up to 240 application PostgreSQL
+and 12-connection writer pool cap require up to 216 application PostgreSQL
 connections at steady state. Its maximum 8 API Pods add 96 connections when a
-same-sized reader pool is enabled, for 336 total. `maxSurge: 0` prevents a configured rollout
+same-sized reader pool is enabled, for 312 total. `maxSurge: 0` prevents a configured rollout
 surge, but terminating Pods can overlap replacements outside that count. A
 fully concurrent rollout can therefore require the old and new pools together,
-up to 480 connections without a reader or 672 with the same-sized reader;
+up to 432 connections without a reader or 624 with the same-sized reader;
 otherwise roll roles serially and measure the overlap. Reserve
 migration/operator capacity in addition.
 
@@ -394,14 +393,10 @@ suite checks role, HPA, and disruption-budget topology, migration/schema gates,
 feature-off and API-only Secret references, x402 CIDR NetworkPolicy rendering,
 release-scoped x402 alerts, and invalid-value rejection.
 
-`config.ens.mode` defaults to `official_first`. For a chain-local namespace, set
-`custom_only`, configure `config.ens.custom.registry` and `universal_resolver`,
-and use the chain's state RPC. This mode does not inject `ETHERVIEW_ENS_RPC_URLS`;
-`official_gateways` and custom `gateways` may be empty.
-
-Enabling ENS also requires a reviewed `config.ens.policy_digest` and deployment
-manifest paths. Supply public JSON through `ensManifests`; it mounts under
-`/etc/etherview/ens` only in `all`/`ens`. Distributed layouts include the `ens`
-role. Dedicated ENS RPC Secret references belong to `all`/`ens`, never `api`.
-See the [ENS runbook](../../../docs/operations.md#ens-primary-names) for bounded
-imports, replay and source integrity recovery.
+ENS uses `config.ens.manifest`, one current-chain configuration and
+`config.ens.gateways`. Supply its public JSON through `ensManifests`, mounted
+under `/etc/etherview/ens` in `all`/`enrich`. Configure the matching
+`config.ens.policy_digest` in API and enrich. There is no ENS service or separate
+RPC Secret: bounded ENS workers reuse enrich's current-chain RPC pool.
+See the [ENS runbook](../../../docs/operations.md#ens-primary-names) for imports,
+replay, coverage and identity recovery.

@@ -22,12 +22,10 @@ methods. It is not an Etherview runtime component or an indexing data source;
 PostgreSQL-stored canonical calldata and receipts remain the sole userop stage
 inputs. Failure of the Bundler does not gate core/API readiness.
 
-`ens.mode=custom_only` omits the official RPC pool and official generation
-provenance. Local generations retain endpoint and canonical block-hash fences,
-reverse/forward matching and reorg invalidation. Results retain `custom_ens`
-provenance. Default `official_first` retains its existing absence-only fallback.
-Registration, renewal and record changes are CLI-signed transactions; the
-explorer keeps its existing read/search presentation surfaces.
+`ens.manifest` binds the Preview chain/genesis and its local deployments.
+ENS runs within enrich and reads core logs; exact resolution shares the
+current-chain RPC pool. Source IDs and manifest digests retain provenance;
+there is no official/custom classification or fallback policy.
 
 Preview Bundler release identity and safe-validation boundaries are owned by
 [ADR-0057](../../docs/decisions/ADR-0057-preview-rundler.md).

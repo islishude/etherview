@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/adraffy/go-ens-normalize/ensip15"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/consensus"
 	"strconv"
 	"strings"
+	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
 	pgx "github.com/jackc/pgx/v5"
@@ -41,10 +43,6 @@ type RuntimeStatus struct {
 
 type RuntimeStatusFunc func(context.Context) (RuntimeStatus, bool, error)
 
-type NameResolver interface {
-	ResolveForward(context.Context, string) (enscontract.ForwardResolution, error)
-}
-
 type Options struct {
 	Consensus             config.ConsensusConfig
 	BlobArchive           consensus.Archive
@@ -53,7 +51,6 @@ type Options struct {
 	LatestBlock           LatestBlockFunc
 	RuntimeStatus         RuntimeStatusFunc
 	OptionalStages        gen.Completeness
-	NameResolver          NameResolver
 	NamePolicy            common.Hash
 	UserOperationRegistry *erc4337.Registry
 }
@@ -67,7 +64,6 @@ type PostgresReader struct {
 	latestBlock         LatestBlockFunc
 	runtimeStatus       RuntimeStatusFunc
 	completeness        gen.Completeness
-	nameResolver        NameResolver
 	namePolicy          common.Hash
 	userOperationDigest []byte
 	userOperationStart  uint64
@@ -82,11 +78,6 @@ func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, 
 	}
 	if options.ChainID == 0 {
 		return nil, errors.New("query chain ID must be greater than zero")
-	}
-	if options.NameResolver == nil {
-		// A configured policy can outlive the ENS feature flag. Disable catalog
-		// matches as well as exact-name lookup when no name reader is installed.
-		options.NamePolicy = common.Hash{}
 	}
 	completeness := options.OptionalStages
 	var err error
@@ -111,7 +102,6 @@ func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, 
 		latestBlock:   options.LatestBlock,
 		runtimeStatus: options.RuntimeStatus,
 		completeness:  completeness,
-		nameResolver:  options.NameResolver,
 		namePolicy:    options.NamePolicy,
 	}
 	if options.UserOperationRegistry != nil && len(options.UserOperationRegistry.Entries()) > 0 {
@@ -524,40 +514,15 @@ func (r *PostgresReader) Search(ctx context.Context, value, encodedCursor string
 	if limit <= 0 || limit > 100 {
 		return nil, "", fmt.Errorf("search limit %d is outside 1..100", limit)
 	}
-	gate := resolvedNameGate{}
 	searchValue := value
-	if encodedCursor == "" && externalNameQuery(value) {
-		if r.nameResolver == nil {
-			return nil, "", nameCapabilityUnavailable("unavailable", "not_configured")
+	if externalNameQuery(value) {
+		normalized, err := ensip15.Shared().Normalize(value)
+		if err != nil {
+			return nil, "", enscontract.ErrInvalidName
 		}
-		resolved, resolveErr := r.nameResolver.ResolveForward(ctx, value)
-		if resolveErr != nil {
-			return nil, "", nameResolverError(resolveErr)
-		}
-		if resolved.ObservationID <= 0 || resolved.Name == "" ||
-			(resolved.Outcome != enscontract.Resolved && resolved.Outcome != enscontract.NotFound) ||
-			(resolved.Source != enscontract.Official && resolved.Source != enscontract.Custom) {
-			return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
-		}
-		gate = resolvedNameGate{
-			Name: resolved.Name, ObservationID: resolved.ObservationID, Source: string(resolved.Source),
-		}
-		if resolved.Outcome == enscontract.Resolved {
-			if resolved.Address == (common.Address{}) {
-				return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
-			}
-			gate.Address = strings.ToLower(resolved.Address.String())
-		}
-		searchValue = resolved.Name
+		searchValue = normalized
 	}
-	return r.search(ctx, value, searchValue, encodedCursor, limit, gate)
-}
-
-type resolvedNameGate struct {
-	Name          string
-	Address       string
-	Source        string
-	ObservationID int64
+	return r.search(ctx, value, searchValue, encodedCursor, limit)
 }
 
 type userOperationSearchSnapshot struct {
@@ -570,7 +535,6 @@ func (r *PostgresReader) search(
 	ctx context.Context,
 	value, searchValue, encodedCursor string,
 	limit int,
-	gate resolvedNameGate,
 ) ([]gen.SearchResult, string, error) {
 	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -607,41 +571,48 @@ func (r *PostgresReader) search(
 			return nil, "", err
 		}
 	}
+	var nameFence, namePolicy string
+	var namesValidUntil int64
+	if r.namePolicy != (common.Hash{}) {
+		namePolicy = r.namePolicy.Hex()
+		var chain pgtype.Numeric
+		if err = chain.Scan(r.chainID); err != nil {
+			return nil, "", err
+		}
+		fence, e := dbgen.New(tx).ReadENSDirectoryFence(ctx, chain, r.namePolicy.Bytes())
+		if e != nil {
+			return nil, "", e
+		}
+		head, e := dbaccess.NumericText(fence.Head)
+		if e != nil {
+			return nil, "", e
+		}
+		nameFence = strconv.FormatInt(fence.Version, 10) + "/" + head.String
+		if fence.ValidUntil.Valid {
+			namesValidUntil = fence.ValidUntil.Time.UnixNano()
+		}
+	}
 	var boundary *searchCursor
 	if encodedCursor != "" {
 		var decoded searchCursor
 		if err := publicquery.DecodeCursor(encodedCursor, &decoded); err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrInvalidCursor, err)
 		}
+		if decoded.NamePolicy != namePolicy || decoded.NameFence != nameFence || (decoded.NamesValidUntil > 0 && time.Now().UnixNano() >= decoded.NamesValidUntil) {
+			return nil, "", fmt.Errorf("%w: name snapshot changed", ErrInvalidCursor)
+		}
+		namesValidUntil = decoded.NamesValidUntil
 		if err := r.validateSearchCursor(ctx, tx, decoded, value); err != nil {
 			return nil, "", err
 		}
 		snapshot.SnapshotNumber, snapshot.SnapshotHash = decoded.SnapshotNumber, decoded.SnapshotHash
 		generation = decoded.Generation
-		gate = resolvedNameGate{
-			Name: decoded.ResolvedName, Address: decoded.ResolvedNameAddress,
-			Source: decoded.ResolvedNameSource, ObservationID: decoded.ResolvedNameObservationID,
-		}
-		if gate.Name != "" {
-			searchValue = gate.Name
-		}
 		userOperations = userOperationSearchSnapshot{
 			available: decoded.UserOperationSnapshot,
 			end:       decoded.UserOperationSnapshotEnd,
 			hash:      decoded.UserOperationSnapshotHash,
 		}
 		boundary = &decoded
-	}
-	if gate.ObservationID > 0 {
-		visible, visibilityErr := r.resolvedNameVisible(
-			ctx, tx, gate, generation,
-		)
-		if visibilityErr != nil {
-			return nil, "", visibilityErr
-		}
-		if !visible {
-			return nil, "", nameCapabilityUnavailable("unavailable", "stale_name_snapshot")
-		}
 	}
 	var results []gen.SearchResult
 	hash, isHash, parseErr := parseHashIdentifier(value)
@@ -651,13 +622,13 @@ func (r *PostgresReader) search(
 		results, err = r.searchHash(ctx, tx, hash, generation, limit+1, userOperations)
 	} else if _, addressErr := ethrpc.ParseAddress(value); addressErr == nil {
 		results, err = r.searchText(
-			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, gate.ObservationID, boundary, limit+2,
+			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, boundary, limit+2,
 		)
 	} else if height, blockParseErr := parseBlockNumber(value); blockParseErr == nil {
 		results, err = r.searchBlockNumber(ctx, tx, height, generation)
 	} else {
 		results, err = r.searchText(
-			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, gate.ObservationID, boundary, limit+2,
+			ctx, tx, searchValue, snapshot.SnapshotNumber, generation, boundary, limit+2,
 		)
 	}
 	if err != nil {
@@ -712,8 +683,7 @@ func (r *PostgresReader) search(
 		UserOperationSnapshot:     userOperations.available,
 		UserOperationSnapshotEnd:  userOperations.end,
 		UserOperationSnapshotHash: userOperations.hash,
-		ResolvedName:              gate.Name, ResolvedNameAddress: gate.Address,
-		ResolvedNameObservationID: gate.ObservationID, ResolvedNameSource: gate.Source,
+		NamePolicy:                namePolicy, NameFence: nameFence, NamesValidUntil: namesValidUntil,
 		AfterRank: last.Rank, AfterKind: string(last.Kind), AfterKey: canonicalSearchBoundaryKey(last.Key),
 	})
 	if err != nil {
@@ -741,46 +711,6 @@ func (r *PostgresReader) currentSearchUserOperationSnapshot(
 		end:       snapshot.SnapshotNumber,
 		hash:      snapshot.SnapshotHash,
 	}, nil
-}
-
-type capabilityDetailer interface {
-	CapabilityDetails() (capability, state, code string)
-}
-
-func nameResolverError(err error) error {
-	if errors.Is(err, enscontract.ErrInvalidName) {
-		return publicquery.ErrInvalidInput
-	}
-	var detailer capabilityDetailer
-	if errors.As(err, &detailer) {
-		capability, state, code := detailer.CapabilityDetails()
-		if capability == "name" && stableNameCapabilityCode(code) {
-			if stable := publicquery.NewCapabilityUnavailableError(capability, state, code); stable != publicquery.ErrUnavailable {
-				return stable
-			}
-		}
-	}
-	return nameCapabilityUnavailable("failed", "resolver_failure")
-}
-
-func stableNameCapabilityCode(code string) bool {
-	switch code {
-	case "unsafe_url", "unavailable", "temporary", "unsafe_content", "invalid_content", "too_large",
-		"storage_unavailable", "retry_exhausted", "not_indexed", "sync_pending", "resolution_pending", "stale", "unsupported_source",
-		"transport_failure", "invalid_response", "stale_block", "stale_name_snapshot", "identity_conflict",
-		"rpc_unavailable", "ccip_unavailable",
-		"ccip_sender_mismatch", "ccip_depth_exceeded",
-		"resolver_not_contract", "resolver_failure",
-		"forward_mismatch", "source_identity_mismatch",
-		"custom_deployment_unavailable":
-		return true
-	default:
-		return false
-	}
-}
-
-func nameCapabilityUnavailable(state, code string) error {
-	return publicquery.NewCapabilityUnavailableError("name", state, code)
 }
 
 func externalNameQuery(value string) bool {

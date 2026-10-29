@@ -10,28 +10,17 @@ import (
 var ErrInvalidName = errors.New("invalid ENS name")
 var ErrSnapshotInvalid = errors.New("invalid ENS name snapshot")
 
-type ForwardResolution struct {
-	ObservationID int64 // Immutable effective publication, not a request-time observation.
-	Outcome       State
-	Name          string
-	Address       common.Address
-	Source        Namespace
-	ValidUntil    time.Time
-}
 type PrimaryResolution struct {
 	ObservationID   int64
 	SnapshotVersion int64
 	Outcome         State
 	Name            string
 	Address         common.Address
-	Source          Namespace
-	Code            string
-	ValidUntil      time.Time
-}
-type NameReader interface {
-	ResolveForward(context.Context, string) (ForwardResolution, error)
-	ResolveCurrentPrimary(context.Context, common.Address) (PrimaryResolution, error)
-	ResolveAddressBatch(context.Context, []common.Address, string) ([]PrimaryResolution, string, error)
+
+	Code        string
+	BlockNumber string
+	BlockHash   common.Hash
+	ValidUntil  time.Time
 }
 type UnavailableError struct {
 	Code  string
@@ -54,10 +43,11 @@ func (e *UnavailableError) CapabilityDetails() (string, string, string) {
 }
 
 type SourceStatus struct {
-	Source                     Namespace
 	State                      string
 	Protocols                  []string
 	Target, Scanned, Published *string
+	Coverage                   string
+	CoverageStart              *string
 	Pending                    string
 	LastSuccess, ValidUntil    time.Time
 	Code                       string

@@ -216,13 +216,8 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "S3_PREFIX", &cfg.Adapters.S3Prefix)
 	setString(lookup, "S3_REGION", &cfg.Adapters.S3Region)
 	setString(lookup, "PRICE_BASE_URL", &cfg.Adapters.PriceBaseURL)
-	setString(lookup, "ENS_MODE", &cfg.ENS.Mode)
 	setString(lookup, "ENS_POLICY_DIGEST", &cfg.ENS.PolicyDigest)
-	setString(lookup, "ENS_OFFICIAL_MANIFEST", &cfg.ENS.OfficialManifest)
-	setString(lookup, "ENS_CUSTOM_MANIFEST", &cfg.ENS.CustomManifest)
-	setString(lookup, "ENS_CUSTOM_REGISTRY", &cfg.ENS.Custom.Registry)
-	setString(lookup, "ENS_CUSTOM_UNIVERSAL_RESOLVER", &cfg.ENS.Custom.UniversalResolver)
-	setString(lookup, "ENS_CUSTOM_COIN_TYPE", &cfg.ENS.Custom.CoinType)
+	setString(lookup, "ENS_MANIFEST", &cfg.ENS.Manifest)
 	setString(lookup, "METADATA_IPFS_GATEWAY", &cfg.Metadata.IPFSGateway)
 	if value, ok := lookup(envPrefix + "METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS"); ok {
 		cfg.Metadata.ImageNavigationAllowedOrigins = splitCSV(value)
@@ -234,11 +229,8 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 		}
 		cfg.ERC4337.EntryPoints = entries
 	}
-	if value, ok := lookup(envPrefix + "ENS_OFFICIAL_GATEWAYS"); ok {
-		cfg.ENS.OfficialGateways = splitCSV(value)
-	}
-	if value, ok := lookup(envPrefix + "ENS_CUSTOM_GATEWAYS"); ok {
-		cfg.ENS.Custom.Gateways = splitCSV(value)
+	if value, ok := lookup(envPrefix + "ENS_GATEWAYS"); ok {
+		cfg.ENS.Gateways = splitCSV(value)
 	}
 	return nil
 }
@@ -541,22 +533,6 @@ func applyRPCEnvironment(cfg *Config, lookup func(string) (string, bool), readFi
 			return err
 		}
 		cfg.RPC.Endpoints = endpoints
-	}
-	roles, _ := NormalizeRoles(cfg.Runtime.Roles)
-	if slices.Contains(roles, "ens") && cfg.Features.ENS && cfg.ENS.Mode != "custom_only" {
-		ensRPCURLs, err := lookupValueOrFile("ENS_RPC_URLS", lookup, readFile)
-		if err != nil {
-			return err
-		}
-		if ensRPCURLs != "" {
-			endpoints, err := parseEnvironmentRPCEndpointsNamed("ETHERVIEW_ENS_RPC_URLS", ensRPCURLs, []string{"state", "history"})
-			if err != nil {
-				return err
-			}
-			cfg.ENS.OfficialRPCEndpoints = endpoints
-		}
-	} else {
-		cfg.ENS.OfficialRPCEndpoints = nil
 	}
 	return nil
 }

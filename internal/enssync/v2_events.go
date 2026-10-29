@@ -137,6 +137,11 @@ func (c *Collector) projectV2(ctx context.Context, q *dbgen.Queries, source int6
 	case "SubregistryUpdated":
 		fields["subregistry"] = addressKey(values["subregistry"].(common.Address))
 	case "TransferSingle", "TransferBatch":
+		if owner := values["to"].(common.Address); owner != (common.Address{}) {
+			if e = c.v2Candidate(ctx, q, source, log, candidate{"primary", addressKey(owner)}); e != nil {
+				return e
+			}
+		}
 		return projectV2Transfers(ctx, q, source, d, event.Name, values, put)
 	case "ParentUpdated":
 		return put("registry_link", addressKey(d.Address)+"/parent_hint", map[string]any{"parent": addressKey(values["parent"].(common.Address)), "label": values["label"]}, false)

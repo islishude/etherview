@@ -12,14 +12,19 @@ import (
 )
 
 func (r *Reader) NameStatus(ctx context.Context) ([]enscontract.SourceStatus, error) {
-	result := make([]enscontract.SourceStatus, 0, 2)
+	result := make([]enscontract.SourceStatus, 0, 1)
 	e := dbaccess.WithTransactionOptions(ctx, r.db, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(q *dbgen.Queries) error {
 		rows, e := q.ReadENSNameSourceStatus(ctx, r.chain, r.options.Policy.Bytes())
 		if e != nil {
 			return e
 		}
 		for _, row := range rows {
-			item := enscontract.SourceStatus{Source: enscontract.Namespace(row.Namespace), Protocols: row.Protocols, Target: numberText(row.TargetNumber), Scanned: numberText(row.ScannedNumber), Published: numberText(row.Published), Pending: strconv.FormatInt(row.Pending, 10), LastSuccess: row.LastSuccess.Time, ValidUntil: row.HealthyUntil.Time, State: "current"}
+			item := enscontract.SourceStatus{Protocols: row.Protocols, Target: numberText(row.TargetNumber), Scanned: numberText(row.ScannedNumber), Published: numberText(row.Published), Pending: strconv.FormatInt(row.Pending, 10), LastSuccess: row.LastSuccess.Time, ValidUntil: row.HealthyUntil.Time, State: "current", CoverageStart: numberText(row.StartNumber), Coverage: "incomplete"}
+			if item.Scanned == nil {
+				item.Coverage = "not_started"
+			} else if item.Target != nil && *item.Target == *item.Scanned {
+				item.Coverage = "complete"
+			}
 			if row.FailureCode != nil {
 				item.Code = *row.FailureCode
 			}
@@ -39,15 +44,6 @@ func (r *Reader) NameStatus(ctx context.Context) ([]enscontract.SourceStatus, er
 	})
 	if e != nil {
 		return nil, readError(e)
-	}
-	for _, source := range r.options.Sources {
-		found := false
-		for _, row := range result {
-			found = found || row.Source == source
-		}
-		if !found {
-			result = append(result, enscontract.SourceStatus{Source: source, State: "not_indexed", Protocols: []string{}, Pending: "0"})
-		}
 	}
 	return result, nil
 }

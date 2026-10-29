@@ -30,16 +30,15 @@ dependencies. This catalog groups the child plans by responsibility.
 
 ## ENS synchronization delivery
 
-[ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
-spans existing owners: P20-T23 through P20-T26 provide persistence, v1/custom
-and v2 discovery, and background publication; P30-T146 provides the role;
-P40-T26 and P50-T80 provide database reads and display; P30-T147 and P30-T148
-separate local production acceptance from live Mainnet evidence. P70 consumes
-those outcomes through its existing release gates. P20-T23 through P20-T26,
-P30-T146/P30-T147, P40-T26 and P50-T80 are `done`.
-P30-T148 remains `in_progress`: real Mainnet activation, bounded collection and
-independent samples passed; complete history and database publication
-reconciliation remain open in the [live report](../reviews/P30-ens-mainnet-acceptance.md).
+The current-chain rewrite replaces the retired ENS milestones. P20-T27 owns
+core fact references and recovery; P20-T28 owns protocol discovery; P20-T29
+owns independent resolution validity and publication. P30-T149 moves ENS into
+enrich; P40-T27 and P50-T81 adapt database reads and display. P30-T150 owns local
+production acceptance and P30-T151 independently verifies representative Mainnet
+publications. P20-T27/P20-T28/P20-T29, P30-T149/P30-T150/P30-T151, P40-T27 and P50-T81 are done
+with [new acceptance evidence](../reviews/ens-current-chain-acceptance.md).
+Historical evidence does not close these new gates. Full directory coverage is
+a deployment progress fact, not a prerequisite for exact-result publication.
 
 ## Planning and retention
 
@@ -65,11 +64,16 @@ change. New plan IDs start at P80; all lower gaps and retired prefixes stay rese
 | ------------- | ----------------------------- |
 | P00           | 14                            |
 | P10           | 7                             |
-| P20           | 26                            |
-| P30           | 148                           |
-| P40           | 26                            |
-| P50           | 80                            |
+| P20           | 30                            |
+| P30           | 151                           |
+| P40           | 28                            |
+| P50           | 82                            |
 | P60           | 21                            |
 | P70           | 52                            |
 | P55 (retired) | 4                             |
 | P66 (retired) | 8                             |
+
+Name registration browsing extends ADR-0058 through P20-T30 → P40-T28 → P50-T82.
+These milestones retain independent profile/resolution validity, canonical known-name
+search and database-only reads. Existing runtime scenarios are extended; earlier
+completed IDs and Mainnet evidence are not reopened or reused as new acceptance.

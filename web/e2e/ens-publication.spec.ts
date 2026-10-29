@@ -38,6 +38,23 @@ for (const language of ["en", "zh"] as const) {
       body.data.features.ens = true;
       await route.fulfill({ response, json: body });
     });
+    await page.route("**/api/v1/status", async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.data.names = [
+        {
+          state: "sync_pending",
+          coverage: "incomplete",
+          coverage_start: "1",
+          target: "100",
+          scanned: "20",
+          last_published_block: "100",
+          protocols: ["v1", "v2"],
+          pending: "2",
+        },
+      ];
+      await route.fulfill({ response, json: body });
+    });
     let version = "1";
     let requests = 0;
     let expiry = Date.now() + 60000;
@@ -54,8 +71,9 @@ for (const language of ["en", "zh"] as const) {
               state: "resolved",
               primary_name: {
                 name: `published-${version}.test`,
-                source: "custom_ens",
                 publication: version,
+                observed_block_number: "100",
+                observed_block_hash: `0x${"1".repeat(64)}`,
                 valid_until: new Date(expiry).toISOString(),
               },
             })),
@@ -66,6 +84,13 @@ for (const language of ["en", "zh"] as const) {
     });
     await page.goto("/transactions");
     await expect(page.locator(".address-primary-name").first()).toHaveText("published-1.test");
+    await expect(
+      page.getByText(
+        language === "en"
+          ? "Name history syncing; verified names available."
+          : "名称历史同步中，已验证名称可用。",
+      ),
+    ).toBeVisible();
     await expect(page.locator(".address-identity-value").first()).toHaveAttribute(
       "title",
       /^0x[0-9a-fA-F]{40}$/,

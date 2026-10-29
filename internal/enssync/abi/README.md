@@ -17,10 +17,9 @@ not enable an arbitrary emitter merely because its topics match.
 - Wrapper transfers use the standard ERC-1155 single/batch event layouts.
 
 The manifest digest includes each profile's SHA-256 digest. These subsets
-intentionally omit unrelated approvals/text/metadata events; raw matching
-emitter logs are retained. Deployment addresses and historical activation are
+intentionally omit unrelated approvals/text/metadata events; matching emitter log identities reference core storage. Deployment addresses and historical activation are
 operator-reviewed input, not inferred from this ABI catalog. Public network
-activation and completeness remain the independent P30-T148 gate.
+activation and completeness remain the independent P30-T151 gate.
 
 The v2 registry, resolver and factory profiles are event subsets of the official
 [deployment artifacts](https://github.com/ensdomains/contracts-v2/tree/4f47cbcc11462fb413196e6b5c0f8090247a6c08/contracts/deployments/mainnet),

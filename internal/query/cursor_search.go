@@ -3,8 +3,10 @@ package query
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/ensread"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,6 +30,9 @@ type blockCursor struct {
 }
 
 type searchCursor struct {
+	NamePolicy                string `json:"name_policy,omitempty"`
+	NameFence                 string `json:"name_fence,omitempty"`
+	NamesValidUntil           int64  `json:"names_valid_until,omitempty"`
 	ChainID                   string `json:"chain_id"`
 	SnapshotNumber            uint64 `json:"snapshot_number"`
 	SnapshotHash              string `json:"snapshot_hash"`
@@ -37,10 +42,6 @@ type searchCursor struct {
 	UserOperationSnapshot     bool   `json:"user_operation_snapshot,omitempty"`
 	UserOperationSnapshotEnd  uint64 `json:"user_operation_snapshot_end,omitempty"`
 	UserOperationSnapshotHash string `json:"user_operation_snapshot_hash,omitempty"`
-	ResolvedName              string `json:"resolved_name,omitempty"`
-	ResolvedNameAddress       string `json:"resolved_name_address,omitempty"`
-	ResolvedNameObservationID int64  `json:"resolved_name_observation_id,omitempty"`
-	ResolvedNameSource        string `json:"resolved_name_source,omitempty"`
 	AfterRank                 int    `json:"after_rank"`
 	AfterKind                 string `json:"after_kind"`
 	AfterKey                  string `json:"after_key"`
@@ -284,7 +285,6 @@ func (r *PostgresReader) searchText(
 	value string,
 	snapshotNumber uint64,
 	generation int64,
-	resolvedNameObservationID int64,
 	boundary *searchCursor,
 	limit int,
 ) ([]gen.SearchResult, error) {
@@ -305,7 +305,7 @@ func (r *PostgresReader) searchText(
 		if limit < -2147483648 || limit > 2147483647 {
 			return nil, errors.New("invalid stored query value")
 		}
-		return dbgen.New(queryer).QuerySearchText(ctx, dbgen.QuerySearchTextParams{ChainID: queryValue0, SearchTerm: strings.ToLower(value), MaxBlockNumber: queryValue1, ValidFromGeneration: generation, HasCursor: hasBoundary, MaxRank: int64(afterRank), MinKind: afterKind, MinKey: afterKey, Limit: int32(limit), NameObservationID: resolvedNameObservationID, NamePolicy: r.namePolicy.Bytes()})
+		return dbgen.New(queryer).QuerySearchText(ctx, dbgen.QuerySearchTextParams{ChainID: queryValue0, SearchTerm: strings.ToLower(value), MaxBlockNumber: queryValue1, ValidFromGeneration: generation, HasCursor: hasBoundary, MaxRank: int64(afterRank), MinKind: afterKind, MinKey: afterKey, Limit: int32(limit), NamePolicy: r.namePolicy.Bytes()})
 	}()
 	if err != nil {
 		return nil, fmt.Errorf("search indexed names and labels: %w", err)
@@ -316,7 +316,6 @@ func (r *PostgresReader) searchText(
 		var kind, key, label string
 		var rank int64
 		var canonical pgtype.Bool
-		var nameSource pgtype.Text
 		if err := func() error {
 			if storedRow.Kind == nil {
 				return errors.New("invalid stored query value")
@@ -329,26 +328,25 @@ func (r *PostgresReader) searchText(
 			label = *storedRow.Label
 			rank = storedRow.Rank
 			canonical = pgtype.Bool{Bool: storedRow.Canonical, Valid: storedRow.CanonicalKnown}
-			var queryValue7 pgtype.Text
-			if storedRow.NameSource != nil {
-				queryValue7 = pgtype.Text{String: *storedRow.NameSource, Valid: true}
-			}
-			nameSource = queryValue7
 			return nil
 		}(); err != nil {
 			return nil, fmt.Errorf("scan indexed search result: %w", err)
 		}
-		result, err := normalizeSearchResult(kind, key, label, rank, canonical, nameSource)
+		result, err := normalizeSearchResult(kind, key, label, rank, canonical)
 		if err != nil {
 			return nil, err
 		}
-		if result.NameSource != nil {
-			if storedRow.NamePublicationID == nil || !storedRow.NameValidUntil.Valid {
-				return nil, errors.New("missing name publication validity")
+		if result.Kind == gen.SearchResultKindName {
+			detail, err := ensread.ReadDetail(ctx, dbgen.New(queryer), r.chainID, r.namePolicy, key, storedRow.NameProfilePublicationID, storedRow.NamePublicationID)
+			if err != nil {
+				return nil, err
 			}
-			publication := strconv.FormatInt(*storedRow.NamePublicationID, 10)
-			result.NamePublication = &publication
-			result.NameValidUntil = &storedRow.NameValidUntil.Time
+			raw, _ := json.Marshal(detail)
+			var public gen.NameDetail
+			if err = json.Unmarshal(raw, &public); err != nil {
+				return nil, err
+			}
+			result.NameDetails = &public
 		}
 		results = append(results, result)
 	}
@@ -368,20 +366,7 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx pgx.Tx, cu
 		cursor.AfterKind == "" || cursor.AfterKey == "" {
 		return fmt.Errorf("%w: search cursor identity is invalid", ErrInvalidCursor)
 	}
-	if externalNameQuery(query) {
-		if cursor.ResolvedNameObservationID <= 0 || cursor.ResolvedName == "" ||
-			(cursor.ResolvedNameSource != "ens" && cursor.ResolvedNameSource != "custom_ens") {
-			return fmt.Errorf("%w: search cursor name identity is invalid", ErrInvalidCursor)
-		}
-		if cursor.ResolvedNameAddress != "" {
-			if _, err := ethrpc.ParseAddress(cursor.ResolvedNameAddress); err != nil {
-				return fmt.Errorf("%w: search cursor name address is invalid", ErrInvalidCursor)
-			}
-		}
-	} else if cursor.ResolvedNameAddress != "" || cursor.ResolvedName != "" ||
-		cursor.ResolvedNameObservationID != 0 || cursor.ResolvedNameSource != "" {
-		return fmt.Errorf("%w: unexpected search cursor name identity", ErrInvalidCursor)
-	}
+
 	hash, err := ethrpc.ParseHash(cursor.SnapshotHash)
 	if err != nil {
 		return fmt.Errorf("%w: search cursor hash is invalid", ErrInvalidCursor)
@@ -447,53 +432,7 @@ func (r *PostgresReader) validateSearchCursor(ctx context.Context, tx pgx.Tx, cu
 	} else if cursor.UserOperationSnapshotEnd != 0 || cursor.UserOperationSnapshotHash != "" {
 		return fmt.Errorf("%w: unexpected UserOperation snapshot identity", ErrInvalidCursor)
 	}
-	if cursor.ResolvedNameObservationID > 0 {
-		visible, err := r.resolvedNameVisible(
-			ctx, tx, resolvedNameGate{
-				Name: cursor.ResolvedName, Address: cursor.ResolvedNameAddress,
-				Source: cursor.ResolvedNameSource, ObservationID: cursor.ResolvedNameObservationID,
-			}, cursor.Generation,
-		)
-		if err != nil {
-			return err
-		}
-		if !visible {
-			return fmt.Errorf("%w: resolved name left the cursor snapshot", ErrInvalidCursor)
-		}
-	}
 	return nil
-}
-
-func (r *PostgresReader) resolvedNameVisible(
-	ctx context.Context,
-	tx pgx.Tx,
-	gate resolvedNameGate,
-	generation int64,
-) (bool, error) {
-	var address []byte
-	if gate.Address != "" {
-		parsed, err := ethrpc.ParseAddress(gate.Address)
-		if err != nil {
-			return false, fmt.Errorf("validate resolved name address: %w", err)
-		}
-		address = parsed.Bytes()
-	}
-	var visible bool
-	if err := func() error {
-		var queryValue0 pgtype.Numeric
-		if err := queryValue0.Scan(r.chainID); err != nil {
-			return err
-		}
-		queryRow, err := dbgen.New(tx).ValidateResolvedSearchName(ctx, dbgen.ValidateResolvedSearchNameParams{ChainID: queryValue0, ID: gate.ObservationID, NamePolicy: r.namePolicy.Bytes(), LookupKey: gate.Name, Source: &gate.Source, ValidFromGeneration: generation, Address: address})
-		if err != nil {
-			return err
-		}
-		visible = queryRow
-		return nil
-	}(); err != nil {
-		return false, fmt.Errorf("validate resolved name snapshot: %w", err)
-	}
-	return visible, nil
 }
 
 func afterSearchBoundary(result gen.SearchResult, cursor searchCursor) bool {
@@ -518,7 +457,6 @@ func normalizeSearchResult(
 	kind, key, label string,
 	rank int64,
 	canonical pgtype.Bool,
-	nameSource pgtype.Text,
 ) (gen.SearchResult, error) {
 	if label == "" || len(label) > 4096 {
 		return gen.SearchResult{}, errors.New("database returned an invalid search label")
@@ -554,13 +492,7 @@ func normalizeSearchResult(
 		key = strings.ToLower(hash.String())
 	}
 	result := gen.SearchResult{Kind: resultKind, Key: key, Label: label, Rank: int(rank)}
-	if nameSource.Valid {
-		source := gen.SearchResultNameSource(nameSource.String)
-		if resultKind != gen.SearchResultKindAddress || !source.Valid() {
-			return gen.SearchResult{}, errors.New("database returned invalid search name source")
-		}
-		result.NameSource = &source
-	}
+
 	if canonical.Valid {
 		value := canonical.Bool
 		result.Canonical = &value

@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/islishude/etherview/internal/chainbundle"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/enssync"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -103,7 +102,7 @@ func newENSCollectorFixture(t *testing.T) *ensCollectorFixture {
 	for _, a := range []common.Address{controller, resolver} {
 		execFixture(t, ctx, db, `INSERT INTO genesis_account_observations(chain_id,address,block_hash,balance,nonce,code_hash,code,storage_root) VALUES(1,$1,$2,0,0,$3,$4,$5)`, a.Bytes(), genesis.Block.Hash().Bytes(), codeHash.Bytes(), code, types.EmptyRootHash.Bytes())
 	}
-	m := enssync.Manifest{TargetChainID: "1", SourceChainID: "1", Genesis: genesis.Block.Hash(), Namespace: enscontract.Custom, Policy: testHash(150021), StartHash: genesis.Block.Hash(), ParentName: "test", CoinType: "60", Deployments: []enssync.Deployment{{Address: controller, Profile: "controller_v3", Hash: genesis.Block.Hash(), CodeHash: codeHash}, {Address: resolver, Profile: "resolver", Hash: genesis.Block.Hash(), CodeHash: codeHash}}}
+	m := enssync.Manifest{TargetChainID: "1", SourceChainID: "1", Genesis: genesis.Block.Hash(), Policy: testHash(150021), StartHash: genesis.Block.Hash(), ParentName: "test", CoinType: "60", Deployments: []enssync.Deployment{{Address: controller, Profile: "controller_v3", Hash: genesis.Block.Hash(), CodeHash: codeHash}, {Address: resolver, Profile: "resolver", Hash: genesis.Block.Hash(), CodeHash: codeHash}}}
 	repo, e := enssync.NewRepository(db)
 	if e != nil {
 		t.Fatal(e)
@@ -123,7 +122,8 @@ func TestENSCollectorAutonomousDiscoveryRestartAndRewind(t *testing.T) {
 	}
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_genesis_baselines`, 2)
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_events`, 0)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE direction='primary'`, 2)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE direction='primary'`, 5)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM address_activities`, 0)
 	second, e := f.collector.Step(ctx, true)
 	if e != nil || second.Scanned != 1 {
 		t.Fatalf("second %+v %v", second, e)
@@ -181,6 +181,17 @@ func TestENSCollectorAutonomousDiscoveryRestartAndRewind(t *testing.T) {
 	}
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_events`, 5)
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_projections p JOIN ens_sync_blocks b ON b.source_id=p.source_id AND b.hash=p.block_hash WHERE b.canonical AND p.kind<>'lifecycle'`, 0)
+	recovered, _ := q.GetENSSyncProgress(ctx, first.SourceID)
+	for range 3 {
+		r, e := restarted.Step(ctx, true)
+		if e != nil || r.Rewound || r.Scanned != 0 {
+			t.Fatalf("orphan sibling caused repeated rewind: %+v %v", r, e)
+		}
+	}
+	stable, _ := q.GetENSSyncProgress(ctx, first.SourceID)
+	if stable.Revision != recovered.Revision {
+		t.Fatal("recovered cursor generation kept changing")
+	}
 	if e = f.core.ApplyReorg(ctx, "1", store.Reorg{Ancestor: mustBlockRef(t, f.genesis), Detached: []store.BlockRef{mustBlockRef(t, replacement)}, Attached: []chainbundle.Bundle{f.original}, Checkpoint: store.NewCoreCheckpoint(mustBlockRef(t, f.original)), Reason: "reattach exact former hash"}); e != nil {
 		t.Fatal(e)
 	}

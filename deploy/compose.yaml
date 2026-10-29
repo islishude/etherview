@@ -47,8 +47,7 @@ x-app-environment: &app-environment
   ETHERVIEW_FEATURE_X402_TOPUPS:
   ETHERVIEW_FEATURE_ENS:
   ETHERVIEW_ENS_POLICY_DIGEST:
-  ETHERVIEW_ENS_OFFICIAL_MANIFEST:
-  ETHERVIEW_ENS_CUSTOM_MANIFEST:
+  ETHERVIEW_ENS_MANIFEST:
   ETHERVIEW_FEATURE_USER_OPERATIONS:
   ETHERVIEW_ERC4337_ENTRY_POINTS:
   ETHERVIEW_USER_AUTH_API_KEY_RATE:
@@ -184,8 +183,6 @@ services:
       ETHERVIEW_PUSH_PRIVATE_KEY_FILE:
       <<: *api-environment
       ETHERVIEW_ROLES: all
-      ETHERVIEW_ENS_RPC_URLS:
-      ETHERVIEW_ENS_RPC_URLS_FILE:
       ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS:
       ETHERVIEW_CONSENSUS_URL:
       ETHERVIEW_CONSENSUS_HEADERS:
@@ -260,17 +257,6 @@ services:
     environment:
       <<: *app-environment
       ETHERVIEW_ROLES: metadata
-    healthcheck: *app-healthcheck
-    profiles: ["distributed"]
-
-  ens:
-    <<: *app
-    command: ["serve", "--roles=ens", "--config=/etc/etherview/config.yaml"]
-    environment:
-      <<: *app-environment
-      ETHERVIEW_ROLES: ens
-      ETHERVIEW_ENS_RPC_URLS:
-      ETHERVIEW_ENS_RPC_URLS_FILE:
     healthcheck: *app-healthcheck
     profiles: ["distributed"]
 

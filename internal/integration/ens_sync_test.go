@@ -45,14 +45,16 @@ func newENSSyncFixture(t *testing.T) *ensSyncFixture {
 		t.Fatal(err)
 	}
 	f := &ensSyncFixture{db: db, q: dbgen.New(db), repo: repo, block: testHash(100), deployment: testAddress(101)}
-	f.input = dbgen.CreateENSSyncSourceParams{TargetChainID: ensNumber("31337"), SourceChainID: ensNumber("1"),
-		GenesisHash: testHash(1).Bytes(), Namespace: "ens", PolicyDigest: testHash(2).Bytes(), ManifestDigest: testHash(3).Bytes(),
+	f.input = dbgen.CreateENSSyncSourceParams{TargetChainID: ensNumber("31337"), SourceChainID: ensNumber("31337"),
+		GenesisHash: testHash(1).Bytes(), PolicyDigest: testHash(2).Bytes(), ManifestDigest: testHash(3).Bytes(),
 		StartNumber: ensNumber("100"), StartHash: f.block.Bytes()}
 	f.source, err = repo.CreateSource(t.Context(), f.input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.putBlock(t, "100", f.block, testHash(99))
+	execFixture(t, t.Context(), f.db, `UPDATE chains SET genesis_hash=$2 WHERE chain_id=$1`, f.input.SourceChainID, f.input.GenesisHash)
+
 	if err := f.q.PutENSSyncDeployment(t.Context(), dbgen.PutENSSyncDeploymentParams{SourceID: f.source,
 		Address: f.deployment.Bytes(), Protocol: "v1", BlockHash: f.block.Bytes(), CodeHash: testHash(4).Bytes(), AbiDigest: testHash(5).Bytes()}); err != nil {
 		t.Fatal(err)
@@ -67,8 +69,14 @@ func newENSSyncFixture(t *testing.T) *ensSyncFixture {
 
 func (f *ensSyncFixture) putBlock(t *testing.T, number string, hash, parent common.Hash) {
 	t.Helper()
+	execFixture(t, t.Context(), f.db, `INSERT INTO blocks(chain_id,number,hash,parent_hash,timestamp,raw) VALUES($1,$2,$3,$4,100,'{}') ON CONFLICT DO NOTHING`, f.input.SourceChainID, number, hash.Bytes(), parent.Bytes())
+	execFixture(t, t.Context(), f.db, `INSERT INTO canonical_blocks(chain_id,number,block_hash) VALUES($1,$2,$3) ON CONFLICT(chain_id,number) DO UPDATE SET block_hash=EXCLUDED.block_hash`, f.input.SourceChainID, number, hash.Bytes())
+	var timestamp int64
+	if err := f.db.QueryRow(t.Context(), `SELECT timestamp::bigint FROM blocks WHERE chain_id=$1 AND hash=$2`, f.input.SourceChainID, hash.Bytes()).Scan(&timestamp); err != nil {
+		t.Fatal(err)
+	}
 	n, err := f.q.PutENSSyncBlock(t.Context(), dbgen.PutENSSyncBlockParams{SourceID: f.source,
-		Number: ensNumber(number), Hash: hash.Bytes(), ParentHash: parent.Bytes(), BlockTime: ensTime(time.Unix(100, 0)), Canonical: true})
+		Number: ensNumber(number), Hash: hash.Bytes(), ParentHash: parent.Bytes(), BlockTime: ensTime(time.Unix(timestamp, 0)), Canonical: true})
 	if err != nil || n != 1 {
 		t.Fatalf("block: %d %v", n, err)
 	}
@@ -144,12 +152,14 @@ func TestENSSyncIdentityCoverageAndIdempotency(t *testing.T) {
 		t.Fatal("manifest changed without new policy")
 	}
 	for _, mutate := range []func(*dbgen.CreateENSSyncSourceParams){
-		func(p *dbgen.CreateENSSyncSourceParams) { p.TargetChainID = ensNumber("31338") },
+		func(p *dbgen.CreateENSSyncSourceParams) {
+			p.TargetChainID = ensNumber("31338")
+			p.SourceChainID = ensNumber("31338")
+		},
 		func(p *dbgen.CreateENSSyncSourceParams) { p.GenesisHash = testHash(56).Bytes() },
 		func(p *dbgen.CreateENSSyncSourceParams) { p.PolicyDigest = testHash(57).Bytes() },
 		func(p *dbgen.CreateENSSyncSourceParams) {
-			p.Namespace = "custom_ens"
-			p.SourceChainID = ensNumber("31337")
+			p.PolicyDigest = testHash(58).Bytes()
 		},
 	} {
 		input := f.input
@@ -158,15 +168,14 @@ func TestENSSyncIdentityCoverageAndIdempotency(t *testing.T) {
 		if err != nil || other == f.source {
 			t.Fatalf("source isolation: %d %v", other, err)
 		}
-		if err := f.q.PutENSSyncEvent(ctx, dbgen.PutENSSyncEventParams{SourceID: other, BlockHash: f.block.Bytes(),
-			TransactionHash: testHash(7).Bytes(), Emitter: f.deployment.Bytes(), Topics: [][]byte{}, Data: []byte{}}); err == nil {
-			t.Fatal("cross-source event accepted")
+		if n, err := f.q.PutENSSyncEvent(ctx, other, f.block.Bytes(), 0); err == nil && n != 0 {
+			t.Fatal("invented event accepted")
 		}
 	}
 	f.requireCode(t, enscontract.NotIndexed)
 	f.discover(t)
 	f.discover(t)
-	f.requireCode(t, enscontract.SyncPending)
+	f.requireCode(t, enscontract.ResolutionPending)
 	f.putBlock(t, "102", testHash(102), testHash(101))
 	_, err = f.q.SetENSSyncTarget(ctx, ensTime(time.Now().Add(time.Hour)), f.source, testHash(102).Bytes())
 	if err != nil {
@@ -183,37 +192,24 @@ func TestENSSyncIdentityCoverageAndIdempotency(t *testing.T) {
 	negative.Outcome = "not_found"
 	negative.Address = nil
 	negative.Resolver = nil
-	if _, err := f.repo.Publish(ctx, negative); !errors.Is(err, enssync.ErrFenceLost) {
-		t.Fatalf("gap negative: %v", err)
+	publication, err := f.repo.Publish(ctx, negative)
+	if err != nil {
+		t.Fatalf("exact negative blocked by coverage: %v", err)
 	}
-	f.requireCode(t, enscontract.SyncPending)
 	f.putBlock(t, "101", testHash(101), f.block)
 	f.cover(t, testHash(101), 1)
 	f.cover(t, testHash(102), 1)
-	f.requireCode(t, enscontract.ResolutionPending)
-	publication, err := f.repo.Publish(ctx, negative)
-	if err != nil {
-		t.Fatal(err)
-	}
 	got, err := f.repo.Lookup(ctx, f.lookup)
 	if err != nil || got.State != enscontract.NotFound || got.PublicationID != publication {
 		t.Fatalf("definitive negative: %+v %v", got, err)
 	}
-	event := dbgen.PutENSSyncEventParams{SourceID: f.source, BlockHash: f.block.Bytes(), TransactionHash: testHash(7).Bytes(),
-		Emitter: f.deployment.Bytes(), Topics: [][]byte{testHash(8).Bytes()}, Data: []byte{1}}
-	for range 2 {
-		if err := f.q.PutENSSyncEvent(ctx, event); err != nil {
-			t.Fatal(err)
-		}
+	if n, err := f.q.PutENSSyncEvent(ctx, f.source, f.block.Bytes(), 0); err != nil || n != 0 {
+		t.Fatalf("ENS must not invent a core log: %d %v", n, err)
 	}
-	event.Data = []byte{2}
-	if err := f.q.PutENSSyncEvent(ctx, event); err == nil {
-		t.Fatal("conflicting event overwrote evidence")
-	}
-	execFixture(t, ctx, f.db, `UPDATE ens_sync_blocks SET canonical=false WHERE source_id=$1 AND hash=$2`, f.source, testHash(102).Bytes())
-	f.requireCode(t, enscontract.SyncPending)
+	execFixture(t, ctx, f.db, `DELETE FROM canonical_blocks WHERE chain_id=$1 AND block_hash=$2`, f.input.SourceChainID, testHash(102).Bytes())
+	f.requireCode(t, enscontract.ResolutionPending)
 	var count int
-	if err := f.db.QueryRow(ctx, `SELECT count(*) FROM ens_sync_events WHERE source_id=$1`, f.source).Scan(&count); err != nil || count != 1 {
+	if err := f.db.QueryRow(ctx, `SELECT count(*) FROM ens_sync_events WHERE source_id=$1`, f.source).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("retained events: %d %v", count, err)
 	}
 }
@@ -303,7 +299,10 @@ func TestENSSyncPublicationLeaseReplayAndProjectionFences(t *testing.T) {
 		t.Fatalf("new observation: %+v %v", got, err)
 	}
 	execFixture(t, ctx, f.db, `UPDATE ens_sync_progress SET healthy_until=clock_timestamp()-interval '1 second' WHERE source_id=$1`, f.source)
-	f.requireCode(t, enscontract.Stale)
+	got, err = f.repo.Lookup(ctx, f.lookup)
+	if err != nil || got.State != enscontract.Resolved {
+		t.Fatalf("collection health revoked exact result: %+v %v", got, err)
+	}
 }
 
 func TestENSSyncExhaustionAndAtomicFailure(t *testing.T) {
@@ -411,6 +410,7 @@ func TestENSSyncConcurrentPublicationAndInvalidation(t *testing.T) {
 func TestENSSyncCustomCanonicalityWithoutCollector(t *testing.T) {
 	f := newENSSyncFixture(t)
 	ctx := t.Context()
+	execFixture(t, ctx, f.db, `DELETE FROM canonical_blocks WHERE chain_id=31337`)
 	core, err := store.NewPostgresRepository(f.db)
 	if err != nil {
 		t.Fatal(err)
@@ -425,7 +425,6 @@ func TestENSSyncCustomCanonicalityWithoutCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := f.input
-	input.Namespace = "custom_ens"
 	input.SourceChainID = ensNumber("31337")
 	input.GenesisHash = genesis.Block.Hash().Bytes()
 	input.StartNumber = ensNumber("0")
@@ -435,10 +434,10 @@ func TestENSSyncCustomCanonicalityWithoutCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.block = original.Block.Hash()
-	f.putBlock(t, "0", genesis.Block.Hash(), common.Hash{})
+	f.putBlock(t, "0", genesis.Block.Hash(), genesis.Block.ParentHash())
 	f.putBlock(t, "1", f.block, genesis.Block.Hash())
 	if err := f.q.PutENSSyncDeployment(ctx, dbgen.PutENSSyncDeploymentParams{SourceID: f.source,
-		Address: f.deployment.Bytes(), Protocol: "custom", BlockHash: genesis.Block.Hash().Bytes(), CodeHash: testHash(4).Bytes(), AbiDigest: testHash(5).Bytes()}); err != nil {
+		Address: f.deployment.Bytes(), Protocol: "v1", BlockHash: genesis.Block.Hash().Bytes(), CodeHash: testHash(4).Bytes(), AbiDigest: testHash(5).Bytes()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.q.SetENSSyncTarget(ctx, ensTime(time.Now().Add(time.Hour)), f.source, f.block.Bytes()); err != nil {
@@ -452,20 +451,21 @@ func TestENSSyncCustomCanonicalityWithoutCollector(t *testing.T) {
 	f.lookup.CoinType = "2147514985"
 	f.discover(t)
 	f.enqueue(t, 3)
-	job := f.claim(t)
-	publication := f.publication(job)
-	publication.ReverseResolver = testAddress(103).Bytes()
-	if _, err := f.repo.Publish(ctx, publication); !errors.Is(err, enssync.ErrFenceLost) {
-		t.Fatalf("unbound core genesis accepted: %v", err)
+	if _, err := f.repo.Claim(ctx, f.source, time.Minute); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("unbound core genesis claimed: %v", err)
 	}
+	execFixture(t, ctx, f.db, `UPDATE chains SET genesis_hash=NULL WHERE chain_id=31337`)
 	if err := store.BindChainIdentity(ctx, f.db, "31337", genesis.Block.Hash()); err != nil {
 		t.Fatal(err)
 	}
+	job := f.claim(t)
+	publication := f.publication(job)
+	publication.ReverseResolver = testAddress(103).Bytes()
 	if _, err := f.repo.Publish(ctx, publication); err != nil {
 		t.Fatal(err)
 	}
 	got, err := f.repo.Lookup(ctx, f.lookup)
-	if err != nil || got.State != enscontract.Resolved || got.Source != enscontract.Custom {
+	if err != nil || got.State != enscontract.Resolved {
 		t.Fatalf("custom primary: %+v %v", got, err)
 	}
 	_, err = f.q.InvalidateENSSyncCandidate(ctx, f.source, f.candidate, 1)
@@ -474,14 +474,14 @@ func TestENSSyncCustomCanonicalityWithoutCollector(t *testing.T) {
 	}
 	f.enqueue(t, 3)
 	job = f.claim(t)
-	// Core detaches while the ENS collector is disabled. Its cached source
-	// header remains canonical, so only the independent core check can reject it.
+	// Core detaches while ENS is disabled. The core-backed view immediately
+	// invalidates its references without a second canonicality writer.
 	if err := core.ApplyReorg(ctx, "31337", store.Reorg{Ancestor: mustBlockRef(t, genesis),
 		Detached: []store.BlockRef{mustBlockRef(t, original)}, Attached: []chainbundle.Bundle{replacement},
 		Checkpoint: store.NewCoreCheckpoint(mustBlockRef(t, replacement)), Reason: "ENS collector disabled"}); err != nil {
 		t.Fatal(err)
 	}
-	f.requireCode(t, enscontract.SyncPending)
+	f.requireCode(t, enscontract.ResolutionPending)
 	publication = f.publication(job)
 	publication.ReverseResolver = testAddress(103).Bytes()
 	if _, err := f.repo.Publish(ctx, publication); !errors.Is(err, enssync.ErrFenceLost) {
@@ -668,6 +668,51 @@ func TestENSSyncOrphanDependencyCannotRemainReadable(t *testing.T) {
 	}
 	// Withdrawal of a dependency must hide the observation even before the
 	// collector advances the source epoch or rebuilds that record's projection.
-	execFixture(t, ctx, f.db, `UPDATE ens_sync_blocks SET canonical=false WHERE source_id=$1 AND hash=$2`, f.source, f.block.Bytes())
+	execFixture(t, ctx, f.db, `DELETE FROM canonical_blocks WHERE chain_id=$1 AND block_hash=$2`, f.input.SourceChainID, f.block.Bytes())
 	f.requireCode(t, enscontract.ResolutionPending)
+}
+
+func TestENSSyncExactPublicationSurvivesHeadAndHistoricalProjection(t *testing.T) {
+	f := newENSSyncFixture(t)
+	ctx := t.Context()
+	f.discover(t)
+	// No historical coverage is claimed. The job's exact block is core canonical.
+	f.enqueue(t, 3)
+	job := f.claim(t)
+	f.putBlock(t, "101", testHash(101), f.block)
+	if _, e := f.q.SetENSSyncTarget(ctx, ensTime(time.Now().Add(time.Hour)), f.source, testHash(101).Bytes()); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := f.repo.Publish(ctx, f.publication(job)); e != nil {
+		t.Fatalf("moving head starved job: %v", e)
+	}
+	// A newly processed old event is not evidence of a change after observation.
+	if _, e := f.q.PutENSSyncProjection(ctx, dbgen.PutENSSyncProjectionParams{SourceID: f.source, ExpectedRevision: 1, Kind: "registration", Key: "older", Deployment: f.deployment.Bytes(), BlockHash: f.block.Bytes(), Payload: []byte(`{"owner":"old"}`)}); e != nil {
+		t.Fatal(e)
+	}
+	got, e := f.repo.Lookup(ctx, f.lookup)
+	if e != nil || got.State != enscontract.Resolved || got.BlockHash != f.block {
+		t.Fatalf("old projection hid observation: %+v %v", got, e)
+	}
+	execFixture(t, ctx, f.db, `DELETE FROM canonical_blocks WHERE chain_id=31337 AND block_hash=$1`, f.block.Bytes())
+	f.requireCode(t, enscontract.ResolutionPending)
+}
+
+func TestENSSyncQueuedBacklogDoesNotSpendExecutionBudget(t *testing.T) {
+	f := newENSSyncFixture(t)
+	ctx := t.Context()
+	f.discover(t)
+	f.enqueue(t, 3)
+	// Simulate two hours waiting for a bounded worker pool, preserving the
+	// original one-hour budget without sleeping or altering retry attempts.
+	execFixture(t, ctx, f.db, `UPDATE ens_sync_jobs SET queued_at=queued_at-interval '2 hours',deadline=deadline-interval '2 hours'`)
+	job := f.claim(t)
+	if job.Attempts != 1 || time.Until(job.Deadline.Time) < 59*time.Minute {
+		t.Fatalf("queue consumed budget: %+v", job)
+	}
+	execFixture(t, ctx, f.db, `UPDATE ens_sync_jobs SET lease_until=clock_timestamp()-interval '1 second',deadline=clock_timestamp()-interval '1 second' WHERE id=$1`, job.ID)
+	if _, err := f.repo.Claim(ctx, f.source, time.Minute); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatalf("started execution renewed its deadline: %v", err)
+	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_jobs WHERE state='failed' AND failure_code='retry_exhausted'`, 1)
 }

@@ -144,7 +144,7 @@ func (w *Worker) Step(ctx context.Context) (worked bool, failure error) {
 			if failure != nil {
 				outcome = "error"
 			}
-			w.options.Observer.RecordENS(ensresolver.MetricObservation{Source: w.options.Manifest.Namespace, Direction: data.Direction, Outcome: outcome, Duration: time.Since(started)})
+			w.options.Observer.RecordENS(ensresolver.MetricObservation{Direction: data.Direction, Outcome: outcome, Duration: time.Since(started)})
 		}
 	}()
 	target, e := uintNumber(data.Number)
@@ -155,8 +155,10 @@ func (w *Worker) Step(ctx context.Context) (worked bool, failure error) {
 	if e != nil {
 		return true, e
 	}
-	if reused, err := w.tryProjection(ctx, job, data.BlockTime.Time); reused || err != nil {
-		return true, err
+	if data.Direction != "profile" {
+		if reused, err := w.tryProjection(ctx, job, data.BlockTime.Time); reused || err != nil {
+			return true, err
+		}
 	}
 	endpoint, e := w.options.Pool.Acquire(ethrpc.PurposeState)
 	if e != nil {
@@ -168,7 +170,10 @@ func (w *Worker) Step(ctx context.Context) (worked bool, failure error) {
 	if e = w.verifyEndpoint(ctx, endpoint, job, target); e != nil {
 		return true, w.retry(ctx, job, ensresolver.CodeSourceIdentity)
 	}
-	profile := ensresolver.Profile{Source: ensresolver.Source(w.options.Manifest.Namespace), Registry: w.options.Registry, UniversalResolver: w.options.UniversalResolver, CoinType: coin, Gateways: w.options.Gateways, Block: ensresolver.BlockRef{Number: target, Hash: common.BytesToHash(job.TargetHash)}}
+	if data.Direction == "profile" {
+		return true, w.publishProfile(ctx, endpoint, job, data, target)
+	}
+	profile := ensresolver.Profile{Registry: w.options.Registry, UniversalResolver: w.options.UniversalResolver, CoinType: coin, Gateways: w.options.Gateways, Block: ensresolver.BlockRef{Number: target, Hash: common.BytesToHash(job.TargetHash)}}
 	observation := dbgen.PublishENSSyncObservationParams{SourceID: job.SourceID, CandidateID: job.CandidateID, JobID: job.ID, Generation: job.Generation, LeaseToken: job.LeaseToken, Deployment: w.options.UniversalResolver.Bytes(), Endpoint: endpoint.Name, Evidence: "resolver"}
 	if data.Direction == string(enscontract.Forward) {
 		result, err := w.options.Resolver.Forward(ctx, endpoint, profile, data.LookupKey)
@@ -245,4 +250,12 @@ func uint256Value(value pgtype.Numeric) (*big.Int, error) {
 		return nil, ErrStorage
 	}
 	return number, nil
+}
+
+// PostgreSQL may encode 60 as a coefficient of 6 with exponent 1. Compare
+// complete numeric values, never the coefficient alone, for chain/coin identity.
+func equalUnsignedNumeric(a, b pgtype.Numeric) bool {
+	left, le := uint256Value(a)
+	right, re := uint256Value(b)
+	return le == nil && re == nil && left.Cmp(right) == 0
 }

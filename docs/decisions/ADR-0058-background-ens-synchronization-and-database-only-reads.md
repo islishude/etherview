@@ -1,288 +1,188 @@
-# ADR-0058: Background ENS Synchronization and Database-Only Reads
+# ADR-0058: Current-Chain ENS Indexing and Database-Only Reads
 
 Status: accepted
 
-Implementation: P20-T23 supplies the persistence foundation and neutral read
-contracts, and P20-T24 supplies bounded official v1/custom collection and
-autonomous discovery. P20-T25 adds pinned v2 dynamic discovery and protocol
-projections. P20-T26 adds background resolution and effective/catalog publication.
-P30-T146 implements the shared ENS runtime and operations; P40-T26 implements
-writer-authoritative database-only reads. P50-T80 provides publication-driven
-Web display. [P20](../plans/P20-enrichment.md),
-[P30](../plans/P30-contract-verification.md), [P40](../plans/P40-api.md), and
-[P50](../plans/P50-web.md) retain acceptance status. Local production and real
-Mainnet acceptance remain separate gates; P30-T148 is in progress.
-
-This decision supersedes [ADR-0041](ADR-0041-snapshot-stable-ens-primary-names.md).
-It also replaces the external-name provisions of
-[ADR-0011](ADR-0011-snapshot-search-stats-and-bounded-adapters.md), while retaining
-that ADR's general catalog, price, statistics, and housekeeping contracts.
-[ADR-0018](ADR-0018-api-read-replica-routing.md) continues to govern database
-routing; name reads retain writer authority without request-time name writes.
-
-## Context
-
-Request-triggered ENS resolution makes first reads depend on an RPC or CCIP
-gateway, discovers names only when queried, and keeps synchronization work in
-the API process. The address-detail path also resolves names, and the batch
-path creates database snapshots. Moving only the search resolver would leave
-those network and write dependencies intact.
-
-The explorer needs proactive name discovery and independently observable source
-coverage. Registration ownership, forward address records, and a verified
-address primary name are different facts. Events can establish standard record
-state, but arbitrary resolvers and offchain names still require resolution and
-cannot all be enumerated. Neither missing rows nor a caught-up event scanner
-prove that a particular name has no record.
+This decision supersedes ADR-0041 and the external-name provisions of ADR-0011.
+ADR-0018 retains writer-authoritative name reads. The current-chain rewrite
+replaces this ADR's previous independent ENS role and dual-source design.
+P20-T27/T28/T29 own persistence, protocols and publication; P30-T149 owns runtime;
+P40-T27/P50-T81 own public reads/display; P30-T150/T151 own local/live acceptance.
+Historical reports establish only the implementation and samples they exercised.
 
 ## Decision
 
-### One background role and two source paths
+### One chain and one runtime graph
 
-Add `serve --roles=ens` to the existing binary and shared supervisor. Its
-source collectors, projectors, candidate discovery, resolution workers, and
-publisher are the same components constructed by `roles=all`. Extend the
-independent production component manifest, role validation, readiness,
-shutdown, Compose, Helm, and production parity tests together. This is not a
-separate service repository or a database shared across unrelated deployments.
+Core sync is the only owner of block and log acquisition, canonicality and
+historical coverage. ENS consumes stored current-chain facts inside `enrich`;
+`all` constructs the identical components. There is no standalone `ens` role,
+external Mainnet collector, official-first selection or custom fallback.
+A deployment configures one manifest and one gateway policy. The manifest binds
+the configured chain/genesis, protocol revisions, deployment hashes, code and
+implementation identities, roots and coin type. There is no official/custom classification. Source IDs, manifest/policy digests
+and verified deployment identities retain provenance without a namespace enum.
+All chains use the same manifest identity checks.
 
-PostgreSQL is authoritative for progress, coverage, candidates, jobs, leases,
-observations, and publication. Optional notifications only wake durable work.
-Only `ens` and `all` load ENS RPC/gateway credentials and construct ENS network
-clients. API feature configuration still controls display and routes; it does
-not grant network access to the API. Disabling collection issues no source
-calls; re-enabling it resumes from durable, canonicality-checked progress.
-Recoverable source outages degrade name capability, not core readiness.
+Use the current-chain RPC pool for exact-state resolution and code/proxy identity
+verification. Never fetch missing historical blocks/logs in ENS. Each operation
+pins one endpoint and block hash, with no height/latest fallback. Close database
+snapshots before external work and recheck canonical attachment before commit.
+Only enrich/all construct ENS clients; API name reads cannot call RPC/gateways.
+Bound ENS concurrency separately from other enrichment workers. Recoverable
+ENS outages degrade names, not core readiness. Supervisor, readiness, shutdown,
+component manifest, deployment and secret scopes remain identical in all/split.
 
-- **Official source:** independently verify Mainnet chain ID and genesis,
-  retain source headers and exact finalized targets, and scan bounded log
-  ranges from the configured deployments through those targets. Store source
-  coverage separately from the explored chain's core tables. When exploring
-  Mainnet itself, reuse matching, continuously covered core facts where
-  available; the same ENS collector fills missing ranges without changing
-  source identity or idempotency.
-- **Custom source:** consume the explored chain's existing canonical blocks
-  and stored logs with an independent ENS cursor. Do not start another core
-  synchronizer. A nonzero core start or missing history is an explicit
-  coverage gap until core history is supplied or a verified baseline is
-  imported. Preview's genesis deployment is an explicit deployment baseline,
-  not fabricated registration logs.
+### Core references and derived state
 
-A reviewed deployment manifest binds chain/genesis, protocol, contract address,
-deployment block/hash, ABI/source revision, and recognized implementation
-identity. It includes historical official contracts required for the declared
-coverage, not just the latest registrar. Validate dynamically discovered
-contracts and proxy implementations before using standard event semantics.
-Unknown upgrades invalidate affected projections and enter explicit unsupported
-or background-resolution handling; matching an event signature is insufficient.
-Manifest changes have a new policy digest and require bounded replay before
-their coverage can be advertised. RPC URLs and secrets are not manifest data.
+Reference core chain/block/log identities rather than copying raw headers,
+log bodies or canonical truth. Keep independent ENS processing cursors,
+versioned protocol projections, candidate provenance, bounded jobs, leases,
+immutable observations and publication versions. Processing a block does not
+mean every name has resolved; acquiring a block does not mean ENS processed it.
 
-### Protocol projections
+Process bounded contiguous batches in transaction/log order. Commit derived
+state, candidates and progress atomically. Missing core history remains an
+explicit gap; operator imports do not close it. Canonical detach immediately
+invalidates dependent reads. Resume with bounded rewind/replay, including after
+disabled periods; a same-hash reattachment cannot revive an old worker lease.
+Keep orphan evidence and protect active dependencies from maintenance cleanup.
+Change the fresh-database baseline directly, without legacy adapters or startup
+backfills. Retain validated genesis import provenance without inventing events.
 
-ENS v1 and the current Preview deployment track Registry relationships,
-registrations/renewals, ownership, relevant NameWrapper changes, resolver
-selection, address records, and reverse names. Handle record deletion/version
-changes as well as assignment. Preserve registrar ownership separately from
-registry control and resolution targets. Registration or transfer alone never
-selects an address label.
+### Protocol completeness within name indexing
 
-ENSv2 discovery starts from trusted roots and factories, then follows registry
-and resolver links. Backfill pre-link history and earlier logs in a deployment
-transaction; exclude implementation-only contracts. Model the registry graph
-with multiple parent paths, cycle/depth bounds, registration lifecycles, and
-token regeneration without treating each token ID as a new name. Store resolver
-record bundles separately from name links and default records. A shared-record
-or ancestor change invalidates dependent versions before bounded fanout work
-rebuilds them. See the [official indexing specification](https://docs.ens.domains/ensv2/indexing/).
+Discover normalized plaintext names from verified events, validated reverse
+results and bounded explicit operator imports. Hash-only facts never invent a
+preimage. Discover address candidates independently of page requests. Forward
+names and address primary names are different publications; registration and
+ownership never establish a primary label.
 
-Treat v1 and v2 as versions of the official `ens` namespace, not competing
-sources. Follow the deployed resolver routing and migration relationships;
-reservation is not ownership, and migration need not emit a registrar
-registration event. Preserve existing reverse-record bridging and apply
-forward verification through the selected official entrypoint. See
+Support v1 registries, registrars, controllers, NameWrapper, resolver versions,
+record deletion and reverse records. For v2, verify trusted factory/proxy and
+implementation identities before decoding standard events. Replay initialization
+logs preceding the factory event and records preceding name links. Do not enroll
+implementation-only contracts. Unknown implementations invalidate affected
+standard projections instead of acquiring trust from matching signatures.
+
+Registry graphs support shared children, multiple paths, bounded depth/fanout
+and cycles. Parent-to-child links are authoritative; parent hints supplement
+them. Track reservation, registration, renewal, unregistration, transfer and
+expiry separately. Preserve token/resource identity through regeneration;
+re-registration creates a new lifecycle. Resolver bundles, name links, defaults
+and unlinking are separate facts. Shared or ancestor changes invalidate relevant
+results before bounded dependent recomputation. Time-based lifecycle transitions
+must not wait for an event that will never arrive.
+
+Support premigration, reservations, locked/unlocked and emancipated-subname
+migration, WrapperRegistry, v1 routing, ReverseMirror and default reverse records
+for the pinned supported deployments. Migration does not require a registrar
+registration event. Follow the deployed Universal Resolver entrypoint and retain
+ENSIP-15 normalization, matching coin type and reverse-to-forward agreement.
+Custom resolvers, wildcard and CCIP-Read use bounded background resolution.
+The supported contract revision, code/ABI identities and real-contract fixtures
+are explicit; prospective deployments are not evidence of live activation.
+
+Protocol references: [indexing](https://docs.ens.domains/ensv2/indexing/),
 [migration](https://docs.ens.domains/ensv2/migration/) and
 [reverse resolution](https://docs.ens.domains/ensv2/reverse-resolution/).
 
-Record names only from validated plaintext events, reverse results, or explicit
-candidate imports, checking normalization and the claimed hashes. A hash-only
-record remains a hash-only fact; do not guess its preimage. Apply each protocol's
-time-dependent semantics using the source block timestamp and scheduled
-reconciliation. Expiry, grace, ownership, and resolution validity are distinct;
-the absence of a new event does not freeze them forever.
+### Independent observation validity and directory coverage
 
-### Candidate discovery and background resolution
+An exact resolver observation may publish while historical discovery is behind.
+A job pins an already stored canonical block, attachment, manifest/policy and
+candidate generation. Publication checks its lease/deadline, immutable block
+identity and known invalidations atomically; a newer core head alone does not
+invalidate the job. Never require every resolver job to equal the moving scan
+target. Exact observations retain their observation block and bounded validity;
+they are not claims of exhaustive directory coverage or instantaneous head state.
 
-Candidate discovery runs independently of HTTP traffic. Sources are ENS events,
-the explored chain's indexed addresses (including authenticated genesis,
-transaction participants, and contracts), and an operator's explicit bounded
-name/address import. The import is idempotent and records candidate provenance;
-it never directly grants a public name or ownership. Add an ENS-specific
-bounded import/replay CLI boundary, documented as executable only when delivered.
-Search, address display, and pagination never enqueue candidates.
+Event-derived results and RPC-free reuse additionally require complete relevant
+history and verified implementation/dependency semantics. Incomplete projections
+cannot qualify an observation as event-derived. Older replayed events cannot
+replace or repeatedly invalidate a newer exact observation. Changes after the
+observation invalidate it and schedule reconciliation; undiscovered changes are
+bounded by the observation freshness window. Reorgs always invalidate affected
+observations, regardless of scan lag. Definitive negatives require actual proof;
+missing rows are unavailable/not_indexed, not not_found.
 
-Standard event projections may compute forward/reverse records only when the
-contract profile and complete relevant history establish their semantics.
-Incomplete records, arbitrary resolvers, wildcard resolution, and CCIP-Read use
-background Universal Resolver calls. Materialize successful forward results
-and primary results separately; primary display requires ENSIP-15 normalization,
-the same coin type, reverse-to-forward address agreement, and consistent
-resolver provenance. Retain the existing Go normalization/hashing libraries
-and the SPA's Viem normalization. Ethereum uses coin type 60; supported other
-EVM chains use ENSIP-11. Custom deployments remain visibly `custom_ens`.
+Retain the existing bounded defaults: 15-minute resolution freshness (Preview:
+one minute), 30-minute snapshot retention, 30-second failure delay, eight-second
+request timeout, 1 MiB responses, four CCIP levels, 100-address batches and eight
+resolution workers. Refresh after half the validity window. Failures never
+extend previous validity. Preserve bounded persisted retries and explicit repair
+for exhausted work; moving heads must not reset retry budgets indefinitely.
+The execution deadline starts at the first claim. Time spent waiting for the
+bounded worker pool is reported as backlog and does not exhaust an unattempted
+candidate; retries retain the original execution deadline.
 
-Preserve `official_first` and `custom_only`. Only a definitive official negative
-or the established unsupported-coin-type policy permits custom fallback.
-Unindexed, pending, stale, failed, or unsupported official deployments are not
-negative results. `custom_only` constructs no official pool; an empty gateway
-allowlist denies every CCIP request.
+Commit observation, job completion, public publication, search catalog version
+and names event atomically under lease/generation/canonical fences. Retained
+publication versions are immutable. Snapshot retention never extends freshness.
 
-Jobs bind source, candidate, target block, policy, and requested generation.
-Coalesce repeated invalidations; prioritize changed records and local address
-candidates while reserving bounded capacity for historical discovery and due
-refreshes. Persist retry deadlines, bounded attempt budgets, and terminal
-failure reasons. Never repeatedly create fresh jobs to bypass exhaustion;
-a new source generation or explicit replay can authorize new work.
+### Public contracts
 
-Copy bounded inputs and close database snapshots before external calls. Each
-operation and CCIP callback stays on one endpoint and exact block hash, never
-height or `latest`. Keep existing sender/callback checks, configured HTTPS
-gateway intersection, SSRF policy, response/depth/concurrency/time limits, and
-redacted typed failures. Callback data is processed by the contract before
-publication; a gateway response alone is not a verified address.
+Address detail, batch names and search read writer-backed read-only snapshots.
+They construct no ENS clients and write no ENS candidates, tasks or snapshots.
+Authentication/billing writes remain outside this prohibition. Opaque tokens
+reference retained publication versions and bind chain and configuration.
+Reject expired, invalidated, reorged or pruned snapshots rather than switching
+versions during pagination. Unknown dotted search does not enqueue resolution.
 
-### Storage, publication, and recovery
+OpenAPI owns public interfaces. Report directory coverage, resolution backlog
+and most recent successful publication separately. Include observation block and
+validity in results; unsafe integers are strings. Keep resolved/not_found/
+unavailable and controlled failure codes. Coverage gaps do not hide otherwise
+valid exact observations. The SPA uses the generated same-origin client, one
+existing SSE stream, atomic visible batches and expiry hiding. Show a compact
+incomplete-directory notice. No browser ENS RPC, extra EventSource or list poller.
 
-The fresh schema separates these responsibilities:
+### Acceptance
 
-| Data                 | Identity and purpose                                                                                                                   |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Sources and coverage | Source chain/genesis, namespace, protocol/deployment policy, target, contiguous scanned ranges, source health and publication progress |
-| Events               | Source chain, exact block hash, emitting contract, transaction/log identity, raw facts and canonical/orphan history                    |
-| Protocol projections | Registration/control, graph links, resolver records, name preimages and dependency versions                                            |
-| Candidates and jobs  | Discovery provenance, lookup direction/coin type, requested generation, lease, retry budget and refresh deadline                       |
-| Observations         | Immutable resolution result, exact source blocks/endpoints, dependency versions, observed time and validity                            |
-| Publications         | Effective official/custom selection, address-primary and forward views, catalog generation and durable public change event             |
+P30-T150 requires real pinned contracts and production all/split behavior,
+including autonomous discovery/publication before HTTP, partial coverage,
+reorgs, restart, expiry, hostile input and database-only API reads. Preserve the
+Preview .test genesis; use isolated real-v2 fixtures for protocol lifecycle tests.
 
-Source chain and explored/target chain are separate identities. Different
-offchain observations at the same source block have distinct observation
-versions; block identity alone cannot freeze dynamic data. Retain historical
-observations without treating them as current display identities.
+P30-T151 separately requires representative Mainnet core ingestion through
+background processing, database publication and API readback, reconciled against
+an independent RPC at pinned identities. Record image/manifest/block identities,
+coverage ranges, provenance of event versus imported candidates and limitations.
+Direct resolver success cannot replace publication acceptance. Full historical
+coverage is separately reported deployment progress, not a prerequisite for
+functional acceptance; neither samples nor imports prove a complete directory.
 
-Lease-fenced publication commits the verified result, effective-name views,
-catalog changes, completed job generation, and public change event atomically.
-Recheck exact source canonicality, deployment/dependency versions, lease and
-requested generation at commit. A stale worker cannot publish after a record
-change, migration, policy update, replay request, or lease loss. Ordinary search
-cannot bypass the effective-name selection and expose a stale catalog document.
+Avatars/text pages, public resolution submission,
+wallet-write name substitution and arbitrary offchain enumeration remain outside
+scope. Names are current presentation identities, not historical transaction facts.
 
-Custom canonical detach immediately makes dependent publications and snapshots
-unreadable, retaining orphan facts and rewinding discovery for replay. Recheck
-on re-enable even if collection was disabled during the reorg. A conflict in
-previously accepted Mainnet finalized identity halts that source's publication
-with a typed integrity failure and requires explicit operator repair; do not
-silently replace finalized history. These failures do not alter core chain truth.
+### Name registration profiles and directory (P20-T30/P40-T28/P50-T82)
 
-Housekeeping remains PostgreSQL-only under maintenance, with bounded deletion
-and retained-version floors. It cannot remove active task dependencies or
-reorgable facts. Protocol history can be compacted only into a validated
-finalized baseline sufficient for supported replay; snapshots are not a
-substitute for that baseline.
+Publish registration profiles independently of forward resolution. Registrant is
+the current registration-right holder, including wrapped token ownership, never
+a stale registration event or wrapper custodian. Controller describes a proven
+single management identity, proven multi-account permissions, unsupported models
+or pending evidence; ownership does not imply unrestricted editing rights.
+Registrar expiry for wrapped second-level names excludes wrapper grace extension.
+Registration lifecycle and observation freshness are separate. Unknown fields
+never become zero addresses, empty authoritative records or infinite lifetimes.
 
-### Freshness and database-only public reads
+Exact background reads pin one verified endpoint and canonical block. Incomplete
+event history cannot establish current ownership. Profiles and resolution each
+retain immutable observation/publication identity and finite validity, with the
+same lease, generation, configuration, dependency and attachment fences. Relevant
+transfers, renewals, permissions and migration invalidate and refresh them.
 
-Retain the current configurable defaults: dynamic resolution freshness 15
-minutes (Preview: one minute), snapshot retention 30 minutes, failure delay 30
-seconds, request timeout eight seconds, response bound 1 MiB, CCIP depth four,
-100 addresses per batch, and eight concurrent resolutions. Schedule dynamic
-successes and definitive negatives for refresh after half their freshness
-window. These are background deadlines, not HTTP-triggered refreshes.
+The canonical known-name directory is independent of resolved addresses. Search
+includes unresolved and expired names, keyed by normalized name, with summaries
+from the same read snapshot. Orphan discovery evidence withdraws a directory
+entry; stale profile fields disappear without removing a still-known name.
+GET /api/v1/names/{name} is read-only and returns partial known profiles or explicit
+not_indexed. Fields distinguish value, pending, not_applicable and unsupported;
+Controller additionally supports multi_account. Definitively empty addresses
+are not_set. Detail and search preserve independent observation metadata.
 
-Standard event-derived results are valid while their dependency versions,
-protocol validity, contiguous source coverage, and source health remain valid;
-do not poll every unchanged standard name through RPC. Source health also has
-a bounded freshness window, using the configured resolution freshness by
-default. Refreshing a health timestamp alone cannot make a source current when
-its target has advanced past an unprocessed gap. Dynamic results additionally
-require their own unexpired successful observation. Dirty or invalidated
-identities become pending immediately; failures never extend prior validity.
-
-Existing address detail, `/address-names`, and search routes read only published
-database views through neutral query contracts. They neither construct ENS
-clients nor write candidates, jobs, observations, or snapshot rows. Existing
-authentication, billing, and request accounting are outside this ENS-only write
-prohibition. Use read-only transactions on the writer for ENS reads and
-ENS-enabled search, retaining immediate canonical/publication checks; a new
-read-replica consistency protocol is outside scope.
-
-Keep the address-name states `resolved`, `not_found`, and `unavailable`.
-Controlled codes distinguish `not_indexed`, `sync_pending`,
-`resolution_pending`, `stale`, `unsupported_source`, and existing typed resolver
-failures. A missing row is not `not_found`: require a definitive negative
-observation or a complete standard projection that proves absence. Dotted
-search uses the same distinction and never resolves or queues an unknown name.
-General search filters unavailable/expired name documents while retaining
-independently matching non-name sources.
-
-API-generated bounded opaque snapshot tokens reference already retained
-immutable publication versions; issuing a token performs no database write.
-Bind tokens to chain, policy and exact published identity, and validate them
-against database retention and source/dependency validity. Retention is not
-freshness: expiry or reorg rejects reuse rather than extending a label's life.
-Return bounded validity metadata so the SPA can hide names when their validity
-ends even if no server event arrives. Workers alone advance published versions.
-
-Extend the existing status contract with per-source/protocol target, scanned
-and published positions, coverage, pending work, last success and failure code.
-Separate log coverage from resolution completion. Serialize unsafe public
-integers as strings. Add a durable `names` event to the existing SSE stream,
-carrying publication identity rather than unbounded address lists; commit it
-with publication and preserve replay/version-floor behavior.
-
-The SPA keeps exact addresses visible and uses the generated same-origin
-client. A `names` event triggers a fresh snapshot and atomic replacement of
-visible-address batches; it never mixes versions. Search pagination never
-silently switches versions. Expiry hides labels, while reconnect and view
-entry re-read database status. No new browser RPC or gateway calls, separate
-EventSource, or periodic list polling are introduced.
-
-## Delivery and acceptance boundaries
-
-Change the current declarative fresh-database baseline. Do not build old-cache
-conversion, startup schema/data backfills, dual readers, or request-time RPC
-fallback. History synchronization is ordinary bounded resumable worker work,
-not a migration or a startup transaction. Replace all three API resolution
-paths and request-created snapshots together at the API cutover.
-
-Keep the existing `.test` Preview genesis; use a separate isolated environment
-with pinned real v2 contracts for v2 lifecycle and migration acceptance. Local
-and production-image fixtures prove implementation, not public network health.
-
-The initial design review found prelaunch wording in the official deployment
-documentation. The subsequent 2026-10-29 [live read-only report](../reviews/P30-ens-mainnet-acceptance.md)
-verified the public Universal Resolver proxy chain, `isENSv2()`, root registry,
-actual registrations and representative records at finalized block 26297715.
-Pin and independently verify chain state rather than inferring activation or
-migration from documentation or deployed code. P30-T148 retains that positive
-activation evidence separately from its remaining full historical coverage and
-database-publication reconciliation gate; bounded live samples do not close it.
-
-This change does not add ownership/registration browsing, avatars/text-record
-pages, a public resolution-submission API, a third-party indexing authority,
-or implicit names in wallet write forms. It cannot enumerate every possible
-offchain/wildcard name. ENS names remain presentation identities rather than
-historical transaction facts, and Etherscan compatibility responses are unchanged.
-
-## Consequences
-
-- Newly registered names can be discovered and published without a page visit.
-- ENS read latency and availability are separated from upstream resolution;
-  the cost moves into explicit background capacity and coverage management.
-- Strictly read-only search cannot discover an unknown offchain name by itself;
-  users see a controlled unindexed state until background discovery or an
-  operator import supplies a candidate.
-- Overdue or invalidated labels disappear instead of continuing as current
-  identities. Monitoring must distinguish healthy source polling from a
-  growing parsing, fanout, or resolution backlog.
-- The role and protocol expansion requires real all/split, reorg, restart,
-  malicious-input and publication-race acceptance before implementation is done.
+The /name/$name route exposes Registrant, Controller, Expiration Time and Resolved
+Address. Primary names link to it; reverse/forward agreement remains mandatory.
+Use the existing single names SSE stream and local expiry timers, safe normalized
+URLs, bilingual/mobile layouts and independent address navigation/copy actions.
+No account-owned-name enumeration or registration management is introduced.

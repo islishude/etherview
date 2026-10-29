@@ -10,7 +10,7 @@ import (
 func TestENSOperatorImportReplayBoundsAndIsolation(t *testing.T) {
 	f := newENSSyncFixture(t)
 	ctx := t.Context()
-	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Mode: "official_first", Digest: testHash(2), OfficialSourceID: f.source}
+	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Digest: f.lookup.PolicyDigest, SourceID: f.source}
 	if e := f.repo.RegisterPolicy(ctx, policy); e != nil {
 		t.Fatal(e)
 	}
@@ -21,9 +21,10 @@ func TestENSOperatorImportReplayBoundsAndIsolation(t *testing.T) {
 			t.Fatal(n, e)
 		}
 	}
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates`, 3)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates`, 5)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE coin_type=60`, 5)
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_imports`, 1)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE requested_generation=2 AND minimum_generation=1`, 3)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE requested_generation=1 AND minimum_generation=1`, 5)
 	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_jobs`, 0)
 	if _, e := f.repo.ImportCandidates(ctx, scope, "batch-1", []string{"changed.eth"}); e == nil {
 		t.Fatal("changed idempotent batch accepted")
@@ -48,10 +49,14 @@ func TestENSOperatorImportReplayBoundsAndIsolation(t *testing.T) {
 		t.Fatal("changed replay batch accepted")
 	}
 	next, e := f.repo.ReplayCandidates(ctx, scope, "page-two", first.Through, 2, "operator retry")
-	if e != nil || next.Count != 1 || next.Through <= first.Through {
+	if e != nil || next.Count != 2 || next.Through <= first.Through {
 		t.Fatal(next, e)
 	}
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE requested_generation=3 AND minimum_generation=3`, 3)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_replays`, 2)
-	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='names'`, 2)
+	last, e := f.repo.ReplayCandidates(ctx, scope, "page-three", next.Through, 2, "operator retry")
+	if e != nil || last.Count != 1 {
+		t.Fatal(last, e)
+	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_candidates WHERE requested_generation=2 AND minimum_generation=2`, 5)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM ens_sync_replays`, 3)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='names' AND payload ? 'invalidated'`, 3)
 }

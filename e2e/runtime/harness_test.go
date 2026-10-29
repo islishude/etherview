@@ -12,23 +12,24 @@ import (
 )
 
 type harness struct {
-	pushURL       string
-	pushHTTP      *http.Client
-	pushInput     gen.PushSubscriptionInput
-	t             *testing.T
-	root          string
-	mode          string
-	phase         string
-	project       *testcompose.Project
-	apiService    string
-	baseURL       string
-	rpc           *rpc.Client
-	db            *pgxpool.Pool
-	http          *http.Client
-	artifacts     string
-	fixture       fixture
-	baseTimestamp uint64
-	rpcProxy      *receiptProxy
-	ensRPC        *ensLocalV2RPC
-	secrets       []string
+	pushURL         string
+	pushHTTP        *http.Client
+	pushInput       gen.PushSubscriptionInput
+	t               *testing.T
+	root            string
+	mode            string
+	phase           string
+	project         *testcompose.Project
+	apiService      string
+	baseURL         string
+	rpc             *rpc.Client
+	db              *pgxpool.Pool
+	http            *http.Client
+	artifacts       string
+	fixture         fixture
+	baseTimestamp   uint64
+	rpcProxy        *receiptProxy
+	ensTransactions []string
+	ensOwner        string
+	secrets         []string
 }

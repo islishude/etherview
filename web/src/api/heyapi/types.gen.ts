@@ -391,12 +391,16 @@ export type Status = {
 };
 
 export type NameSourceStatus = {
-    source: 'ens' | 'custom_ens';
     state: 'not_indexed' | 'sync_pending' | 'resolution_pending' | 'current' | 'stale' | 'unsupported_source';
-    protocols: Array<'v1' | 'v2' | 'custom'>;
+    protocols: Array<'v1' | 'v2'>;
+    /**
+     * Directory coverage from the configured protocol start, independent of exact resolution validity.
+     */
+    coverage: 'not_started' | 'incomplete' | 'complete';
+    coverage_start?: Quantity;
     target?: Quantity;
     scanned?: Quantity;
-    published?: Quantity;
+    last_published_block?: Quantity;
     pending: Quantity;
     last_success?: string;
     valid_until?: string;
@@ -1292,21 +1296,53 @@ export type TransactionAuthorizations = TransactionSubresourceIdentity & {
     items: Array<Eip7702Authorization>;
 };
 
+export type NameField = {
+    state: 'value' | 'pending' | 'not_applicable' | 'unsupported' | 'multi_account' | 'not_set';
+    /**
+     * Address or unsigned Unix seconds for expiration_time, never a fabricated empty value.
+     */
+    value?: string;
+    model?: 'registry_manager' | 'wrapped_manager' | 'permissioned_registry';
+};
+
+export type NameObservation = {
+    publication: Quantity;
+    observed_block_number: Quantity;
+    observed_block_hash: Hash;
+    valid_until: string;
+};
+
+export type NameDetail = {
+    name: string;
+    state: 'indexed' | 'not_indexed';
+    registration_state: 'pending' | 'unsupported' | 'not_applicable' | 'unregistered' | 'registered' | 'reserved' | 'grace_period' | 'expired';
+    registrant: NameField;
+    controller: NameField;
+    expiration_time: NameField;
+    resolved_address: NameField;
+    profile_observation?: NameObservation;
+    resolution_observation?: NameObservation;
+};
+
+export type NameDetailResponse = {
+    data: NameDetail;
+    meta: Meta;
+};
+
 export type SearchResult = {
-    kind: 'block' | 'transaction' | 'user_operation' | 'address' | 'contract' | 'token' | 'nft' | 'label';
+    kind: 'block' | 'transaction' | 'user_operation' | 'address' | 'contract' | 'token' | 'nft' | 'label' | 'name';
     key: string;
     label: string;
     rank: number;
     canonical?: boolean;
-    name_source?: 'ens' | 'custom_ens';
-    name_publication?: Quantity;
-    name_valid_until?: string;
+    name_details?: NameDetail;
 };
 
 export type PrimaryName = {
     name: string;
-    source: 'ens' | 'custom_ens';
     publication: Quantity;
+    observed_block_number: Quantity;
+    observed_block_hash: Hash;
     /**
      * Hide the name after this deadline even without a server event.
      */
@@ -4152,6 +4188,33 @@ export type ListTransactionAuthorizationsResponses = {
 };
 
 export type ListTransactionAuthorizationsResponse = ListTransactionAuthorizationsResponses[keyof ListTransactionAuthorizationsResponses];
+
+export type GetNameData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/names/{name}';
+};
+
+export type GetNameErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetNameError = GetNameErrors[keyof GetNameErrors];
+
+export type GetNameResponses = {
+    /**
+     * Known name with independently valid partial fields, or explicit not_indexed.
+     */
+    200: NameDetailResponse;
+};
+
+export type GetNameResponse = GetNameResponses[keyof GetNameResponses];
 
 export type ListAddressNamesData = {
     body?: never;

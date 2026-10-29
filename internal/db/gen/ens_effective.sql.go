@@ -14,11 +14,11 @@ import (
 const deleteExpiredENSEffectivePublications = `-- name: DeleteExpiredENSEffectivePublications :one
 WITH expired AS (
  SELECT e.id FROM ens_effective_publications e WHERE e.target_chain_id= $1 AND e.retain_until< $2
- AND NOT EXISTS(SELECT 1 FROM search_catalog_documents d WHERE d.name_publication_id=e.id)
+ AND NOT EXISTS(SELECT 1 FROM search_catalog_documents d WHERE d.name_publication_id=e.id OR d.name_profile_publication_id=e.id)
  AND EXISTS(SELECT 1 FROM ens_effective_publications newer WHERE newer.target_chain_id=e.target_chain_id AND newer.policy_digest=e.policy_digest AND newer.direction=e.direction AND newer.lookup_key=e.lookup_key AND newer.id>e.id)
  ORDER BY e.id LIMIT $3 FOR UPDATE SKIP LOCKED
 ), deleted AS (
- DELETE FROM ens_effective_publications e USING expired WHERE e.id=expired.id RETURNING e.id, e.target_chain_id, e.policy_digest, e.direction, e.lookup_key, e.official_publication_id, e.custom_publication_id, e.selected_publication_id, e.state, e.code, e.name, e.address, e.namespace, e.valid_until, e.retain_until, e.created_at
+ DELETE FROM ens_effective_publications e USING expired WHERE e.id=expired.id RETURNING e.id, e.target_chain_id, e.policy_digest, e.direction, e.lookup_key, e.selected_publication_id, e.state, e.code, e.name, e.address, e.valid_until, e.retain_until, e.created_at
 ), floors AS (
  INSERT INTO ens_effective_retention(target_chain_id,policy_digest,min_publication)
  SELECT target_chain_id,policy_digest,MAX(id)+1 FROM deleted GROUP BY target_chain_id,policy_digest
@@ -39,7 +39,7 @@ WITH expired AS (
  JOIN ens_sync_sources s ON s.id=o.source_id
  JOIN ens_sync_publications pub ON pub.observation_id=o.id
  WHERE s.target_chain_id= $1 AND pub.retain_until< $2
- AND NOT EXISTS(SELECT 1 FROM ens_effective_publications e WHERE e.official_publication_id=pub.id OR e.custom_publication_id=pub.id OR e.selected_publication_id=pub.id)
+ AND NOT EXISTS(SELECT 1 FROM ens_effective_publications e WHERE e.selected_publication_id=pub.id)
  AND EXISTS(SELECT 1 FROM ens_sync_observations newer WHERE newer.source_id=o.source_id AND newer.candidate_id=o.candidate_id AND newer.id>o.id)
  AND (o.evidence<>'projection' OR EXISTS(SELECT 1 FROM ens_sync_observations newer WHERE newer.source_id=o.source_id AND newer.candidate_id=o.candidate_id AND newer.evidence='projection' AND newer.id>o.id))
  ORDER BY o.id LIMIT $3 FOR UPDATE OF o SKIP LOCKED
@@ -64,7 +64,7 @@ func (q *Queries) DeleteExpiredENSSyncObservations(ctx context.Context, targetCh
 const emitENSInvalidation = `-- name: EmitENSInvalidation :exec
 INSERT INTO runtime_events(chain_id,event_type,payload)
 SELECT DISTINCT target_chain_id,'names',jsonb_build_object('source',CAST($1 AS text),'invalidated',true)
-FROM ens_effective_policies WHERE official_source_id=$1::bigint OR custom_source_id=$1::bigint
+FROM ens_effective_policies WHERE source_id=$1::bigint
 `
 
 func (q *Queries) EmitENSInvalidation(ctx context.Context, sourceID string) error {
@@ -83,7 +83,7 @@ func (q *Queries) EmitENSNamesEvent(ctx context.Context, targetChainID pgtype.Nu
 }
 
 const getENSEffectivePolicy = `-- name: GetENSEffectivePolicy :one
-SELECT target_chain_id, policy_digest, mode, official_source_id, custom_source_id, unsupported_coin, coin_type, custom_coin_type FROM ens_effective_policies WHERE target_chain_id= $1 AND policy_digest= $2
+SELECT target_chain_id, policy_digest, source_id, coin_type FROM ens_effective_policies WHERE target_chain_id= $1 AND policy_digest= $2
 `
 
 func (q *Queries) GetENSEffectivePolicy(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (EnsEffectivePolicy, error) {
@@ -92,12 +92,8 @@ func (q *Queries) GetENSEffectivePolicy(ctx context.Context, targetChainID pgtyp
 	err := row.Scan(
 		&i.TargetChainID,
 		&i.PolicyDigest,
-		&i.Mode,
-		&i.OfficialSourceID,
-		&i.CustomSourceID,
-		&i.UnsupportedCoin,
+		&i.SourceID,
 		&i.CoinType,
-		&i.CustomCoinType,
 	)
 	return i, err
 }
@@ -125,10 +121,10 @@ func (q *Queries) GetENSEffectiveSnapshot(ctx context.Context, targetChainID pgt
 }
 
 const listENSEffectivePoliciesForSource = `-- name: ListENSEffectivePoliciesForSource :many
-SELECT target_chain_id, policy_digest, mode, official_source_id, custom_source_id, unsupported_coin, coin_type, custom_coin_type FROM ens_effective_policies WHERE official_source_id= $1 OR custom_source_id= $1 ORDER BY target_chain_id,policy_digest LIMIT 65 FOR UPDATE
+SELECT target_chain_id, policy_digest, source_id, coin_type FROM ens_effective_policies WHERE source_id= $1 ORDER BY target_chain_id,policy_digest LIMIT 65 FOR UPDATE
 `
 
-func (q *Queries) ListENSEffectivePoliciesForSource(ctx context.Context, sourceID *int64) ([]EnsEffectivePolicy, error) {
+func (q *Queries) ListENSEffectivePoliciesForSource(ctx context.Context, sourceID int64) ([]EnsEffectivePolicy, error) {
 	rows, err := q.db.Query(ctx, listENSEffectivePoliciesForSource, sourceID)
 	if err != nil {
 		return nil, err
@@ -140,12 +136,8 @@ func (q *Queries) ListENSEffectivePoliciesForSource(ctx context.Context, sourceI
 		if err := rows.Scan(
 			&i.TargetChainID,
 			&i.PolicyDigest,
-			&i.Mode,
-			&i.OfficialSourceID,
-			&i.CustomSourceID,
-			&i.UnsupportedCoin,
+			&i.SourceID,
 			&i.CoinType,
-			&i.CustomCoinType,
 		); err != nil {
 			return nil, err
 		}
@@ -158,8 +150,8 @@ func (q *Queries) ListENSEffectivePoliciesForSource(ctx context.Context, sourceI
 }
 
 const putENSEffectivePublication = `-- name: PutENSEffectivePublication :one
-INSERT INTO ens_effective_publications(target_chain_id,policy_digest,direction,lookup_key,official_publication_id,custom_publication_id,selected_publication_id,state,code,name,address,namespace,valid_until,retain_until)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+INSERT INTO ens_effective_publications(target_chain_id,policy_digest,direction,lookup_key,selected_publication_id,state,code,name,address,valid_until,retain_until)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 RETURNING id
 `
 
@@ -168,14 +160,11 @@ type PutENSEffectivePublicationParams struct {
 	PolicyDigest          []byte             `db:"policy_digest" json:"policy_digest"`
 	Direction             string             `db:"direction" json:"direction"`
 	LookupKey             string             `db:"lookup_key" json:"lookup_key"`
-	OfficialPublicationID *int64             `db:"official_publication_id" json:"official_publication_id"`
-	CustomPublicationID   *int64             `db:"custom_publication_id" json:"custom_publication_id"`
 	SelectedPublicationID *int64             `db:"selected_publication_id" json:"selected_publication_id"`
 	State                 string             `db:"state" json:"state"`
 	Code                  *string            `db:"code" json:"code"`
 	Name                  *string            `db:"name" json:"name"`
 	Address               []byte             `db:"address" json:"address"`
-	Namespace             *string            `db:"namespace" json:"namespace"`
 	ValidUntil            pgtype.Timestamptz `db:"valid_until" json:"valid_until"`
 	RetainUntil           pgtype.Timestamptz `db:"retain_until" json:"retain_until"`
 }
@@ -186,14 +175,11 @@ func (q *Queries) PutENSEffectivePublication(ctx context.Context, arg PutENSEffe
 		arg.PolicyDigest,
 		arg.Direction,
 		arg.LookupKey,
-		arg.OfficialPublicationID,
-		arg.CustomPublicationID,
 		arg.SelectedPublicationID,
 		arg.State,
 		arg.Code,
 		arg.Name,
 		arg.Address,
-		arg.Namespace,
 		arg.ValidUntil,
 		arg.RetainUntil,
 	)
@@ -203,15 +189,18 @@ func (q *Queries) PutENSEffectivePublication(ctx context.Context, arg PutENSEffe
 }
 
 const readENSEffectiveName = `-- name: ReadENSEffectiveName :one
-SELECT e.id, e.target_chain_id, e.policy_digest, e.direction, e.lookup_key, e.official_publication_id, e.custom_publication_id, e.selected_publication_id, e.state, e.code, e.name, e.address, e.namespace, e.valid_until, e.retain_until, e.created_at,ens_effective_publication_current(e.id)::boolean AS current,
+SELECT e.id, e.target_chain_id, e.policy_digest, e.direction, e.lookup_key, e.selected_publication_id, e.state, e.code, e.name, e.address, e.valid_until, e.retain_until, e.created_at,o.block_hash AS observed_block_hash,b.number AS observed_block_number,ens_effective_publication_current(e.id)::boolean AS current,
  CASE
  WHEN s.state IN ('halted','unsupported') THEN 'unsupported_source'
  WHEN s.state<>'active' OR s.target_hash IS DISTINCT FROM s.scanned_hash THEN 'sync_pending'
  WHEN s.healthy_until<=clock_timestamp() OR e.valid_until<=clock_timestamp() OR e.retain_until<=clock_timestamp() THEN 'stale'
  ELSE COALESCE(e.code,'resolution_pending') END::text AS unavailable_code
 FROM ens_effective_publications e
+LEFT JOIN ens_sync_publications pub ON pub.id=e.selected_publication_id
+LEFT JOIN ens_sync_observations o ON o.id=pub.observation_id
+LEFT JOIN ens_sync_blocks b ON b.source_id=o.source_id AND b.hash=o.block_hash
 JOIN ens_effective_policies policy ON policy.target_chain_id=e.target_chain_id AND policy.policy_digest=e.policy_digest
-LEFT JOIN ens_sync_progress s ON s.source_id=CASE WHEN policy.mode='custom_only' OR policy.unsupported_coin THEN policy.custom_source_id ELSE policy.official_source_id END
+LEFT JOIN ens_sync_progress s ON s.source_id=policy.source_id
 WHERE e.target_chain_id= $1 AND e.policy_digest= $2 AND e.direction= $3 AND e.lookup_key= $4 AND e.id<= $5
 ORDER BY e.id DESC LIMIT 1
 `
@@ -230,17 +219,16 @@ type ReadENSEffectiveNameRow struct {
 	PolicyDigest          []byte             `db:"policy_digest" json:"policy_digest"`
 	Direction             string             `db:"direction" json:"direction"`
 	LookupKey             string             `db:"lookup_key" json:"lookup_key"`
-	OfficialPublicationID *int64             `db:"official_publication_id" json:"official_publication_id"`
-	CustomPublicationID   *int64             `db:"custom_publication_id" json:"custom_publication_id"`
 	SelectedPublicationID *int64             `db:"selected_publication_id" json:"selected_publication_id"`
 	State                 string             `db:"state" json:"state"`
 	Code                  *string            `db:"code" json:"code"`
 	Name                  *string            `db:"name" json:"name"`
 	Address               []byte             `db:"address" json:"address"`
-	Namespace             *string            `db:"namespace" json:"namespace"`
 	ValidUntil            pgtype.Timestamptz `db:"valid_until" json:"valid_until"`
 	RetainUntil           pgtype.Timestamptz `db:"retain_until" json:"retain_until"`
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	ObservedBlockHash     []byte             `db:"observed_block_hash" json:"observed_block_hash"`
+	ObservedBlockNumber   pgtype.Numeric     `db:"observed_block_number" json:"observed_block_number"`
 	Current               bool               `db:"current" json:"current"`
 	UnavailableCode       string             `db:"unavailable_code" json:"unavailable_code"`
 }
@@ -260,17 +248,16 @@ func (q *Queries) ReadENSEffectiveName(ctx context.Context, arg ReadENSEffective
 		&i.PolicyDigest,
 		&i.Direction,
 		&i.LookupKey,
-		&i.OfficialPublicationID,
-		&i.CustomPublicationID,
 		&i.SelectedPublicationID,
 		&i.State,
 		&i.Code,
 		&i.Name,
 		&i.Address,
-		&i.Namespace,
 		&i.ValidUntil,
 		&i.RetainUntil,
 		&i.CreatedAt,
+		&i.ObservedBlockHash,
+		&i.ObservedBlockNumber,
 		&i.Current,
 		&i.UnavailableCode,
 	)
@@ -278,7 +265,7 @@ func (q *Queries) ReadENSEffectiveName(ctx context.Context, arg ReadENSEffective
 }
 
 const readENSEffectivePublication = `-- name: ReadENSEffectivePublication :one
-SELECT id, target_chain_id, policy_digest, direction, lookup_key, official_publication_id, custom_publication_id, selected_publication_id, state, code, name, address, namespace, valid_until, retain_until, created_at FROM ens_effective_publications WHERE target_chain_id= $1 AND policy_digest= $2
+SELECT id, target_chain_id, policy_digest, direction, lookup_key, selected_publication_id, state, code, name, address, valid_until, retain_until, created_at FROM ens_effective_publications WHERE target_chain_id= $1 AND policy_digest= $2
 AND direction= $3 AND lookup_key= $4 AND ($5::bigint=-1 OR id<= $5::bigint)
 ORDER BY id DESC LIMIT 1
 `
@@ -306,14 +293,11 @@ func (q *Queries) ReadENSEffectivePublication(ctx context.Context, arg ReadENSEf
 		&i.PolicyDigest,
 		&i.Direction,
 		&i.LookupKey,
-		&i.OfficialPublicationID,
-		&i.CustomPublicationID,
 		&i.SelectedPublicationID,
 		&i.State,
 		&i.Code,
 		&i.Name,
 		&i.Address,
-		&i.Namespace,
 		&i.ValidUntil,
 		&i.RetainUntil,
 		&i.CreatedAt,
@@ -341,20 +325,23 @@ func (q *Queries) ReadENSEffectiveSnapshot(ctx context.Context, targetChainID pg
 }
 
 const readENSNameSourceStatus = `-- name: ReadENSNameSourceStatus :many
-SELECT s.namespace,p.state,p.failure_code,p.target_number,p.scanned_number,p.healthy_until,
+SELECT s.start_number,p.state,p.failure_code,
+ (SELECT max(number) FROM canonical_blocks WHERE chain_id=s.source_chain_id)::numeric AS target_number,
+ (SELECT b.number FROM ens_sync_blocks b WHERE b.source_id=s.id AND b.hash=p.scanned_hash AND b.canonical)::numeric AS scanned_number,
+ p.healthy_until,
  ARRAY(SELECT DISTINCT protocol FROM ens_sync_deployments d WHERE d.source_id=s.id ORDER BY protocol)::text[] AS protocols,
  (SELECT count(*) FROM ens_sync_candidates c LEFT JOIN ens_sync_jobs j ON j.source_id=c.source_id AND j.candidate_id=c.id AND j.generation=c.requested_generation
   WHERE c.source_id=s.id AND (j.id IS NULL OR j.state<>'complete'))::bigint AS pending,
  (SELECT MAX(o.observed_at) FROM ens_sync_observations o WHERE o.source_id=s.id)::timestamptz AS last_success,
  (SELECT MAX(b.number) FROM ens_sync_observations o JOIN ens_sync_blocks b ON b.source_id=o.source_id AND b.hash=o.block_hash AND b.canonical
   WHERE o.source_id=s.id)::numeric AS published
-FROM ens_effective_policies policy JOIN ens_sync_sources s ON s.id=policy.official_source_id OR s.id=policy.custom_source_id
+FROM ens_effective_policies policy JOIN ens_sync_sources s ON s.id=policy.source_id
 JOIN ens_sync_progress p ON p.source_id=s.id WHERE policy.target_chain_id= $1 AND policy.policy_digest= $2
-ORDER BY s.namespace LIMIT 2
+ORDER BY s.id LIMIT 1
 `
 
 type ReadENSNameSourceStatusRow struct {
-	Namespace     string             `db:"namespace" json:"namespace"`
+	StartNumber   pgtype.Numeric     `db:"start_number" json:"start_number"`
 	State         string             `db:"state" json:"state"`
 	FailureCode   *string            `db:"failure_code" json:"failure_code"`
 	TargetNumber  pgtype.Numeric     `db:"target_number" json:"target_number"`
@@ -376,7 +363,7 @@ func (q *Queries) ReadENSNameSourceStatus(ctx context.Context, targetChainID pgt
 	for rows.Next() {
 		var i ReadENSNameSourceStatusRow
 		if err := rows.Scan(
-			&i.Namespace,
+			&i.StartNumber,
 			&i.State,
 			&i.FailureCode,
 			&i.TargetNumber,
@@ -399,13 +386,12 @@ func (q *Queries) ReadENSNameSourceStatus(ctx context.Context, targetChainID pgt
 
 const readENSPendingNameCode = `-- name: ReadENSPendingNameCode :one
 SELECT (CASE WHEN p.state IN ('unsupported','halted') THEN 'unsupported_source'
- WHEN p.state<>'active' OR p.target_hash IS DISTINCT FROM p.scanned_hash THEN 'sync_pending'
- WHEN p.healthy_until<=clock_timestamp() THEN 'stale'
  WHEN c.id IS NULL THEN 'not_indexed'
+ WHEN p.target_hash IS NULL THEN 'sync_pending'
  ELSE COALESCE(j.failure_code,'resolution_pending') END)::text AS code
 FROM ens_effective_policies policy
-JOIN ens_sync_progress p ON p.source_id=CASE WHEN policy.mode='custom_only' OR policy.unsupported_coin THEN policy.custom_source_id ELSE policy.official_source_id END
-LEFT JOIN ens_sync_candidates c ON c.source_id=p.source_id AND c.direction= $1 AND c.lookup_key= $2 AND c.coin_type=CASE WHEN p.source_id=policy.custom_source_id THEN policy.custom_coin_type ELSE policy.coin_type END
+JOIN ens_sync_progress p ON p.source_id=policy.source_id
+LEFT JOIN ens_sync_candidates c ON c.source_id=p.source_id AND c.direction= $1 AND c.lookup_key= $2 AND c.coin_type=policy.coin_type
 LEFT JOIN ens_sync_jobs j ON j.source_id=c.source_id AND j.candidate_id=c.id AND j.generation=c.requested_generation
 WHERE policy.target_chain_id= $3 AND policy.policy_digest= $4
 `
@@ -430,33 +416,24 @@ func (q *Queries) ReadENSPendingNameCode(ctx context.Context, arg ReadENSPending
 }
 
 const registerENSEffectivePolicy = `-- name: RegisterENSEffectivePolicy :exec
-INSERT INTO ens_effective_policies(target_chain_id,policy_digest,mode,official_source_id,custom_source_id,unsupported_coin,coin_type,custom_coin_type)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-ON CONFLICT(target_chain_id,policy_digest) DO UPDATE SET mode=EXCLUDED.mode,official_source_id=EXCLUDED.official_source_id,
- custom_source_id=EXCLUDED.custom_source_id,unsupported_coin=EXCLUDED.unsupported_coin,coin_type=EXCLUDED.coin_type,custom_coin_type=EXCLUDED.custom_coin_type
+INSERT INTO ens_effective_policies(target_chain_id,policy_digest,source_id,coin_type)
+VALUES ($1,$2,$3,$4)
+ON CONFLICT(target_chain_id,policy_digest) DO UPDATE SET source_id=EXCLUDED.source_id,coin_type=EXCLUDED.coin_type
 `
 
 type RegisterENSEffectivePolicyParams struct {
-	TargetChainID    pgtype.Numeric `db:"target_chain_id" json:"target_chain_id"`
-	PolicyDigest     []byte         `db:"policy_digest" json:"policy_digest"`
-	Mode             string         `db:"mode" json:"mode"`
-	OfficialSourceID *int64         `db:"official_source_id" json:"official_source_id"`
-	CustomSourceID   *int64         `db:"custom_source_id" json:"custom_source_id"`
-	UnsupportedCoin  bool           `db:"unsupported_coin" json:"unsupported_coin"`
-	CoinType         pgtype.Numeric `db:"coin_type" json:"coin_type"`
-	CustomCoinType   pgtype.Numeric `db:"custom_coin_type" json:"custom_coin_type"`
+	TargetChainID pgtype.Numeric `db:"target_chain_id" json:"target_chain_id"`
+	PolicyDigest  []byte         `db:"policy_digest" json:"policy_digest"`
+	SourceID      int64          `db:"source_id" json:"source_id"`
+	CoinType      pgtype.Numeric `db:"coin_type" json:"coin_type"`
 }
 
 func (q *Queries) RegisterENSEffectivePolicy(ctx context.Context, arg RegisterENSEffectivePolicyParams) error {
 	_, err := q.db.Exec(ctx, registerENSEffectivePolicy,
 		arg.TargetChainID,
 		arg.PolicyDigest,
-		arg.Mode,
-		arg.OfficialSourceID,
-		arg.CustomSourceID,
-		arg.UnsupportedCoin,
+		arg.SourceID,
 		arg.CoinType,
-		arg.CustomCoinType,
 	)
 	return err
 }

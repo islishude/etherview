@@ -1,5 +1,5 @@
 import { AppNavigation } from "./AppNavigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, lazy, Suspense } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { normalize as normalizeENSName } from "viem/ens";
@@ -10,6 +10,8 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { AppFrame, ShellIcon } from "./DesignPrimitives";
 import { WalletMenu } from "./WalletMenu";
 import { AddressNamesProvider } from "@/ens/AddressNamesProvider";
+
+const NameCoverageNotice = lazy(() => import("@/ens/NameCoverageNotice"));
 
 export function AppShell() {
   const { i18n, t } = useTranslation();
@@ -117,6 +119,9 @@ export function AppShell() {
         </header>
 
         <main id="main-content" className="shell-width site-main" tabIndex={-1}>
+          <Suspense>
+            <NameCoverageNotice />
+          </Suspense>
           <Outlet />
         </main>
 

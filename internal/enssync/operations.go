@@ -31,7 +31,7 @@ func (r *Repository) operationScope(ctx context.Context, q *dbgen.Queries, scope
 		return "", e
 	}
 	chain, ok := unsignedNumeric(scope.ChainID)
-	if !ok || chain.Int.Cmp(source.TargetChainID.Int) != 0 || common.BytesToHash(source.PolicyDigest) != scope.Policy {
+	if !ok || !equalUnsignedNumeric(chain, source.TargetChainID) || common.BytesToHash(source.PolicyDigest) != scope.Policy {
 		return "", ErrSourceIdentity
 	}
 	policy, e := q.GetENSEffectivePolicy(ctx, chain, scope.Policy.Bytes())
@@ -39,15 +39,17 @@ func (r *Repository) operationScope(ctx context.Context, q *dbgen.Queries, scope
 		return "", e
 	}
 	coin := policy.CoinType
-	if policy.CustomSourceID != nil && *policy.CustomSourceID == scope.SourceID {
-		coin = policy.CustomCoinType
-	} else if policy.OfficialSourceID == nil || *policy.OfficialSourceID != scope.SourceID {
+	if policy.SourceID != scope.SourceID {
 		return "", ErrSourceIdentity
 	}
 	if _, e = q.LockENSSyncSource(ctx, scope.SourceID); e != nil {
 		return "", e
 	}
-	return coin.Int.String(), nil
+	value, e := uint256Value(coin)
+	if e != nil {
+		return "", e
+	}
+	return value.String(), nil
 }
 func (r *Repository) ImportCandidates(ctx context.Context, scope OperationScope, batch string, values []string) (int, error) {
 	if !endpointLabel.MatchString(batch) || len(values) < 1 || len(values) > 1000 {

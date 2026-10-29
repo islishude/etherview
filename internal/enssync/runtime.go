@@ -9,7 +9,6 @@ import (
 	"time"
 
 	ensresolver "github.com/islishude/etherview/internal/ens"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -19,7 +18,7 @@ type RuntimeSource struct {
 	Gateways []string
 }
 type RuntimeOptions struct {
-	Sources      []RuntimeSource
+	Source       RuntimeSource
 	Policy       EffectivePolicy
 	Collector    CollectorOptions
 	Worker       WorkerOptions
@@ -35,47 +34,38 @@ type runtimeSource struct {
 type Runtime struct {
 	repo    *Repository
 	options RuntimeOptions
-	sources []*runtimeSource
+	source  *runtimeSource
 }
 
 func NewRuntime(repo *Repository, options RuntimeOptions) (*Runtime, error) {
-	if repo == nil || len(options.Sources) < 1 || len(options.Sources) > 2 || options.PollInterval < 100*time.Millisecond || options.PollInterval > time.Minute {
+	if repo == nil || options.PollInterval < 100*time.Millisecond || options.PollInterval > time.Minute {
 		return nil, ErrInvalidInput
 	}
 	if options.Logger == nil {
 		options.Logger = slog.Default()
 	}
 	runtime := &Runtime{repo: repo, options: options}
-	namespaces := map[enscontract.Namespace]bool{}
-	for _, source := range options.Sources {
-		m := source.Manifest
-		if namespaces[m.Namespace] || m.Policy != options.Policy.Digest || m.TargetChainID != options.Policy.TargetChainID {
-			return nil, ErrSourceIdentity
-		}
-		namespaces[m.Namespace] = true
-		pool := source.Pool
-		if m.Namespace == enscontract.Custom {
-			pool = nil
-		}
-		collector, e := NewCollector(repo, m, pool, options.Collector)
-		if e != nil {
-			return nil, e
-		}
-		workerOptions := options.Worker
-		workerOptions.SourceID = 1
-		workerOptions.Manifest = m
-		workerOptions.Pool = source.Pool
-		workerOptions.Registry = m.Registry
-		workerOptions.UniversalResolver = m.UniversalResolver
-		workerOptions.Gateways = source.Gateways
-		if _, e = NewWorker(repo, workerOptions); e != nil {
-			return nil, e
-		}
-		runtime.sources = append(runtime.sources, &runtimeSource{source: source, collector: collector})
+	source := options.Source
+	m := source.Manifest
+	if m.Policy != options.Policy.Digest || m.TargetChainID != options.Policy.TargetChainID {
+		return nil, ErrSourceIdentity
 	}
-	if options.Policy.Mode == "custom_only" && namespaces[enscontract.Official] {
-		return nil, ErrInvalidInput
+	pool := source.Pool
+	collector, e := NewCollector(repo, m, pool, options.Collector)
+	if e != nil {
+		return nil, e
 	}
+	workerOptions := options.Worker
+	workerOptions.SourceID = 1
+	workerOptions.Manifest = m
+	workerOptions.Pool = source.Pool
+	workerOptions.Registry = m.Registry
+	workerOptions.UniversalResolver = m.UniversalResolver
+	workerOptions.Gateways = source.Gateways
+	if _, e = NewWorker(repo, workerOptions); e != nil {
+		return nil, e
+	}
+	runtime.source = &runtimeSource{source: source, collector: collector}
 	return runtime, nil
 }
 
@@ -95,43 +85,36 @@ func (s *CollectionService) Run(ctx context.Context) error {
 	r := s.runtime
 	registered := false
 	return poll(ctx, r.options.PollInterval, func() {
+		source := r.source
 		if !registered {
-			policy := r.options.Policy
-			for _, source := range r.sources {
-				id, e := source.collector.EnsureSource(ctx)
-				if e != nil {
-					r.report(ctx, "identity", source.source.Manifest.Namespace, e)
-					return
-				}
-				source.id.Store(id)
-				if source.source.Manifest.Namespace == enscontract.Official {
-					policy.OfficialSourceID = id
-				} else {
-					policy.CustomSourceID = id
-				}
+			id, err := source.collector.EnsureSource(ctx)
+			if err != nil {
+				r.report(ctx, "identity", err)
+				return
 			}
-			if e := r.repo.RegisterPolicy(ctx, policy); e != nil {
-				r.report(ctx, "policy", "", e)
+			source.id.Store(id)
+			policy := r.options.Policy
+			policy.SourceID = id
+			if err := r.repo.RegisterPolicy(ctx, policy); err != nil {
+				r.report(ctx, "policy", err)
 				return
 			}
 			registered = true
 		}
-		for _, source := range r.sources {
-			if _, e := source.collector.Step(ctx, true); e != nil {
-				r.report(ctx, "collection", source.source.Manifest.Namespace, e)
-				continue
-			}
-			worker, e := r.worker(source)
-			if e == nil {
-				e = worker.Schedule(ctx, 100)
-			}
-			if e != nil {
-				r.report(ctx, "schedule", source.source.Manifest.Namespace, e)
-			}
+		if _, err := source.collector.Step(ctx, true); err != nil {
+			r.report(ctx, "collection", err)
+		}
+		worker, err := r.worker()
+		if err == nil {
+			err = worker.Schedule(ctx, 100)
+		}
+		if err != nil {
+			r.report(ctx, "schedule", err)
 		}
 	})
 }
-func (r *Runtime) worker(source *runtimeSource) (*Worker, error) {
+func (r *Runtime) worker() (*Worker, error) {
+	source := r.source
 	options := r.options.Worker
 	options.Observer = r.options.Observer
 	options.SourceID = source.id.Load()
@@ -145,25 +128,22 @@ func (r *Runtime) worker(source *runtimeSource) (*Worker, error) {
 func (s *ResolutionService) Run(ctx context.Context) error {
 	r := s.runtime
 	return poll(ctx, r.options.PollInterval, func() {
-		for offset := range len(r.sources) {
-			source := r.sources[(offset+s.index)%len(r.sources)]
-			if source.id.Load() == 0 {
-				continue
+		if r.source.id.Load() == 0 {
+			return
+		}
+		worker, err := r.worker()
+		if err != nil {
+			r.report(ctx, "worker", err)
+			return
+		}
+		// Each lane has bounded work and yields to collection and cancellation.
+		for range 16 {
+			worked, err := worker.Step(ctx)
+			if err != nil {
+				r.report(ctx, "resolution", err)
 			}
-			worker, e := r.worker(source)
-			if e != nil {
-				r.report(ctx, "worker", source.source.Manifest.Namespace, e)
-				continue
-			}
-			// Each lane has bounded work and yields to collection and cancellation.
-			for range 16 {
-				worked, e := worker.Step(ctx)
-				if e != nil {
-					r.report(ctx, "resolution", source.source.Manifest.Namespace, e)
-				}
-				if !worked || ctx.Err() != nil {
-					break
-				}
+			if !worked || ctx.Err() != nil {
+				break
 			}
 		}
 	})
@@ -184,7 +164,7 @@ func poll(ctx context.Context, interval time.Duration, step func()) error {
 		}
 	}
 }
-func (r *Runtime) report(ctx context.Context, phase string, source enscontract.Namespace, e error) {
+func (r *Runtime) report(ctx context.Context, phase string, e error) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -200,7 +180,7 @@ func (r *Runtime) report(ctx context.Context, phase string, source enscontract.N
 		}
 	}
 	if r.options.Observer != nil {
-		r.options.Observer.RecordENS(ensresolver.MetricObservation{Source: source, Direction: phase, Outcome: "error"})
+		r.options.Observer.RecordENS(ensresolver.MetricObservation{Direction: phase, Outcome: "error"})
 	}
-	r.options.Logger.WarnContext(ctx, "ENS background work deferred", "phase", phase, "source", string(source), "code", code)
+	r.options.Logger.WarnContext(ctx, "ENS background work deferred", "phase", phase, "code", code)
 }

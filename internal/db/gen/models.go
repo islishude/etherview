@@ -916,14 +916,10 @@ type Eip7702AuthorizationsP01000000 struct {
 }
 
 type EnsEffectivePolicy struct {
-	TargetChainID    pgtype.Numeric `db:"target_chain_id" json:"target_chain_id"`
-	PolicyDigest     []byte         `db:"policy_digest" json:"policy_digest"`
-	Mode             string         `db:"mode" json:"mode"`
-	OfficialSourceID *int64         `db:"official_source_id" json:"official_source_id"`
-	CustomSourceID   *int64         `db:"custom_source_id" json:"custom_source_id"`
-	UnsupportedCoin  bool           `db:"unsupported_coin" json:"unsupported_coin"`
-	CoinType         pgtype.Numeric `db:"coin_type" json:"coin_type"`
-	CustomCoinType   pgtype.Numeric `db:"custom_coin_type" json:"custom_coin_type"`
+	TargetChainID pgtype.Numeric `db:"target_chain_id" json:"target_chain_id"`
+	PolicyDigest  []byte         `db:"policy_digest" json:"policy_digest"`
+	SourceID      int64          `db:"source_id" json:"source_id"`
+	CoinType      pgtype.Numeric `db:"coin_type" json:"coin_type"`
 }
 
 type EnsEffectivePublication struct {
@@ -932,14 +928,11 @@ type EnsEffectivePublication struct {
 	PolicyDigest          []byte             `db:"policy_digest" json:"policy_digest"`
 	Direction             string             `db:"direction" json:"direction"`
 	LookupKey             string             `db:"lookup_key" json:"lookup_key"`
-	OfficialPublicationID *int64             `db:"official_publication_id" json:"official_publication_id"`
-	CustomPublicationID   *int64             `db:"custom_publication_id" json:"custom_publication_id"`
 	SelectedPublicationID *int64             `db:"selected_publication_id" json:"selected_publication_id"`
 	State                 string             `db:"state" json:"state"`
 	Code                  *string            `db:"code" json:"code"`
 	Name                  *string            `db:"name" json:"name"`
 	Address               []byte             `db:"address" json:"address"`
-	Namespace             *string            `db:"namespace" json:"namespace"`
 	ValidUntil            pgtype.Timestamptz `db:"valid_until" json:"valid_until"`
 	RetainUntil           pgtype.Timestamptz `db:"retain_until" json:"retain_until"`
 	CreatedAt             pgtype.Timestamptz `db:"created_at" json:"created_at"`
@@ -964,6 +957,13 @@ type EnsSyncBlock struct {
 	ParentHash []byte             `db:"parent_hash" json:"parent_hash"`
 	BlockTime  pgtype.Timestamptz `db:"block_time" json:"block_time"`
 	Canonical  bool               `db:"canonical" json:"canonical"`
+}
+
+type EnsSyncBlockRef struct {
+	SourceID        int64              `db:"source_id" json:"source_id"`
+	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Hash            []byte             `db:"hash" json:"hash"`
+	CoreCanonicalAt pgtype.Timestamptz `db:"core_canonical_at" json:"core_canonical_at"`
 }
 
 type EnsSyncCandidate struct {
@@ -999,14 +999,20 @@ type EnsSyncDeployment struct {
 }
 
 type EnsSyncEvent struct {
-	SourceID         int64    `db:"source_id" json:"source_id"`
-	BlockHash        []byte   `db:"block_hash" json:"block_hash"`
-	LogIndex         int32    `db:"log_index" json:"log_index"`
-	TransactionHash  []byte   `db:"transaction_hash" json:"transaction_hash"`
-	TransactionIndex int32    `db:"transaction_index" json:"transaction_index"`
-	Emitter          []byte   `db:"emitter" json:"emitter"`
-	Topics           [][]byte `db:"topics" json:"topics"`
-	Data             []byte   `db:"data" json:"data"`
+	SourceID         int64  `db:"source_id" json:"source_id"`
+	BlockHash        []byte `db:"block_hash" json:"block_hash"`
+	LogIndex         int64  `db:"log_index" json:"log_index"`
+	TransactionHash  []byte `db:"transaction_hash" json:"transaction_hash"`
+	TransactionIndex int64  `db:"transaction_index" json:"transaction_index"`
+	Emitter          []byte `db:"emitter" json:"emitter"`
+}
+
+type EnsSyncEventRef struct {
+	SourceID    int64          `db:"source_id" json:"source_id"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex    int64          `db:"log_index" json:"log_index"`
 }
 
 type EnsSyncGenesisBaseline struct {
@@ -1044,6 +1050,7 @@ type EnsSyncJob struct {
 	Attempts        int32              `db:"attempts" json:"attempts"`
 	MaxAttempts     int32              `db:"max_attempts" json:"max_attempts"`
 	RetryAt         pgtype.Timestamptz `db:"retry_at" json:"retry_at"`
+	QueuedAt        pgtype.Timestamptz `db:"queued_at" json:"queued_at"`
 	Deadline        pgtype.Timestamptz `db:"deadline" json:"deadline"`
 	LeaseToken      pgtype.UUID        `db:"lease_token" json:"lease_token"`
 	LeaseUntil      pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
@@ -1056,6 +1063,12 @@ type EnsSyncJobDependency struct {
 	Kind     string `db:"kind" json:"kind"`
 	Key      string `db:"key" json:"key"`
 	Revision int64  `db:"revision" json:"revision"`
+}
+
+type EnsSyncJobWatch struct {
+	SourceID int64  `db:"source_id" json:"source_id"`
+	JobID    int64  `db:"job_id" json:"job_id"`
+	Address  []byte `db:"address" json:"address"`
 }
 
 type EnsSyncObservation struct {
@@ -1075,6 +1088,7 @@ type EnsSyncObservation struct {
 	Address         []byte             `db:"address" json:"address"`
 	Resolver        []byte             `db:"resolver" json:"resolver"`
 	ReverseResolver []byte             `db:"reverse_resolver" json:"reverse_resolver"`
+	ProfileData     []byte             `db:"profile_data" json:"profile_data"`
 	ObservedAt      pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
 	ValidUntil      pgtype.Timestamptz `db:"valid_until" json:"valid_until"`
 }
@@ -1135,7 +1149,6 @@ type EnsSyncSource struct {
 	TargetChainID  pgtype.Numeric `db:"target_chain_id" json:"target_chain_id"`
 	SourceChainID  pgtype.Numeric `db:"source_chain_id" json:"source_chain_id"`
 	GenesisHash    []byte         `db:"genesis_hash" json:"genesis_hash"`
-	Namespace      string         `db:"namespace" json:"namespace"`
 	PolicyDigest   []byte         `db:"policy_digest" json:"policy_digest"`
 	ManifestDigest []byte         `db:"manifest_digest" json:"manifest_digest"`
 	StartNumber    pgtype.Numeric `db:"start_number" json:"start_number"`
@@ -2205,8 +2218,9 @@ type SearchCatalogDocument struct {
 	VerificationMatchType     *string            `db:"verification_match_type" json:"verification_match_type"`
 	VerificationRequestDigest []byte             `db:"verification_request_digest" json:"verification_request_digest"`
 	VerificationJobID         pgtype.UUID        `db:"verification_job_id" json:"verification_job_id"`
+	NameSourceID              *int64             `db:"name_source_id" json:"name_source_id"`
+	NameProfilePublicationID  *int64             `db:"name_profile_publication_id" json:"name_profile_publication_id"`
 	NamePublicationID         *int64             `db:"name_publication_id" json:"name_publication_id"`
-	NameSource                *string            `db:"name_source" json:"name_source"`
 }
 
 type SearchCatalogGeneration struct {

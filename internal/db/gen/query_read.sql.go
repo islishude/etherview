@@ -523,43 +523,6 @@ func (q *Queries) ValidateBlockTransactionCursor(ctx context.Context, chainID pg
 	return valid, err
 }
 
-const validateResolvedSearchName = `-- name: ValidateResolvedSearchName :one
-SELECT EXISTS(SELECT 1 FROM ens_effective_publications e
-WHERE e.target_chain_id=$1::numeric AND e.policy_digest=$2::bytea
-AND e.id=$3::bigint AND e.direction='forward' AND e.lookup_key=$4 AND e.namespace=$5
-AND ens_effective_publication_current(e.id)
-AND ((e.state='not_found' AND $6::bytea IS NULL)
- OR (e.state='resolved' AND e.address=$6::bytea AND EXISTS(
- SELECT 1 FROM search_catalog_documents d WHERE d.name_publication_id=e.id AND d.source_canonical
- AND d.valid_from_generation<=$7
- AND (d.valid_to_generation IS NULL OR d.valid_to_generation>$7)))))::boolean AS valid
-`
-
-type ValidateResolvedSearchNameParams struct {
-	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	NamePolicy          []byte         `db:"name_policy" json:"name_policy"`
-	ID                  int64          `db:"id" json:"id"`
-	LookupKey           string         `db:"lookup_key" json:"lookup_key"`
-	Source              *string        `db:"source" json:"source"`
-	Address             []byte         `db:"address" json:"address"`
-	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
-}
-
-func (q *Queries) ValidateResolvedSearchName(ctx context.Context, arg ValidateResolvedSearchNameParams) (bool, error) {
-	row := q.db.QueryRow(ctx, validateResolvedSearchName,
-		arg.ChainID,
-		arg.NamePolicy,
-		arg.ID,
-		arg.LookupKey,
-		arg.Source,
-		arg.Address,
-		arg.ValidFromGeneration,
-	)
-	var valid bool
-	err := row.Scan(&valid)
-	return valid, err
-}
-
 const validateSearchCursor = `-- name: ValidateSearchCursor :one
 SELECT EXISTS (
            SELECT 1 FROM canonical_blocks AS snapshot

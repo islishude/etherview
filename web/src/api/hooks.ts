@@ -33,22 +33,7 @@ import type {
 
 const liveRefetchInterval = 2_000;
 
-export function useChainStatus() {
-  return useQuery({
-    queryKey: ["status"],
-    meta: statusQueryMeta,
-    queryFn: async ({ signal }) => {
-      const response = requireEnvelope(await sdk.getStatus({ client: apiClient, signal }));
-      return {
-        ...response.data,
-        coverage_start: response.meta.coverage_start,
-        coverage_end: response.meta.coverage_end,
-      };
-    },
-    retry: false,
-    staleTime: liveRefetchInterval,
-  });
-}
+export { useChainStatus } from "./chainStatus";
 
 export function useBlocks(page: CursorRequest = firstPage, limit = 12) {
   const { cursor, refreshGeneration } = page;

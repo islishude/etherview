@@ -44,13 +44,16 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/loadtest"
 	"github.com/islishude/etherview/internal/testcompose"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
-	runtimeTimeout            = 15 * time.Minute
-	waitTimeout               = 3 * time.Minute
-	runtimeServerWriteTimeout = 2 * time.Second
+	runtimeTimeout = 15 * time.Minute
+	waitTimeout    = 3 * time.Minute
+	// Allow startup publication lock contention while keeping the independent
+	// bounded-load p95 requirement at one second and testing SSE past this limit.
+	runtimeServerWriteTimeout = 5 * time.Second
 
 	// NoCBOR.sol is the repository's reviewed Solidity 0.8.30 fixture from
 	// internal/verify/testdata/compiler/solidity/output.no-cbor.json. Deploying
@@ -76,43 +79,44 @@ const (
 )
 
 type fixture struct {
-	genesisHash            string
-	accounts               []string
-	authorityKey           *ecdsa.PrivateKey
-	sponsorKey             *ecdsa.PrivateKey
-	skippedKey             *ecdsa.PrivateKey
-	authority              string
-	sponsor                string
-	skippedAuthority       string
-	nativeHash             string
-	pendingHash            string
-	pendingReplacementHash string
-	pendingNonce           uint64
-	creationHash           string
-	failedHash             string
-	compoundHash           string
-	contractAddress        string
-	nftCreationHash        string
-	nftAddress             string
-	delegateA              string
-	delegateB              string
-	orphanDelegationHash   string
-	delegationHash         string
-	delegationAuths        []types.SetCodeAuthorization
-	redelegationHash       string
-	redelegationAuth       types.SetCodeAuthorization
-	delegatedCallHash      string
-	clearingHash           string
-	clearingAuth           types.SetCodeAuthorization
-	entryPoint             string
-	entryPointCreationHash string
-	userOperationHash      string
-	userOperationTxHash    string
-	blockOneHash           string
-	orphanHash             string
-	finalHash              string
-	finalHeight            uint64
-	snapshotID             string
+	genesisHash             string
+	accounts                []string
+	authorityKey            *ecdsa.PrivateKey
+	sponsorKey              *ecdsa.PrivateKey
+	skippedKey              *ecdsa.PrivateKey
+	authority               string
+	sponsor                 string
+	skippedAuthority        string
+	nativeHash              string
+	pendingHash             string
+	pendingReplacementHash  string
+	pendingNonce            uint64
+	creationHash            string
+	failedHash              string
+	compoundHash            string
+	contractAddress         string
+	nftCreationHash         string
+	nftAddress              string
+	delegateA               string
+	delegateB               string
+	orphanDelegationHash    string
+	delegationHash          string
+	delegationAuths         []types.SetCodeAuthorization
+	redelegationHash        string
+	redelegationAuth        types.SetCodeAuthorization
+	delegatedCallHash       string
+	clearingHash            string
+	clearingAuth            types.SetCodeAuthorization
+	entryPoint              string
+	entryPointCreationHash  string
+	userOperationHash       string
+	userOperationEventIndex int
+	userOperationTxHash     string
+	blockOneHash            string
+	orphanHash              string
+	finalHash               string
+	finalHeight             uint64
+	snapshotID              string
 }
 
 type durableSnapshot struct {
@@ -130,7 +134,7 @@ type durableSnapshot struct {
 	Statistics           string
 	Authorizations       int64
 	OrphanAuthorizations int64
-	ENSObservations      int64
+	ENSRecords           string
 	UserOperations       int64
 }
 
@@ -172,7 +176,6 @@ type apiSnapshot struct {
 	ClearingResolution        string
 	ClearingStatus            string
 	ENSName                   string
-	ENSNameSource             string
 	EtherscanAdvanced         string
 	EtherscanFunding          string
 	EtherscanBlockCounts      string
@@ -390,13 +393,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.initializeFixture(ctx)
 		h.configureUserOperationEnvironment()
 		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
-		manifestDir := filepath.Join(h.artifacts, "ens")
-		h.ensRPC = startENSLocalV2RPC(t, common.HexToAddress(h.fixture.authority), manifestDir)
-		h.project.Env["ETHERVIEW_ENS_MANIFEST_DIR"] = manifestDir
-		h.project.Env["ETHERVIEW_ENS_POLICY_DIGEST"] = crypto.Keccak256Hash([]byte("runtime-ensv2-policy")).Hex()
-		h.project.Env["ETHERVIEW_ENS_OFFICIAL_MANIFEST"] = "/etc/etherview/ens/official.json"
 		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
-		h.project.Env["ETHERVIEW_RUNTIME_ENS_RPC_URL"] = h.ensRPC.containerURL()
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
 	}
 
@@ -697,7 +694,7 @@ func runtimeEnvironment(root string, baseTimestamp uint64, userOperations bool) 
 		"ANVIL_ARGS": valueOrDefault(
 			"ANVIL_ARGS",
 			fmt.Sprintf(
-				"--timestamp %d --hardfork prague --mnemonic-seed-unsafe 424242",
+				"--timestamp %d --hardfork prague --gas-limit 1000000000 --mnemonic-seed-unsafe 424242",
 				baseTimestamp,
 			),
 		),
@@ -745,6 +742,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 			h.t.Fatalf("EIP-7702 fixture balance for %s = %s", funded, balance)
 		}
 	}
+	ensManifest := h.enqueueENSFixture(ctx)
 	h.sendUserOperationEntryPointDeployment(ctx)
 	h.fixture.nativeHash = h.sendTransaction(ctx, map[string]any{
 		"from": h.fixture.accounts[0], "to": nativeTransferTarget,
@@ -763,6 +761,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 	h.captureInitialContractDeployments(ctx, delegateAHash, delegateBHash)
 	h.captureUserOperationFixture(ctx)
 	h.fixture.blockOneHash = h.latestBlock(ctx).Hash
+	h.saveENSManifest(ctx, ensManifest)
 	var pendingNonce hexutil.Uint64
 	h.rpcCall(ctx, &pendingNonce, "eth_getTransactionCount", h.fixture.accounts[0], "latest")
 	h.fixture.pendingNonce = uint64(pendingNonce)
@@ -1258,7 +1257,7 @@ func (h *harness) assertENS(ctx context.Context) {
 	waitFor(h.t, ctx, "autonomous real v2 publication", func() (bool, string, error) {
 		var count int
 		err := h.db.QueryRow(ctx, `SELECT count(DISTINCT direction) FROM ens_effective_publications WHERE target_chain_id=1 AND name=$1 AND ens_effective_publication_current(id)`, runtimeENSName).Scan(&count)
-		return count == 2, fmt.Sprint(count), err
+		return count == 3, fmt.Sprint(count), err
 	})
 	var config gen.PublicConfigResponse
 	h.mustGetJSON(ctx, "/api/v1/config", &config)
@@ -1269,48 +1268,76 @@ func (h *harness) assertENS(ctx context.Context) {
 	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &names)
 	if len(names.Data.Items) != 1 || names.Data.Items[0].State != gen.AddressNameLookupStateResolved ||
 		names.Data.Items[0].PrimaryName == nil || names.Data.Items[0].PrimaryName.Name != runtimeENSName ||
-		names.Data.Items[0].PrimaryName.Source != gen.PrimaryNameSourceEns || names.Data.Snapshot == "" {
+		names.Data.Snapshot == "" {
 		h.t.Fatalf("runtime ENS address names = %#v", names.Data)
 	}
 	var search gen.SearchResponse
 	h.mustGetJSON(ctx, "/api/v1/search?q="+url.QueryEscape(runtimeENSName), &search)
-	if len(search.Data) != 1 || !strings.EqualFold(search.Data[0].Key, h.fixture.authority) ||
-		search.Data[0].NameSource == nil || *search.Data[0].NameSource != gen.SearchResultNameSourceEns {
+	if len(search.Data) != 1 || search.Data[0].Key != runtimeENSName || search.Data[0].Kind != gen.SearchResultKindName || search.Data[0].NameDetails == nil || search.Data[0].NameDetails.ResolvedAddress.Value == nil || !strings.EqualFold(*search.Data[0].NameDetails.ResolvedAddress.Value, h.fixture.authority) {
 		h.t.Fatalf("runtime ENS search = %#v", search.Data)
 	}
 
-	// A source outage withdraws names while core HTTP stays ready. Unknown
-	// reads cannot cause source work, even when the source cannot respond.
-	h.ensRPC.mu.Lock()
-	h.ensRPC.offline = true
-	h.ensRPC.mu.Unlock()
-	defer func() { h.ensRPC.mu.Lock(); h.ensRPC.offline = false; h.ensRPC.mu.Unlock() }()
-	waitFor(h.t, ctx, "ENS-only outage", func() (bool, string, error) {
-		var state string
-		err := h.db.QueryRow(ctx, `SELECT p.state FROM ens_sync_progress p JOIN ens_sync_sources s ON s.id=p.source_id WHERE s.target_chain_id=1 AND s.namespace='ens'`).Scan(&state)
-		return state == "pending", state, err
+	var detail gen.NameDetailResponse
+	h.mustGetJSON(ctx, "/api/v1/names/"+runtimeENSName, &detail)
+	if detail.Data.ProfileObservation == nil || detail.Data.Registrant.Value == nil || !strings.EqualFold(*detail.Data.Registrant.Value, h.ensOwner) {
+		h.t.Fatalf("runtime registration profile: %+v", detail.Data)
+	}
+
+	for _, name := range []string{"plain.eth", "wrapped.eth", "locked.eth"} {
+		waitFor(h.t, ctx, "migrated forward "+name, func() (bool, string, error) {
+			var count int
+			err := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_effective_publications WHERE target_chain_id=1 AND direction='forward' AND state='resolved' AND name=$1 AND ens_effective_publication_current(id)`, name).Scan(&count)
+			return count > 0, fmt.Sprint(count), err
+		})
+		h.mustGetJSON(ctx, "/api/v1/search?q="+name, &search)
+		if len(search.Data) != 1 || search.Data[0].Key != name || search.Data[0].NameDetails == nil || search.Data[0].NameDetails.ResolutionObservation == nil {
+			h.t.Fatalf("migrated name %s: %#v", name, search.Data)
+		}
+	}
+	waitFor(h.t, ctx, "CCIP failure isolated from published names", func() (bool, string, error) {
+		var failed bool
+		err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ens_sync_jobs j JOIN ens_sync_candidates c ON c.id=j.candidate_id WHERE c.lookup_key='ccip.eth' AND j.failure_code='ccip_unavailable')`).Scan(&failed)
+		return failed, fmt.Sprint(failed), err
 	})
+	var candidateID, observationID int64
+	var validUntil time.Time
+	waitFor(h.t, ctx, "definitive negative for refresh", func() (bool, string, error) {
+		err := h.db.QueryRow(ctx, `SELECT c.id,o.id,o.valid_until FROM ens_sync_candidates c JOIN ens_sync_observations o ON o.candidate_id=c.id WHERE c.direction='primary' AND c.lookup_key=$1 AND o.outcome='not_found' ORDER BY o.id DESC LIMIT 1`, strings.ToLower(h.fixture.accounts[0])).Scan(&candidateID, &observationID, &validUntil)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, "pending", nil
+		}
+		return err == nil, fmt.Sprint(candidateID), err
+	})
+
+	// ENS eth_call failures share the current-chain pool but do not expire an
+	// already verified observation early or create request-triggered jobs.
+	h.rpcProxy.ensOffline.Store(true)
+	defer h.rpcProxy.ensOffline.Store(false)
+	if _, e := h.db.Exec(ctx, `UPDATE ens_sync_candidates SET refresh_at=clock_timestamp() WHERE id=$1`, candidateID); e != nil {
+		h.t.Fatal(e)
+	}
+	waitFor(h.t, ctx, "background resolver failure", func() (bool, string, error) {
+		var failed bool
+		err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ens_sync_jobs WHERE candidate_id=$1 AND failure_code IS NOT NULL AND attempts>0)`, candidateID).Scan(&failed)
+		return failed, fmt.Sprint(failed), err
+	})
+	var latestID int64
+	var latestExpiry time.Time
+	if e := h.db.QueryRow(ctx, `SELECT id,valid_until FROM ens_sync_observations WHERE candidate_id=$1 ORDER BY id DESC LIMIT 1`, candidateID).Scan(&latestID, &latestExpiry); e != nil || latestID != observationID || !latestExpiry.Equal(validUntil) {
+		h.t.Fatalf("failed refresh renewed observation: %d %v %v", latestID, latestExpiry, e)
+	}
+
 	response := h.requireHTTPStatus(ctx, "/health/ready", http.StatusOK)
 	_ = response.Body.Close()
-	var unavailable gen.AddressNamePageResponse
-	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &unavailable)
-	if len(unavailable.Data.Items) != 1 || unavailable.Data.Items[0].State != gen.AddressNameLookupStateUnavailable || unavailable.Data.Items[0].PrimaryName != nil {
-		h.t.Fatal("outage retained a current ENS label")
-	}
-	response = h.requireHTTPStatus(ctx, "/api/v1/search?q=never-imported.eth", http.StatusServiceUnavailable)
+	response = h.requireHTTPStatus(ctx, "/api/v1/search?q=never-imported.eth", http.StatusOK)
 	_ = response.Body.Close()
+	invalidName := h.requireHTTPStatus(ctx, "/api/v1/names/%20", http.StatusBadRequest)
+	_ = invalidName.Body.Close()
 	var candidates int
-	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_sync_candidates WHERE lookup_key='never-imported.eth'`).Scan(&candidates); err != nil || candidates != 0 {
-		h.t.Fatalf("HTTP enqueued missing name: %d %v", candidates, err)
+	if e := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_sync_candidates WHERE lookup_key='never-imported.eth'`).Scan(&candidates); e != nil || candidates != 0 {
+		h.t.Fatalf("HTTP enqueued missing name: %d %v", candidates, e)
 	}
-	h.ensRPC.mu.Lock()
-	h.ensRPC.offline = false
-	h.ensRPC.mu.Unlock()
-	waitFor(h.t, ctx, "ENS source recovers without restart", func() (bool, string, error) {
-		var count int
-		err := h.db.QueryRow(ctx, `SELECT count(DISTINCT direction) FROM ens_effective_publications WHERE target_chain_id=1 AND name=$1 AND ens_effective_publication_current(id)`, runtimeENSName).Scan(&count)
-		return count == 2, fmt.Sprint(count), err
-	})
+	h.rpcProxy.ensOffline.Store(false)
 
 }
 
@@ -1343,14 +1370,17 @@ func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 			(SELECT count(*) FROM eip7702_authorizations WHERE chain_id = 1),
 			(SELECT count(*) FROM eip7702_authorizations
 				WHERE chain_id = 1 AND transaction_hash = decode($1, 'hex')),
-			(SELECT count(*) FROM ens_sync_observations o JOIN ens_sync_sources s ON s.id=o.source_id WHERE s.target_chain_id = 1),
+			(SELECT string_agg(record,';' ORDER BY record) FROM (
+                SELECT DISTINCT direction||':'||lookup_key||':'||name||':'||COALESCE(encode(address,'hex'),'') AS record
+                FROM ens_effective_publications WHERE target_chain_id=1 AND state='resolved' AND ens_effective_publication_current(id)
+            ) names),
 			(SELECT count(*) FROM erc4337_user_operations WHERE chain_id = 1)
 	`, strings.TrimPrefix(h.fixture.orphanDelegationHash, "0x")).Scan(
 		&snapshot.GenesisHash, &snapshot.Canonical, &snapshot.BlockCount,
 		&snapshot.TransactionCount, &snapshot.ReceiptCount, &snapshot.CompleteStages,
 		&snapshot.FailedStages, &snapshot.UnpublishedOutbox, &snapshot.Checkpoint,
 		&snapshot.OrphanCount, &snapshot.Rollup, &snapshot.Statistics,
-		&snapshot.Authorizations, &snapshot.OrphanAuthorizations, &snapshot.ENSObservations,
+		&snapshot.Authorizations, &snapshot.OrphanAuthorizations, &snapshot.ENSRecords,
 		&snapshot.UserOperations,
 	)
 	if err != nil {
@@ -1362,8 +1392,8 @@ func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 			snapshot.Authorizations, snapshot.OrphanAuthorizations,
 		)
 	}
-	if snapshot.ENSObservations < 2 {
-		h.t.Fatalf("ENS durable observations = %d, want forward and primary facts", snapshot.ENSObservations)
+	if len(strings.Split(snapshot.ENSRecords, ";")) < 5 {
+		h.t.Fatalf("ENS durable publications = %s, want migrated forwards and primary facts", snapshot.ENSRecords)
 	}
 	if snapshot.UserOperations != 1 {
 		h.t.Fatalf("durable UserOperations = %d, want 1", snapshot.UserOperations)
@@ -1390,10 +1420,9 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.contractAddress, &contract)
 	var ensNames gen.AddressNamePageResponse
 	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &ensNames)
-	ensName, ensSource := "", ""
+	ensName := ""
 	if len(ensNames.Data.Items) == 1 && ensNames.Data.Items[0].PrimaryName != nil {
 		ensName = ensNames.Data.Items[0].PrimaryName.Name
-		ensSource = string(ensNames.Data.Items[0].PrimaryName.Source)
 	}
 	var creation gen.TransactionResponse
 	h.mustGetJSON(ctx, "/api/v1/transactions/"+h.fixture.creationHash, &creation)
@@ -1516,7 +1545,6 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		ClearingResolution:        eip7702.clearingResolution,
 		ClearingStatus:            eip7702.clearingStatus,
 		ENSName:                   ensName,
-		ENSNameSource:             ensSource,
 		EtherscanAdvanced:         etherscanAdvanced,
 		EtherscanFunding:          etherscanFunding,
 		EtherscanBlockCounts:      etherscanCounts,
@@ -1711,6 +1739,7 @@ type receiptProxy struct {
 	clearedDelegation atomic.Uint64
 	blockTraceCalls   atomic.Uint64
 	transactionTraces atomic.Uint64
+	ensOffline        atomic.Bool
 }
 
 func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
@@ -1758,6 +1787,10 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	requestMethod := rpcRequestMethod(body)
+	if requestMethod == "eth_call" && p.ensOffline.Load() {
+		http.Error(writer, "isolated call outage", http.StatusServiceUnavailable)
+		return
+	}
 	switch requestMethod {
 	case "debug_traceBlockByHash":
 		p.blockTraceCalls.Add(1)
@@ -1794,6 +1827,10 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	var payload any
 	if err := decoder.Decode(&payload); err != nil {
 		http.Error(writer, "invalid upstream JSON-RPC response", http.StatusBadGateway)
+		return
+	}
+	if err := p.normalizeTraceIndices(request.Context(), body, payload); err != nil {
+		http.Error(writer, "invalid Anvil trace indices", http.StatusBadGateway)
 		return
 	}
 	normalizeAnvilReceipts(payload)
@@ -2236,11 +2273,6 @@ func (h *harness) cleanup() bool {
 	if h.rpcProxy != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = h.rpcProxy.server.Shutdown(ctx)
-		cancel()
-	}
-	if h.ensRPC != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = h.ensRPC.server.Shutdown(ctx)
 		cancel()
 	}
 	if failed || keepArtifacts {

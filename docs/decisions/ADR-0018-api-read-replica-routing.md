@@ -5,7 +5,7 @@ Status: accepted
 [ADR-0058](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
 amends the ENS boundary: background workers own name writes, while ENS queries
 and ENS-enabled search remain writer-authoritative read-only transactions for
-canonicality and publication checks. P40-T26 implements this cutover; name
+canonicality and publication checks. P40-T27 implements this cutover; name
 requests no longer perform upstream resolution or create snapshots in storage.
 
 ## Context

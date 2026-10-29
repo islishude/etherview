@@ -223,32 +223,19 @@ type ERC4337EntryPointConfig struct {
 	ToBlock   *uint64 `json:"to_block,omitempty" yaml:"to_block"`
 }
 
-// ENSConfig bounds the optional current-name capability. OfficialRPCEndpoints
-// is secret-only and is populated from ETHERVIEW_ENS_RPC_URLS(_FILE), never
-// from ConfigMap-backed YAML.
+// ENSConfig bounds current-chain background name indexing in enrich.
 type ENSConfig struct {
-	PolicyDigest         string          `yaml:"policy_digest"`
-	OfficialManifest     string          `yaml:"official_manifest"`
-	CustomManifest       string          `yaml:"custom_manifest"`
-	Mode                 string          `yaml:"mode"`
-	OfficialRPCEndpoints []RPCEndpoint   `yaml:"-"`
-	OfficialGateways     []string        `yaml:"official_gateways"`
-	Custom               ENSCustomConfig `yaml:"custom"`
-	ResolutionFreshness  time.Duration   `yaml:"resolution_freshness"`
-	SnapshotTTL          time.Duration   `yaml:"snapshot_ttl"`
-	FailureTTL           time.Duration   `yaml:"failure_ttl"`
-	RequestTimeout       time.Duration   `yaml:"request_timeout"`
-	MaxResponseBytes     int64           `yaml:"max_response_bytes"`
-	MaxCCIPDepth         int             `yaml:"max_ccip_depth"`
-	MaxBatchAddresses    int             `yaml:"max_batch_addresses"`
-	MaxConcurrency       int             `yaml:"max_concurrency"`
-}
-
-type ENSCustomConfig struct {
-	Registry          string   `yaml:"registry"`
-	UniversalResolver string   `yaml:"universal_resolver"`
-	CoinType          string   `yaml:"coin_type"`
-	Gateways          []string `yaml:"gateways"`
+	PolicyDigest        string        `yaml:"policy_digest"`
+	Manifest            string        `yaml:"manifest"`
+	Gateways            []string      `yaml:"gateways"`
+	ResolutionFreshness time.Duration `yaml:"resolution_freshness"`
+	SnapshotTTL         time.Duration `yaml:"snapshot_ttl"`
+	FailureTTL          time.Duration `yaml:"failure_ttl"`
+	RequestTimeout      time.Duration `yaml:"request_timeout"`
+	MaxResponseBytes    int64         `yaml:"max_response_bytes"`
+	MaxCCIPDepth        int           `yaml:"max_ccip_depth"`
+	MaxBatchAddresses   int           `yaml:"max_batch_addresses"`
+	MaxConcurrency      int           `yaml:"max_concurrency"`
 }
 
 type SecurityConfig struct {
@@ -456,8 +443,7 @@ func Default() Config {
 			MaxRedirects:     3,
 		},
 		ENS: ENSConfig{
-			Mode:                "official_first",
-			OfficialGateways:    []string{"https://ccip-v3.ens.xyz"},
+			Gateways:            []string{"https://ccip-v3.ens.xyz"},
 			ResolutionFreshness: 15 * time.Minute,
 			SnapshotTTL:         30 * time.Minute,
 			FailureTTL:          30 * time.Second,

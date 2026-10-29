@@ -1,5 +1,8 @@
 # P30-T148 Mainnet ENS acceptance
 
+Historical evidence for the retired ENS architecture. This report does not
+accept P20-T27–T29 or P30-T149–T151 and does not prove full-history coverage.
+
 Status: **in progress**. On 2026-10-29, real Mainnet read-only checks passed
 deployment/activation, representative resolution, bounded database collection,
 independent event reconciliation and restart recovery. Full historical coverage

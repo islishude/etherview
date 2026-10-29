@@ -31,16 +31,6 @@ export function AddressIdentity({
     <span
       className={`address-identity${primary ? " has-primary-name" : ""}${compact ? " is-compact" : ""}`}
     >
-      {primary ? (
-        <span className="address-primary-name-row">
-          <bdi className="address-primary-name" title={primary.name}>
-            {primary.name}
-          </bdi>
-          {primary.source === "custom_ens" ? (
-            <small className="custom-ens-badge">Custom ENS</small>
-          ) : null}
-        </span>
-      ) : null}
       <code className="address-identity-value" title={address}>
         {compact ? shortenAddress(address) : address}
       </code>
@@ -74,7 +64,23 @@ export function AddressIdentity({
   ) : (
     linked
   );
-  return copy ? <CopyableField value={address}>{identity}</CopyableField> : identity;
+  const addressContent = copy ? (
+    <CopyableField value={address}>{identity}</CopyableField>
+  ) : (
+    identity
+  );
+  return primary ? (
+    <span className="address-identity has-primary-name">
+      <Link className="address-primary-name-row" to="/name/$name" params={{ name: primary.name }}>
+        <bdi className="address-primary-name" title={primary.name}>
+          {primary.name}
+        </bdi>
+      </Link>
+      {addressContent}
+    </span>
+  ) : (
+    addressContent
+  );
 }
 
 export function shortenAddress(value: string): string {
