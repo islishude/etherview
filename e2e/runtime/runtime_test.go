@@ -390,8 +390,9 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.initializeFixture(ctx)
 		h.configureUserOperationEnvironment()
 		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
-		h.ensRPC = startENSLocalV2RPC(t, common.HexToAddress(h.fixture.authority), h.artifacts)
-		h.project.Env["ETHERVIEW_ENS_MANIFEST_DIR"] = h.artifacts
+		manifestDir := filepath.Join(h.artifacts, "ens")
+		h.ensRPC = startENSLocalV2RPC(t, common.HexToAddress(h.fixture.authority), manifestDir)
+		h.project.Env["ETHERVIEW_ENS_MANIFEST_DIR"] = manifestDir
 		h.project.Env["ETHERVIEW_ENS_POLICY_DIGEST"] = crypto.Keccak256Hash([]byte("runtime-ensv2-policy")).Hex()
 		h.project.Env["ETHERVIEW_ENS_OFFICIAL_MANIFEST"] = "/etc/etherview/ens/official.json"
 		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()

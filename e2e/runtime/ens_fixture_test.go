@@ -43,6 +43,15 @@ type ensLocalV2RPC struct {
 
 func startENSLocalV2RPC(t *testing.T, address common.Address, directory string) *ensLocalV2RPC {
 	t.Helper()
+	// Only public fixture manifests are mounted into the non-root application.
+	// Keep diagnostics private, but allow container UID 65532 to traverse this
+	// dedicated bind-mount root on Linux (MkdirTemp defaults to 0700).
+	if e := os.MkdirAll(directory, 0755); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Chmod(directory, 0755); e != nil {
+		t.Fatal(e)
+	}
 	real := ensfixture.New(t)
 	root, universal := real.Universal(address)
 	expiry := uint64(1_900_000_000)
@@ -85,6 +94,29 @@ func startENSLocalV2RPC(t *testing.T, address common.Address, directory string) 
 	}
 	return service
 }
+
+func TestENSLocalV2ManifestPermissions(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(parent, "ens")
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	service := startENSLocalV2RPC(t, common.HexToAddress("0xcafe"), directory)
+	t.Cleanup(func() { _ = service.server.Close() })
+	for path, mode := range map[string]os.FileMode{parent: 0700, directory: 0755, filepath.Join(directory, "official.json"): 0644} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != mode {
+			t.Fatalf("%s permissions = %o, want %o", path, info.Mode().Perm(), mode)
+		}
+	}
+}
+
 func (s *ensLocalV2RPC) containerURL() string {
 	return fmt.Sprintf("http://host.docker.internal:%d", s.listener.Addr().(*net.TCPAddr).Port)
 }
