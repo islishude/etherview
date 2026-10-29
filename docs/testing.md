@@ -236,6 +236,13 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   production and test Go files at 2,500 physical lines, counting comments and
   blank lines (`max: 2500`, `skip-comments: false`, `skip-blank-lines: false`).
   Only this revive rule is enabled; generated files remain excluded.
+  `.golangci.yml` enables tests and all repository custom build tags through
+  `run.build-tags`, so integration, optional-service and E2E sources receive
+  the same analysis. New custom tags must be added in the same change as their
+  sources; platform constraints remain selected by `GOOS`/`GOARCH`.
+  Lint analyzes tagged tests without executing them: a passing lint run does
+  not establish integration or E2E runtime acceptance. The lint-policy fixture
+  below checks integration-tag coverage, not completeness of the tag list.
   `make lint-go` runs both this target and `source-check`.
 - `make test-lint-policy`: run the installed golangci-lint against an isolated
   fixture module with the unchanged repository configuration and pinned pgx.

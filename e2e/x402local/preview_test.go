@@ -41,13 +41,13 @@ func TestPreviewX402(t *testing.T) {
 	}
 	origin := "http://127.0.0.1:" + strconv.Itoa(freePort(t))
 	overlay := filepath.Join(artifacts, "ports.yaml")
-	if err := os.WriteFile(overlay, []byte(fmt.Sprintf(`services:
+	if err := os.WriteFile(overlay, fmt.Appendf(nil, `services:
   api:
     environment:
       ETHERVIEW_SERVER_PUBLIC_URL: %s
     ports:
       - "%s:8080"
-`, origin, origin[len("http://"):])), 0600); err != nil {
+`, origin, origin[len("http://"):]), 0600); err != nil {
 		t.Fatal(err)
 	}
 	project := testcompose.NewQuiet(root, testcompose.UniqueProjectName("preview-x402"), "compose.yaml", overlay)
@@ -155,7 +155,7 @@ func TestPreviewX402(t *testing.T) {
 			project.Files = append(project.Files, all)
 			run("up", "-d", "--no-build", "--no-deps", "--wait", "--wait-timeout", "180", "api")
 		}
-		first := topup(t, client, rpcClient, codec, origin, csrf, owner, "eip3009", "100")
+		first := topup(t, client, rpcClient, codec, origin, csrf, owner, "eip3009")
 		replay := postTopupPayment(t, client, origin, csrf, first.intentID, first.header)
 		_ = replay.Body.Close()
 		if replay.StatusCode != http.StatusConflict {
@@ -166,7 +166,7 @@ func TestPreviewX402(t *testing.T) {
 			t.Fatal(err)
 		}
 		sendTransaction(t, rpcClient, ownerKey, owner, token, approval)
-		topup(t, client, rpcClient, codec, origin, csrf, owner, "permit2", "100")
+		topup(t, client, rpcClient, codec, origin, csrf, owner, "permit2")
 		if value := tokenUintAt(t, rpcClient, token, "allowance", owner, common.HexToAddress(permit2Address)); value.Sign() != 0 {
 			t.Fatalf("remaining allowance=%s", value)
 		}

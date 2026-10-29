@@ -198,6 +198,28 @@ dependencies, review and update the corresponding texts alongside their locks.
 Run `make license-check`; image builds additionally compare the actual Linux
 builder Node and Debian notices against the checked-in inventory.
 
+## Go lint and build tags
+
+When adding or changing a custom Go build tag, update `run.build-tags` in
+`.golangci.yml` in the same change. Include integration, optional-service and
+E2E tags, including every tag required by a combined build constraint. Audit
+the repository's `//go:build` directives when updating this list; tagged tests
+must remain covered by ordinary lint runs. OS and architecture constraints
+such as `windows` and `!windows` are selected by the Go target platform, not
+enabled together as custom tags.
+
+Apply the configured Go lint rules to test helpers as well as production code.
+For simple counted loops, use `for range n`, or `for i := range n` when the
+index is needed, as required by `modernize`. When `unparam` identifies a helper
+argument that always receives the same value, remove that argument, keep the
+fixed value in the helper and update all callers, including tagged tests.
+Preserve parameterization where callers actually require different values.
+Do not suppress diagnostics or drop build tags to make lint pass.
+
+After changing build-tag coverage or repairing lint findings, run
+`make lint-go` and resolve the findings before reporting success. See the
+[testing guide](testing.md#common-gates) for the gate's scope.
+
 ## Formatting and frontend tooling
 
 Use `make format` to format repository JavaScript, YAML, Markdown, and the

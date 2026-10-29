@@ -147,7 +147,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 			}
 			if strings.Contains(r.URL.Path, "flood") {
 				block := make([]byte, 64<<10)
-				for i := 0; i < 16384; i++ {
+				for range 16384 {
 					if _, writeErr := w.Write(block); writeErr != nil {
 						select {
 						case g.canceled <- struct{}{}:
@@ -410,7 +410,7 @@ func TestStreamingAndDeadlines(t *testing.T) {
 		}
 		defer func() { _ = resp.Body.Close() }()
 		reader := bufio.NewReader(resp.Body)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			line, readErr := reader.ReadString('\n')
 			if readErr != nil {
 				t.Fatal(readErr)

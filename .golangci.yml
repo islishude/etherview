@@ -12,6 +12,9 @@ run:
     - previewmetadatae2e
     - foundrye2e
     - verificatione2e
+    - previewx402e2e
+    - previewgatewaye2e
+    - rustfs
 
 linters:
   default: standard

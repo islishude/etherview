@@ -147,7 +147,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstHeader := topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "eip3009", "100")
+	firstHeader := topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "eip3009")
 	replay := postTopupPayment(t, httpClient, publicOrigin, csrf, firstHeader.intentID, firstHeader.header)
 	if replay.StatusCode != http.StatusConflict {
 		t.Fatalf("EIP-3009 replay status=%d", replay.StatusCode)
@@ -155,7 +155,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	_ = replay.Body.Close()
 
 	approveExact(t, rpcClient, ownerKey, owner, big.NewInt(100))
-	topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "permit2", "100")
+	topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "permit2")
 	if allowance := tokenUint(t, rpcClient, "allowance", owner, common.HexToAddress(permit2Address)); allowance.Sign() != 0 {
 		t.Fatalf("Permit2 exact allowance remained %s after settlement", allowance)
 	}
@@ -266,10 +266,10 @@ func topup(
 	codec *x402wire.Codec,
 	origin, csrf string,
 	owner common.Address,
-	method, amount string,
+	method string,
 ) topupPayment {
 	t.Helper()
-	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, amount)
+	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, "100")
 	response := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
 	if response.StatusCode != http.StatusOK || response.Header.Get(x402wire.PaymentResponseHeader) == "" {
 		body, _ := io.ReadAll(response.Body)
