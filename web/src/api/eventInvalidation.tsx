@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { notifyNames } from "@/ens/nameEvents";
 import { sameOriginAPIPath } from "./client";
 import { observeEvent, type ChainEventType, type ChainQueryMeta } from "./chainEvents";
 import { resetBrowsingPagination } from "./pagination";
 
-const eventTypes: readonly ChainEventType[] = ["head", "reorg", "status"];
+const eventTypes: readonly ChainEventType[] = ["head", "reorg", "status", "names"];
 
 export function shouldInvalidateFromChainEvent(
   eventType: ChainEventType,
@@ -30,6 +31,7 @@ export function ChainEventInvalidation() {
       scheduled = undefined;
       if (disposed) return;
       const types = [...pending];
+      if (types.includes("names") || types.includes("reorg")) notifyNames(queryClient);
       pending.clear();
       const publications = [...pendingPublications];
       pendingPublications.clear();

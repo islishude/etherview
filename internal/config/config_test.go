@@ -831,6 +831,7 @@ func TestENSConfigurationIsExplicitBoundedAndSourceScoped(t *testing.T) {
 	}
 	cfg := Default()
 	cfg.Features.ENS = true
+	cfg.ENS.PolicyDigest = "0x" + strings.Repeat("1", 64)
 	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
 	cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
 	cfg.ENS.Custom.CoinType = "60"
@@ -840,7 +841,7 @@ func TestENSConfigurationIsExplicitBoundedAndSourceScoped(t *testing.T) {
 	}
 }
 
-func TestENSRPCEnvironmentIsSecretOnlyAndAPIScoped(t *testing.T) {
+func TestENSRPCEnvironmentIsSecretOnlyAndENSRoleScoped(t *testing.T) {
 	values := map[string]string{
 		"ETHERVIEW_FEATURE_ENS":                   "true",
 		"ETHERVIEW_ENS_RPC_URLS":                  "https://mainnet.example",
@@ -853,20 +854,20 @@ func TestENSRPCEnvironmentIsSecretOnlyAndAPIScoped(t *testing.T) {
 		return value, ok
 	}
 	api := Default()
-	if err := applyEnvironmentForRoles(&api, lookup, os.ReadFile, []string{"api"}); err != nil {
+	if err := applyEnvironmentForRoles(&api, lookup, os.ReadFile, []string{"ens"}); err != nil {
 		t.Fatal(err)
 	}
 	if !api.Features.ENS || len(api.ENS.OfficialRPCEndpoints) != 1 ||
-		!reflect.DeepEqual(api.ENS.OfficialRPCEndpoints[0].Purposes, []string{"state"}) ||
+		!reflect.DeepEqual(api.ENS.OfficialRPCEndpoints[0].Purposes, []string{"state", "history"}) ||
 		len(api.ENS.OfficialGateways) != 2 || api.ENS.Custom.UniversalResolver == "" {
-		t.Fatalf("API ENS environment = %#v", api.ENS)
+		t.Fatalf("ENS worker environment = %#v", api.ENS)
 	}
 	worker := Default()
-	if err := applyEnvironmentForRoles(&worker, lookup, os.ReadFile, []string{"maintenance"}); err != nil {
+	if err := applyEnvironmentForRoles(&worker, lookup, os.ReadFile, []string{"api"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(worker.ENS.OfficialRPCEndpoints) != 0 {
-		t.Fatalf("non-API role retained ENS RPC secrets: %#v", worker.ENS.OfficialRPCEndpoints)
+		t.Fatalf("API role retained ENS RPC secrets: %#v", worker.ENS.OfficialRPCEndpoints)
 	}
 }
 
@@ -1601,6 +1602,7 @@ func unsetHostEnvironment(t *testing.T, name string) {
 func TestENSModeConfiguration(t *testing.T) {
 	cfg := Default()
 	cfg.Features.ENS = true
+	cfg.ENS.PolicyDigest = "0x" + strings.Repeat("1", 64)
 	cfg.ENS.Mode = "custom_only"
 	cfg.ENS.OfficialGateways = nil
 	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"

@@ -387,6 +387,20 @@ export type Status = {
     finalized_block?: Quantity;
     lag: Quantity;
     completeness: Completeness;
+    names?: Array<NameSourceStatus>;
+};
+
+export type NameSourceStatus = {
+    source: 'ens' | 'custom_ens';
+    state: 'not_indexed' | 'sync_pending' | 'resolution_pending' | 'current' | 'stale' | 'unsupported_source';
+    protocols: Array<'v1' | 'v2' | 'custom'>;
+    target?: Quantity;
+    scanned?: Quantity;
+    published?: Quantity;
+    pending: Quantity;
+    last_success?: string;
+    valid_until?: string;
+    code?: string;
 };
 
 export type PublicConfig = {
@@ -1285,11 +1299,18 @@ export type SearchResult = {
     rank: number;
     canonical?: boolean;
     name_source?: 'ens' | 'custom_ens';
+    name_publication?: Quantity;
+    name_valid_until?: string;
 };
 
 export type PrimaryName = {
     name: string;
     source: 'ens' | 'custom_ens';
+    publication: Quantity;
+    /**
+     * Hide the name after this deadline even without a server event.
+     */
+    valid_until: string;
 };
 
 export type AddressNameLookup = {
@@ -1302,6 +1323,7 @@ export type AddressNameLookup = {
 export type AddressNamePage = {
     items: Array<AddressNameLookup>;
     snapshot: OpaqueCursor;
+    publication: Quantity;
 };
 
 export type VerifierLanguage = 'solidity' | 'yul' | 'geas' | 'vyper';

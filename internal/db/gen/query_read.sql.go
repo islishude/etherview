@@ -524,60 +524,23 @@ func (q *Queries) ValidateBlockTransactionCursor(ctx context.Context, chainID pg
 }
 
 const validateResolvedSearchName = `-- name: ValidateResolvedSearchName :one
-WITH visible_documents AS (
-    SELECT document.id, document.chain_id, document.source_kind, document.source_identity, document.logical_identity, document.valid_from_generation, document.valid_to_generation, document.result_kind, document.result_key, document.result_label, document.exact_terms, document.partial_terms, document.block_number, document.block_hash, document.target_address, document.code_hash, document.valid_from_block, document.valid_to_block, document.source_canonical, document.recorded_at, document.verification_match_type, document.verification_request_digest, document.verification_job_id, document.name_observation_id, document.name_source
-    FROM search_catalog_documents AS document
-    WHERE document.chain_id = $1::numeric
-      AND document.valid_from_generation <= $6
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $6)
-)
-SELECT EXISTS (
-    SELECT 1
-    FROM ens_name_observations AS observation
-    WHERE observation.chain_id = $1::numeric
-      AND observation.id = $2::bigint
-      AND observation.direction = 'forward'
-      AND observation.lookup_key = $3
-      AND observation.name = $3
-      AND observation.source = $4
-      AND (
-          (
-              observation.outcome = 'not_found'
-              AND $5::bytea IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM visible_documents AS document
-                  WHERE document.source_kind = 'name'
-                    AND document.logical_identity = lower(observation.name)
-              )
-          )
-          OR (
-              observation.outcome = 'resolved'
-              AND observation.address = $5::bytea
-              AND EXISTS (
-                  SELECT 1 FROM visible_documents AS document
-                  WHERE document.source_kind = 'name'
-                    AND document.name_observation_id = observation.id
-                    AND document.source_canonical IS TRUE
-                    AND (
-                        document.block_hash IS NULL
-                        OR EXISTS (
-                            SELECT 1 FROM canonical_blocks AS canonical
-                            WHERE canonical.chain_id = document.chain_id
-                              AND canonical.number = document.block_number
-                              AND canonical.block_hash = document.block_hash
-                        )
-                    )
-              )
-          )
-      )
-) AS valid
+SELECT EXISTS(SELECT 1 FROM ens_effective_publications e
+WHERE e.target_chain_id=$1::numeric AND e.policy_digest=$2::bytea
+AND e.id=$3::bigint AND e.direction='forward' AND e.lookup_key=$4 AND e.namespace=$5
+AND ens_effective_publication_current(e.id)
+AND ((e.state='not_found' AND $6::bytea IS NULL)
+ OR (e.state='resolved' AND e.address=$6::bytea AND EXISTS(
+ SELECT 1 FROM search_catalog_documents d WHERE d.name_publication_id=e.id AND d.source_canonical
+ AND d.valid_from_generation<=$7
+ AND (d.valid_to_generation IS NULL OR d.valid_to_generation>$7)))))::boolean AS valid
 `
 
 type ValidateResolvedSearchNameParams struct {
 	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	NamePolicy          []byte         `db:"name_policy" json:"name_policy"`
 	ID                  int64          `db:"id" json:"id"`
 	LookupKey           string         `db:"lookup_key" json:"lookup_key"`
-	Source              string         `db:"source" json:"source"`
+	Source              *string        `db:"source" json:"source"`
 	Address             []byte         `db:"address" json:"address"`
 	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
 }
@@ -585,6 +548,7 @@ type ValidateResolvedSearchNameParams struct {
 func (q *Queries) ValidateResolvedSearchName(ctx context.Context, arg ValidateResolvedSearchNameParams) (bool, error) {
 	row := q.db.QueryRow(ctx, validateResolvedSearchName,
 		arg.ChainID,
+		arg.NamePolicy,
 		arg.ID,
 		arg.LookupKey,
 		arg.Source,

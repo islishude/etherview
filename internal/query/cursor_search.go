@@ -305,7 +305,7 @@ func (r *PostgresReader) searchText(
 		if limit < -2147483648 || limit > 2147483647 {
 			return nil, errors.New("invalid stored query value")
 		}
-		return dbgen.New(queryer).QuerySearchText(ctx, dbgen.QuerySearchTextParams{ChainID: queryValue0, SearchTerm: strings.ToLower(value), MaxBlockNumber: queryValue1, ValidFromGeneration: generation, HasCursor: hasBoundary, MaxRank: int64(afterRank), MinKind: afterKind, MinKey: afterKey, Limit: int32(limit), NameObservationID: resolvedNameObservationID})
+		return dbgen.New(queryer).QuerySearchText(ctx, dbgen.QuerySearchTextParams{ChainID: queryValue0, SearchTerm: strings.ToLower(value), MaxBlockNumber: queryValue1, ValidFromGeneration: generation, HasCursor: hasBoundary, MaxRank: int64(afterRank), MinKind: afterKind, MinKey: afterKey, Limit: int32(limit), NameObservationID: resolvedNameObservationID, NamePolicy: r.namePolicy.Bytes()})
 	}()
 	if err != nil {
 		return nil, fmt.Errorf("search indexed names and labels: %w", err)
@@ -341,6 +341,14 @@ func (r *PostgresReader) searchText(
 		result, err := normalizeSearchResult(kind, key, label, rank, canonical, nameSource)
 		if err != nil {
 			return nil, err
+		}
+		if result.NameSource != nil {
+			if storedRow.NamePublicationID == nil || !storedRow.NameValidUntil.Valid {
+				return nil, errors.New("missing name publication validity")
+			}
+			publication := strconv.FormatInt(*storedRow.NamePublicationID, 10)
+			result.NamePublication = &publication
+			result.NameValidUntil = &storedRow.NameValidUntil.Time
 		}
 		results = append(results, result)
 	}
@@ -476,7 +484,7 @@ func (r *PostgresReader) resolvedNameVisible(
 		if err := queryValue0.Scan(r.chainID); err != nil {
 			return err
 		}
-		queryRow, err := dbgen.New(tx).ValidateResolvedSearchName(ctx, dbgen.ValidateResolvedSearchNameParams{ChainID: queryValue0, ID: gate.ObservationID, LookupKey: gate.Name, Source: gate.Source, ValidFromGeneration: generation, Address: address})
+		queryRow, err := dbgen.New(tx).ValidateResolvedSearchName(ctx, dbgen.ValidateResolvedSearchNameParams{ChainID: queryValue0, ID: gate.ObservationID, NamePolicy: r.namePolicy.Bytes(), LookupKey: gate.Name, Source: &gate.Source, ValidFromGeneration: generation, Address: address})
 		if err != nil {
 			return err
 		}

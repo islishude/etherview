@@ -93,6 +93,9 @@ func (assembly runtimeAssembly) registerComponents() error {
 		return err
 	}
 
+	if err := assembly.registerENSComponents(); err != nil {
+		return err
+	}
 	if err := assembly.registerMaintenanceComponents(); err != nil {
 		return err
 	}

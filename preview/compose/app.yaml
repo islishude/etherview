@@ -138,6 +138,16 @@ services:
     healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
+  ens:
+    <<: *etherview-service
+    command: ["serve", "--roles=ens", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-app-env
+      ETHERVIEW_ROLES: ens
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
+    restart: unless-stopped
+
   maintenance:
     <<: *etherview-service
     command: ["serve", "--roles=maintenance", "--config=/etc/etherview/config.yaml"]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/islishude/etherview/internal/enscontract"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,7 +105,7 @@ func TestAddressNamesRejectsDuplicatesAndMapsSnapshotFailure(t *testing.T) {
 			query: "addresses=" + address + "," + address, status: http.StatusBadRequest, code: "duplicate_address",
 		},
 		{
-			name: "expired snapshot", reader: addressNameReaderStub{err: ensresolver.ErrSnapshotInvalid},
+			name: "expired snapshot", reader: addressNameReaderStub{err: enscontract.ErrSnapshotInvalid},
 			query: "addresses=" + address + "&snapshot=expired", status: http.StatusBadRequest, code: "invalid_cursor",
 		},
 	} {

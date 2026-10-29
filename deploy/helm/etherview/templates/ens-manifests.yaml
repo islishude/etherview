@@ -1,0 +1,13 @@
+{{- if .Values.ensManifests }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "etherview.fullname" . }}-ens-manifests
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+data:
+  {{- range $name, $document := .Values.ensManifests }}
+  {{ $name }}: |
+    {{- $document | nindent 4 }}
+  {{- end }}
+{{- end }}

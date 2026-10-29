@@ -261,6 +261,7 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
     const addresses = (url.searchParams.get("addresses") ?? "").split(",").filter(Boolean);
     await fulfillAPIEnvelope(route, {
       snapshot: snapshot ?? "ens-browser-snapshot",
+      publication: "1",
       items: addresses.map((value) =>
         value.toLowerCase() === address.toLowerCase()
           ? {
@@ -268,6 +269,8 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
               state: "resolved",
               primary_name: {
                 name: "alice-with-an-intentionally-long-name.custom",
+                publication: "1",
+                valid_until: new Date(Date.now() + 60000).toISOString(),
                 source: "custom_ens",
               },
             }

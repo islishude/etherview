@@ -256,18 +256,18 @@ traffic needs a distinct upstream or per-process rate policy.
 ## Reference HA and capacity profile
 
 `values-reference-capacity.yaml` is a P60 starting profile for the core/API
-route mix. It enables redundant API, sync, enrichment, and maintenance roles,
+route mix. It enables redundant API, sync, enrichment, ENS and maintenance roles,
 two HPAs, one `PodDisruptionBudget` per selected role, and a component-scoped
 hard hostname-spread constraint with at least two eligible domains. Optional
 trace and metadata roles plus public verification remain
 disabled so their external capability budgets can be measured separately. The
-profile's maximum 18 Pods
-and 12-connection writer pool cap require up to 216 application PostgreSQL
+profile's maximum 20 Pods
+and 12-connection writer pool cap require up to 240 application PostgreSQL
 connections at steady state. Its maximum 8 API Pods add 96 connections when a
-same-sized reader pool is enabled, for 312 total. `maxSurge: 0` prevents a configured rollout
+same-sized reader pool is enabled, for 336 total. `maxSurge: 0` prevents a configured rollout
 surge, but terminating Pods can overlap replacements outside that count. A
 fully concurrent rollout can therefore require the old and new pools together,
-up to 432 connections without a reader or 624 with the same-sized reader;
+up to 480 connections without a reader or 672 with the same-sized reader;
 otherwise roll roles serially and measure the overlap. Reserve
 migration/operator capacity in addition.
 
@@ -398,3 +398,10 @@ release-scoped x402 alerts, and invalid-value rejection.
 `custom_only`, configure `config.ens.custom.registry` and `universal_resolver`,
 and use the chain's state RPC. This mode does not inject `ETHERVIEW_ENS_RPC_URLS`;
 `official_gateways` and custom `gateways` may be empty.
+
+Enabling ENS also requires a reviewed `config.ens.policy_digest` and deployment
+manifest paths. Supply public JSON through `ensManifests`; it mounts under
+`/etc/etherview/ens` only in `all`/`ens`. Distributed layouts include the `ens`
+role. Dedicated ENS RPC Secret references belong to `all`/`ens`, never `api`.
+See the [ENS runbook](../../../docs/operations.md#ens-primary-names) for bounded
+imports, replay and source integrity recovery.

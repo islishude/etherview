@@ -161,6 +161,16 @@ services:
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
       - ./.local/preview-tls/rootCA.pem:/run/ipfs-ca/rootCA.pem:ro
 
+  ens:
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: ens
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
+      - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
+      - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/ens.json:/etc/etherview/ens/custom.json:ro
+
   maintenance:
     <<: *etherview-paths
     extends:

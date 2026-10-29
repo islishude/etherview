@@ -39,12 +39,18 @@ it("renders a snapshot-resolved custom primary name while retaining the exact ad
       return jsonResponse({
         data: {
           snapshot: "ens-snapshot",
+          publication: "1",
           items: requested.map((value) =>
             value === address.toLowerCase()
               ? {
                   address,
                   state: "resolved",
-                  primary_name: { name: "alice.custom", source: "custom_ens" },
+                  primary_name: {
+                    name: "alice.custom",
+                    source: "custom_ens",
+                    publication: "1",
+                    valid_until: new Date(Date.now() + 60000).toISOString(),
+                  },
                 }
               : { address: value, state: "not_found" },
           ),

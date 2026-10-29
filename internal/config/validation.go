@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/etherscanops"
 )
 
@@ -195,14 +196,14 @@ func (c Config) ValidateForRoles(roles []string) error {
 			errs = append(errs, errors.New("API role x402 billing requires facilitator_allowed_cidrs"))
 		}
 	}
-	if needsAPI && c.Features.ENS {
+	if slices.Contains(normalized, "ens") && c.Features.ENS {
 		if c.ENS.Mode != "custom_only" && len(c.ENS.OfficialRPCEndpoints) == 0 && (c.Chain.ID != 1 || len(c.RPC.Endpoints) == 0) {
 			errs = append(errs, errors.New(
-				"API role ENS requires ETHERVIEW_ENS_RPC_URLS or an explored Ethereum Mainnet RPC endpoint",
+				"ENS role requires ETHERVIEW_ENS_RPC_URLS or an explored Ethereum Mainnet RPC endpoint",
 			))
 		}
 		if c.ENS.Custom.UniversalResolver != "" && len(c.RPC.Endpoints) == 0 {
-			errs = append(errs, errors.New("API role custom ENS requires a current-chain RPC endpoint"))
+			errs = append(errs, errors.New("ENS role custom source requires a current-chain RPC endpoint"))
 		}
 	}
 	return errors.Join(errs...)
@@ -210,6 +211,10 @@ func (c Config) ValidateForRoles(roles []string) error {
 
 func validateENSConfig(cfg ENSConfig, enabled bool) error {
 	var errs []error
+	digest, digestErr := hex.DecodeString(strings.TrimPrefix(cfg.PolicyDigest, "0x"))
+	if enabled && (digestErr != nil || len(digest) != 32 || len(cfg.PolicyDigest) != 66 || !strings.HasPrefix(cfg.PolicyDigest, "0x") || common.BytesToHash(digest) == (common.Hash{})) {
+		errs = append(errs, errors.New("ens.policy_digest must be a nonzero 32-byte hex identity"))
+	}
 	if cfg.Mode != "official_first" && cfg.Mode != "custom_only" {
 		errs = append(errs, errors.New("ens.mode must be official_first or custom_only"))
 	}

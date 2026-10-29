@@ -1,0 +1,76 @@
+[
+  {
+    "type": "event",
+    "name": "NameRegistered",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "label",
+        "type": "string",
+        "indexed": false
+      },
+      {
+        "name": "labelhash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "baseCost",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "premium",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "expires",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "referrer",
+        "type": "bytes32",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "NameRenewed",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "label",
+        "type": "string",
+        "indexed": false
+      },
+      {
+        "name": "labelhash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "cost",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "expires",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "referrer",
+        "type": "bytes32",
+        "indexed": false
+      }
+    ]
+  }
+]

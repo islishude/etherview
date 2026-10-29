@@ -4,6 +4,45 @@ The Makefile is the command source of truth. Only implemented targets are
 listed as runnable commands here; future gates remain in their owning plan
 until the Makefile target exists.
 
+The accepted [background ENS design](decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+has a persistence foundation in P20-T23. Its `TestENSSync` PostgreSQL regressions
+cover source identity, coverage gaps, immutable facts and publications,
+idempotency, retry exhaustion, lease/generation/dependency fencing, local
+canonical detach/reattach, and read-only unknown-name lookups. Run them through
+`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENSSync'`;
+they also run in the maintained full integration/race suites. Schema changes
+continue to require the production-image `make test-schema-e2e` gate.
+
+P20-T24 adds `TestENSCollector` PostgreSQL race regressions for autonomous
+discovery, ordered versions/deletions/renewal, restart and concurrent cursors,
+history/deployment gaps, reorg/reattachment and official finalized-conflict
+halting. Run the combined suite with
+`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS(Sync|Collector)'`.
+The RPC fixture is local evidence, not live Mainnet acceptance.
+
+P20-T25/P20-T26 and P40-T26 add real pinned v2 lifecycle/projection fixtures,
+background worker/publication and database-only reader tests. Run the combined
+PostgreSQL race suite with
+`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
+It includes source/canonical fences, immutable empty snapshots, HTTP-independent
+candidate discovery, catalog withdrawal and bounded idempotent import/replay.
+`make test-runtime-e2e` runs the production image in all/split mode with real
+pinned v2 Registry/factory/resolver/Universal Resolver EVM execution behind an
+isolated local RPC. `make test-preview-contracts` verifies the shipped `.test`
+genesis, autonomous publication before name HTTP reads and split/all restarts.
+Neither local RPC identity fixtures nor contract deployment establish actual
+Mainnet activation, continuity or independent reconciliation. P30-T148 retains
+[separate live evidence](reviews/P30-ens-mainnet-acceptance.md), including exact
+source/image identities, declared scan windows, independent comparisons and
+restart recovery. Bounded windows do not satisfy full historical coverage or
+database publication acceptance.
+
+`make test-e2e` covers the generated-client ENS contract, existing single SSE
+stream, proactive publication replacement, exact address disclosure, expiry
+without requests, bilingual accessibility and mobile layout. Unit tests cover
+multi-chunk atomicity and stale responses. API tests reject ENS calls and writes,
+including enqueue and snapshot inserts, without changing authentication/billing.
+
 ## Restricted automation hosts
 
 Codex and other filesystem-restricted automation should preserve the exact

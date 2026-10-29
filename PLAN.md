@@ -17,39 +17,42 @@ Validator browsing, MEV accounting and L2-specific batch semantics are not core 
 
 ## Plan Index
 
-| ID  | Plan                                                                              | Status  | Depends on                   | Outcome                                                                                                                                                                                                                                                        |
-| --- | --------------------------------------------------------------------------------- | ------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P00 | [Foundation](docs/plans/P00-foundation.md)                                        | done    | —                            | Governance, toolchain, config, CLI, native pgx/typed SQL and neutral contract boundaries, CI, and embedded SPA skeleton                                                                                                                                        |
-| P10 | [Indexing](docs/plans/P10-indexing.md)                                            | done    | P00                          | Bounded full-history indexing/backfill, immutable bundles, batched persistence, canonicality, finality, reorgs, and repair                                                                                                                                     |
-| P20 | [Enrichment & Durable Archives](docs/plans/P20-enrichment.md)                     | done    | P10                          | Tokens/NFT metadata/holders, official-first/custom-only snapshot-stable ENS, UserOperations, ABI/proxy decoding, traces, balances, statistics, optional consensus/requests, and durable blob archives                                                          |
-| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done    | P00, P10, P20                | Local verification, Sourcify source import/publication, automatic source discovery, contract intelligence, runtime/deployment, telemetry, optional accelerators, Caddy HTTPS, Kubo and Lighthouse/archive Preview with genesis ERC-4337, local ENS and Rundler |
-| P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done    | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/requests/blob downloads, CSV, and bounded quotas                                                                                           |
-| P50 | [Web](docs/plans/P50-web.md)                                                      | done    | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, event-driven explorer/personal tools, guarded NFT links, ENS display, injected-wallet interaction, session-authenticated verification, and optional browser Turnstile protection                      |
-| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | blocked | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups including local Preview, private watches, and one-shot browser push                                                                                            |
-| P70 | [Release](docs/plans/P70-release.md)                                              | blocked | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                                                                                                                         |
+| ID  | Plan                                                                              | Status      | Depends on                   | Outcome                                                                                                                                                                                                                                                                                                                              |
+| --- | --------------------------------------------------------------------------------- | ----------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P00 | [Foundation](docs/plans/P00-foundation.md)                                        | done        | —                            | Governance, toolchain, config, CLI, native pgx/typed SQL and neutral contract boundaries, CI, and embedded SPA skeleton                                                                                                                                                                                                              |
+| P10 | [Indexing](docs/plans/P10-indexing.md)                                            | done        | P00                          | Bounded full-history indexing/backfill, immutable bundles, batched persistence, canonicality, finality, reorgs, and repair                                                                                                                                                                                                           |
+| P20 | [Enrichment & Durable Archives](docs/plans/P20-enrichment.md)                     | done        | P10                          | Tokens/NFT metadata/holders, official-first/custom-only snapshot-stable ENS, UserOperations, ABI/proxy decoding, traces, balances, statistics, optional consensus/requests, and durable blob archives; ENS v1/v2/custom background synchronization and publication                                                                   |
+| P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | in_progress | P00, P10, P20                | Local verification, Sourcify source import/publication, automatic source discovery, contract intelligence, runtime/deployment, telemetry, optional accelerators, Caddy HTTPS, Kubo and Lighthouse/archive Preview with genesis ERC-4337, local ENS and Rundler; ENS role, local production parity and independent Mainnet acceptance |
+| P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done        | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/requests/blob downloads, CSV, and bounded quotas; database-only ENS reads, publication snapshots and source status/events                                                                                        |
+| P50 | [Web](docs/plans/P50-web.md)                                                      | done        | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, event-driven explorer/personal tools, guarded NFT links, ENS display, injected-wallet interaction, session-authenticated verification, and optional browser Turnstile protection; publication-driven ENS refresh and expired-label hiding                                   |
+| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | blocked     | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups including local Preview, private watches, and one-shot browser push                                                                                                                                                                  |
+| P70 | [Release](docs/plans/P70-release.md)                                              | blocked     | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                                                                                                                                                                                               |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 `superseded`.
 
 ## Current Work
 
-P40-T25 completed published partial browsing with explicit completeness and
-publication-fenced pagination; local API, PostgreSQL race, browser and all/split
-runtime acceptance passed.
-
-P30-T145 completed Preview genesis source verification during startup,
-with local 24-contract publication and manual repeat-run acceptance.
-
-P30-T144 and P30 are complete. Remote CI passed all 31 jobs for the Rundler
-revision; P30 retains the exact run/commit evidence and deferred RustFS IAM
-limitation.
+[ADR-0058](docs/decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+accepts background ENS v1/v2/custom synchronization and database-only name reads.
+P20-T23 through P20-T26 own storage, source discovery and verified publication;
+P30-T146 owns the shared ENS role; P40-T26 and P50-T80 own the API/Web cutover.
+P30-T147 owns local production parity, and P30-T148 separately owns Mainnet
+activation, coverage and reconciliation evidence. P20-T23 through P20-T26,
+P30-T146/P30-T147, P40-T26 and P50-T80 are `done`. P30-T148 live acceptance
+is `in_progress`: real Mainnet activation, bounded collection and independent
+samples passed; complete history and database publication reconciliation remain open. P20/P40/P50 are `done`; P30 remains
+`in_progress` for that live-source gate. Local acceptance and its limits are
+recorded in the owning child plans.
 
 P60-T17 remains blocked on live EIP-3009/Permit2 payment and writer/chain
 reconciliation. P60-T20 is done with operator-confirmed browser-provider
 delivery after all site tabs close; P60 retains the evidence and its limits.
 P70-T04 remains blocked on the operator-provisioned reference
-capacity environment. P70-T01, P70-T02, P70-T03 and P70-T05 await P60 closure;
-P70-T06 is dependency-gated. Their child plans own clearing conditions.
+capacity environment. P70-T01, P70-T02, P70-T03 and P70-T05 await P60 closure
+and the new ENS feature/acceptance dependencies; P70-T04 must also cover the
+final ENS runtime and workload. P70-T06 is dependency-gated. Their child plans
+own clearing conditions.
 
 Completed plans retain feature milestones and concise historical acceptance.
 Routine fixes, dependency bumps, CI repairs and documentation edits do not
@@ -60,6 +63,10 @@ reopen them or require new plan items.
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.
 - [ ] Genesis-to-head ingestion is gap-free, restart-safe, and reorg-safe.
 - [ ] Monolith and split-role modes pass the same behavioral acceptance suite.
+- [ ] Background ENS v1/v2/custom discovery, database-only reads, and label
+      invalidation pass P30-T147; P30-T148 independently verifies Mainnet
+      deployment, activation, coverage and reconciliation. Local fixtures do
+      not close the live-source gate.
 - [ ] Optional RPC capabilities and optional infrastructure fail explicitly and
       never corrupt core readiness.
 - [ ] API, migrations, embedded SPA, security, and operational documentation

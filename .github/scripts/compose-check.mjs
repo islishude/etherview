@@ -209,7 +209,7 @@ function assertCompiler(config, topology) {
   const applicationServices =
     topology === "monolith"
       ? ["etherview"]
-      : ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
+      : ["api", "sync", "enrich", "trace", "metadata", "ens", "maintenance"];
   const cachePath = "/var/lib/etherview/compilers";
   const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
   const unsafeMetadataEnvironment = "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
@@ -297,7 +297,16 @@ function assertCompiler(config, topology) {
 
 function assertVerification(config, topology, suite, image) {
   const compilerOwner = topology === "monolith" ? "etherview" : "api";
-  const appServices = ["etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance"];
+  const appServices = [
+    "etherview",
+    "api",
+    "sync",
+    "enrich",
+    "trace",
+    "metadata",
+    "ens",
+    "maintenance",
+  ];
   const cachePath = "/var/lib/etherview/compilers";
   const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
   const derivedEnvironment = [
@@ -493,7 +502,15 @@ function assertStorage(config, topology) {
     }
   }
 
-  for (const serviceName of ["migration", "sync", "enrich", "trace", "metadata", "maintenance"]) {
+  for (const serviceName of [
+    "migration",
+    "sync",
+    "enrich",
+    "trace",
+    "metadata",
+    "ens",
+    "maintenance",
+  ]) {
     const environment = services[serviceName]?.environment;
     if (!environment) {
       continue;

@@ -181,53 +181,15 @@ FROM (SELECT 1) AS singleton
 LEFT JOIN search_catalog_generations ON chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: ValidateResolvedSearchName :one
-WITH visible_documents AS (
-    SELECT document.*
-    FROM search_catalog_documents AS document
-    WHERE document.chain_id = sqlc.arg('chain_id')::numeric
-      AND document.valid_from_generation <= sqlc.arg('valid_from_generation')
-      AND (document.valid_to_generation IS NULL OR document.valid_to_generation > sqlc.arg('valid_from_generation'))
-)
-SELECT EXISTS (
-    SELECT 1
-    FROM ens_name_observations AS observation
-    WHERE observation.chain_id = sqlc.arg('chain_id')::numeric
-      AND observation.id = sqlc.arg('id')::bigint
-      AND observation.direction = 'forward'
-      AND observation.lookup_key = sqlc.arg('lookup_key')
-      AND observation.name = sqlc.arg('lookup_key')
-      AND observation.source = sqlc.arg('source')
-      AND (
-          (
-              observation.outcome = 'not_found'
-              AND sqlc.arg('address')::bytea IS NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM visible_documents AS document
-                  WHERE document.source_kind = 'name'
-                    AND document.logical_identity = lower(observation.name)
-              )
-          )
-          OR (
-              observation.outcome = 'resolved'
-              AND observation.address = sqlc.arg('address')::bytea
-              AND EXISTS (
-                  SELECT 1 FROM visible_documents AS document
-                  WHERE document.source_kind = 'name'
-                    AND document.name_observation_id = observation.id
-                    AND document.source_canonical IS TRUE
-                    AND (
-                        document.block_hash IS NULL
-                        OR EXISTS (
-                            SELECT 1 FROM canonical_blocks AS canonical
-                            WHERE canonical.chain_id = document.chain_id
-                              AND canonical.number = document.block_number
-                              AND canonical.block_hash = document.block_hash
-                        )
-                    )
-              )
-          )
-      )
-) AS valid;
+SELECT EXISTS(SELECT 1 FROM ens_effective_publications e
+WHERE e.target_chain_id=sqlc.arg('chain_id')::numeric AND e.policy_digest=sqlc.arg('name_policy')::bytea
+AND e.id=sqlc.arg('id')::bigint AND e.direction='forward' AND e.lookup_key=sqlc.arg('lookup_key') AND e.namespace=sqlc.arg('source')
+AND ens_effective_publication_current(e.id)
+AND ((e.state='not_found' AND sqlc.arg('address')::bytea IS NULL)
+ OR (e.state='resolved' AND e.address=sqlc.arg('address')::bytea AND EXISTS(
+ SELECT 1 FROM search_catalog_documents d WHERE d.name_publication_id=e.id AND d.source_canonical
+ AND d.valid_from_generation<=sqlc.arg('valid_from_generation')
+ AND (d.valid_to_generation IS NULL OR d.valid_to_generation>sqlc.arg('valid_from_generation'))))))::boolean AS valid;
 
 -- name: GetHomeRuntimeEventID :one
 SELECT COALESCE(MAX(id),0)::bigint AS event_id

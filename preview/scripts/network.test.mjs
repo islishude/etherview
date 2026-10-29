@@ -21,6 +21,7 @@ function fixture(t) {
     "metadata/genesis.json": "{}",
     "metadata/config.yaml": "PRESET_BASE: mainnet",
     "metadata/genesis.ssz": "state",
+    "metadata/ens.json": "{}",
     "jwt.hex": "a".repeat(64),
   };
   for (let i = 0; i < 64; i++) {

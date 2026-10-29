@@ -1,0 +1,149 @@
+[
+  {
+    "type": "event",
+    "name": "NameWrapped",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "node",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "name",
+        "type": "bytes",
+        "indexed": false
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "fuses",
+        "type": "uint32",
+        "indexed": false
+      },
+      {
+        "name": "expiry",
+        "type": "uint64",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "NameUnwrapped",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "node",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "FusesSet",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "node",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "fuses",
+        "type": "uint32",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ExpiryExtended",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "node",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "expiry",
+        "type": "uint64",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "TransferSingle",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "operator",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "from",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "value",
+        "type": "uint256",
+        "indexed": false
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "TransferBatch",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "operator",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "from",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "ids",
+        "type": "uint256[]",
+        "indexed": false
+      },
+      {
+        "name": "values",
+        "type": "uint256[]",
+        "indexed": false
+      }
+    ]
+  }
+]

@@ -34,10 +34,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -63,7 +61,7 @@ const (
 	nativeTransferTarget     = "0x00000000000000000000000000000000000000F0"
 	runtimeCompoundSignature = "configure((address,uint256),uint8[2][])"
 	runtimeCompoundABIEntry  = `{"type":"function","name":"configure","inputs":[{"name":"config","type":"tuple","internalType":"struct Fixture.Config","components":[{"name":"owner","type":"address"},{"name":"amount","type":"uint256"}]},{"name":"pairs","type":"uint8[2][]"}],"outputs":[]}`
-	runtimeENSName           = "runtime.custom"
+	runtimeENSName           = "wallet.alice.eth"
 	runtimeENSRegistry       = "0xE000000000000000000000000000000000000001"
 	runtimeENSResolver       = "0xE000000000000000000000000000000000000002"
 	runtimeCompoundCalldata  = "0xe967f546" +
@@ -392,8 +390,10 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.initializeFixture(ctx)
 		h.configureUserOperationEnvironment()
 		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
-		h.rpcProxy.ensAddress = common.HexToAddress(h.fixture.authority)
-		h.ensRPC = startENSMainnetRPC(t)
+		h.ensRPC = startENSLocalV2RPC(t, common.HexToAddress(h.fixture.authority), h.artifacts)
+		h.project.Env["ETHERVIEW_ENS_MANIFEST_DIR"] = h.artifacts
+		h.project.Env["ETHERVIEW_ENS_POLICY_DIGEST"] = crypto.Keccak256Hash([]byte("runtime-ensv2-policy")).Hex()
+		h.project.Env["ETHERVIEW_ENS_OFFICIAL_MANIFEST"] = "/etc/etherview/ens/official.json"
 		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
 		h.project.Env["ETHERVIEW_RUNTIME_ENS_RPC_URL"] = h.ensRPC.containerURL()
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
@@ -1254,6 +1254,11 @@ func (h *harness) validateSSE(ctx context.Context) {
 }
 
 func (h *harness) assertENS(ctx context.Context) {
+	waitFor(h.t, ctx, "autonomous real v2 publication", func() (bool, string, error) {
+		var count int
+		err := h.db.QueryRow(ctx, `SELECT count(DISTINCT direction) FROM ens_effective_publications WHERE target_chain_id=1 AND name=$1 AND ens_effective_publication_current(id)`, runtimeENSName).Scan(&count)
+		return count == 2, fmt.Sprint(count), err
+	})
 	var config gen.PublicConfigResponse
 	h.mustGetJSON(ctx, "/api/v1/config", &config)
 	if !config.Data.Features["ens"] {
@@ -1263,18 +1268,49 @@ func (h *harness) assertENS(ctx context.Context) {
 	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &names)
 	if len(names.Data.Items) != 1 || names.Data.Items[0].State != gen.AddressNameLookupStateResolved ||
 		names.Data.Items[0].PrimaryName == nil || names.Data.Items[0].PrimaryName.Name != runtimeENSName ||
-		names.Data.Items[0].PrimaryName.Source != gen.PrimaryNameSourceCustomEns || names.Data.Snapshot == "" {
+		names.Data.Items[0].PrimaryName.Source != gen.PrimaryNameSourceEns || names.Data.Snapshot == "" {
 		h.t.Fatalf("runtime ENS address names = %#v", names.Data)
 	}
 	var search gen.SearchResponse
 	h.mustGetJSON(ctx, "/api/v1/search?q="+url.QueryEscape(runtimeENSName), &search)
 	if len(search.Data) != 1 || !strings.EqualFold(search.Data[0].Key, h.fixture.authority) ||
-		search.Data[0].NameSource == nil || *search.Data[0].NameSource != gen.SearchResultNameSourceCustomEns {
+		search.Data[0].NameSource == nil || *search.Data[0].NameSource != gen.SearchResultNameSourceEns {
 		h.t.Fatalf("runtime ENS search = %#v", search.Data)
 	}
-	if h.rpcProxy.ensCalls.Load() < 4 {
-		h.t.Fatalf("custom ENS RPC calls = %d, want deployment, reverse, and forward calls", h.rpcProxy.ensCalls.Load())
+
+	// A source outage withdraws names while core HTTP stays ready. Unknown
+	// reads cannot cause source work, even when the source cannot respond.
+	h.ensRPC.mu.Lock()
+	h.ensRPC.offline = true
+	h.ensRPC.mu.Unlock()
+	defer func() { h.ensRPC.mu.Lock(); h.ensRPC.offline = false; h.ensRPC.mu.Unlock() }()
+	waitFor(h.t, ctx, "ENS-only outage", func() (bool, string, error) {
+		var state string
+		err := h.db.QueryRow(ctx, `SELECT p.state FROM ens_sync_progress p JOIN ens_sync_sources s ON s.id=p.source_id WHERE s.target_chain_id=1 AND s.namespace='ens'`).Scan(&state)
+		return state == "pending", state, err
+	})
+	response := h.requireHTTPStatus(ctx, "/health/ready", http.StatusOK)
+	_ = response.Body.Close()
+	var unavailable gen.AddressNamePageResponse
+	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &unavailable)
+	if len(unavailable.Data.Items) != 1 || unavailable.Data.Items[0].State != gen.AddressNameLookupStateUnavailable || unavailable.Data.Items[0].PrimaryName != nil {
+		h.t.Fatal("outage retained a current ENS label")
 	}
+	response = h.requireHTTPStatus(ctx, "/api/v1/search?q=never-imported.eth", http.StatusServiceUnavailable)
+	_ = response.Body.Close()
+	var candidates int
+	if err := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_sync_candidates WHERE lookup_key='never-imported.eth'`).Scan(&candidates); err != nil || candidates != 0 {
+		h.t.Fatalf("HTTP enqueued missing name: %d %v", candidates, err)
+	}
+	h.ensRPC.mu.Lock()
+	h.ensRPC.offline = false
+	h.ensRPC.mu.Unlock()
+	waitFor(h.t, ctx, "ENS source recovers without restart", func() (bool, string, error) {
+		var count int
+		err := h.db.QueryRow(ctx, `SELECT count(DISTINCT direction) FROM ens_effective_publications WHERE target_chain_id=1 AND name=$1 AND ens_effective_publication_current(id)`, runtimeENSName).Scan(&count)
+		return count == 2, fmt.Sprint(count), err
+	})
+
 }
 
 func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
@@ -1306,7 +1342,7 @@ func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 			(SELECT count(*) FROM eip7702_authorizations WHERE chain_id = 1),
 			(SELECT count(*) FROM eip7702_authorizations
 				WHERE chain_id = 1 AND transaction_hash = decode($1, 'hex')),
-			(SELECT count(*) FROM ens_name_observations WHERE chain_id = 1),
+			(SELECT count(*) FROM ens_sync_observations o JOIN ens_sync_sources s ON s.id=o.source_id WHERE s.target_chain_id = 1),
 			(SELECT count(*) FROM erc4337_user_operations WHERE chain_id = 1)
 	`, strings.TrimPrefix(h.fixture.orphanDelegationHash, "0x")).Scan(
 		&snapshot.GenesisHash, &snapshot.Canonical, &snapshot.BlockCount,
@@ -1674,8 +1710,6 @@ type receiptProxy struct {
 	clearedDelegation atomic.Uint64
 	blockTraceCalls   atomic.Uint64
 	transactionTraces atomic.Uint64
-	ensAddress        common.Address
-	ensCalls          atomic.Uint64
 }
 
 func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
@@ -1720,11 +1754,6 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	body, err := io.ReadAll(io.LimitReader(request.Body, maximumBody+1))
 	if err != nil || len(body) > maximumBody {
 		http.Error(writer, "bounded JSON-RPC request required", http.StatusBadRequest)
-		return
-	}
-	if response, handled := p.ensResponse(body); handled {
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write(response)
 		return
 	}
 	requestMethod := rpcRequestMethod(body)
@@ -1776,186 +1805,6 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	writer.Header().Set("Content-Type", "application/json")
 	_, _ = writer.Write(encoded)
 }
-
-type runtimeJSONRPCRequest struct {
-	JSONRPC string            `json:"jsonrpc"`
-	ID      json.RawMessage   `json:"id"`
-	Method  string            `json:"method"`
-	Params  []json.RawMessage `json:"params"`
-}
-
-func (p *receiptProxy) ensResponse(body []byte) ([]byte, bool) {
-	var request runtimeJSONRPCRequest
-	if json.Unmarshal(body, &request) != nil || len(request.ID) == 0 {
-		return nil, false
-	}
-	switch request.Method {
-	case "eth_getCode":
-		if len(request.Params) < 1 {
-			return nil, false
-		}
-		var address string
-		if json.Unmarshal(request.Params[0], &address) != nil ||
-			(!strings.EqualFold(address, runtimeENSRegistry) && !strings.EqualFold(address, runtimeENSResolver)) {
-			return nil, false
-		}
-		p.ensCalls.Add(1)
-		return runtimeRPCResult(request.ID, "0x6000"), true
-	case "eth_call":
-		if len(request.Params) < 1 {
-			return nil, false
-		}
-		var call struct {
-			To   string `json:"to"`
-			Data string `json:"data"`
-		}
-		if json.Unmarshal(request.Params[0], &call) != nil || !strings.EqualFold(call.To, runtimeENSResolver) {
-			return nil, false
-		}
-		input := common.FromHex(call.Data)
-		if len(input) < 4 {
-			return runtimeRPCError(request.ID, -32602, "invalid ENS calldata", ""), true
-		}
-		p.ensCalls.Add(1)
-		var output []byte
-		var err error
-		switch {
-		case bytes.Equal(input[:4], runtimeENSABI.Methods["resolve"].ID):
-			inner, packErr := runtimeLegacyAddressABI.Methods["addr"].Outputs.Pack(p.ensAddress)
-			if packErr != nil {
-				panic(packErr)
-			}
-			output, err = runtimeENSABI.Methods["resolve"].Outputs.Pack(
-				inner, common.HexToAddress(runtimeENSResolver),
-			)
-		case bytes.Equal(input[:4], runtimeENSABI.Methods["reverse"].ID):
-			output, err = runtimeENSABI.Methods["reverse"].Outputs.Pack(
-				runtimeENSName, common.HexToAddress(runtimeENSResolver), common.HexToAddress(runtimeENSRegistry),
-			)
-		default:
-			return runtimeRPCError(request.ID, 3, "execution reverted", "0x"), true
-		}
-		if err != nil {
-			panic(err)
-		}
-		return runtimeRPCResult(request.ID, hexutil.Encode(output)), true
-	default:
-		return nil, false
-	}
-}
-
-type ensMainnetRPC struct {
-	listener net.Listener
-	server   *http.Server
-	header   map[string]any
-}
-
-func startENSMainnetRPC(t *testing.T) *ensMainnetRPC {
-	t.Helper()
-	listener, err := net.Listen("tcp4", "0.0.0.0:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	header := core.DefaultGenesisBlock().ToBlock().Header()
-	encoded, err := json.Marshal(header)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var wire map[string]any
-	if json.Unmarshal(encoded, &wire) != nil {
-		t.Fatal("decode Mainnet genesis fixture")
-	}
-	wire["hash"] = header.Hash().Hex()
-	wire["number"] = "0x0"
-	fixture := &ensMainnetRPC{listener: listener, header: wire}
-	fixture.server = &http.Server{
-		Handler: fixture, ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second,
-	}
-	go func() { _ = fixture.server.Serve(listener) }()
-	return fixture
-}
-
-func (fixture *ensMainnetRPC) containerURL() string {
-	return fmt.Sprintf("http://host.docker.internal:%d", fixture.listener.Addr().(*net.TCPAddr).Port)
-}
-
-func (fixture *ensMainnetRPC) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodPost {
-		http.Error(writer, "JSON-RPC requires POST", http.StatusMethodNotAllowed)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(request.Body, 1<<20))
-	if err != nil {
-		http.Error(writer, "read JSON-RPC", http.StatusBadRequest)
-		return
-	}
-	var rpcRequest runtimeJSONRPCRequest
-	if json.Unmarshal(body, &rpcRequest) != nil {
-		http.Error(writer, "invalid JSON-RPC", http.StatusBadRequest)
-		return
-	}
-	var response []byte
-	switch rpcRequest.Method {
-	case "eth_chainId":
-		response = runtimeRPCResult(rpcRequest.ID, "0x1")
-	case "eth_getBlockByNumber", "eth_getBlockByHash":
-		response = runtimeRPCResult(rpcRequest.ID, fixture.header)
-	case "eth_call":
-		definition := runtimeENSABI.Errors["ResolverNotFound"]
-		arguments, packErr := definition.Inputs.Pack([]byte(runtimeENSName))
-		if packErr != nil {
-			panic(packErr)
-		}
-		data := append(append([]byte(nil), definition.ID[:4]...), arguments...)
-		response = runtimeRPCError(rpcRequest.ID, 3, "execution reverted", hexutil.Encode(data))
-	default:
-		response = runtimeRPCError(rpcRequest.ID, -32601, "method not found", "")
-	}
-	writer.Header().Set("Content-Type", "application/json")
-	_, _ = writer.Write(response)
-}
-
-func runtimeRPCResult(id json.RawMessage, result any) []byte {
-	encoded, _ := json.Marshal(struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
-		Result  any             `json:"result"`
-	}{JSONRPC: "2.0", ID: id, Result: result})
-	return encoded
-}
-
-func runtimeRPCError(id json.RawMessage, code int, message, data string) []byte {
-	type rpcError struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Data    string `json:"data,omitempty"`
-	}
-	encoded, _ := json.Marshal(struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
-		Error   rpcError        `json:"error"`
-	}{JSONRPC: "2.0", ID: id, Error: rpcError{Code: code, Message: message, Data: data}})
-	return encoded
-}
-
-func mustRuntimeENSABI(definition string) abi.ABI {
-	parsed, err := abi.JSON(strings.NewReader(definition))
-	if err != nil {
-		panic(err)
-	}
-	return parsed
-}
-
-var runtimeENSABI = mustRuntimeENSABI(`[
-  {"type":"function","name":"resolve","stateMutability":"view","inputs":[{"name":"name","type":"bytes"},{"name":"data","type":"bytes"}],"outputs":[{"name":"result","type":"bytes"},{"name":"resolver","type":"address"}]},
-  {"type":"function","name":"reverse","stateMutability":"view","inputs":[{"name":"lookupAddress","type":"bytes"},{"name":"coinType","type":"uint256"}],"outputs":[{"name":"primary","type":"string"},{"name":"resolver","type":"address"},{"name":"reverseResolver","type":"address"}]},
-  {"type":"error","name":"ResolverNotFound","inputs":[{"name":"name","type":"bytes"}]}
-]`)
-
-var runtimeLegacyAddressABI = mustRuntimeENSABI(`[
-  {"type":"function","name":"addr","stateMutability":"view","inputs":[{"name":"node","type":"bytes32"}],"outputs":[{"name":"address","type":"address"}]}
-]`)
 
 func rpcRequestMethod(body []byte) string {
 	var request struct {

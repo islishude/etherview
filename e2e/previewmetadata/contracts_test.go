@@ -119,12 +119,14 @@ func TestPreviewContracts(t *testing.T) {
 }
 
 func (h *harness) contractsAllRoles(ctx context.Context) {
-	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "maintenance"); err != nil {
+	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "ens", "maintenance"); err != nil {
 		h.t.Fatal(err)
 	}
 	override := filepath.Join(h.artifacts, "contracts-all.yaml")
 	config := `services:
   api:
+    volumes:
+      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/custom.json:ro
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
       ETHERVIEW_ROLES: all
@@ -141,6 +143,12 @@ func (h *harness) contractsAllRoles(ctx context.Context) {
 }
 
 func (h *harness) assertContractAPI(ctx context.Context, report contractScenarioReport) {
+	// Registration must reach a verified publication before the first name HTTP lookup.
+	waitFor(h.t, ctx, "autonomous ENS publication", func() (bool, string, error) {
+		var count int
+		err := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_effective_publications WHERE target_chain_id=48815 AND direction='forward' AND name=$1 AND ens_effective_publication_current(id)`, report.Name).Scan(&count)
+		return count > 0, fmt.Sprint(count), err
+	})
 	for _, operation := range []struct {
 		hash, transaction string
 		success           bool
@@ -198,8 +206,8 @@ func (h *harness) assertContractAPI(ctx context.Context, report contractScenario
 		return false, fmt.Sprintf("%+v %v", result, err), nil
 	})
 	var total, official int
-	if err := h.db.QueryRow(ctx, "SELECT count(*),count(official_endpoint) FROM ens_resolution_generations WHERE chain_id=48815").Scan(&total, &official); err != nil || total == 0 || official != 0 {
-		h.t.Fatalf("ENS source generations total=%d official=%d: %v", total, official, err)
+	if err := h.db.QueryRow(ctx, "SELECT count(*),count(*) FILTER(WHERE s.namespace='ens') FROM ens_sync_observations o JOIN ens_sync_sources s ON s.id=o.source_id WHERE s.target_chain_id=48815").Scan(&total, &official); err != nil || total == 0 || official != 0 {
+		h.t.Fatalf("ENS background observations total=%d official=%d: %v", total, official, err)
 	}
 }
 

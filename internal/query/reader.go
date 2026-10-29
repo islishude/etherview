@@ -18,7 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	ensresolver "github.com/islishude/etherview/internal/ens"
+	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
@@ -42,7 +42,7 @@ type RuntimeStatus struct {
 type RuntimeStatusFunc func(context.Context) (RuntimeStatus, bool, error)
 
 type NameResolver interface {
-	ResolveForward(context.Context, string) (ensresolver.ForwardResolution, error)
+	ResolveForward(context.Context, string) (enscontract.ForwardResolution, error)
 }
 
 type Options struct {
@@ -54,6 +54,7 @@ type Options struct {
 	RuntimeStatus         RuntimeStatusFunc
 	OptionalStages        gen.Completeness
 	NameResolver          NameResolver
+	NamePolicy            common.Hash
 	UserOperationRegistry *erc4337.Registry
 }
 
@@ -67,6 +68,7 @@ type PostgresReader struct {
 	runtimeStatus       RuntimeStatusFunc
 	completeness        gen.Completeness
 	nameResolver        NameResolver
+	namePolicy          common.Hash
 	userOperationDigest []byte
 	userOperationStart  uint64
 	userOperations      bool
@@ -80,6 +82,11 @@ func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, 
 	}
 	if options.ChainID == 0 {
 		return nil, errors.New("query chain ID must be greater than zero")
+	}
+	if options.NameResolver == nil {
+		// A configured policy can outlive the ENS feature flag. Disable catalog
+		// matches as well as exact-name lookup when no name reader is installed.
+		options.NamePolicy = common.Hash{}
 	}
 	completeness := options.OptionalStages
 	var err error
@@ -105,6 +112,7 @@ func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, 
 		runtimeStatus: options.RuntimeStatus,
 		completeness:  completeness,
 		nameResolver:  options.NameResolver,
+		namePolicy:    options.NamePolicy,
 	}
 	if options.UserOperationRegistry != nil && len(options.UserOperationRegistry.Entries()) > 0 {
 		digest := options.UserOperationRegistry.Digest()
@@ -527,14 +535,14 @@ func (r *PostgresReader) Search(ctx context.Context, value, encodedCursor string
 			return nil, "", nameResolverError(resolveErr)
 		}
 		if resolved.ObservationID <= 0 || resolved.Name == "" ||
-			(resolved.Outcome != ensresolver.OutcomeResolved && resolved.Outcome != ensresolver.OutcomeNoRecord) ||
-			(resolved.Source != ensresolver.SourceOfficial && resolved.Source != ensresolver.SourceCustom) {
+			(resolved.Outcome != enscontract.Resolved && resolved.Outcome != enscontract.NotFound) ||
+			(resolved.Source != enscontract.Official && resolved.Source != enscontract.Custom) {
 			return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
 		}
 		gate = resolvedNameGate{
 			Name: resolved.Name, ObservationID: resolved.ObservationID, Source: string(resolved.Source),
 		}
-		if resolved.Outcome == ensresolver.OutcomeResolved {
+		if resolved.Outcome == enscontract.Resolved {
 			if resolved.Address == (common.Address{}) {
 				return nil, "", nameCapabilityUnavailable("failed", "invalid_response")
 			}
@@ -740,7 +748,7 @@ type capabilityDetailer interface {
 }
 
 func nameResolverError(err error) error {
-	if errors.Is(err, ensresolver.ErrInvalidName) {
+	if errors.Is(err, enscontract.ErrInvalidName) {
 		return publicquery.ErrInvalidInput
 	}
 	var detailer capabilityDetailer
@@ -758,12 +766,13 @@ func nameResolverError(err error) error {
 func stableNameCapabilityCode(code string) bool {
 	switch code {
 	case "unsafe_url", "unavailable", "temporary", "unsafe_content", "invalid_content", "too_large",
+		"storage_unavailable", "retry_exhausted", "not_indexed", "sync_pending", "resolution_pending", "stale", "unsupported_source",
 		"transport_failure", "invalid_response", "stale_block", "stale_name_snapshot", "identity_conflict",
-		ensresolver.CodeRPCUnavailable, ensresolver.CodeCCIPUnavailable,
-		ensresolver.CodeCCIPSenderMismatch, ensresolver.CodeCCIPDepthExceeded,
-		ensresolver.CodeResolverNotContract, ensresolver.CodeResolverFailure,
-		ensresolver.CodeForwardMismatch, ensresolver.CodeSourceIdentity,
-		ensresolver.CodeCustomDeployment:
+		"rpc_unavailable", "ccip_unavailable",
+		"ccip_sender_mismatch", "ccip_depth_exceeded",
+		"resolver_not_contract", "resolver_failure",
+		"forward_mismatch", "source_identity_mismatch",
+		"custom_deployment_unavailable":
 		return true
 	default:
 		return false

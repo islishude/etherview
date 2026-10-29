@@ -227,6 +227,9 @@ type ERC4337EntryPointConfig struct {
 // is secret-only and is populated from ETHERVIEW_ENS_RPC_URLS(_FILE), never
 // from ConfigMap-backed YAML.
 type ENSConfig struct {
+	PolicyDigest         string          `yaml:"policy_digest"`
+	OfficialManifest     string          `yaml:"official_manifest"`
+	CustomManifest       string          `yaml:"custom_manifest"`
 	Mode                 string          `yaml:"mode"`
 	OfficialRPCEndpoints []RPCEndpoint   `yaml:"-"`
 	OfficialGateways     []string        `yaml:"official_gateways"`

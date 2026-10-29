@@ -16,6 +16,7 @@ const inputs = [
   "preview/bundler-start.mjs",
   "preview/genesis.json",
   "preview/generate.sh",
+  "cmd/previewensmanifest/main.go",
   "preview/contracts/manifest.json",
   "preview/contracts/allocation.json",
   "preview/contracts/generate.mjs",
@@ -32,6 +33,7 @@ const required = [
   "metadata/genesis.json",
   "metadata/config.yaml",
   "metadata/genesis.ssz",
+  "metadata/ens.json",
   "jwt.hex",
 ];
 function digest(value) {
@@ -141,6 +143,18 @@ export function prepareNetwork(directory, { checkOnly = false, env = process.env
       generatorImage,
       "/generate.sh",
     ]);
+    run(
+      env.GO || "go",
+      [
+        "run",
+        "./cmd/previewensmanifest",
+        "-genesis",
+        path.join(temporary, "metadata/genesis.json"),
+        "-output",
+        path.join(temporary, "metadata/ens.json"),
+      ],
+      { cwd: root },
+    );
     const manifest = { version: 1, fingerprint: fingerprint(), files: {} };
     for (const file of files(temporary))
       manifest.files[file] = digest(fs.readFileSync(path.join(temporary, file)));

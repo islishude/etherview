@@ -28,6 +28,19 @@ dependencies. This catalog groups the child plans by responsibility.
 
 - [P70 — Release](P70-release.md)
 
+## ENS synchronization delivery
+
+[ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+spans existing owners: P20-T23 through P20-T26 provide persistence, v1/custom
+and v2 discovery, and background publication; P30-T146 provides the role;
+P40-T26 and P50-T80 provide database reads and display; P30-T147 and P30-T148
+separate local production acceptance from live Mainnet evidence. P70 consumes
+those outcomes through its existing release gates. P20-T23 through P20-T26,
+P30-T146/P30-T147, P40-T26 and P50-T80 are `done`.
+P30-T148 remains `in_progress`: real Mainnet activation, bounded collection and
+independent samples passed; complete history and database publication
+reconciliation remain open in the [live report](../reviews/P30-ens-mainnet-acceptance.md).
+
 ## Planning and retention
 
 Follow the [planning threshold](../development.md#planning-threshold). Plans
@@ -52,10 +65,10 @@ change. New plan IDs start at P80; all lower gaps and retired prefixes stay rese
 | ------------- | ----------------------------- |
 | P00           | 14                            |
 | P10           | 7                             |
-| P20           | 22                            |
-| P30           | 145                           |
-| P40           | 25                            |
-| P50           | 79                            |
+| P20           | 26                            |
+| P30           | 148                           |
+| P40           | 26                            |
+| P50           | 80                            |
 | P60           | 21                            |
 | P70           | 52                            |
 | P55 (retired) | 4                             |

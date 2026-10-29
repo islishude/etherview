@@ -1713,6 +1713,75 @@ func (e NFTMetadataState) Valid() bool {
 	}
 }
 
+// Defines values for NameSourceStatusProtocols.
+const (
+	NameSourceStatusProtocolsCustom NameSourceStatusProtocols = "custom"
+	NameSourceStatusProtocolsV1     NameSourceStatusProtocols = "v1"
+	NameSourceStatusProtocolsV2     NameSourceStatusProtocols = "v2"
+)
+
+// Valid indicates whether the value is a known member of the NameSourceStatusProtocols enum.
+func (e NameSourceStatusProtocols) Valid() bool {
+	switch e {
+	case NameSourceStatusProtocolsCustom:
+		return true
+	case NameSourceStatusProtocolsV1:
+		return true
+	case NameSourceStatusProtocolsV2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameSourceStatusSource.
+const (
+	NameSourceStatusSourceCustomEns NameSourceStatusSource = "custom_ens"
+	NameSourceStatusSourceEns       NameSourceStatusSource = "ens"
+)
+
+// Valid indicates whether the value is a known member of the NameSourceStatusSource enum.
+func (e NameSourceStatusSource) Valid() bool {
+	switch e {
+	case NameSourceStatusSourceCustomEns:
+		return true
+	case NameSourceStatusSourceEns:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameSourceStatusState.
+const (
+	Current           NameSourceStatusState = "current"
+	NotIndexed        NameSourceStatusState = "not_indexed"
+	ResolutionPending NameSourceStatusState = "resolution_pending"
+	Stale             NameSourceStatusState = "stale"
+	SyncPending       NameSourceStatusState = "sync_pending"
+	UnsupportedSource NameSourceStatusState = "unsupported_source"
+)
+
+// Valid indicates whether the value is a known member of the NameSourceStatusState enum.
+func (e NameSourceStatusState) Valid() bool {
+	switch e {
+	case Current:
+		return true
+	case NotIndexed:
+		return true
+	case ResolutionPending:
+		return true
+	case Stale:
+		return true
+	case SyncPending:
+		return true
+	case UnsupportedSource:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PendingTransactionDetailKind.
 const (
 	PendingTransactionDetailKindPending PendingTransactionDetailKind = "pending"
@@ -3783,6 +3852,9 @@ type AddressNameLookupState string
 type AddressNamePage struct {
 	Items []AddressNameLookup `json:"items"`
 
+	// Publication A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Publication Quantity `json:"publication"`
+
 	// Snapshot A bounded server-issued traversal token that clients must not decode or construct.
 	Snapshot OpaqueCursor `json:"snapshot"`
 }
@@ -5617,6 +5689,37 @@ type NFTOwnershipResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// NameSourceStatus defines model for NameSourceStatus.
+type NameSourceStatus struct {
+	Code        *string    `json:"code,omitempty"`
+	LastSuccess *time.Time `json:"last_success,omitempty"`
+
+	// Pending A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Pending   Quantity                    `json:"pending"`
+	Protocols []NameSourceStatusProtocols `json:"protocols"`
+
+	// Published A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Published *Quantity `json:"published,omitempty"`
+
+	// Scanned A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Scanned *Quantity              `json:"scanned,omitempty"`
+	Source  NameSourceStatusSource `json:"source"`
+	State   NameSourceStatusState  `json:"state"`
+
+	// Target A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Target     *Quantity  `json:"target,omitempty"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
+
+// NameSourceStatusProtocols defines model for NameSourceStatus.Protocols.
+type NameSourceStatusProtocols string
+
+// NameSourceStatusSource defines model for NameSourceStatus.Source.
+type NameSourceStatusSource string
+
+// NameSourceStatusState defines model for NameSourceStatus.State.
+type NameSourceStatusState string
+
 // NativeTransfer defines model for NativeTransfer.
 type NativeTransfer struct {
 	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -5736,8 +5839,14 @@ type PendingTransactionListResponse struct {
 
 // PrimaryName defines model for PrimaryName.
 type PrimaryName struct {
-	Name   string            `json:"name"`
-	Source PrimaryNameSource `json:"source"`
+	Name string `json:"name"`
+
+	// Publication A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Publication Quantity          `json:"publication"`
+	Source      PrimaryNameSource `json:"source"`
+
+	// ValidUntil Hide the name after this deadline even without a server event.
+	ValidUntil time.Time `json:"valid_until"`
 }
 
 // PrimaryNameSource defines model for PrimaryName.Source.
@@ -6158,12 +6267,16 @@ type SearchResponse struct {
 
 // SearchResult defines model for SearchResult.
 type SearchResult struct {
-	Canonical  *bool                   `json:"canonical,omitempty"`
-	Key        string                  `json:"key"`
-	Kind       SearchResultKind        `json:"kind"`
-	Label      string                  `json:"label"`
-	NameSource *SearchResultNameSource `json:"name_source,omitempty"`
-	Rank       int                     `json:"rank"`
+	Canonical *bool            `json:"canonical,omitempty"`
+	Key       string           `json:"key"`
+	Kind      SearchResultKind `json:"kind"`
+	Label     string           `json:"label"`
+
+	// NamePublication A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	NamePublication *Quantity               `json:"name_publication,omitempty"`
+	NameSource      *SearchResultNameSource `json:"name_source,omitempty"`
+	NameValidUntil  *time.Time              `json:"name_valid_until,omitempty"`
+	Rank            int                     `json:"rank"`
 }
 
 // SearchResultKind defines model for SearchResult.Kind.
@@ -6257,7 +6370,8 @@ type Status struct {
 	Lag Quantity `json:"lag"`
 
 	// LatestBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	LatestBlock Quantity `json:"latest_block"`
+	LatestBlock Quantity            `json:"latest_block"`
+	Names       *[]NameSourceStatus `json:"names,omitempty"`
 
 	// SafeBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	SafeBlock *Quantity `json:"safe_block,omitempty"`

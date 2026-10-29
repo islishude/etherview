@@ -446,7 +446,7 @@ export function useTransactionStateChanges(
 export function useAddress(address: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address],
-    meta: chainQueryMeta,
+    meta: { chainEvents: ["head", "reorg", "names"] },
     queryFn: async ({ signal }) =>
       requireEnvelope(await sdk.getAddress({ client: apiClient, signal, path: { address } })).data,
     enabled: enabled && address.length > 0,
@@ -823,7 +823,7 @@ export function useSearchResults(query: string, page: CursorRequest = firstPage,
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["search", query, cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { chainEvents: ["head", "reorg", "names"] },
     queryFn: async ({ signal }): Promise<CursorPage<SearchResult>> => {
       const response = requireEnvelope(
         await sdk.search({ client: apiClient, signal, query: { q: query, cursor, limit } }),

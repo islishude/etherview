@@ -10,7 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
-	ensresolver "github.com/islishude/etherview/internal/ens"
+	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/mempool"
 )
 
@@ -40,8 +40,13 @@ func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
 	meta := h.meta(r)
 	coverageStart, coverageEnd := quantity(snapshot.CoverageStart), quantity(snapshot.CoverageEnd)
 	meta.CoverageStart, meta.CoverageEnd = &coverageStart, &coverageEnd
+	model := statusModel(h.cfg.Chain.ID, snapshot)
+	names := h.nameSourceStatus(r.Context())
+	if names != nil {
+		model.Names = &names
+	}
 	writeJSON(w, http.StatusOK, gen.StatusResponse{
-		Data: statusModel(h.cfg.Chain.ID, snapshot),
+		Data: model,
 		Meta: meta,
 	})
 }
@@ -374,7 +379,7 @@ func (h *Handler) address(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Features.ENS && h.addressNames != nil {
 		parsed := common.HexToAddress(address)
 		if primary, primaryErr := h.addressNames.ResolveCurrentPrimary(r.Context(), parsed); primaryErr == nil &&
-			primary.Outcome == ensresolver.OutcomeResolved {
+			primary.Outcome == enscontract.Resolved {
 			item.PrimaryName = primaryNameModel(primary)
 		}
 	}
@@ -438,14 +443,14 @@ func (h *Handler) addressNamesPage(w http.ResponseWriter, r *http.Request) {
 		}
 		item := gen.AddressNameLookup{Address: address}
 		switch {
-		case value.Outcome == ensresolver.OutcomeResolved:
+		case value.Outcome == enscontract.Resolved:
 			item.State = gen.AddressNameLookupStateResolved
 			item.PrimaryName = primaryNameModel(value)
 			if item.PrimaryName == nil {
 				h.handleReaderError(w, r, errors.New("ENS address-name service returned an invalid primary name"))
 				return
 			}
-		case value.Outcome == ensresolver.OutcomeNoRecord:
+		case value.Outcome == enscontract.NotFound:
 			item.State = gen.AddressNameLookupStateNotFound
 		case value.Code != "":
 			item.State = gen.AddressNameLookupStateUnavailable
@@ -458,27 +463,27 @@ func (h *Handler) addressNamesPage(w http.ResponseWriter, r *http.Request) {
 		items[index] = item
 	}
 	writeJSON(w, http.StatusOK, gen.AddressNamePageResponse{
-		Data: gen.AddressNamePage{Items: items, Snapshot: nextSnapshot}, Meta: h.meta(r),
+		Data: gen.AddressNamePage{Items: items, Snapshot: nextSnapshot, Publication: gen.Quantity(strconv.FormatInt(resolved[0].SnapshotVersion, 10))}, Meta: h.meta(r),
 	})
 }
 
-func primaryNameModel(value ensresolver.PrimaryResolution) *gen.PrimaryName {
-	if value.Outcome != ensresolver.OutcomeResolved || value.Name == "" {
+func primaryNameModel(value enscontract.PrimaryResolution) *gen.PrimaryName {
+	if value.Outcome != enscontract.Resolved || value.Name == "" {
 		return nil
 	}
 	source := gen.PrimaryNameSource(value.Source)
 	if !source.Valid() {
 		return nil
 	}
-	return &gen.PrimaryName{Name: value.Name, Source: source}
+	return &gen.PrimaryName{Name: value.Name, Source: source, Publication: gen.Quantity(strconv.FormatInt(value.ObservationID, 10)), ValidUntil: value.ValidUntil}
 }
 
 func (h *Handler) handleENSReaderError(w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, ensresolver.ErrSnapshotInvalid) {
+	if errors.Is(err, enscontract.ErrSnapshotInvalid) {
 		h.handleReaderError(w, r, ErrInvalidCursor)
 		return
 	}
-	if resolution, ok := errors.AsType[*ensresolver.ResolutionError](err); ok {
+	if resolution, ok := errors.AsType[*enscontract.UnavailableError](err); ok {
 		capability, state, code := resolution.CapabilityDetails()
 		h.handleReaderError(w, r, NewCapabilityUnavailableError(capability, state, code))
 		return

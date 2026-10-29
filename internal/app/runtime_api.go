@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/auth"
@@ -32,7 +33,6 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 	readDB := assembly.readDB
 	logger := assembly.logger
 	registry := assembly.registry
-	businessObserver := assembly.businessObserver
 	telemetry := assembly.telemetry
 	rpcBuild := assembly.rpcBuild
 	pendingRepository := assembly.pendingRepository
@@ -60,7 +60,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			// and exact observation writes. It must not inherit replica lag.
 			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
 		}
-		ensService, err := newENSService(ctx, db, cfg, rpcBuild, canonicalState, businessObserver, logger)
+		ensService, err := newENSReader(db, cfg)
 		if err != nil {
 			return err
 		}
@@ -116,7 +116,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 					BackfillComplete:    status.BackfillComplete, Ready: status.Ready,
 				}, exists, err
 			},
-			OptionalStages: completeness, NameResolver: nameResolver,
+			OptionalStages: completeness, NameResolver: nameResolver, NamePolicy: common.HexToHash(cfg.ENS.PolicyDigest),
 			UserOperationRegistry: userOperationRegistry,
 		}
 		reader, err := query.NewPostgresReader(readDB, queryOptions)

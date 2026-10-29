@@ -559,34 +559,92 @@ PostgreSQL remains authoritative.
 
 ## ENS primary names
 
-ENS is disabled by default. Enable `features.ens` only for API-capable roles.
-When the explored RPC is not exact Ethereum Mainnet, supply the dedicated L1
-endpoint set through `ETHERVIEW_ENS_RPC_URLS` or its `_FILE` form; Helm exposes
-the optional `secrets.ensRPCURLsKey` only to `api` and `all`. RPC URLs remain
-Secret-only and are never accepted from the ConfigMap-backed `ens` section.
+ENS is disabled by default. Under
+[ADR-0058](decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md),
+`ens` and `all` run the same collection/resolution components; `api` reads
+writer-owned publications only. Enable `features.ens` consistently and configure
+`ens.policy_digest` as a reviewed nonzero 32-byte hex identity. Mount public,
+reviewed JSON manifests through `ETHERVIEW_ENS_MANIFEST_DIR` (Compose) or
+`ensManifests` (Helm), and set `ens.official_manifest` / `ens.custom_manifest`
+to their `/etc/etherview/ens/<filename>.json` paths. The
+[manifest directory](../deploy/ens-manifests/README.md) describes their fields.
+Manifests bind source/target chains, genesis, exact deployment block hashes,
+runtime code hashes, ABI profiles and policy. There is no implicit deployment
+discovery or guessed Mainnet activation date.
 
-The default official gateway is `https://ccip-v3.ens.xyz`. A custom Registry
-and modern Universal Resolver may be configured under `ens.custom`; both are
-on the explored chain and are used only after official no-record. Custom names
-are visibly marked and never replace an exact copy, QR, or link address. An ENS
-outage degrades only names; inspect `etherview_ens_resolutions_total` and the
-bounded `capability_unavailable` code without retrying writes or changing core
-readiness.
+Only `ens` / `all` receive `ETHERVIEW_ENS_RPC_URLS` (or `_FILE`), including
+`secrets.ensRPCURLsKey` in Helm. The official endpoint needs historical exact-block
+state and log access; source identity is checked before background work. Collection rounds process up to eight blocks with a one-minute overall
+budget; `ens.request_timeout` still bounds each HTTP request and resolution.
+For Mainnet v2, configure `ens.max_response_bytes: 8388608`: discovering dynamic
+instances reads bounded whole-block logs, and ordinary Mainnet blocks can exceed
+the 1 MiB resolution-oriented default. The count and byte caps remain enforced. Custom
+collection reads canonical core logs from PostgreSQL; custom resolution uses
+the explored chain's state RPC. `custom_only` does not load official credentials
+or contact official gateways. API startup never probes ENS sources. Configure
+outbound HTTPS access for the ENS role's reviewed RPC/gateway origins, using
+network policy runtime CIDRs where required. An ENS outage does not change core
+readiness. Rotate credentials by restarting only the ENS role (or `all`).
+
+CCIP gateways must resolve to public addresses accepted by the metadata network
+policy. A local DNS/proxy returning special-use addresses is correctly rejected;
+fix the runtime's DNS configuration rather than enabling private-network access
+or relaxing TLS/redirect checks. The [Mainnet acceptance report](reviews/P30-ens-mainnet-acceptance.md)
+records the tested DNS qualification and the distinction between bounded source
+collection and completed historical coverage.
+
+Bootstrap starts at the reviewed manifest boundary, commits contiguous scans,
+and discovers candidates from real events and indexed addresses. Existing
+custom genesis is authenticated against code evidence; it does not fabricate
+registration events. Unsupported deployments and coverage gaps remain explicit
+unavailable states. Primary labels require reverse/forward agreement. Official
+unknown, stale or failed results never authorize custom fallback.
+
+Use `/api/v1/status` `names` entries for protocol support, target/scanned/published
+blocks, pending work, last success and validity. All public counters are decimal
+strings. `etherview_ens_resolutions_total` uses bounded source, direction/phase
+and outcome labels; collection, identity, policy, scheduling and resolution
+failures never include names, addresses, URLs or credentials. Durable `names`
+events share `/api/v1/events`; publication IDs and validity are returned with
+names. Retained snapshots never extend freshness or survive dependency withdrawal.
+
+Explicit recovery commands use only the writer database and the configured
+policy. Import files contain one name or address per line (at most 1 MiB and
+1,000 candidates); the same batch ID/content is idempotent, changed content is
+rejected. Replay returns `through_candidate_id` for the next bounded page and
+records a reason. Replay batch IDs are idempotent per source and reject changed
+arguments; use a new ID for each subsequent page. Neither command performs resolution inline.
+
+```sh
+etherview ens import --config /etc/etherview/config.yaml --source-id 1 --batch-id reviewed-001 --file /work/candidates.txt
+etherview ens replay --config /etc/etherview/config.yaml --source-id 1 --batch-id replay-page-001 --after-candidate-id 0 --limit 100 --reason operator-reviewed-retry
+```
+
+For exhausted work, fix endpoint/gateway/deployment evidence first, then replay
+only the affected bounded range. Worker restarts retain retry budgets and leases;
+source cursor resumption and canonical reattachment are automatic. An accepted
+finalized-block conflict halts that source: preserve the database and manifest,
+independently reconcile its exact hashes, and provision a separately reviewed
+source/policy only after resolving the conflict. Replay cannot clear integrity
+halts or invent coverage. P30-T147 owns production/local acceptance; P30-T148
+real Mainnet acceptance is separate and is not implied by fixture checks.
 
 ## Capacity, HA, and failover
 
 `deploy/config.reference-capacity.yaml` and the Helm
 `values-reference-capacity.yaml` are a reproducible starting profile for the
 core explorer read mix. They are not a release result. The Helm profile runs
-redundant API, sync, enrichment, and maintenance roles, retains at least one
+redundant API, sync, enrichment, ENS and maintenance roles, retains at least one
 replica during voluntary disruption, and uses a component-scoped hard hostname
 spread with at least two eligible domains. A placement that cannot satisfy
 that failure-domain boundary remains Pending instead of silently collapsing
-onto one node. Its configured steady-state/HPA maximum is 18 non-terminating
+onto one node. Its configured steady-state/HPA maximum is 20 non-terminating
 application Pods. Trace,
-verification, metadata, Sourcify, pricing, and ENS remain separate optional
+verification, metadata, Sourcify and pricing remain separate optional
 capability profiles because their RPC, compiler, and external-service costs
-must be measured independently. Its rolling strategy sets `maxSurge: 0` and
+must be measured independently. The ENS role reserves two Pods; enable it with
+reviewed manifests and measure its upstream budget alongside the final workload.
+Its rolling strategy sets `maxSurge: 0` and
 `maxUnavailable: 1`, preventing an intentional surge while the per-role
 disruption budgets retain one available replica.
 
@@ -626,14 +684,14 @@ steady application connections = P * W + A * R
 ```
 
 Omit `A * R` when the reader is disabled. The reference distributed Helm
-profile has `P = 18`, `A = 8`, and `W = 12`: it therefore permits 216 writer
+profile has `P = 20`, `A = 8`, and `W = 12`: it therefore permits 240 writer
 connections. Enabling a same-sized reader gives `R = 12` and adds 96 reader
-connections, for 312 steady-state application connections.
+connections, for 336 steady-state application connections.
 
 Kubernetes may start a replacement while a deleted Pod is still terminating, and
 terminating replicas are not included in `maxSurge`. A fully concurrent rollout
 can therefore overlap old and replacement pools: reserve up to twice the
-steady-state application budget—432 without the reader or 624 with the
+steady-state application budget—480 without the reader or 672 with the
 same-sized reader in the reference profile—or serialize role rollouts and
 measure their actual termination overlap. Also reserve server slots for the
 migration Job and operator access, or use a separately operated

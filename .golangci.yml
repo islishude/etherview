@@ -67,10 +67,39 @@ linters:
             - "${base-path}/internal/abicontract/**"
             - "${base-path}/internal/proxycontract/**"
             - "${base-path}/internal/stagecontract/**"
+            - "${base-path}/internal/enscontract/**"
             - "!$test"
           deny:
             - pkg: github.com/islishude/etherview/internal/enrich$
               desc: readers and shared contracts must not depend on enrichment workers
+            - pkg: github.com/islishude/etherview/internal/enssync$
+              desc: readers and shared contracts must use neutral ENS contracts
+        database-only-ens-reader:
+          files:
+            - "${base-path}/internal/ensread/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/ens$
+              desc: published ENS readers must not resolve names upstream
+            - pkg: github.com/islishude/etherview/internal/enssync$
+              desc: published ENS readers must not enqueue work
+            - pkg: github.com/islishude/etherview/internal/ethrpc$
+              desc: published ENS readers must not construct RPC clients
+            - pkg: net/http
+              desc: published ENS readers must not contact gateways
+        neutral-ens-contracts:
+          files:
+            - "${base-path}/internal/enscontract/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/db
+              desc: ENS contracts must not depend on persistence implementations
+            - pkg: github.com/islishude/etherview/internal/ens$
+              desc: ENS contracts must not depend on request-time resolvers
+            - pkg: github.com/islishude/etherview/internal/ethrpc$
+              desc: ENS contracts must not own RPC clients
+            - pkg: github.com/islishude/etherview/internal/httpapi$
+              desc: ENS contracts must not depend on HTTP transport
         neutral-public-contracts:
           files:
             - "${base-path}/internal/publicquery/**"

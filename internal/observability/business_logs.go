@@ -89,7 +89,7 @@ func (observer *BusinessObserver) RecordENS(observation ensresolver.MetricObserv
 	logger.Debug("ENS resolution completed",
 		"event", "ens_resolution_completed", "component", "ens-resolver",
 		"source", boundedENSMetricValue(string(observation.Source), "ens", "custom_ens"),
-		"direction", boundedENSMetricValue(observation.Direction, "forward", "primary"),
+		"direction", boundedENSMetricValue(observation.Direction, "forward", "primary", "identity", "policy", "collection", "schedule", "worker", "resolution"),
 		"outcome", boundedENSMetricValue(observation.Outcome, "resolved", "not_found", "error", "cache_hit"),
 		"duration_ms", max(observation.Duration.Milliseconds(), 0),
 	)

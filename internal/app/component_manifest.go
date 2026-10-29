@@ -84,6 +84,13 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			} else {
 				add("50-role-metadata")
 			}
+		case components.RoleENS:
+			if cfg.Features.ENS {
+				add("38-ens-collection")
+				addWorkerComponentKeys(add, "39-ens-resolution", cfg.ENS.MaxConcurrency)
+			} else {
+				add("50-role-ens")
+			}
 		case components.RoleMaintenance:
 			add("44-historical-analytics-rollup")
 			addWorkerComponentKeys(add, "45-maintenance", cfg.Runtime.WorkerCount)

@@ -29,6 +29,14 @@ roles:
     enabled: false
   metadata:
     enabled: false
+  ens:
+    enabled: true
+    replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 2
+      targetCPUUtilizationPercentage: 70
   maintenance:
     replicas: 2
     autoscaling:
@@ -64,12 +72,12 @@ roleTopologySpread:
 
 config:
   database:
-    # At the maximum replica counts this profile permits 216 application
+    # At the maximum replica counts this profile permits 240 application
     # writer connections. To enable read/write splitting, keep read_url empty
     # here and provide database-read-url through secrets.existingSecret. The
     # separate reader pool is opened only by the maximum 8 API Pods, adding 96
-    # same-sized connections for 312 total; zero sizes inherit writer bounds.
-    # A fully overlapping rollout can therefore need 624 application slots.
+    # same-sized connections for 336 total; zero sizes inherit writer bounds.
+    # A fully overlapping rollout can therefore need 672 application slots.
     read_url: ""
     read_max_connections: 0
     read_min_connections: 0

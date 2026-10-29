@@ -7,6 +7,10 @@ under P60-T20; notifications have no persisted history or replay.
 
 ## Outcome
 
+P40-T26 delivers the ADR-0058 database-only ENS cutover for address detail,
+batch names and search, including immutable publication snapshots and source
+status/events.
+
 The explorer exposes a versioned spec-first native REST API, cursor-stable
 queries, explicit completeness, API-key quotas, real-time head/reorg events, and
 the agreed Etherscan V2 subset, including authoritative withdrawals, exact
@@ -21,6 +25,8 @@ with same-origin exact-hash downloads. SIWE-owned CSV exports preserve one
 canonical snapshot with explicit admission, size, time, and coverage limits.
 
 ## References
+
+- [ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
 
 - [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
 - [ADR-0026](../decisions/ADR-0026-current-capability-status-and-numeric-canonical-tips.md)
@@ -47,28 +53,29 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 
 ## Work Items
 
-| ID      | Status | Depends on                         | Deliverable                                                                                                                                                                            | Verification                                                                                                            |
-| ------- | ------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| P40-T01 | done   | P00, P10                           | OpenAPI 3.0.3 envelopes/scalars/errors/cursors, generated types, and capability modules with neutral query contracts and fail-closed dependencies                                      | contract, import-graph/source/lint, route/capability and startup tests                                                  |
-| P40-T02 | done   | P40-T01, P20-T06                   | Status/config, block/transaction/address/search resources with narrow projections, normalized withdrawals, ENS forward search and generated batch address-name snapshots               | handler/repository, corruption, exact ENS generation/cursor/reorg, PostgreSQL plan/benchmark, browser and runtime tests |
-| P40-T03 | done   | P20, P10, P40-T02                  | Token/NFT, contract/source/ABI, stats, pending and verification APIs, including bounded canonical NFT metadata and explicit stale-content identities                                   | capability matrix, OpenAPI/generation, metadata/catalog, PostgreSQL canonicality/reorg and HTTP tests                   |
-| P40-T04 | done   | P40-T01                            | API-key lifecycle, bounded anonymous/keyed local rate buckets and Redis fallback, CORS, health, metrics                                                                                | auth/rate, deterministic cardinality, Redis-fallback race, and metric tests                                             |
-| P40-T05 | done   | P40-T02                            | Head/reorg SSE with per-write deadlines, non-blocking durable replay, cache-invalidation circuit breaking and typed mempool failure states                                             | HTTP/1.1/HTTP/2, cancellation, replay/reconnect/reorg, Redis/mempool race and runtime tests                             |
-| P40-T06 | done   | P40-T02, P40-T03, P40-T04          | Agreed `/v2/api` Etherscan compatibility with authoritative withdrawals, holdings, funding, block counts, advanced indexed filters, bounded pagination/work windows, and prepaid reads | contract/golden, generation, PostgreSQL query-plan/coverage/reorg/state/race, billing, and runtime parity tests         |
-| P40-T07 | done   | P20-T11, P40-T02, P40-T03          | Transaction-scoped logs, token transfers, trace/state changes, successful internal ETH transfers, separate protocol-native transfers and exact-block token decimals                    | contract/cursor, identity/reorg/capability, billing inventory, PostgreSQL and generation tests                          |
-| P40-T08 | done   | P40-T02, P40-T07                   | Snapshot-stable address transaction/internal-call/ERC-20/NFT/protocol-native activity and canonical withdrawals with numeric index ordering                                            | contract/cursor, migration/query, reorg/capability, billing inventory and integration tests                             |
-| P40-T09 | done   | P40-T02, P40-T05                   | Writer-authoritative version-fenced home snapshots and centralized SSE fanout with bounded cancellation-safe waits                                                                     | contract/generation, replay, version-floor/concurrency and integration tests                                            |
-| P40-T10 | done   | P20, P40-T08                       | Snapshot-bound address origins, exact ERC-20 balances, and public wallet-chain configuration                                                                                           | contract, state, cursor, reorg, and configuration tests                                                                 |
-| P40-T11 | done   | P30-T15, P40-T10                   | Public proxy detail, canonical upgrade and initialization histories, and anonymous free verified-artifact reads                                                                        | OpenAPI, generated contract, writer-query, cursor, auth, x402, and integration tests                                    |
-| P40-T12 | done   | P40-T10                            | Protocol fields, block transactions/withdrawals/origin evidence, and exact-block execution/blob base-fee facts                                                                         | OpenAPI/generation, query/cursor/reorg, handler and home-stream tests                                                   |
-| P40-T15 | done   | P40-T12                            | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API                                                                          | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests                             |
-| P40-T17 | done   | P20-T13, P30-T15, P40-T02          | Exact transaction-list Method projections from published execution identity and verified ABI selectors                                                                                 | OpenAPI/generation, exact identity/canonicality, selector collisions, pagination and integration tests                  |
-| P40-T20 | done   | P20-T17, P40-T02, P40-T07, P40-T08 | Generated global/detail/transaction/address UserOperation resources, userOpHash search, and configuration-bound pagination                                                             | OpenAPI/generation, HTTP/query, coverage/cursor, raw-value, configuration, and runtime parity tests                     |
-| P40-T21 | done   | P20-T18, P40-T03, P40-T06, P60-T13 | Native holder list/count and billable Etherscan list/count from complete current-tip snapshots                                                                                         | OpenAPI/generation, handler, cursor/reorg, billing, compatibility, and PostgreSQL tests                                 |
-| P40-T22 | done   | P20-T19, P20-T20, P40-T12          | Generated consensus/blob metadata, consensus-first slots with execution fallback, and exact-hash binary downloads                                                                      | generated contracts, HTTP/query, integrity, freshness, and runtime tests                                                |
-| P40-T23 | done   | P60-T18, P40-T08                   | SIWE/CSRF-authenticated address CSV exports, writer snapshot/coverage checks, bounded PostgreSQL admission, and exact complete files                                                   | OpenAPI/generation, snapshot/reorg, row/byte/time limits, JSON-only failure, concurrency, and runtime regressions       |
-| P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                                   |
-| P40-T25 | done   | P40-T08, P40-T20                   | Published partial browsing across native explorer pages with publication-fenced cursors and explicit completeness                                                                      | PostgreSQL publication/replay/reorg, API, bilingual browser and all/split regression gates                              |
+| ID      | Status | Depends on                         | Deliverable                                                                                                                                                                            | Verification                                                                                                                                     |
+| ------- | ------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| P40-T01 | done   | P00, P10                           | OpenAPI 3.0.3 envelopes/scalars/errors/cursors, generated types, and capability modules with neutral query contracts and fail-closed dependencies                                      | contract, import-graph/source/lint, route/capability and startup tests                                                                           |
+| P40-T02 | done   | P40-T01, P20-T06                   | Status/config, block/transaction/address/search resources with narrow projections, normalized withdrawals, ENS forward search and generated batch address-name snapshots               | handler/repository, corruption, exact ENS generation/cursor/reorg, PostgreSQL plan/benchmark, browser and runtime tests                          |
+| P40-T03 | done   | P20, P10, P40-T02                  | Token/NFT, contract/source/ABI, stats, pending and verification APIs, including bounded canonical NFT metadata and explicit stale-content identities                                   | capability matrix, OpenAPI/generation, metadata/catalog, PostgreSQL canonicality/reorg and HTTP tests                                            |
+| P40-T04 | done   | P40-T01                            | API-key lifecycle, bounded anonymous/keyed local rate buckets and Redis fallback, CORS, health, metrics                                                                                | auth/rate, deterministic cardinality, Redis-fallback race, and metric tests                                                                      |
+| P40-T05 | done   | P40-T02                            | Head/reorg SSE with per-write deadlines, non-blocking durable replay, cache-invalidation circuit breaking and typed mempool failure states                                             | HTTP/1.1/HTTP/2, cancellation, replay/reconnect/reorg, Redis/mempool race and runtime tests                                                      |
+| P40-T06 | done   | P40-T02, P40-T03, P40-T04          | Agreed `/v2/api` Etherscan compatibility with authoritative withdrawals, holdings, funding, block counts, advanced indexed filters, bounded pagination/work windows, and prepaid reads | contract/golden, generation, PostgreSQL query-plan/coverage/reorg/state/race, billing, and runtime parity tests                                  |
+| P40-T07 | done   | P20-T11, P40-T02, P40-T03          | Transaction-scoped logs, token transfers, trace/state changes, successful internal ETH transfers, separate protocol-native transfers and exact-block token decimals                    | contract/cursor, identity/reorg/capability, billing inventory, PostgreSQL and generation tests                                                   |
+| P40-T08 | done   | P40-T02, P40-T07                   | Snapshot-stable address transaction/internal-call/ERC-20/NFT/protocol-native activity and canonical withdrawals with numeric index ordering                                            | contract/cursor, migration/query, reorg/capability, billing inventory and integration tests                                                      |
+| P40-T09 | done   | P40-T02, P40-T05                   | Writer-authoritative version-fenced home snapshots and centralized SSE fanout with bounded cancellation-safe waits                                                                     | contract/generation, replay, version-floor/concurrency and integration tests                                                                     |
+| P40-T10 | done   | P20, P40-T08                       | Snapshot-bound address origins, exact ERC-20 balances, and public wallet-chain configuration                                                                                           | contract, state, cursor, reorg, and configuration tests                                                                                          |
+| P40-T11 | done   | P30-T15, P40-T10                   | Public proxy detail, canonical upgrade and initialization histories, and anonymous free verified-artifact reads                                                                        | OpenAPI, generated contract, writer-query, cursor, auth, x402, and integration tests                                                             |
+| P40-T12 | done   | P40-T10                            | Protocol fields, block transactions/withdrawals/origin evidence, and exact-block execution/blob base-fee facts                                                                         | OpenAPI/generation, query/cursor/reorg, handler and home-stream tests                                                                            |
+| P40-T15 | done   | P40-T12                            | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API                                                                          | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests                                                      |
+| P40-T17 | done   | P20-T13, P30-T15, P40-T02          | Exact transaction-list Method projections from published execution identity and verified ABI selectors                                                                                 | OpenAPI/generation, exact identity/canonicality, selector collisions, pagination and integration tests                                           |
+| P40-T20 | done   | P20-T17, P40-T02, P40-T07, P40-T08 | Generated global/detail/transaction/address UserOperation resources, userOpHash search, and configuration-bound pagination                                                             | OpenAPI/generation, HTTP/query, coverage/cursor, raw-value, configuration, and runtime parity tests                                              |
+| P40-T21 | done   | P20-T18, P40-T03, P40-T06, P60-T13 | Native holder list/count and billable Etherscan list/count from complete current-tip snapshots                                                                                         | OpenAPI/generation, handler, cursor/reorg, billing, compatibility, and PostgreSQL tests                                                          |
+| P40-T22 | done   | P20-T19, P20-T20, P40-T12          | Generated consensus/blob metadata, consensus-first slots with execution fallback, and exact-hash binary downloads                                                                      | generated contracts, HTTP/query, integrity, freshness, and runtime tests                                                                         |
+| P40-T23 | done   | P60-T18, P40-T08                   | SIWE/CSRF-authenticated address CSV exports, writer snapshot/coverage checks, bounded PostgreSQL admission, and exact complete files                                                   | OpenAPI/generation, snapshot/reorg, row/byte/time limits, JSON-only failure, concurrency, and runtime regressions                                |
+| P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                                                            |
+| P40-T25 | done   | P40-T08, P40-T20                   | Published partial browsing across native explorer pages with publication-fenced cursors and explicit completeness                                                                      | PostgreSQL publication/replay/reorg, API, bilingual browser and all/split regression gates                                                       |
+| P40-T26 | done   | P20-T26                            | Database-only ENS detail/batch/search readers, immutable publication tokens, source status and durable names SSE contracts                                                             | Read-only SQL/no ENS clients or enqueue, negative versus missing data, writer routing, expiry/reorg/cursors, OpenAPI generation and stream tests |
 
 P40-T06's authoritative compatibility reads build on P20, the native API,
 P60-T09 user authentication/scoped keys, and P60-T13 prepaid read billing.
@@ -78,6 +85,27 @@ holding pages, reader/writer routing, and production runtime parity. Their
 acceptance is independent of P60's still-blocked live-payment gate.
 
 ## Acceptance
+
+### Planned ENS acceptance
+
+- [x] P40-T26 changes OpenAPI first and regenerates Go/SPA outputs. All three
+      ENS request paths read published views without ENS RPC/gateway access or
+      writes to ENS candidates, tasks, observations or snapshot tables.
+      Authentication, billing and accounting retain their separate contracts.
+- [x] Unindexed, synchronizing, pending, stale, unsupported and failed results
+      have stable codes; missing rows cannot become `not_found` or permit custom
+      fallback. Search filters unavailable name documents without hiding
+      independently matching non-name sources.
+- [x] Writer-backed read-only transactions validate retained publication tokens;
+      issuance requires no insert, and retention cannot extend result freshness
+      or canonicality. Existing cursors never silently switch generations.
+- [x] Source/protocol coverage, targets, publication progress, validity deadlines
+      and safe scalar encoding are explicit. Durable `names` events share the
+      existing SSE stream and replay/ordering rules.
+- [x] The read boundary uses neutral contracts rather than worker packages;
+      request-time name resolution and snapshot creation are removed together.
+
+### Delivered capability acceptance
 
 - [x] Requests pages read only published PostgreSQL data, preserve exact decimal
       amounts/indices, distinguish collection states, and bind pagination to the
@@ -174,9 +202,17 @@ acceptance is independent of P60's still-blocked live-payment gate.
 
 ## Current Blockers
 
-None. P60/P70 retain independent release blockers.
+P40-T26 is complete. No additional external API blocker is established;
+P30-T148 owns live-source acceptance. P60/P70 retain independent release blockers.
 
 ## Evidence
+
+P40-T26: read-only writer transaction regressions cover missing names without
+enqueue, immutable empty snapshots, dependency withdrawal and search filtering.
+The old request-time service/cache schema is removed. Targeted HTTP/event and
+PostgreSQL race tests plus generation, Go lint, docs and plan checks pass.
+Production/browser acceptance is recorded in P30-T147/P50-T80; live acceptance
+is recorded separately in P30-T148.
 
 P40-T25 passed `make check`, full PostgreSQL race integration, all 153 browser
 regressions, fresh production-image schema acceptance and all/split runtime

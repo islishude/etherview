@@ -40,6 +40,10 @@ services:
     environment:
       ETHERVIEW_FEATURE_ENS: "false"
 
+  ens:
+    environment:
+      ETHERVIEW_FEATURE_ENS: "false"
+
   maintenance:
     environment:
       ETHERVIEW_FEATURE_ENS: "false"

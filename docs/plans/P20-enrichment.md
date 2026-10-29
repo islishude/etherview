@@ -4,6 +4,10 @@ Status: `done`
 
 ## Outcome
 
+P20-T23 through P20-T26 deliver background ENS v1/v2 and custom-chain
+discovery, projection, resolution and publication under ADR-0058.
+API and Web consumption use these durable publications.
+
 Core facts are asynchronously enriched with ABI decoding, contract/proxy
 versions, ERC-20/721/1155 activity, normalized call traces, state reconciliation,
 search documents, and rollup statistics without delaying core readiness.
@@ -29,6 +33,8 @@ Mainnet observations.
 
 ## References
 
+- [ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+
 - [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
 - [ADR-0025](../decisions/ADR-0025-historical-execution-analytics.md)
 - [ADR-0005](../decisions/ADR-0005-safe-nft-metadata-and-media-boundary.md)
@@ -48,26 +54,51 @@ Mainnet observations.
 
 ## Work Items
 
-| ID      | Status | Depends on                         | Deliverable                                                                                                                                                                                  | Verification                                                                                                       |
-| ------- | ------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| P20-T01 | done   | P10                                | Versioned durable stages, leases, idempotency, reattach-safe replay generations, and one retry budget                                                                                        | replay/crash, detach/reattach, lease-race and retry tests                                                          |
-| P20-T02 | done   | P20-T01                            | ABI selector/event/error decoding, confidence, and global ABI/Trace resource budgets including builtin and large-batch boundaries                                                            | ABI/trace fixture/fuzz and adversarial-budget tests                                                                |
-| P20-T03 | done   | P20-T02                            | Contract creation and EIP-1167/1967/beacon proxy versioning                                                                                                                                  | proxy-upgrade tests                                                                                                |
-| P20-T04 | done   | P20-T01                            | ERC-20/721/1155 discovery, transfers, ownership, balances, supply, and separate EIP-7708 protocol-transfer publication                                                                       | standard/nonstandard token tests                                                                                   |
-| P20-T05 | done   | P20-T01                            | Geth callTracer and trace_* normalization, block-hash-batched call/state-difference tracing, and bounded envelopes without per-transaction debug fallback                                    | trace/revert, envelope/fallback/budget, PostgreSQL, race and production parity tests                               |
-| P20-T06 | done   | P20-T03, P20-T04, P20-T05          | Snapshot search, exact historical analytics/rollups, price adapters, and opt-in API-owned ENS normalization, exact-block Universal Resolver/CCIP-Read, immutable generations and maintenance | Unicode/config/security, exact-block and fallback, PostgreSQL generation/snapshot/reorg, race and runtime tests    |
-| P20-T09 | done   | P20-T04                            | Immutable exact NFT/ERC-20 state, cache-miss-only balance batches, typed capability failures, and metadata-role discovery and canonical event-driven NFT refresh                             | conflict/cache/reorg, parser/schema, exact RPC, known-ID batch, concurrency and Preview tests                      |
-| P20-T10 | done   | P20-T01                            | Lease-fenced atomic publication of derived output, stage result, journal, and job generation                                                                                                 | stale-worker and publication-window tests                                                                          |
-| P20-T11 | done   | P20-T05, P20-T10                   | Exact bounded transaction state differences with independent capability state                                                                                                                | malformed, limit, replay, and reorg tests                                                                          |
-| P20-T13 | done   | P20-T03, P20-T01, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence                                 | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests                     |
-| P20-T17 | done   | P10, P20-T10                       | Configuration-digest-bound EntryPoint v0.6-v0.9 decoding, `userop@1`, durable operations/events/participants, continuous coverage, and explicit reindex                                      | decoder/configuration, PostgreSQL normal/race, malformed bundle, replay/reorg, and real-Anvil regressions          |
-| P20-T18 | done   | P10, P20-T04, P20-T10, P20-T09     | Always-scheduled `holder@1`, genesis-covered exact-state reconciliation, immutable observations, incremental publication, and bounded reindex                                                | state/RPC, migration, PostgreSQL, supply/balance, lease/replay/reorg, race, and generation tests                   |
-| P20-T19 | done   | P10, P20-T10                       | Optional Beacon network identity, bounded authenticated ingestion, durable overview, and `consensus@1`                                                                                       | fork/body-root, PostgreSQL, unavailable capability, lease/reorg, and discovery-generation regressions              |
-| P20-T20 | done   | P20-T19                            | Independently enabled `blob@1`, KZG-authenticated immutable object archives, fenced manifests, retained-object replay, and repair                                                            | object-store, independent readback, corruption, conditional write, crash, and replay regressions                   |
-| P20-T21 | done   | P10, P20-T19                       | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                                                    | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                         |
-| P20-T22 | done   | P20-T06                            | Explicit custom-only ENS with exact local generations and no Mainnet dependency                                                                                                              | Config/source isolation, PostgreSQL constraints and reorg race, mode-cache separation and real Preview role parity |
+| ID      | Status | Depends on                         | Deliverable                                                                                                                                                                                  | Verification                                                                                                               |
+| ------- | ------ | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| P20-T01 | done   | P10                                | Versioned durable stages, leases, idempotency, reattach-safe replay generations, and one retry budget                                                                                        | replay/crash, detach/reattach, lease-race and retry tests                                                                  |
+| P20-T02 | done   | P20-T01                            | ABI selector/event/error decoding, confidence, and global ABI/Trace resource budgets including builtin and large-batch boundaries                                                            | ABI/trace fixture/fuzz and adversarial-budget tests                                                                        |
+| P20-T03 | done   | P20-T02                            | Contract creation and EIP-1167/1967/beacon proxy versioning                                                                                                                                  | proxy-upgrade tests                                                                                                        |
+| P20-T04 | done   | P20-T01                            | ERC-20/721/1155 discovery, transfers, ownership, balances, supply, and separate EIP-7708 protocol-transfer publication                                                                       | standard/nonstandard token tests                                                                                           |
+| P20-T05 | done   | P20-T01                            | Geth callTracer and trace_* normalization, block-hash-batched call/state-difference tracing, and bounded envelopes without per-transaction debug fallback                                    | trace/revert, envelope/fallback/budget, PostgreSQL, race and production parity tests                                       |
+| P20-T06 | done   | P20-T03, P20-T04, P20-T05          | Snapshot search, exact historical analytics/rollups, price adapters, and opt-in API-owned ENS normalization, exact-block Universal Resolver/CCIP-Read, immutable generations and maintenance | Unicode/config/security, exact-block and fallback, PostgreSQL generation/snapshot/reorg, race and runtime tests            |
+| P20-T09 | done   | P20-T04                            | Immutable exact NFT/ERC-20 state, cache-miss-only balance batches, typed capability failures, and metadata-role discovery and canonical event-driven NFT refresh                             | conflict/cache/reorg, parser/schema, exact RPC, known-ID batch, concurrency and Preview tests                              |
+| P20-T10 | done   | P20-T01                            | Lease-fenced atomic publication of derived output, stage result, journal, and job generation                                                                                                 | stale-worker and publication-window tests                                                                                  |
+| P20-T11 | done   | P20-T05, P20-T10                   | Exact bounded transaction state differences with independent capability state                                                                                                                | malformed, limit, replay, and reorg tests                                                                                  |
+| P20-T13 | done   | P20-T03, P20-T01, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence                                 | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests                             |
+| P20-T17 | done   | P10, P20-T10                       | Configuration-digest-bound EntryPoint v0.6-v0.9 decoding, `userop@1`, durable operations/events/participants, continuous coverage, and explicit reindex                                      | decoder/configuration, PostgreSQL normal/race, malformed bundle, replay/reorg, and real-Anvil regressions                  |
+| P20-T18 | done   | P10, P20-T04, P20-T10, P20-T09     | Always-scheduled `holder@1`, genesis-covered exact-state reconciliation, immutable observations, incremental publication, and bounded reindex                                                | state/RPC, migration, PostgreSQL, supply/balance, lease/replay/reorg, race, and generation tests                           |
+| P20-T19 | done   | P10, P20-T10                       | Optional Beacon network identity, bounded authenticated ingestion, durable overview, and `consensus@1`                                                                                       | fork/body-root, PostgreSQL, unavailable capability, lease/reorg, and discovery-generation regressions                      |
+| P20-T20 | done   | P20-T19                            | Independently enabled `blob@1`, KZG-authenticated immutable object archives, fenced manifests, retained-object replay, and repair                                                            | object-store, independent readback, corruption, conditional write, crash, and replay regressions                           |
+| P20-T21 | done   | P10, P20-T19                       | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                                                    | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                                 |
+| P20-T22 | done   | P20-T06                            | Explicit custom-only ENS with exact local generations and no Mainnet dependency                                                                                                              | Config/source isolation, PostgreSQL constraints and reorg race, mode-cache separation and real Preview role parity         |
+| P20-T23 | done   | P20-T22                            | ENS source/deployment identity, coverage, event/projection storage, candidates, leased jobs, immutable publications and neutral query contracts                                              | Fresh-schema constraints, identity isolation, coverage gaps, idempotency and publication fencing tests                     |
+| P20-T24 | done   | P20-T23                            | Official v1 historical/live collection and custom-chain stored-log consumption, protocol projections and autonomous candidate discovery                                                      | No-HTTP discovery, genesis/start gaps, ordered events, restart/replay, deployment identity and canonical rewind tests      |
+| P20-T25 | done   | P20-T24                            | ENSv2 dynamic contracts, registry/record dependencies, lifecycle and migration coexistence with official v1                                                                                  | Pinned real-contract fixtures, discovery history, graph/fanout bounds, token/record identity and migration tests           |
+| P20-T26 | done   | P20-T24, P20-T25                   | Background exact-block/CCIP resolution, refresh, source selection, atomic catalog publication and reorg recovery                                                                             | Primary matching, freshness, namespace isolation, hostile input, failed sources, lease/publication race and recovery tests |
 
 ## Acceptance
+
+### Background ENS acceptance
+
+- [x] P20-T23 isolates source chain, explored chain, namespace, deployment and
+      policy identities; missing coverage is not a negative name result.
+- [x] P20-T24 discovers registrations and indexed-address candidates without
+      HTTP traffic, replays bounded history, and resumes without gaps or duplicates.
+      Hash-only events never invent plaintext names; custom sources reuse core logs.
+- [x] P20-T25 covers pinned v2 contracts, migration and shared dependencies;
+      unrecognized implementation changes cannot silently use standard projections.
+- [x] P20-T26 publishes verified primary/forward results and catalog generations
+      atomically with fenced jobs and events. Reorg, lease loss, later changes,
+      expiry and exhausted failures cannot revive an invalid label or bypass
+      official-first source selection.
+- [x] Standard projections require continuous source coverage; dynamic/CCIP
+      results refresh in the background. Scanned progress and resolution
+      completion are reported independently, with bounded retry and fanout work.
+- [x] Fresh-schema changes contain no old-cache adapters or startup data
+      backfills; operator candidate import cannot directly publish an identity.
+
+### Delivered capability acceptance
 
 - [x] Custom-only ENS never builds or probes an official RPC pool, denies external
       gateways when none are allowed, and retains exact local block identity,
@@ -137,9 +168,48 @@ Mainnet observations.
 
 ## Current Blockers
 
-None. P60/P70 retain independent release blockers.
+No external implementation blocker is currently established. P20-T23 through
+P20-T26 are complete at the protocol/storage boundary. P40-T26 completes
+the database-only API cutover; P30 owns runtime and independent acceptance.
+P30-T148 owns separate live-source acceptance; local fixtures cannot close it.
+P60/P70 retain their existing blockers.
 
 ## Evidence
+
+P20-T23 passed on 2026-10-29: fresh-schema source/deployment isolation,
+parent-linked coverage gaps, idempotent facts/candidates/jobs, immutable
+observations and exact publication reads, retry exhaustion, and lease,
+generation, source-epoch and specific dependency-version fences. PostgreSQL
+race tests cover concurrent publication, dependency withdrawal, local core
+detach/reattach and read-only unknown lookups. `make check`,
+`make test-integration-race` and `make test-schema-e2e` passed; the final
+`TestENSSync` race run additionally covers orphan dependency withdrawal.
+This establishes the persistence and neutral-contract foundation only.
+P20-T24 passed on 2026-10-29: bounded exact-hash official collection, stored-log
+custom collection, authenticated genesis deployment baselines, ordered v1
+projections and autonomous discovery, restart/idempotency, concurrent cursor
+fencing, retained orphan facts, same-hash reattachment and finalized-conflict
+halting. Unit and PostgreSQL race regressions, generation, Go lint, docs/plan
+and production-image fresh-schema gates passed. The collector is a library;
+runtime construction and real-contract deployment acceptance remain P30 work.
+
+P20-T25 passed on 2026-10-29: pinned ENSv2 creation bytecode produces real
+factory/proxy/registry/resolver logs, including pre-link records and initialization
+before factory discovery. PostgreSQL race regressions cover shared paths, cycles,
+reservation, deletion, direct registry registration without a registrar event,
+resource-preserving token regeneration and default/shared record links. Unit,
+generation, Go lint, docs/plan and production-image fresh-schema gates passed.
+V1 and v2 retain one official source identity; live migration and production
+topology evidence remain the separate P30 acceptance gates.
+
+P20-T26 passed on 2026-10-29: autonomous exact-block resolution, reverse/forward
+matching, bounded persisted retries across moving targets, standard projection
+refresh without RPC, dependency withdrawal, official-negative fallback, and
+atomic source/effective/catalog/outbox publication. Immutable snapshots retain
+freshness and canonical fences; bounded maintenance preserves catalog references,
+active results and retained-version floors. Unit and PostgreSQL race tests,
+generation, Go lint, docs/plan and production-image schema gates passed.
+Runtime/API/Web cutover and end-to-end acceptance remain separate milestones.
 
 P20-T22 passed on 2026-10-28: configuration/service isolation, empty gateway
 allowlist rejection, PostgreSQL source completeness and cache policy separation,

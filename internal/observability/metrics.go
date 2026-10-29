@@ -281,7 +281,7 @@ func (registry *Registry) RecordENS(source, direction, outcome string) {
 		source = "other"
 	}
 	switch direction {
-	case "forward", "primary":
+	case "forward", "primary", "identity", "policy", "collection", "schedule", "worker", "resolution":
 	default:
 		direction = "other"
 	}

@@ -1537,12 +1537,14 @@ paths:
       operationId: streamHeadEvents
       tags: [system]
       description: >-
-        Server-sent head, reorganization, and sync status events with bounded
+        Server-sent head, reorganization, sync status, and names publication events with bounded
         replay from the durable PostgreSQL event ledger. Last-Event-ID resumes
         within the retained durable range; malformed, expired, and future cursor
         values return a typed 400 error, while replay backend failures return a
         typed 503 error. Both SSE routes share per-client and per-process active
         subscription limits; admission failure returns 429 with Retry-After.
+        A names event carries a decimal-string publication identity, or a source
+        identity and invalidated=true, and requires rereading published name data.
       parameters:
         - name: Last-Event-ID
           in: header
@@ -3379,6 +3381,46 @@ components:
           $ref: "#/components/schemas/Quantity"
         completeness:
           $ref: "#/components/schemas/Completeness"
+        names:
+          type: array
+          maxItems: 2
+          items:
+            $ref: "#/components/schemas/NameSourceStatus"
+    NameSourceStatus:
+      type: object
+      additionalProperties: false
+      required: [source, state, protocols, pending]
+      properties:
+        source:
+          type: string
+          enum: [ens, custom_ens]
+        state:
+          type: string
+          enum: [not_indexed, sync_pending, resolution_pending, current, stale, unsupported_source]
+        protocols:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items:
+            type: string
+            enum: [v1, v2, custom]
+        target:
+          $ref: "#/components/schemas/Quantity"
+        scanned:
+          $ref: "#/components/schemas/Quantity"
+        published:
+          $ref: "#/components/schemas/Quantity"
+        pending:
+          $ref: "#/components/schemas/Quantity"
+        last_success:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        code:
+          type: string
+          maxLength: 64
     PublicConfig:
       type: object
       required: [chain_id, chain_name, native_symbol, native_name, native_decimals, features]
@@ -5546,10 +5588,15 @@ components:
         name_source:
           type: string
           enum: [ens, custom_ens]
+        name_publication:
+          $ref: "#/components/schemas/Quantity"
+        name_valid_until:
+          type: string
+          format: date-time
     PrimaryName:
       type: object
       additionalProperties: false
-      required: [name, source]
+      required: [name, source, publication, valid_until]
       properties:
         name:
           type: string
@@ -5558,6 +5605,12 @@ components:
         source:
           type: string
           enum: [ens, custom_ens]
+        publication:
+          $ref: "#/components/schemas/Quantity"
+        valid_until:
+          type: string
+          format: date-time
+          description: Hide the name after this deadline even without a server event.
     AddressNameLookup:
       type: object
       additionalProperties: false
@@ -5577,7 +5630,7 @@ components:
     AddressNamePage:
       type: object
       additionalProperties: false
-      required: [items, snapshot]
+      required: [items, snapshot, publication]
       properties:
         items:
           type: array
@@ -5586,6 +5639,8 @@ components:
             $ref: "#/components/schemas/AddressNameLookup"
         snapshot:
           $ref: "#/components/schemas/OpaqueCursor"
+        publication:
+          $ref: "#/components/schemas/Quantity"
     VerifierLanguage:
       type: string
       enum: [solidity, yul, geas, vyper]

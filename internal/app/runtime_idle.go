@@ -8,13 +8,13 @@ func (assembly runtimeAssembly) registerIdleRoleComponents() error {
 	db := assembly.db
 	componentRegistry := assembly.componentRegistry
 	for _, role := range []components.Role{
-		components.RoleEnrich, components.RoleTrace, components.RoleMetadata,
+		components.RoleEnrich, components.RoleTrace, components.RoleMetadata, components.RoleENS,
 	} {
 		if !roleSet[role] {
 			continue
 		}
 		if role == components.RoleEnrich || role == components.RoleTrace && cfg.Features.Trace ||
-			role == components.RoleMetadata && cfg.Features.NFTMetadata {
+			role == components.RoleMetadata && cfg.Features.NFTMetadata || role == components.RoleENS && cfg.Features.ENS {
 			continue
 		}
 

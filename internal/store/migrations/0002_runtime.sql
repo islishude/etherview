@@ -309,7 +309,7 @@ CREATE TABLE runtime_events (
     event_type text NOT NULL,
     payload jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT runtime_events_event_type_check CHECK ((event_type = ANY (ARRAY['head'::text, 'reorg'::text, 'status'::text]))),
+    CONSTRAINT runtime_events_event_type_check CHECK ((event_type = ANY (ARRAY['head'::text, 'reorg'::text, 'status'::text, 'names'::text]))),
     CONSTRAINT runtime_events_payload_check CHECK ((octet_length((payload)::text) <= 8192)),
     CONSTRAINT runtime_events_pkey PRIMARY KEY (id),
     CONSTRAINT runtime_events_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)

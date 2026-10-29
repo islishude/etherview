@@ -414,7 +414,7 @@ export const getChartMetric = <ThrowOnError extends boolean = false>(options: Op
 export const search = <ThrowOnError extends boolean = false>(options: Options<SearchData, ThrowOnError>): RequestResult<SearchResponses, SearchErrors, ThrowOnError> => options.client.get<SearchResponses, SearchErrors, ThrowOnError>({ url: '/search', ...options });
 
 /**
- * Server-sent head, reorganization, and sync status events with bounded replay from the durable PostgreSQL event ledger. Last-Event-ID resumes within the retained durable range; malformed, expired, and future cursor values return a typed 400 error, while replay backend failures return a typed 503 error. Both SSE routes share per-client and per-process active subscription limits; admission failure returns 429 with Retry-After.
+ * Server-sent head, reorganization, sync status, and names publication events with bounded replay from the durable PostgreSQL event ledger. Last-Event-ID resumes within the retained durable range; malformed, expired, and future cursor values return a typed 400 error, while replay backend failures return a typed 503 error. Both SSE routes share per-client and per-process active subscription limits; admission failure returns 429 with Retry-After. A names event carries a decimal-string publication identity, or a source identity and invalidated=true, and requires rereading published name data.
  */
 export const streamHeadEvents = <ThrowOnError extends boolean = false>(options: Options<StreamHeadEventsData, ThrowOnError, StreamHeadEventsResponse>): Promise<ServerSentEventsResult<StreamHeadEventsResponses>> => options.client.sse.get<StreamHeadEventsResponses, StreamHeadEventsErrors, ThrowOnError>({ url: '/events', ...options });
 

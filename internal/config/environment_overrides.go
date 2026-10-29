@@ -217,6 +217,9 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "S3_REGION", &cfg.Adapters.S3Region)
 	setString(lookup, "PRICE_BASE_URL", &cfg.Adapters.PriceBaseURL)
 	setString(lookup, "ENS_MODE", &cfg.ENS.Mode)
+	setString(lookup, "ENS_POLICY_DIGEST", &cfg.ENS.PolicyDigest)
+	setString(lookup, "ENS_OFFICIAL_MANIFEST", &cfg.ENS.OfficialManifest)
+	setString(lookup, "ENS_CUSTOM_MANIFEST", &cfg.ENS.CustomManifest)
 	setString(lookup, "ENS_CUSTOM_REGISTRY", &cfg.ENS.Custom.Registry)
 	setString(lookup, "ENS_CUSTOM_UNIVERSAL_RESOLVER", &cfg.ENS.Custom.UniversalResolver)
 	setString(lookup, "ENS_CUSTOM_COIN_TYPE", &cfg.ENS.Custom.CoinType)
@@ -527,7 +530,7 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	return nil
 }
 
-func applyRPCEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error), apiRole bool) error {
+func applyRPCEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error), _ bool) error {
 	rpcURLs, err := lookupValueOrFile("RPC_URLS", lookup, readFile)
 	if err != nil {
 		return err
@@ -539,13 +542,14 @@ func applyRPCEnvironment(cfg *Config, lookup func(string) (string, bool), readFi
 		}
 		cfg.RPC.Endpoints = endpoints
 	}
-	if apiRole {
+	roles, _ := NormalizeRoles(cfg.Runtime.Roles)
+	if slices.Contains(roles, "ens") && cfg.Features.ENS && cfg.ENS.Mode != "custom_only" {
 		ensRPCURLs, err := lookupValueOrFile("ENS_RPC_URLS", lookup, readFile)
 		if err != nil {
 			return err
 		}
 		if ensRPCURLs != "" {
-			endpoints, err := parseEnvironmentRPCEndpointsNamed("ETHERVIEW_ENS_RPC_URLS", ensRPCURLs, []string{"state"})
+			endpoints, err := parseEnvironmentRPCEndpointsNamed("ETHERVIEW_ENS_RPC_URLS", ensRPCURLs, []string{"state", "history"})
 			if err != nil {
 				return err
 			}

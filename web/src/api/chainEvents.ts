@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-export type ChainEventType = "head" | "reorg" | "status";
+export type ChainEventType = "head" | "reorg" | "status" | "names";
 export interface ChainQueryMeta extends Record<string, unknown> {
   chainEvents?: readonly ChainEventType[];
   clearOnReorg?: boolean;

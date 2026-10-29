@@ -6,6 +6,13 @@ Etherview is a modular monolith packaged as one Go binary. Components are
 selected by roles and are instantiated identically whether all roles share one
 process or run in separate deployments.
 
+[ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+defines the ENS background role in this shared component graph. P20-T23 through
+P20-T26 supply persistence, discovery, projections and publication; P30-T146
+supplies the executable role and operations. P40-T26 reads writer publications
+without ENS network calls or writes; P50-T80 owns proactive Web display.
+P30-T147/P30-T148 retain separate local and live acceptance gates.
+
 The feature-aware production component manifest is executable architecture:
 startup compares it with the exact deduplicated keys registered by the runtime.
 The parity suite also proves that `roles=all` is the union of the split-role
@@ -52,7 +59,7 @@ home snapshot state live in transport-independent `internal/publicquery`.
 provenance/confidence, exact verified calldata, proxy/Diamond vocabulary, and
 durable stage/replay/enqueue identities live in `internal/abicontract`,
 `internal/abicalldata`, `internal/proxycontract`, and
-`internal/stagecontract`. Worker implementations may alias those contracts,
+`internal/stagecontract`, and `internal/enscontract`. Worker implementations may alias those contracts,
 but readers and producers import the neutral owner. `make golangci-lint`
 enforces these import directions, native database API restrictions, and a
 uniform 2,500-physical-line limit for hand-written production and test Go files.
@@ -622,6 +629,61 @@ identity tables themselves requires a PostgreSQL/global-index design that can
 still enforce the current hash uniqueness and foreign-key contracts; storage
 size alone is not sufficient justification to weaken those invariants.
 
+## Background ENS persistence foundation
+
+P20-T23 adds `ens_sync_*` tables in the ENS/search fresh baseline and typed
+SQL in `internal/db/queries/ens_sync.sql`. Source identities separate the
+explored chain from the source chain/genesis, namespace, manifest and policy.
+Reviewed start block/hash anchors the contiguous parent-linked scan cursor;
+a target or poll timestamp alone cannot advertise coverage. Deployment and
+event facts, bounded versioned protocol payloads, discovery provenance,
+retry-budgeted jobs, observations and source publications remain distinct.
+Jobs retain immutable dependencies on specific projection keys and versions.
+A shared-record change invalidates only dependent publications before later
+bounded fanout rebuilds them; source-wide epochs remain separate for policy
+and canonical recovery. Exact projection replay retains its existing version.
+
+`internal/enssync` closes claim transactions before returning work. Publication
+locks source progress and the candidate, then atomically checks lease, deadline,
+requested generation, source revision, exact canonical blocks and coverage
+before storing the observation/publication and completing the job. Local jobs
+also bind core canonical attachment timestamps, so same-hash reattachment
+cannot revive an earlier attempt. Immutable lease evidence permits read-only
+commit confirmation even after a newer generation supersedes the result.
+
+`internal/enscontract` owns source lookup, result and unavailable-state contracts.
+Its repository reader uses a writer-backed read-only repeatable-read snapshot;
+unknown, pending, unsupported and stale states never become negative results.
+Exact publication reads cannot silently switch versions, and retention does
+not extend observation/source freshness. Effective official/custom selection,
+catalog updates and names events publish atomically. The shared `ens`/`all`
+components collect and resolve names; API readers consume publications without
+ENS network calls or writes.
+
+P20-T24 adds a bounded collector in `internal/enssync`. Official steps verify
+Mainnet identity and finalized anchors on one endpoint, reuse continuously
+covered core facts when exploring Mainnet, and fill uncovered blocks by exact
+hash RPC. Custom steps read only canonical core headers and stored logs. Both
+validate reviewed deployment/ABI/code identities and persist ordered facts,
+projection versions, candidate origins and contiguous progress atomically.
+Genesis code requires authenticated import evidence; its deployment baseline
+does not fabricate registrations. Indexed-address discovery has a durable
+bounded cursor and proceeds independently of log coverage. Re-enabling a
+custom collector checks attachment timestamps and rewinds in bounded pages,
+retaining orphan facts. A previously accepted finalized conflict halts official
+collection. Neither path publishes address labels from registration ownership.
+
+P20-T25 extends this collector with reviewed ENSv2 factory and implementation
+profiles. It retrieves bounded block logs, authenticates newly created proxies
+and processes their earlier initialization logs in original order. A continuously
+covered trusted factory history preserves records created before name links;
+unverified linked instances remain unsupported. Implementation contracts never
+become user registries. Registry lifecycle projections key names by label and
+keep token/resource mappings across regeneration; resolver bundles, node links
+and defaults remain separate. A durable graph cursor expands shared parent
+paths after ancestor updates, with cycle, depth, fanout and input bounds.
+This supplies discovery facts, not a public name or inferred Mainnet activation.
+
 ## Public Boundaries
 
 - Native HTTP API lives under `/api/v1`; Etherscan compatibility lives at
@@ -684,26 +746,24 @@ size alone is not sufficient justification to weaken those invariants.
   authoritative source exists. Its optional details contain only controlled
   `capability`, `state`, and `code` identifiers; an empty successful list means
   the capability was available and observed no matching objects.
-- Price adapters retain their bounded HTTPS observation contract. ENS is a
-  separate explicitly enabled API capability governed by ADR-0041. One
-  `official_first` resolution generation pins an exact Ethereum Mainnet finalized block and,
-  when configured, one exact local canonical custom-ENS block plus sticky RPC
-  endpoint identities. `custom_only` pins only the local source and requires
-  no Mainnet connection. Go input uses `adraffy/go-ens-normalize`; the SPA uses
-  Viem `normalize`. Primary-name display additionally requires reverse and
-  matching forward resolution for the explored chain's coin type.
-- Official ENS no-record may fall through to the configured current-chain
-  custom Universal Resolver. RPC, CCIP, normalization, malformed-result, and
-  forward-mismatch failures never change namespaces. Gateway-aware Universal
-  Resolver calls use only configured HTTPS batch gateways through the shared
-  SSRF-safe transport and never persist or log RPC URLs.
-- Immutable forward/primary/no-record observations publish into the temporal
-  search catalog. Dotted search cursors bind the exact accepted observation;
-  address-name pages bind a retained generation snapshot so later batches use
-  the same source blocks. Official observations need no local block, while a
-  custom observation is visible only while its exact local block is canonical.
-  External calls remain outside PostgreSQL snapshots and ENS failure never
-  blocks core ingestion or ordinary projections.
+- Price adapters retain their bounded HTTPS observation contract. ENS workers
+  independently collect official v1/v2 sources and custom canonical core logs,
+  discover candidates, resolve dynamic/CCIP records and publish immutable
+  effective results under ADR-0058. Exact source blocks, sticky endpoints and
+  reverse/forward agreement remain mandatory; external calls occur outside
+  PostgreSQL snapshots.
+- Official definitive no-record may select a configured custom namespace.
+  Unknown, stale, failed and unsupported deployment evidence cannot authorize
+  fallback. Only an explicitly unsupported coin policy bypasses official lookup.
+- API detail, batch and search paths read the writer using read-only transactions
+  and neutral contracts. They construct no ENS clients and write no candidates,
+  jobs, observations or snapshots. Opaque tokens reference retained effective
+  publications, including immutable empty snapshots; dependencies, canonicality,
+  source health and freshness are checked independently of retention.
+- Durable `names` events share the existing SSE stream. Visible address batches
+  replace atomically at one publication; old responses cannot restore stale
+  labels. Local validity timers hide expired names without a network request.
+  Source coverage and resolution status remain separate from core readiness.
 - The maintenance role owns a PostgreSQL-only search-catalog housekeeper in
   the same production component graph used by `roles=all` and split processes.
   It runs immediately and on a configured interval, uses a chain-scoped

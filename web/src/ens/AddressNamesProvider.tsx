@@ -1,4 +1,3 @@
-import * as sdk from "../api/heyapi/sdk.gen";
 import {
   createContext,
   useCallback,
@@ -9,101 +8,123 @@ import {
   useState,
   type ReactNode,
 } from "react";
-
-import { apiClient, ApiError, requireEnvelope } from "@/api/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePublicConfig } from "@/api/publicConfig";
 import type * as schemas from "@/api/heyapi/types.gen";
+import { subscribeNames } from "./nameEvents";
 
 type PrimaryName = schemas.PrimaryName;
-
 type AddressNamesContextValue = {
   lookup(address: string): PrimaryName | undefined;
-  register(address: string): void;
+  register(address: string): () => void;
 };
-
 const AddressNamesContext = createContext<AddressNamesContextValue>({
   lookup: () => undefined,
-  register: () => undefined,
+  register: () => () => {},
 });
 
 export function AddressNamesProvider({ children }: { children: ReactNode }) {
-  const publicConfig = usePublicConfig();
-  const enabled = publicConfig.data?.features.ens === true;
+  const enabled = usePublicConfig().data?.features.ens === true;
+  const client = useQueryClient();
   const [names, setNames] = useState<Map<string, PrimaryName>>(new Map());
-  const [pending, setPending] = useState<string[]>([]);
-  const [snapshot, setSnapshot] = useState<string>();
-  const [loading, setLoading] = useState(false);
-  const known = useRef(new Set<string>());
-
-  const register = useCallback(
-    (address: string) => {
-      if (!enabled) return;
-      const key = normalizeAddress(address);
-      if (!key || known.current.has(key)) return;
-      known.current.add(key);
-      setPending((current) => (current.includes(key) ? current : [...current, key]));
-    },
-    [enabled],
-  );
-
-  useEffect(() => {
-    if (!enabled || loading || pending.length === 0) return;
-    const chunk = pending.slice(0, 100);
-    setPending((current) => current.slice(chunk.length));
-    setLoading(true);
-    void (async () => {
-      try {
-        const response = requireEnvelope(
-          await sdk.listAddressNames({
-            client: apiClient,
-            query: { addresses: chunk.join(","), snapshot },
-          }),
-        );
-        setSnapshot(response.data.snapshot);
-        setNames((current) => {
-          const next = new Map(current);
-          for (const item of response.data.items) {
-            const key = normalizeAddress(item.address);
-            if (key && item.state === "resolved" && item.primary_name) {
-              next.set(key, item.primary_name);
-            }
-          }
-          return next;
-        });
-      } catch (error) {
-        if (error instanceof ApiError && error.code === "invalid_cursor") {
-          known.current.clear();
-          setNames(new Map());
-          setSnapshot(undefined);
-          setPending(chunk);
-        }
-      } finally {
-        setLoading(false);
+  const [revision, setRevision] = useState(0);
+  const visible = useRef(new Map<string, number>());
+  const snapshot = useRef<string | undefined>(undefined);
+  const generation = useRef(0);
+  const register = useCallback((address: string) => {
+    const key = normalizeAddress(address);
+    if (!key) return () => {};
+    visible.current.set(key, (visible.current.get(key) ?? 0) + 1);
+    if (visible.current.get(key) === 1) setRevision((value) => value + 1);
+    return () => {
+      const count = (visible.current.get(key) ?? 1) - 1;
+      if (count > 0) visible.current.set(key, count);
+      else {
+        visible.current.delete(key);
+        setRevision((value) => value + 1);
       }
-    })();
-  }, [enabled, loading, pending, snapshot]);
-
+    };
+  }, []);
+  useEffect(
+    () =>
+      subscribeNames(client, () => {
+        generation.current++;
+        snapshot.current = undefined;
+        setNames(new Map());
+        setRevision((value) => value + 1);
+      }),
+    [client],
+  );
   useEffect(() => {
-    if (enabled) return;
-    known.current.clear();
-    setNames(new Map());
-    setPending([]);
-    setSnapshot(undefined);
-  }, [enabled]);
-
-  const lookup = useCallback((address: string) => names.get(normalizeAddress(address)), [names]);
+    const epoch = ++generation.current;
+    const controller = new AbortController();
+    if (!enabled) {
+      snapshot.current = undefined;
+      setNames(new Map());
+      return;
+    }
+    const addresses = [...visible.current.keys()];
+    const load = async () => {
+      const current = () => !controller.signal.aborted && epoch === generation.current;
+      const reset = () => {
+        if (current()) {
+          setNames(new Map());
+          snapshot.current = undefined;
+        }
+      };
+      try {
+        const { loadVisibleNames } = await import("./loadVisibleNames");
+        const result = await loadVisibleNames(
+          addresses,
+          snapshot.current,
+          controller.signal,
+          reset,
+        );
+        if (current()) {
+          snapshot.current = result.token;
+          setNames(result.names);
+        }
+      } catch {
+        reset();
+      }
+    };
+    const scheduled = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => {
+      controller.abort();
+      clearTimeout(scheduled);
+    };
+  }, [enabled, revision]);
+  useEffect(() => {
+    if (names.size === 0) return;
+    const expiry = Math.min(...[...names.values()].map((name) => Date.parse(name.valid_until)));
+    const timer = setTimeout(
+      () => {
+        setNames(
+          (current) =>
+            new Map([...current].filter(([, name]) => Date.parse(name.valid_until) > Date.now())),
+        );
+      },
+      Math.max(0, Math.min(expiry - Date.now(), 2_147_483_647)),
+    );
+    return () => clearTimeout(timer);
+  }, [names]);
+  const lookup = useCallback(
+    (address: string) => {
+      const name = names.get(normalizeAddress(address));
+      return name && Date.parse(name.valid_until) > Date.now() ? name : undefined;
+    },
+    [names],
+  );
   const value = useMemo(() => ({ lookup, register }), [lookup, register]);
   return <AddressNamesContext.Provider value={value}>{children}</AddressNamesContext.Provider>;
 }
-
 export function usePrimaryName(address: string): PrimaryName | undefined {
-  const context = useContext(AddressNamesContext);
-  useEffect(() => {
-    context.register(address);
-  }, [address, context]);
-  return context.lookup(address);
+  const { register, lookup } = useContext(AddressNamesContext);
+  useEffect(() => register(address), [address, register]);
+  return lookup(address);
 }
-
 function normalizeAddress(address: string): string {
   return /^0x[0-9a-fA-F]{40}$/.test(address) ? address.toLowerCase() : "";
 }

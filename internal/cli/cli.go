@@ -30,6 +30,7 @@ const usage = `Usage:
   etherview admin billing reconcile --id uuid --outcome settled --transaction-hash hash [--config path] [--log-level level] [--log-format json|text]
   etherview admin billing reconcile --id uuid --outcome failed [--config path] [--log-level level] [--log-format json|text]
   etherview admin derived-verification backfill --reason text [--address factory] [--config path] [--log-level level] [--log-format json|text]
+  etherview ens <import|replay> --source-id id [--config path] [arguments]
   etherview version
 `
 
@@ -90,7 +91,7 @@ func (p Program) Run(ctx context.Context, args []string) int {
 		err = p.runDoctor(ctx, args[1:], stdout)
 	case "migrate":
 		err = p.runMigrate(ctx, args[1:])
-	case "repair", "reindex":
+	case "repair", "reindex", "ens":
 		err = p.runRepair(ctx, args[0], args[1:])
 	case "admin":
 		err = p.runAdmin(ctx, args[1:])

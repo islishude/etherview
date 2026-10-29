@@ -29,6 +29,6 @@ type harness struct {
 	fixture       fixture
 	baseTimestamp uint64
 	rpcProxy      *receiptProxy
-	ensRPC        *ensMainnetRPC
+	ensRPC        *ensLocalV2RPC
 	secrets       []string
 }

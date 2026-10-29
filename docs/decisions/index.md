@@ -57,6 +57,9 @@ merging distinct invariants.
 
 ## API, Web, external boundaries, and identity
 
+- [ADR-0058 — Background ENS Synchronization and Database-Only Reads](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+  is accepted for implementation; its linked plans track the pending cutover.
+
 - [ADR-0003 — Spec-First API and Canonical Public Identifiers](ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0005 — Safe NFT Metadata and Media Boundary](ADR-0005-safe-nft-metadata-and-media-boundary.md)
 - [ADR-0011 — Snapshot Search, Statistics, and Bounded Adapters](ADR-0011-snapshot-search-stats-and-bounded-adapters.md)
@@ -64,7 +67,6 @@ merging distinct invariants.
 - [ADR-0020 — SIWE User Sessions](ADR-0020-siwe-user-sessions.md)
 - [ADR-0027 — Process-Native API TLS](ADR-0027-process-native-api-tls.md)
 - [ADR-0035 — User-Owned Scoped API Keys](ADR-0035-user-owned-scoped-api-keys.md)
-- [ADR-0041 — Snapshot-Stable ENS Primary Names](ADR-0041-snapshot-stable-ens-primary-names.md)
 - [ADR-0044 — Prepaid API Billing with x402 Top-Ups](ADR-0044-prepaid-api-billing-and-x402-topups.md)
 - [ADR-0045 — Canonical ERC-4337 UserOperation Index](ADR-0045-erc4337-useroperation-index.md)
 - [ADR-0046 — Authoritative ERC-20 Holder Reconciliation](ADR-0046-authoritative-erc20-holder-reconciliation.md)
@@ -72,6 +74,10 @@ merging distinct invariants.
 - [ADR-0051 — Watchlist, Notifications and CSV](ADR-0051-watchlist-notifications-csv.md)
 
 ## Retired decisions
+
+- [ADR-0041 — Snapshot-Stable ENS Primary Names](ADR-0041-snapshot-stable-ens-primary-names.md):
+  superseded by ADR-0058; retained as historical documentation of the current
+  request-time implementation until the planned cutover is delivered.
 
 - ADR-0014 — durable verification identity and publication: replaced by the
   maintained verifier-v2, compiler-executor, and publication boundaries in

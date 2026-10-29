@@ -165,6 +165,8 @@ billing:
     etherscan.contract.getabi: { amount_atomic: "1" }
 
 ens:
+  policy_digest: "0x6d94e1acb808af0f86043074183b6e26069550f2f2a0501c67b3e350f75d44c6"
+  custom_manifest: /etc/etherview/ens/custom.json
   mode: custom_only
   official_gateways: []
   custom:

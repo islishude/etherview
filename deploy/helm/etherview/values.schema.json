@@ -86,6 +86,7 @@
     "networkPolicy"
   ],
   "properties": {
+    "ensManifests": {"type": "object", "propertyNames": {"pattern": "^[a-zA-Z0-9_-]+\\.json$"}, "additionalProperties": {"type": "string", "maxLength": 1048576}},
     "mode": {
       "type": "string",
       "enum": ["monolith", "distributed"]
@@ -223,6 +224,7 @@
         "maintenance"
       ],
       "properties": {
+        "ens": {"$ref": "#/$defs/role"},
         "all": {"$ref": "#/$defs/role"},
         "api": {"$ref": "#/$defs/role"},
         "sync": {"$ref": "#/$defs/role"},
@@ -867,6 +869,9 @@
             "max_concurrency"
           ],
           "properties": {
+            "policy_digest": {"type": "string", "pattern": "^(0x[0-9a-fA-F]{64})?$"},
+            "official_manifest": {"type": "string"},
+            "custom_manifest": {"type": "string"},
             "mode": {
               "type": "string",
               "enum": [

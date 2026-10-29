@@ -22,7 +22,7 @@ import (
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/config"
-	ensresolver "github.com/islishude/etherview/internal/ens"
+	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/metadata"
@@ -81,8 +81,8 @@ type AddressActivityReader interface {
 }
 
 type AddressNameReader interface {
-	ResolveCurrentPrimary(context.Context, common.Address) (ensresolver.PrimaryResolution, error)
-	ResolveAddressBatch(context.Context, []common.Address, string) ([]ensresolver.PrimaryResolution, string, error)
+	ResolveCurrentPrimary(context.Context, common.Address) (enscontract.PrimaryResolution, error)
+	ResolveAddressBatch(context.Context, []common.Address, string) ([]enscontract.PrimaryResolution, string, error)
 }
 
 type AddressEnrichmentActivityReader interface {

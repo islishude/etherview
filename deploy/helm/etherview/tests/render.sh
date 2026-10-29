@@ -207,6 +207,8 @@ ens_distributed="$temporary_dir/ens-distributed.yaml"
   --set config.features.ens=true >"$ens_distributed"
 assert_occurrences "$ens_monolith" "name: ETHERVIEW_ENS_RPC_URLS" 1
 assert_occurrences "$ens_distributed" "name: ETHERVIEW_ENS_RPC_URLS" 1
+assert_component_occurrences "$ens_distributed" api "name: ETHERVIEW_ENS_RPC_URLS" 0
+assert_component_occurrences "$ens_distributed" ens "name: ETHERVIEW_ENS_RPC_URLS" 1
 for topology in monolith distributed; do
   local_ens="$temporary_dir/ens-custom-$topology.yaml"
   topology_values="$chart_dir/values.yaml"
@@ -305,7 +307,7 @@ assert_occurrences "$tls_monolith" "scheme: HTTPS" 3
 assert_occurrences "$tls_distributed" "name: ETHERVIEW_SERVER_TLS_CERT_FILE" 1
 assert_occurrences "$tls_distributed" "name: ETHERVIEW_SERVER_TLS_KEY_FILE" 1
 assert_component_occurrences "$tls_distributed" api "name: api-tls" 2
-for role in sync enrich trace metadata maintenance; do
+for role in sync enrich trace metadata ens maintenance; do
   assert_component_occurrences "$tls_distributed" "$role" "name: api-tls" 0
   assert_component_occurrences "$tls_distributed" "$role" "ETHERVIEW_SERVER_TLS_KEY_FILE" 0
 done
@@ -329,7 +331,7 @@ expect_render_failure empty-tls-certificate-key \
   --set-string apiTLS.existingSecret=etherview-api-tls \
   --set-string apiTLS.certificateKey=
 
-assert_kind_count "$distributed" Deployment 6
+assert_kind_count "$distributed" Deployment 7
 assert_kind_count "$distributed" HorizontalPodAutoscaler 4
 assert_kind_count "$distributed" PodDisruptionBudget 0
 assert_kind_count "$distributed" Job 1
@@ -358,11 +360,11 @@ assert_component_occurrences "$verifier_monolith" all "name: compiler-cache" 2
 assert_component_occurrences "$verifier_monolith" all "medium: Memory" 1
 assert_resource_occurrences "$verifier_monolith" etherview-compiler-catalog "app.kubernetes.io/component: all" 1
 assert_resource_occurrences "$verifier_monolith" etherview-compiler-catalog "port: 443" 1
-assert_kind_count "$verifier_distributed" Deployment 6
+assert_kind_count "$verifier_distributed" Deployment 7
 assert_kind_count "$verifier_distributed" NetworkPolicy 2
 assert_component_occurrences "$verifier_distributed" api "name: compiler-cache" 2
 assert_component_occurrences "$verifier_distributed" api "medium: Memory" 1
-for role in sync enrich trace metadata maintenance; do
+for role in sync enrich trace metadata ens maintenance; do
   assert_component_occurrences "$verifier_distributed" "$role" "name: compiler-cache" 0
 done
 assert_component_occurrences "$verifier_persistent_monolith" all "name: compiler-cache" 2
@@ -371,7 +373,7 @@ assert_component_occurrences "$verifier_persistent_monolith" all "medium: Memory
 assert_component_occurrences "$verifier_persistent_distributed" api "name: compiler-cache" 2
 assert_component_occurrences "$verifier_persistent_distributed" api 'claimName: "etherview-compiler-cache"' 1
 assert_component_occurrences "$verifier_persistent_distributed" api "medium: Memory" 0
-for role in sync enrich trace metadata maintenance; do
+for role in sync enrich trace metadata ens maintenance; do
   assert_component_occurrences "$verifier_persistent_distributed" "$role" "name: compiler-cache" 0
 done
 assert_resource_occurrences "$verifier_distributed" etherview-compiler-catalog "app.kubernetes.io/component: api" 1
@@ -415,13 +417,13 @@ assert_contains "$monitor_one" 'replacement: "etherview"'
 assert_contains "$monitor_two" "app.kubernetes.io/instance: etherview-blue"
 assert_contains "$monitor_two" 'replacement: "etherview-blue"'
 assert_not_contains "$monitor_one" "app.kubernetes.io/instance: etherview-blue"
-assert_occurrences "$distributed" "name: schema-compatibility" 6
-assert_occurrences "$distributed" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 6
+assert_occurrences "$distributed" "name: schema-compatibility" 7
+assert_occurrences "$distributed" 'args: ["migrate", "status", "--config", "/etc/etherview/config.yaml"]' 7
 assert_not_contains "$distributed" "name: etherview-all"
 assert_contains "$distributed" "unsafe_allow_private_networks: false"
 assert_not_contains "$distributed" "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS"
 assert_contains "$distributed_service" "app.kubernetes.io/component: api"
-for role in api sync enrich trace metadata maintenance; do
+for role in api sync enrich trace metadata ens maintenance; do
   assert_contains "$distributed" "name: etherview-$role"
   assert_contains "$distributed" "--roles=$role"
 done
@@ -442,17 +444,17 @@ assert_not_contains "$genesis_url_distributed" "claimName:"
 # The reference profile is an HA/capacity starting point, not a result claim.
 # It runs only core roles, retains one replica through voluntary disruption,
 # hard-spreads each role across hosts, disables rollout surge, and caps the
-# steady-state desired application DB pool at 216.
-assert_kind_count "$reference_capacity" Deployment 4
+# steady-state desired application DB pool at 240.
+assert_kind_count "$reference_capacity" Deployment 5
 assert_kind_count "$reference_capacity" HorizontalPodAutoscaler 2
-assert_kind_count "$reference_capacity" PodDisruptionBudget 4
+assert_kind_count "$reference_capacity" PodDisruptionBudget 5
 assert_contains "$reference_capacity" "sync_progress_log_interval: 30s"
-assert_occurrences "$reference_capacity" "minAvailable: 1" 4
-assert_occurrences "$reference_capacity" "minDomains: 2" 4
-assert_occurrences "$reference_capacity" 'topologyKey: "kubernetes.io/hostname"' 4
-assert_occurrences "$reference_capacity" "whenUnsatisfiable: DoNotSchedule" 4
-assert_occurrences "$reference_capacity" 'maxSurge: "0"' 4
-assert_occurrences "$reference_capacity" 'maxUnavailable: "1"' 4
+assert_occurrences "$reference_capacity" "minAvailable: 1" 5
+assert_occurrences "$reference_capacity" "minDomains: 2" 5
+assert_occurrences "$reference_capacity" 'topologyKey: "kubernetes.io/hostname"' 5
+assert_occurrences "$reference_capacity" "whenUnsatisfiable: DoNotSchedule" 5
+assert_occurrences "$reference_capacity" 'maxSurge: "0"' 5
+assert_occurrences "$reference_capacity" 'maxUnavailable: "1"' 5
 assert_contains "$reference_capacity" "max_connections: 12"
 assert_contains "$reference_capacity" "backfill_batch_blocks: 64"
 for role in api sync enrich maintenance; do
@@ -469,9 +471,9 @@ assert_contains "$monolith" "name: ETHERVIEW_DATABASE_URL"
 assert_occurrences "$monolith" "name: ETHERVIEW_DATABASE_READ_URL" 1
 assert_contains "$monolith" "name: ETHERVIEW_OTLP_TRACE_ENDPOINT"
 assert_occurrences "$distributed" "name: ETHERVIEW_DATABASE_READ_URL" 1
-assert_occurrences "$distributed" "name: ETHERVIEW_OTLP_TRACE_ENDPOINT" 6
+assert_occurrences "$distributed" "name: ETHERVIEW_OTLP_TRACE_ENDPOINT" 7
 assert_contains "$monolith" "name: OTEL_EXPORTER_OTLP_HEADERS"
-assert_occurrences "$distributed" "name: OTEL_EXPORTER_OTLP_HEADERS" 6
+assert_occurrences "$distributed" "name: OTEL_EXPORTER_OTLP_HEADERS" 7
 assert_contains "$monolith" 'name: "etherview"'
 assert_contains "$monolith" 'key: "database-url"'
 assert_contains "$monolith" 'key: "database-read-url"'
@@ -541,7 +543,7 @@ s3_distributed="$temporary_dir/s3-distributed.yaml"
 for variable in ETHERVIEW_S3_ACCESS_KEY ETHERVIEW_S3_SECRET_KEY ETHERVIEW_S3_SESSION_TOKEN; do
   assert_occurrences "$s3_distributed" "name: $variable" 1
   assert_component_occurrences "$s3_distributed" api "name: $variable" 1
-  for role in sync enrich trace metadata maintenance; do
+  for role in sync enrich trace metadata ens maintenance; do
     assert_component_occurrences "$s3_distributed" "$role" "name: $variable" 0
   done
 done
@@ -648,7 +650,7 @@ auth_distributed="$temporary_dir/auth-distributed.yaml"
   >"$auth_distributed"
 assert_occurrences "$auth_distributed" "name: ETHERVIEW_SESSION_PEPPER" 1
 assert_component_occurrences "$auth_distributed" api "name: ETHERVIEW_SESSION_PEPPER" 1
-for role in sync enrich trace metadata maintenance; do
+for role in sync enrich trace metadata ens maintenance; do
   assert_component_occurrences "$auth_distributed" "$role" "name: ETHERVIEW_SESSION_PEPPER" 0
 done
 
@@ -692,7 +694,7 @@ assert_occurrences "$billing_distributed" "name: ETHERVIEW_X402_FINGERPRINT_PEPP
 assert_occurrences "$billing_distributed" "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 1
 assert_component_occurrences "$billing_distributed" api "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 1
 assert_component_occurrences "$billing_distributed" api "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 1
-for role in sync enrich trace metadata maintenance; do
+for role in sync enrich trace metadata ens maintenance; do
   assert_component_occurrences "$billing_distributed" "$role" "name: ETHERVIEW_X402_FINGERPRINT_PEPPER" 0
   assert_component_occurrences "$billing_distributed" "$role" "name: ETHERVIEW_X402_FACILITATOR_HEADERS" 0
 done
@@ -985,7 +987,7 @@ assert_component_occurrences "$consensus_roles" api 'key: "blob-archive-read-acc
 assert_component_occurrences "$consensus_roles" enrich 'key: "blob-archive-access"' 1
 assert_component_occurrences "$consensus_roles" api 'serviceAccountName: archive-reader' 1
 assert_component_occurrences "$consensus_roles" enrich 'serviceAccountName: archive-writer' 1
-for role in sync trace metadata maintenance; do
+for role in sync trace metadata ens maintenance; do
   assert_component_occurrences "$consensus_roles" "$role" 'name: ETHERVIEW_CONSENSUS_URL' 0
   assert_component_occurrences "$consensus_roles" "$role" 'name: ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY' 0
 done
@@ -1004,7 +1006,7 @@ for mode in monolith distributed; do
   assert_resource_occurrences "$turnstile_render" etherview-turnstile "app.kubernetes.io/component: $owner" 1
   assert_resource_occurrences "$turnstile_render" etherview-turnstile "port: 443" 1
   assert_component_occurrences "$turnstile_render" "$owner" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 1
-  for role in sync enrich trace metadata maintenance; do
+  for role in sync enrich trace metadata ens maintenance; do
     assert_component_occurrences "$turnstile_render" "$role" "name: ETHERVIEW_TURNSTILE_SECRET_KEY" 0
   done
 done

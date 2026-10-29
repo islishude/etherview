@@ -192,9 +192,12 @@ billing:
   max_captured_header_bytes: 65536
   operations: {}
 
-# Official Ethereum Mainnet RPC endpoints are API-role secrets supplied through
+# Official Ethereum Mainnet RPC endpoints are ENS-role secrets supplied through
 # ETHERVIEW_ENS_RPC_URLS(_FILE), never ConfigMap-backed YAML.
 ens:
+  policy_digest: ""
+  official_manifest: ""
+  custom_manifest: ""
   mode: official_first
   official_gateways: ["https://ccip-v3.ens.xyz"]
   custom:

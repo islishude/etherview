@@ -1,3 +1,4 @@
+import { useNameFreshness } from "@/ens/useNameFreshness";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { ArrowRight, CircleAlert, History } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -839,6 +840,7 @@ export function SearchPage({ query }: { query: string }) {
   const normalizedQuery = query.trim();
   const pager = useCursorHistory(`search:${normalizedQuery}`);
   const search = useSearchResults(normalizedQuery, pager.request, SEARCH_PAGE_SIZE);
+  const names = useNameFreshness(search.data?.items);
   return (
     <Page title={t("page.search")} description={query} mono>
       {normalizedQuery.length === 0 && <p className="context-note">{t("search.prompt")}</p>}
@@ -847,15 +849,24 @@ export function SearchPage({ query }: { query: string }) {
         error={search.error}
         onReset={pager.reset}
       />
-      {search.data && search.data.items.length === 0 && (
+      {names.withdrawn && (
+        <p className="context-note" role="status">
+          {t("state.nameExpired")}{" "}
+          <button type="button" onClick={pager.reset}>
+            {t("actions.restartPagination")}
+          </button>
+        </p>
+      )}
+      {!search.error && search.data && search.data.items.length === 0 && (
         <p className="empty-result" role="status">
           {t("state.noResults")}
         </p>
       )}
       <div className="search-results">
-        {search.data?.items.map((result) => (
-          <SearchResultLink key={`${result.kind}:${result.key}`} result={result} />
-        ))}
+        {!search.error &&
+          names.items?.map((result) => (
+            <SearchResultLink key={`${result.kind}:${result.key}`} result={result} />
+          ))}
       </div>
       {search.data && (
         <CursorPagination

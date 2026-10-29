@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
@@ -779,8 +780,8 @@ func TestSearchTreatsLowNumericAddressAsAddressBeforeBlockNumber(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(7),
-			rows: [][]any{{"contract", address, "Artifact", int64(104), false, nil, false}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(9),
+			rows: [][]any{{"contract", address, "Artifact", int64(104), false, nil, nil, nil, false}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -801,11 +802,11 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(7),
+			contains: "FROM search_catalog_documents AS document", columns: columns(9),
 			rows: [][]any{
-				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), false, nil, false},
-				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true, "ens", true},
-				{"token", tokenAddress, "Example Token", int64(65), true, nil, true},
+				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), false, nil, nil, nil, false},
+				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true, "ens", int64(1), time.Now().Add(time.Hour), true},
+				{"token", tokenAddress, "Example Token", int64(65), true, nil, nil, nil, true},
 			},
 		},
 	)
@@ -849,8 +850,8 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(7),
-			rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, false}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(9),
+			rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, nil, nil, false}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -863,8 +864,8 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 func TestSearchTextRejectsMalformedPersistedEntityKey(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "FROM search_catalog_documents AS document", columns: columns(7),
-		rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, false}},
+		contains: "FROM search_catalog_documents AS document", columns: columns(9),
+		rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, nil, nil, false}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
 	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, 0, nil, 20)
