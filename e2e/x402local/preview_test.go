@@ -143,7 +143,7 @@ func TestPreviewX402(t *testing.T) {
 			if err := os.WriteFile(all, []byte(`services:
   api:
     volumes:
-      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/custom.json:ro
+      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
       ETHERVIEW_ROLES: all

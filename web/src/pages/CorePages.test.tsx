@@ -51,7 +51,11 @@ describe("core explorer pages", () => {
       }),
     );
 
-    renderExplorer("/blocks");
+    const { router } = renderExplorer("/blocks");
+    // Wait for the cold lazy route before timing the block-data assertion.
+    await act(async () => {
+      await router.load();
+    });
 
     expect(await screen.findByRole("link", { name: "12" })).toHaveAttribute(
       "href",
