@@ -63,7 +63,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 	if err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"run", "-d", "--add-host", "host.docker.internal:host-gateway", "-p", "127.0.0.1::443", "-v", root + "/deploy/preview/Caddyfile:/etc/caddy/Caddyfile:ro", "-v", cert + ":/run/preview-tls/gateway.crt:ro", "-v", key + ":/run/preview-tls/gateway.key:ro", "-e", "PREVIEW_NODE_ALLOWED_ORIGINS=" + origins}
+	args := []string{"run", "-d", "--add-host", "host.docker.internal:host-gateway", "-p", "127.0.0.1::443", "-v", root + "/preview/Caddyfile:/etc/caddy/Caddyfile:ro", "-v", cert + ":/run/preview-tls/gateway.crt:ro", "-v", key + ":/run/preview-tls/gateway.key:ro", "-e", "PREVIEW_NODE_ALLOWED_ORIGINS=" + origins}
 	for _, name := range []string{"APP", "IPFS", "GETH", "GETH_WS", "BEACON"} {
 		upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			g.calls.Add(1)

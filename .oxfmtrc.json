@@ -7,7 +7,7 @@
   "printWidth": 100,
   "endOfLine": "lf",
   "trailingComma": "all",
-  "sortImports": false,
+  "sortImports": true,
   "sortTailwindcss": false,
   "sortPackageJson": false,
   "proseWrap": "preserve",

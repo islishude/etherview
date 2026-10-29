@@ -216,6 +216,7 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "S3_PREFIX", &cfg.Adapters.S3Prefix)
 	setString(lookup, "S3_REGION", &cfg.Adapters.S3Region)
 	setString(lookup, "PRICE_BASE_URL", &cfg.Adapters.PriceBaseURL)
+	setString(lookup, "ENS_MODE", &cfg.ENS.Mode)
 	setString(lookup, "ENS_CUSTOM_REGISTRY", &cfg.ENS.Custom.Registry)
 	setString(lookup, "ENS_CUSTOM_UNIVERSAL_RESOLVER", &cfg.ENS.Custom.UniversalResolver)
 	setString(lookup, "ENS_CUSTOM_COIN_TYPE", &cfg.ENS.Custom.CoinType)

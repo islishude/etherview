@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -435,5 +436,15 @@ func TestGeasCompilerListingDoesNotDependOnSolcCatalog(t *testing.T) {
 	))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"versions":["0.3.3"]`) {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestLookupMethodsRejectsExcessiveABIDimensions(t *testing.T) {
+	h := testHandler(t, fakeReader{})
+	body := fmt.Sprintf(`{"bytecode":"0x00","abi":[{"type":"function","name":"f","inputs":[{"name":"a","type":"uint256%s"}],"outputs":[]}],"source_map":"0:1:0","file_ids":{"0":"a.sol"}}`, strings.Repeat("[]", 8000))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/verifier/lookup-methods", strings.NewReader(body)))
+	if w.Code != 400 || !strings.Contains(w.Body.String(), `"invalid_method_lookup"`) {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }

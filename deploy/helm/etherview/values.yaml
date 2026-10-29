@@ -443,6 +443,7 @@ config:
     max_captured_header_bytes: 65536
     operations: {}
   ens:
+    mode: official_first
     official_gateways:
       - https://ccip-v3.ens.xyz
     custom:

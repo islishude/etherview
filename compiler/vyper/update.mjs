@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
+
 import { ROOT, readJSON, digest } from "./wasm/tooling.mjs";
 
 export const validVersion = (value) =>

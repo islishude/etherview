@@ -22,13 +22,21 @@ a private namespace.
 - ENS is an explicitly enabled API capability. `api` and `all` own resolution;
   core indexing and ordinary projections never wait for it. PostgreSQL remains
   the public cache, generation, snapshot, and failure authority.
-- Official resolution calls the fixed Ethereum Mainnet Universal Resolver at
+- `ens.mode` explicitly selects `official_first` (the default) or `custom_only`.
+  `custom_only` requires a configured current-chain Registry and Universal
+  Resolver and never creates or probes an official RPC pool. Its generations
+  contain only complete custom provenance; official fields are absent, never
+  synthetic. At least one complete source is mandatory in the fresh schema.
+  The mode participates in the policy digest, preventing cross-mode cache reuse.
+  An empty gateway allowlist denies all CCIP requests. Preview uses this mode
+  for its isolated `.test` namespace, with no external name-resolution dependency.
+- In `official_first` mode, official resolution calls the fixed Ethereum Mainnet Universal Resolver at
   one exact finalized block. Ethereum uses coin type 60; other representable
   EVM chain IDs use the ENSIP-11 coin type. A dedicated, chain-identity-checked
   L1 RPC pool is required unless the explored chain is exact Ethereum Mainnet.
 - An optional custom Registry and modern Universal Resolver may be configured
   only on the explored chain. It is called at one exact local canonical block
-  and only after the official source returns a definitive no-record or cannot
+  and in `official_first` mode only after the official source returns a definitive no-record or cannot
   represent the configured EVM coin type. Official RPC, CCIP, normalization,
   malformed-result, or forward-mismatch failures never fall through.
 - Forward search needs a valid name-to-address result. Address display needs a

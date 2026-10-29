@@ -1,5 +1,6 @@
 // Inspect licenses in actual authenticated bundles, including nested vendors.
 import { basename, join } from "node:path";
+
 import { zipEntries } from "./archives.mjs";
 import { vendoredMetadata } from "./metadata.mjs";
 import { lockedPackages } from "./packages.mjs";

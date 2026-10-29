@@ -22,6 +22,9 @@ from execution readiness; PostgreSQL owns manifests while the separate archive
 bucket durably stores bodies. Explicit Preview lifecycle commands provision the
 archive outside application startup dependencies. Local Kubo, the independent
 HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
+Generated genesis contracts, a separately scoped Bundler and management CLI
+provide ERC-4337 v0.9 and local .test ENS without external ENS sources. Bundler
+availability does not gate core readiness.
 
 ## References
 
@@ -91,8 +94,18 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 | P30-T140 | done   | P30-T10                                                       | Optional Etherscan credentials for Sourcify imports, authenticated encryption before durable enqueue, credential-safe request identity and bilingual Web inputs                                                         | API, redaction/tamper/deduplication, PostgreSQL worker and browser regressions                                                                                          |
 | P30-T141 | done   | P30-T10, P30-T140                                             | Sourcify-to-Etherview source import through canonical local verification, explicit post-publication import and accessible verification choices                                                                          | API authorization, hostile-source and PostgreSQL publication regressions, bilingual browser and select visual checks                                                    |
 | P30-T142 | done   | P30-T138                                                      | Caddy Preview HTTPS migration for app, IPFS, Geth and Beacon on *.etherview.localhost, including browser origins and streaming                                                                                          | Real Caddy boundary regressions, browser authentication, Preview metadata/consensus, runtime/RustFS and common gates                                                    |
+| P30-T143 | done   | P20-T22, P20-T17, P30-T138                                    | Reproducible Preview genesis ERC-4337 v0.9 and .test ENS contracts, Alto Bundler and management CLI                                                                                                                     | Reproducible genesis, real PoS safe-mode Bundler and ENS CLI/API/browser, split/all restart and existing Preview gates                                                  |
+| P30-T144 | done   | P30-T143                                                      | Replace Preview Alto with pinned Rundler v0.9 support, remove Alto-only genesis helpers and patch                                                                                                                       | Reproducible genesis, safe validation, standard RPC, real PoS submission/rejection/restart in split/all and existing Preview gates                                      |
+| P30-T145 | done   | P30-T143, P30-T14                                             | Verify every Preview genesis contract through the normal local verifier during Compose startup                                                                                                                          | Complete source inventory, bounded failure and restart regressions, real Preview publication for every non-empty allocation                                             |
 
 ## Acceptance
+
+- [x] Reproducible real-constructor allocations match Geth block zero and
+      authenticated genesis import. Input fingerprints reject stale or tampered
+      bundles while preserving existing system and x402 allocations.
+- [x] Safe-mode v0.9 Bundler submission and local .test ENS registration, renewal,
+      transfer/reclaim and record management pass through the CLI, API and browser
+      in split/all layouts, including failure paths and container recreation.
 
 - [x] Existing Sourcify sources import from an explicit source chain without
       re-upload through ordinary local compilation and canonical/lease-fenced
@@ -172,11 +185,14 @@ HTTPS gateway and streaming IPFS CLI provide reproducible metadata acceptance.
 
 ## Current Blockers
 
+No remaining delivery blockers. The following deferred deployment limitation
+remains explicit and is not cleared by CI.
+
 Preview storage-enforced conditional-write IAM permissions are deferred by
 operator decision until RustFS 1.0.5 is evaluated. The deployed RustFS 1.0.4
 still does not resolve this IAM limitation; application conditional writes and
 API read-only access remain active. The
-[runbook](../operations.md#preview-archive-iam-limitation) owns the issue details.
+[runbook](../../preview/docs/operations.md#preview-archive-iam-limitation) owns the issue details.
 Clearing this requires a fixed release containing upstream
 [PR #8615](https://github.com/rustfs/rustfs/pull/8615) and real-container rejection
 of unconditional writes and overwrites, with unchanged stored bytes after denial.
@@ -186,6 +202,29 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P60/P70 release blockers remain independent.
 
 ## Evidence
+
+P30-T144 completed on 2026-10-28. Rundler 0.11.0 replaces Alto and its
+simulation allocations. Local real-PoS Preview acceptance covered genesis,
+safe validation, standard RPC, rejection/restart, ENS, billing and split/all
+parity. [CI run 40681596433](https://github.com/islishude/etherview/actions/runs/40681596433)
+passed all 31 jobs at `562b42fcd0cbf2e1446bb000e48254403ff080e1`, including
+security/licenses, container/Compose/Helm, production schema/runtime, Preview,
+and native AMD64/ARM64 production acceptance. These remote results close the
+remaining common, deployment and runtime gates previously blocked by local
+DNS and registry access. They do not cover subsequent uncommitted changes or
+clear the deferred RustFS IAM limitation and independent P60/P70 release gates.
+
+P30-T143 passed locally on macOS ARM64 on 2026-10-28.
+`make preview-contracts-check` reproduced the allocations and covered controlled
+commitment/expiry/grace-period failures. `make test-preview-contracts-prebuilt`
+verified real Geth/Lighthouse genesis state, authenticated import, safe-mode
+Alto v0.9 deployment/call/revert and rejection paths, local ENS CLI operations,
+search/primary-name publication, browser display and persistent split/all parity.
+Reports retain allocation/source digests and transaction/UserOperation hashes.
+The full common check, PostgreSQL race, schema/runtime and 149 browser tests
+passed, together with Caddy and Preview metadata/consensus/x402 regressions.
+Tests used independent projects and temporary volumes; daily Preview was not
+reset. Remote CI and P60/P70 release gates are not established by this evidence.
 
 P30-T142 passed locally on macOS ARM64 on 2026-10-26: `make test-preview-gateway`
 against the official Caddy 2.11.7 image, both Preview E2E prebuilt targets after
@@ -345,3 +384,14 @@ passed `make check`, explicit integration/race and browser suites, schema,
 runtime/x402, Hardhat, and Foundry production gates at its delivery revision.
 This covers domain hardening, not P60-T17 live payments or P70-T04 capacity;
 short local benchmarks establish regression coverage only.
+
+### Preview genesis verification acceptance
+
+P30-T145 passed on 2026-10-28 against local Geth/Lighthouse and the production
+API: all 24 code-bearing genesis allocations have exact-address runtime
+publications; a repeated run and API restart reuse all 24. The source inventory
+includes constructor-created children and fixed system/utility/application
+inputs, with no synthetic creation evidence. Input generation checks, 15 helper
+regressions, Compose rendering, Preview lint, repository formatting, docs and
+plan checks passed. This is local Preview acceptance, not a production rollout
+or additional remote CI evidence.

@@ -195,6 +195,7 @@ billing:
 # Official Ethereum Mainnet RPC endpoints are API-role secrets supplied through
 # ETHERVIEW_ENS_RPC_URLS(_FILE), never ConfigMap-backed YAML.
 ens:
+  mode: official_first
   official_gateways: ["https://ccip-v3.ens.xyz"]
   custom:
     registry: ""

@@ -1,11 +1,11 @@
 // Revalidate all shard evidence against the current image, packages and fixtures.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
-import { resolve, join } from "node:path";
-import { arch, platform, tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { sha256, sharedRuntimes, runtimeFor } from "./release.mjs";
+import { readFileSync, writeFileSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { arch, platform, tmpdir } from "node:os";
+import { resolve, join } from "node:path";
+
 import {
   assignments,
   mergeEvidence,
@@ -14,6 +14,7 @@ import {
   versionEvidence,
   versions,
 } from "./production-shards.mjs";
+import { sha256, sharedRuntimes, runtimeFor } from "./release.mjs";
 
 const { count } = shardOptions(process.argv.slice(2), true);
 const docker = process.env.DOCKER ?? "docker";

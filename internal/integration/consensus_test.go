@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -26,9 +27,11 @@ import (
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/consensus"
 	"github.com/islishude/etherview/internal/consensus/testfixture"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
@@ -389,4 +392,84 @@ func (a *replayDuringArchiveRead) Read(ctx context.Context, key, digest string) 
 		after()
 	}
 	return data, err
+}
+
+func TestConsensusUnavailableKeepsProductionWorkerAlive(t *testing.T) {
+	for _, test := range []struct {
+		name, code string
+		status     int
+		pow, blobs bool
+	}{
+		{"history-404", "beacon_not_found", 404, false, false},
+		{"unsupported-endpoint", "beacon_unsupported_endpoint", 501, false, false},
+		{"unknown-fork", "unsupported_fork", 200, false, false},
+		{"premerge-consensus", "not_applicable", 200, true, false},
+		{"premerge-blob", "not_applicable", 200, true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := newMigratedPostgres(t)
+			ctx := t.Context()
+			repo, _ := store.NewPostgresRepository(db)
+			if err := repo.ConfigureIndex(ctx, "1", 0); err != nil {
+				t.Fatal(err)
+			}
+			difficulty := big.NewInt(0)
+			if test.pow {
+				difficulty.SetUint64(1)
+			}
+			block, err := newIntegrationBundle(integrationBundleOptions{Number: 0, Timestamp: 124, Difficulty: difficulty})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := repo.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{block}); err != nil {
+				t.Fatal(err)
+			}
+			header := beacontypes.Header{Slot: 2}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if test.status != 200 {
+					w.WriteHeader(test.status)
+					return
+				}
+				var response any
+				switch r.URL.Path {
+				case "/eth/v1/beacon/genesis":
+					response = map[string]any{"data": map[string]string{"genesis_time": "100", "genesis_fork_version": "0x00000001", "genesis_validators_root": common.Hash{1}.Hex()}}
+				case "/eth/v1/config/spec":
+					response = map[string]any{"data": map[string]string{"SECONDS_PER_SLOT": "12", "SLOTS_PER_EPOCH": "32"}}
+				case "/eth/v1/config/deposit_contract":
+					response = map[string]any{"data": map[string]string{"chain_id": "1"}}
+				case "/eth/v1/beacon/headers/2":
+					response = map[string]any{"data": map[string]any{"root": header.Hash().Hex(), "header": map[string]any{"message": map[string]string{"slot": "2", "proposer_index": "0", "parent_root": header.ParentRoot.Hex(), "state_root": header.StateRoot.Hex(), "body_root": header.BodyRoot.Hex()}}}}
+				default:
+					response = map[string]any{"version": "unknown", "data": map[string]any{"message": map[string]any{"slot": "2", "proposer_index": "0", "parent_root": header.ParentRoot.Hex(), "state_root": header.StateRoot.Hex(), "body": map[string]any{}}}}
+				}
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			defer server.Close()
+			cfg := config.DefaultConsensusConfig()
+			cfg.URL = server.URL
+			p := &enrich.ConsensusProcessor{DB: db, Client: consensus.NewClient(cfg), Blobs: test.blobs}
+			queue, _ := enrich.NewPostgresJobQueue(db)
+			execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
+			if _, err := queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: p.Stage(), ChainID: "1", BlockHash: block.Block.Hash()}); err != nil {
+				t.Fatal(err)
+			}
+			worker, err := enrich.NewWorker(queue, []enrich.Processor{p}, enrich.WorkerOptions{ID: "optional", LeaseDuration: time.Minute})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if found, err := worker.ProcessOne(ctx); err != nil || !found {
+				t.Fatalf("optional result stopped worker: found=%v err=%v", found, err)
+			}
+			var chain pgtype.Numeric
+			_ = chain.Scan("1")
+			result, err := dbgen.New(db).ConsensusStageState(ctx, chain, block.Block.Hash().Bytes(), p.Stage().Name)
+			if err != nil || result.State.String != "unavailable" || result.Code != test.code {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+			if found, err := worker.ProcessOne(ctx); err != nil || found {
+				t.Fatalf("worker did not remain usable: found=%v err=%v", found, err)
+			}
+		})
+	}
 }

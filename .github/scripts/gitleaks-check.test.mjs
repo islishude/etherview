@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 // Synthetic public values exercise scanner entropy checks without using credentials.
@@ -123,6 +123,59 @@ test("root .local artifacts are ignored while source exceptions retain path and 
       ].sort(),
     );
     assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Preview x402 exceptions permit only exact public identities at exact paths", () => {
+  const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-x402-"));
+  const compose = readFileSync("preview/compose/x402.yaml", "utf8");
+  const identities = [
+    compose.match(/X402_LOCAL_FACILITATOR_PRIVATE_KEY: (.+)/)[1],
+    "0x8464135c8F25Da09e49BC8782676a84730C318bC",
+  ];
+  const paths = [
+    "preview/compose/x402.yaml",
+    "docs/operations.md",
+    "preview/docs/operations.md",
+    "compose.yaml",
+    "deploy/preview/x402-init.sh",
+  ];
+  try {
+    for (const file of [...paths, "nested/compose.yaml"]) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(
+        join(root, file),
+        [...identities, publicHash].map((value) => `private_key = "${value}"`).join("\n"),
+      );
+    }
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        resolve(".gitleaks.toml"),
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
+    assert.deepEqual(
+      findings.map(({ File, StartLine }) => `${File}:${StartLine}`).sort(),
+      [
+        ...paths.map((file) => `${file}:3`),
+        ...[1, 2, 3].map((line) => `nested/compose.yaml:${line}`),
+      ].sort(),
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

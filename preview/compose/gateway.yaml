@@ -1,0 +1,25 @@
+services:
+  preview-gateway:
+    image: ${PREVIEW_GATEWAY_IMAGE:-caddy:2.11.7-alpine}
+    environment:
+      PREVIEW_NODE_ALLOWED_ORIGINS: ${PREVIEW_NODE_ALLOWED_ORIGINS:-https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173}
+    ports:
+      - "127.0.0.1:${PREVIEW_HTTPS_PORT:-443}:443"
+    networks:
+      default:
+        aliases:
+          [
+            app.etherview.localhost,
+            ipfs.etherview.localhost,
+            geth.etherview.localhost,
+            beacon.etherview.localhost,
+            bundler.etherview.localhost,
+          ]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    tmpfs: [/config, /data]
+    stop_grace_period: 15s
+    restart: unless-stopped

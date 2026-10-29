@@ -377,28 +377,23 @@
           "count": 1
         },
         {
-          "path": "compose.yaml",
+          "path": "preview/compose/gateway.yaml",
           "template": "    image: ${PREVIEW_GATEWAY_IMAGE:-caddy:{{version}}-alpine}",
           "count": 1
         },
         {
-          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "path": ".github/scripts/make-targets.test.mjs",
           "template": "          \"PREVIEW_GATEWAY_IMAGE=caddy:{{version}}-alpine\",",
           "count": 1
         },
         {
-          "path": ".github/scripts/prebuilt-targets.test.mjs",
-          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\"]",
+          "path": ".github/scripts/make-targets.test.mjs",
+          "template": "          \"caddy:{{version}}-alpine\",",
           "count": 1
         },
         {
-          "path": ".github/scripts/prebuilt-targets.test.mjs",
+          "path": ".github/scripts/make-targets.test.mjs",
           "template": "      assert.deepEqual(prebuilt.commands[1].args, [\"image\", \"inspect\", \"caddy:{{version}}-alpine\"]);",
-          "count": 1
-        },
-        {
-          "path": ".github/scripts/preview-compose-check.mjs",
-          "template": "  process.env.PREVIEW_GATEWAY_IMAGE ?? \"caddy:{{version}}-alpine\",",
           "count": 1
         },
         {
@@ -412,12 +407,12 @@
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "preview/docs/testing.md",
           "template": "`caddy:{{version}}-alpine` image with isolated upstreams and a test-only trusted CA.",
           "count": 1
         },
         {
-          "path": "docs/operations.md",
+          "path": "preview/docs/operations.md",
           "template": "Preview uses `caddy:{{version}}-alpine` directly, configurable with",
           "count": 1
         }
@@ -628,11 +623,6 @@
           "count": 1
         },
         {
-          "path": "compiler/vyper/wasm/alias-feasibility.mjs",
-          "template": "  assert.equal(process.version, \"v{{version}}\");",
-          "count": 1
-        },
-        {
           "path": "deploy/check-image.sh",
           "template": "echo \"docker-image-check: PASS (user=$configured_user, architecture=$image_architecture, SEA=Node-v{{version}}, Geas=0.3.3, Pyodide=314.0.7+0.29.5, hardened rootfs)\"",
           "count": 1
@@ -656,6 +646,11 @@
           "path": "internal/verify/solcjs.go",
           "template": "\tsolcJSNodeVersion         = \"v{{version}}\"",
           "count": 1
+        },
+        {
+          "path": "preview/bundler.Dockerfile",
+          "template": "FROM node:{{version}}",
+          "count": 1
         }
       ],
       "commands": [],
@@ -670,7 +665,7 @@
       },
       "reviewFiles": [
         "internal/verify/solcjs_test.go",
-        ".github/scripts/toolchain-check_test.sh"
+        ".github/scripts/workflow-scripts.test.mjs"
       ]
     },
     {
@@ -824,6 +819,52 @@
           "solc-*"
         ]
       }
+    },
+    {
+      "id": "preview-rundler",
+      "source": "github",
+      "package": "alchemyplatform/rundler",
+      "policy": "report",
+      "reason": "Rundler version and safe v0.9 validation require real PoS acceptance before updating.",
+      "pins": [
+        {
+          "path": "preview/bundler.Dockerfile",
+          "template": "FROM alchemyplatform/rundler:v{{version}} AS rundler",
+          "count": 1
+        }
+      ],
+      "reviewFiles": [
+        "preview/bundler.Dockerfile",
+        "preview/bundler-start.mjs",
+        "preview/rundler.toml"
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "docker": ["alchemyplatform/rundler"]
+      }
+    },
+    {
+      "id": "preview-ens",
+      "source": "github",
+      "package": "ensdomains/ens-contracts",
+      "policy": "report",
+      "reason": "Genesis storage, controller TLD patch, dependency notices and resolver behavior require reviewed regeneration.",
+      "pins": [
+        {
+          "path": "preview/contracts/ens-upstream.mjs",
+          "template": "const version = \"{{version}}\";",
+          "count": 1
+        }
+      ],
+      "reviewFiles": [
+        "preview/contracts/generate.mjs",
+        "preview/contracts/manifest.json",
+        "preview/contracts/upstream/ens-sources.json"
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {}
     }
   ],
   "delegated": [

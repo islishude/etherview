@@ -48,6 +48,12 @@ immutable block, stage version, result, and replay generation.
   At most five transaction attempts share the caller deadline; this does not
   consume another durable job attempt or rerun external RPC work. Lease loss,
   other SQL errors, and ambiguous commits are not retried.
+- Outbox dispatch uses the same bounded retry policy for PostgreSQL-aborted
+  transactions. Every attempt releases its transaction before backoff, reclaims
+  the outbox row and rechecks canonicality before enqueueing and publication.
+  The PostgreSQL queue remains atomic with outbox publication; generic
+  enqueuers retain their required idempotency. Observers and wake notifications
+  run only after the final successful dispatch, never for rolled-back attempts.
 - `block_stage_results` and `block_journals` carry a nullable
   `(durable_job_id, job_generation)` pair. Null markers are retained only for
   direct fixtures and pre-migration audit rows. A direct processor may update

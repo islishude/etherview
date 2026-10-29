@@ -1,11 +1,12 @@
 // Differential gate. References are read-only and compiler packages are built
 // from authenticated official archives, never copied from installed venvs.
 import assert from "node:assert/strict";
-import { runtimeFor } from "./runtime-policy.mjs";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, constants } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve, join } from "node:path";
-import { createHash } from "node:crypto";
+
+import { runtimeFor } from "./runtime-policy.mjs";
 const [sharedArg, packagesArg, fixturesArg, version] = process.argv.slice(2);
 const shared = resolve(sharedArg),
   packages = resolve(packagesArg),

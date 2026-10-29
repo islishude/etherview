@@ -1,0 +1,188 @@
+{
+  "chainId": "48815",
+  "bundles": {
+    "ERC1820Registry.json": "b5b25cdf74246367cef9ca0f95dcb1776aefd9a4b43430f9abb22923865c591f",
+    "EntryPoint.json": "2b8f44adfbd9fcb3d23956915448df85e1f54ef247b6e69368218fd3b9484c67",
+    "Multicall3.json": "ed8f8615c0b87a9156047daea7d93c6ba1bf831aacc4b387e4a471ea7bc05052",
+    "SimpleAccountFactory.json": "b3df89bf47ba70ef6378d091dece8e3a044fe576e91f8f50d80b206e294be2b9",
+    "local.json": "2abe6c1abf4d338e16e76a57a8c0400672c7f7e11461184e973ae03bf98c5269",
+    "sys-asm.json": "f61078f4bd7bebfee6b70db5bf56399caaedf692bda25ce1cd8442383dcc532e"
+  },
+  "contracts": [
+    {
+      "address": "0x00000961ef480eb55e80d19ad83579a64c007002",
+      "name": "WithdrawalQueue",
+      "bundle": "sys-asm.json",
+      "entrypoint": "withdrawals/main.eas",
+      "codeHash": "0x0345a365d2f4c5975b9f1599abe0a2ee76b7a3a731bc68781bd04c84e4858f50",
+      "codeSha256": "22ac79b68752353c9bfbc6213fee1ec168df0f5abd2336c9ec239fc324e370b7"
+    },
+    {
+      "address": "0x000064d678505ad48f8ccb093bc65613800e8282",
+      "name": "BuilderExit",
+      "bundle": "sys-asm.json",
+      "entrypoint": "builder_exits/main.eas",
+      "codeHash": "0x90a0b24eb190d6c50f00f6f751dc4c2778658abf3631aceb80586c43f8bd9f2f",
+      "codeSha256": "c889ed88730d157d192aae28c2dee61324d0df3bd01ff0078386808b4adb27aa"
+    },
+    {
+      "address": "0x0000bbddc7ce488642fb579f8b00f3a590007251",
+      "name": "ConsolidationQueue",
+      "bundle": "sys-asm.json",
+      "entrypoint": "consolidations/main.eas",
+      "codeHash": "0x78c6cb5202685228bbcbfb992b1c4e116c7ec5ef11e25b8e92716cfc628ddd60",
+      "codeSha256": "99e3d84dc4a4440c78a64619a2b451c08654cc83b44441585cb6db159478d661"
+    },
+    {
+      "address": "0x0000bff46984e3725691fa540a8c7589300d8282",
+      "name": "BuilderDeposit",
+      "bundle": "sys-asm.json",
+      "entrypoint": "builder_deposits/main.eas",
+      "codeHash": "0x1dd29c1e0dbc3ab670d229dbd3438003ec9015c1df9058beeb64ff301b60b98d",
+      "codeSha256": "2c49dcf745b1304f3dac0ea7487eae6d8fd07812ada980d542f79e8e5e53eb8d"
+    },
+    {
+      "address": "0x0000f90827f1c53a10cb7a02335b175320002935",
+      "name": "HistoryStorage",
+      "bundle": "sys-asm.json",
+      "entrypoint": "execution_hash/main.eas",
+      "codeHash": "0x6e49e66782037c0555897870e29fa5e552daf4719552131a0abce779daec0a5d",
+      "codeSha256": "41cd74981e0201f79ebca054c4e8102a7e6faa28ce015d0048ab2250c1222c67"
+    },
+    {
+      "address": "0x000f3df6d732807ef1319fb7b8bb8522d0beac02",
+      "name": "BeaconRoots",
+      "bundle": "sys-asm.json",
+      "entrypoint": "beacon_root/main.eas",
+      "codeHash": "0xf57acd40259872606d76197ef052f3d35588dadf919ee1f0e3cb9b62d3f4b02c",
+      "codeSha256": "cb7bd3e115730f7d57c15cd892880ed517ff4421bf43dfc7591198868fffe31d"
+    },
+    {
+      "address": "0x0a630a99df908a81115a3022927be82f9299987e",
+      "name": "SenderCreator",
+      "bundle": "EntryPoint.json",
+      "codeHash": "0xa7d4dd260bca9c96da49f7c0682fdda7f0074694d935815a336d3e60ee3ec6ad",
+      "codeSha256": "c595adabcf5209e80dc8885eded4a1f460396a16f7e79c0fe5a81a92c0d5911b"
+    },
+    {
+      "address": "0x1820a4b7618bde71dce8cdc73aab6c95905fad24",
+      "name": "ERC1820Registry",
+      "bundle": "ERC1820Registry.json",
+      "codeHash": "0xf0aa940bb32e37c5f7268b53acc48c7cdd148cd0fc196f30faa00a4d66c0443a",
+      "codeSha256": "50a56a9328a01aa001d63b6ba351d6c2144e63c8275cf1bdf54382f019f7bc94"
+    },
+    {
+      "address": "0x433709009b8330fda32311df1c2afa402ed8d009",
+      "name": "EntryPoint",
+      "bundle": "EntryPoint.json",
+      "codeHash": "0x85be34f219d5a38267f7cbba1a6bc6fb62f46fb48db56ad2acd1ae78fb178171",
+      "codeSha256": "4e54e1161707ded20858daf37297c9861f8a3d587d7c7f195afd7ba515f18408"
+    },
+    {
+      "address": "0x43ca3d2c94be00692d207c6a1e60d8b325c6f12f",
+      "name": "BaseRegistrarImplementation",
+      "bundle": "local.json",
+      "codeHash": "0x9ebd40ee693d23d71b9ee362b46f988916a2c3cabdc8ca0495dee8e4448ff0b7",
+      "codeSha256": "1b5384f3bdf10cc8755530a889b2acc241948ba6b78e09d294e8535fa583d3a0"
+    },
+    {
+      "address": "0x446c29fbfef829f81e236a2376191f648dbef995",
+      "name": "UniversalResolver",
+      "bundle": "local.json",
+      "codeHash": "0x044ff80a2de64117cf93c867b1344b3e6509638336f02cdef023e6381a6601d6",
+      "codeSha256": "c4a2d029c70114273a4db777ef7a8de8ac4ab5596c6772d5f3fd4ac2eac44961"
+    },
+    {
+      "address": "0x4e59b44847b379578588920ca78fbf26c0b4956c",
+      "name": "DeterministicFactory",
+      "bundle": "sys-asm.json",
+      "entrypoint": "factory/main.eas",
+      "codeHash": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989",
+      "codeSha256": "e0af82ad2e5188285db8ba0b2ae054d13f0fd4fe325c48c7f2dace48454404b9"
+    },
+    {
+      "address": "0x6d925938edb8a16b3035a4cf34faa090f490202a",
+      "name": "DefaultReverseRegistrar",
+      "bundle": "local.json",
+      "codeHash": "0xd07509d1d738cdbc0450f792981b7dcb10d5436f8159da3073b8814da70838bb",
+      "codeSha256": "ac390c1687dbdc6952d779881830274df302cd1756de96614389013d717fd5f4"
+    },
+    {
+      "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
+      "name": "LocalBillingToken",
+      "bundle": "local.json",
+      "codeHash": "0xd8c594502b6e0ba2fbd7cd9972a7b73f4aa8222f49da40243e65747d0b585ddc",
+      "codeSha256": "fb5aea87f1b34dee791cb06a505ad1190a255d932fafa0dc38f8136cad66464d"
+    },
+    {
+      "address": "0x9ef4c86838638daea46d5517442f5c23fe1dd34c",
+      "name": "SimpleAccount",
+      "bundle": "SimpleAccountFactory.json",
+      "codeHash": "0xa8a0104d978225e9e8d0e6570971c35c65d1813edc8757e87296ba457b489a3d",
+      "codeSha256": "372c843ba80470387ecbf33abe4bdb6d725efb89eefb14a07603912d3d20c798"
+    },
+    {
+      "address": "0xa7c8b0d74b68ef10511f27e97c379fb1651e1ed2",
+      "name": "PreviewRegistrarController",
+      "bundle": "local.json",
+      "codeHash": "0xe45c69715f0e9bf2b9b7b9427fb723722e18df8763e871d1041e7e33c711e14e",
+      "codeSha256": "0ff9851a8562318c9d5e4c378da9f45fb05b024d7173373d80376ab467b40549"
+    },
+    {
+      "address": "0xabb12158488d9c9bd52c14b9ae4c835ece4a6e13",
+      "name": "GatewayProvider",
+      "bundle": "local.json",
+      "codeHash": "0x9385ba6a911c4647e8c0d5d25016f5f73629ce5b86f8a7f1981b3b8d30861db3",
+      "codeSha256": "03a891ad80ca67aca774b0c807017e3358f71ea6774e66a350603701000f3c0b"
+    },
+    {
+      "address": "0xb09da8a5b236fe0295a345035287e80bb0008290",
+      "name": "ReverseRegistrar",
+      "bundle": "local.json",
+      "codeHash": "0xbdad61df46aa3b1a66e826cccb134b7ebf1432ed0412abcb3259a356788a1387",
+      "codeSha256": "55f936c1de554674639bdf7c907e1c21707905d26d68e122eb89d36317445bf8"
+    },
+    {
+      "address": "0xc469e7ae4ad962c30c7111dc580b4adbc7e914dd",
+      "name": "ENSRegistry",
+      "bundle": "local.json",
+      "codeHash": "0x46c99e92ef717d207d1d057038e0b041d5ed05eddc9bc956ba5ec194b61ba2fa",
+      "codeSha256": "ec6912e150c2bc5621ffc1199e7dd144cfb2faaf06d183b6595d48d37bb1a72d"
+    },
+    {
+      "address": "0xc92b72ecf468d2642992b195bea99f9b9bb4a838",
+      "name": "PublicResolver",
+      "bundle": "local.json",
+      "codeHash": "0xede47a76e9b0f9c025cbfc83c6395a66695d23b2df83ac1e28a575a5cf768b0a",
+      "codeSha256": "734da351a97ff34c8914e412f6fdbb988b3bad9da2469ace25682b2b2726b674"
+    },
+    {
+      "address": "0xca11bde05977b3631167028862be2a173976ca11",
+      "name": "Multicall3",
+      "bundle": "Multicall3.json",
+      "codeHash": "0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891",
+      "codeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+    },
+    {
+      "address": "0xe9061f92ba9a3d9ef3f4eb8456ac9e552b3ff5c8",
+      "name": "PreviewPriceOracle",
+      "bundle": "local.json",
+      "codeHash": "0x4916a43cef0d229eb17e5268fb773348472d7cfa4462fff48a99694f6c88df38",
+      "codeSha256": "21a9b8b998dd541b0d0e30446ca1cd87afe9a667d779d4281460deb32b8f54f8"
+    },
+    {
+      "address": "0xed8cab8a931a4c0489ad3e3fb5bdea84f74fd23e",
+      "name": "DefaultReverseResolver",
+      "bundle": "local.json",
+      "codeHash": "0x48b8d72e21bcadf9f36c9febcde2acc4b13f1557ecb20f9102305719af5a21f6",
+      "codeSha256": "66d9ca37b93eaf6580e9b5c38d8a302c8e4159160eef1946618dd35bd71daa76"
+    },
+    {
+      "address": "0xf4a7018fdbf22804526ec4b77dce4f9b0d27a395",
+      "name": "SimpleAccountFactory",
+      "bundle": "SimpleAccountFactory.json",
+      "codeHash": "0xe4a0340fdaab43ecdabc5b6c2d1aa03c5df798bfd8aa78c3aee6642f4aa25de0",
+      "codeSha256": "c8bd967298661b6527462982b462b16d60a6f13d38aafbbf94aa90627d181102"
+    }
+  ]
+}

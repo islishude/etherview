@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { asSummary, init } from "license-checker-rseidelsohn";
 
 const allowed = "0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense";
@@ -47,7 +48,15 @@ export async function checkLicenses(root, workspace = "web") {
     // enforcement in the pinned checker, including license-file inference.
     const result = await new Promise((resolve, reject) => {
       init(
-        { start: directory, direct: 0, includePackages: name, onlyAllow: allowed },
+        {
+          start: directory,
+          direct: 0,
+          includePackages: name,
+          onlyAllow: allowed,
+          ...(existsSync(join(root, "licenses/npm-clarifications.json"))
+            ? { clarificationsFile: join(root, "licenses/npm-clarifications.json") }
+            : {}),
+        },
         (error, result) => (error ? reject(error) : resolve(result)),
       );
     });

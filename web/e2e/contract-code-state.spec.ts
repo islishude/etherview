@@ -74,3 +74,46 @@ for (const status of ["unavailable", "failed"] as const) {
     await expect(panel.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
   });
 }
+
+test("Code recovers after proxy publication without another chain event or reload", async ({
+  page,
+}) => {
+  const verifiedAddress = "0x1111111111111111111111111111111111111111";
+  // Hold the durable event stream quiet: only classification recovery can refresh.
+  await page.addInitScript(() => {
+    window.EventSource = class {
+      static CLOSED = 2;
+      readyState = 1;
+      addEventListener() {}
+      close() {}
+    } as unknown as typeof EventSource;
+  });
+  let published = false;
+  let requests = 0;
+  await page.route(`**/api/v1/contracts/${verifiedAddress}/proxy`, async (route) => {
+    requests++;
+    await route.fulfill({
+      status: 200,
+      json: {
+        data: {
+          address: verifiedAddress,
+          status: published ? "not_detected" : "unavailable",
+          snapshot: { chain_id: "1", block_number: "42", block_hash: `0x${"11".repeat(32)}` },
+          evidence: [],
+        },
+        meta: { chain_id: "1", request_id: "code-recovery-e2e" },
+      },
+    });
+  });
+  await page.goto(`/address/${verifiedAddress}#code`);
+  const panel = page.getByRole("tabpanel", { name: "Code", exact: true });
+  await expect(panel.getByText("Unavailable", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Loading indexed data…")).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  published = true;
+  await expect(panel.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
+  await expect(panel.getByText("Loading indexed data…")).toHaveCount(0);
+  const completedRequests = requests;
+  await page.waitForTimeout(1200);
+  expect(requests).toBe(completedRequests);
+});

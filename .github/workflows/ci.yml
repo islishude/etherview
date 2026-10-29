@@ -30,7 +30,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-toolchain
       - name: Build authenticated packages once for both architectures
-        run: bash .github/scripts/vyper-ci-packages.sh
+        run: |
+          pnpm --filter ./compiler install --frozen-lockfile
+          node compiler/vyper/wasm/prepare.mjs
+          node compiler/vyper/wasm/packages.mjs
+          node compiler/vyper/wasm/build-release.mjs --output .local/vyper-releases
       - uses: actions/upload-artifact@v7
         id: packages
         with:
@@ -64,7 +68,10 @@ jobs:
           merge-multiple: true
           path: .local/
       - name: Build native SEA
-        run: bash .github/scripts/vyper-ci-native.sh
+        run: |
+          pnpm --filter ./compiler install --frozen-lockfile
+          node compiler/vyper/wasm/prepare.mjs
+          pnpm --dir compiler run build:sea "$PWD/.local/vyper-wasm/sea/etherview-solcjs"
       - parallel:
           - name: Verify native Vyper runtime matrix
             env:

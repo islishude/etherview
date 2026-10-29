@@ -54,7 +54,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := bundler x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview-push.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -62,10 +62,9 @@ PREVIEW_GATEWAY_CERT := $(PREVIEW_TLS_DIR)/gateway.crt
 PREVIEW_GATEWAY_KEY := $(PREVIEW_TLS_DIR)/gateway.key
 X402_LOCAL_COMPOSE := e2e/x402local/compose.yaml
 X402_LOCAL_TOPOLOGY ?= monolith
-VYPER_ALIAS_FEASIBILITY_OUTPUT ?= .local/vyper-alias-feasibility
 
 .DEFAULT_GOAL := check
-.NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus start-x402-local recreate-x402-local
+.NOTPARALLEL: check generate generate-check start-preview recreate-preview test-preview-metadata test-preview-consensus test-preview-x402 start-x402-local recreate-x402-local
 
 # Arguments: image reference, failure message. Keep checks at their call sites.
 define require-image
@@ -143,7 +142,7 @@ test-preview-gateway:
 # Quality checks
 
 .PHONY: check toolchain-check plan-check docs-check openapi-check source-check format format-check \
-	repo-format-check web-format-check lint lint-go golangci-lint test-lint-policy web-lint install-lint-tools \
+	repo-format-check web-format-check preview-lint lint lint-go golangci-lint test-lint-policy web-lint install-lint-tools \
 	lint-tool-check install-security-tools security-tool-check security-check license-tool-check \
 	license-check
 
@@ -168,7 +167,8 @@ source-check:
 format: pnpm-install
 	$(PNPM) run format
 
-format-check: repo-format-check web-format-check
+format-check: pnpm-install
+	$(PNPM) run format:check
 
 repo-format-check: pnpm-install
 	$(PNPM) run format:repo:check
@@ -176,7 +176,8 @@ repo-format-check: pnpm-install
 web-format-check: web-install
 	$(PNPM) --dir web run format:check
 
-lint: lint-go web-lint format-check
+lint: lint-go pnpm-install
+	$(PNPM) run lint
 
 lint-go: lint-tool-check source-check web-build
 	@unformatted="$$(find . \( -path './.git' -o -path './.local' -o -path './vendor' -o -name node_modules \) -prune -o -type f -name '*.go' -exec gofmt -l {} +)"; \
@@ -193,6 +194,9 @@ golangci-lint: lint-tool-check test-lint-policy
 
 test-lint-policy: lint-tool-check
 	GOLANGCI_LINT="$(GOLANGCI_LINT)" $(NODE) --test .github/scripts/lint-policy.test.mjs
+
+preview-lint: pnpm-install
+	$(PNPM) run lint:preview
 
 web-lint: web-install web-format-check
 	$(PNPM) --dir web run lint:code
@@ -253,7 +257,7 @@ license-check: license-tool-check web-install compiler-install
 	test-preview-consensus test-preview-consensus-prebuilt test-hardhat3-provider-compat \
 	test-hardhat3-e2e test-hardhat3-offline-compile test-hardhat3-e2e-prebuilt test-foundry-e2e \
 	test-foundry-offline-compile test-foundry-e2e-prebuilt test-vyper-e2e test-vyper-e2e-prebuilt \
-	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate test-vyper-alias-feasibility \
+	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate \
 	test-vyper-update benchmark benchmark-integration benchmark-vyper-wasm test-load test-soak
 
 test: test-go web-test test-workflow-scripts test-vyper-release
@@ -268,7 +272,7 @@ test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test-workflow-scripts: test-dependency-updates
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/prebuilt-targets.test.mjs .github/scripts/generated-check.test.mjs .github/scripts/compose-check.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/make-targets.test.mjs
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable
@@ -317,13 +321,22 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)"; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-local-facilitator:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
 test-preview-metadata-prebuilt: preview-e2e-check
 	@PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -count=1 -v -tags=previewmetadatae2e -run TestPreviewLocalNFTMetadata ./e2e/previewmetadata
+
+.PHONY: test-preview-x402 test-preview-x402-prebuilt
+
+test-preview-x402: preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-x402-prebuilt
+
+test-preview-x402-prebuilt: preview-e2e-check
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -timeout=12m -tags=runtimee2e,previewx402e2e -run '^TestPreviewX402$$' ./e2e/x402local
 
 test-preview-consensus: preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-consensus-prebuilt
@@ -377,24 +390,18 @@ test-vyper-e2e-prebuilt:
 	@$(DOCKER) image inspect "$(IMAGE)" >/dev/null
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" NODE="$(NODE)" \
 		$(GO) test -count=1 -v -timeout=30m -tags='runtimee2e verificatione2e' \
-		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyper(ProductionE2E|VerificationCounts|ProductionFixtureCoverage)$$' ./e2e/runtime
+		-parallel=$(VERIFICATION_PARALLEL) -run '^TestVyperProductionE2E$$' ./e2e/runtime
 
 test-vyper-matrix: compiler-install test-vyper-wasm-candidate
 	ETHERVIEW_TEST_VYPER_MATRIX_ROOT="$(CURDIR)/.local/vyper-wasm/packages" $(GO) test ./internal/verify -run '^TestVyper(DynamicRuntimeMatrix|StableVersionMatrix|MatrixSchedulingFailure)$$' -count=1 -parallel=4 -timeout=30m
 
 test-vyper-release: test-vyper-update
-	$(GO) test -tags='runtimee2e verificatione2e' ./e2e/runtime -run '^(TestHardhat3VerificationCounts|TestVyperProductionFixtureCoverage)$$' -count=1
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) --test compiler/vyper/acceptance.test.mjs compiler/vyper/wasm/production-shards.test.mjs
 
 test-vyper-wasm-candidate: pnpm-install
 	$(NODE) --test compiler/vyper/wasm/tooling.test.mjs
 	$(NODE) compiler/vyper/wasm/check.mjs
-
-# Diagnostic only. The output directory must not already exist.
-test-vyper-alias-feasibility:
-	$(NODE) --test compiler/vyper/wasm/alias-feasibility.test.mjs
-	$(NODE) compiler/vyper/wasm/alias-feasibility.mjs "$(VYPER_ALIAS_FEASIBILITY_OUTPUT)"
 
 test-vyper-update: pnpm-install
 	$(NODE) compiler/vyper/update.mjs --check
@@ -464,9 +471,9 @@ helm-check:
 # Preview lifecycle
 
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
-	preview-images start-preview stop-preview recreate-preview test-preview-gateway
+	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
-start-preview recreate-preview stop-preview preview-images preview-network-runtime: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
+start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
@@ -493,37 +500,47 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test .github/scripts/preview-network.test.mjs .github/scripts/preview-compose.test.mjs .github/scripts/preview-env.test.mjs
+	$(NODE) --test preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/bundler-start.test.mjs preview/verification/verify.test.mjs
 
 preview-env:
-	$(NODE) .github/scripts/preview-env.mjs "$(PREVIEW_ENV_FILE)"
+	$(NODE) preview/scripts/env.mjs "$(PREVIEW_ENV_FILE)"
 
 preview-network-runtime: preview-env
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs check
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs check
 
-preview-images: preview-env
+preview-x402-images:
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-facilitator
+
+preview-images: preview-env preview-x402-images preview-bundler-image
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs prepare
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs init
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs prepare
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/verify.mjs
 	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
 stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-network.mjs clean
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs clean
 
-recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build
+recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images preview-bundler-image
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs init
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
-	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) .github/scripts/preview-ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
+
+.PHONY: clean-preview-compiler-cache
+clean-preview-compiler-cache: preview-bundler-image
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs clean
 
 
 # Local x402 lifecycle
@@ -556,3 +573,31 @@ test-dependency-updates:
 
 install-preview-tools:
 	$(GO) install filippo.io/mkcert@$(MKCERT_VERSION)
+
+.PHONY: preview-bundler-image preview-contracts-generate preview-contracts-check test-preview-contracts test-preview-contracts-prebuilt
+preview-bundler-image:
+	DOCKER="$(DOCKER)" $(BUILDX) build --load -t etherview-preview-bundler:local -f preview/bundler.Dockerfile .
+
+preview-contracts-generate: pnpm-install
+	$(NODE) preview/contracts/ens-upstream.mjs
+	$(NODE) preview/contracts/upstream.mjs
+	$(NODE) preview/contracts/generate.mjs
+
+preview-contracts-check: pnpm-install
+	$(NODE) preview/contracts/generate.mjs --check
+	$(NODE) preview/verification/generate.mjs --check
+	$(NODE) --test preview/contracts/test.mjs
+
+test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt
+
+test-preview-contracts-prebuilt: preview-e2e-check
+	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewContracts$$' ./e2e/previewmetadata
+
+.PHONY: verify-preview-genesis preview-verification-check
+verify-preview-genesis: preview-env
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/verify.mjs
+
+preview-verification-check: pnpm-install
+	$(NODE) preview/verification/generate.mjs --check
+	$(NODE) --test preview/verification/verify.test.mjs

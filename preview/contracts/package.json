@@ -1,0 +1,18 @@
+{
+  "name": "@etherview/preview-contracts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "check": "node generate.mjs --check",
+    "cli": "node cli.mjs",
+    "test": "node --test test.mjs"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "4.9.3",
+    "solc": "0.8.30",
+    "viem": "2.57.8",
+    "@openzeppelin/contracts-v5": "npm:@openzeppelin/contracts@5.1.0",
+    "@ensdomains/buffer": "0.1.3"
+  }
+}

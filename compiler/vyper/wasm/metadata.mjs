@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+
 import { zipEntries } from "./archives.mjs";
 export const normalized = (name) => name.toLowerCase().replace(/[-_.]+/g, "-");
 export function distributionIdentity(raw) {

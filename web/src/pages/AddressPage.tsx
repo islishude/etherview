@@ -962,6 +962,7 @@ function AddressTokenTransfers({
                   ) : transfer.token_id !== undefined && isNFTStandard(transfer.standard) ? (
                     <NFTTokenIDLink
                       address={transfer.token_address}
+                      compact
                       prefix
                       tokenID={transfer.token_id}
                     />
@@ -974,6 +975,7 @@ function AddressTokenTransfers({
                     <small>
                       <NFTTokenIDLink
                         address={transfer.token_address}
+                        compact
                         prefix
                         tokenID={transfer.token_id}
                       />

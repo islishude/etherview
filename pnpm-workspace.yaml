@@ -3,6 +3,7 @@ packages:
   - web
   - compiler
   - e2e/hardhat3
+  - preview/contracts
 
 engineStrict: true
 ignoreScripts: true

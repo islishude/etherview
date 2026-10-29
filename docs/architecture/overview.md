@@ -686,9 +686,10 @@ size alone is not sufficient justification to weaken those invariants.
   the capability was available and observed no matching objects.
 - Price adapters retain their bounded HTTPS observation contract. ENS is a
   separate explicitly enabled API capability governed by ADR-0041. One
-  resolution generation pins an exact Ethereum Mainnet finalized block and,
+  `official_first` resolution generation pins an exact Ethereum Mainnet finalized block and,
   when configured, one exact local canonical custom-ENS block plus sticky RPC
-  endpoint identities. Go input uses `adraffy/go-ens-normalize`; the SPA uses
+  endpoint identities. `custom_only` pins only the local source and requires
+  no Mainnet connection. Go input uses `adraffy/go-ens-normalize`; the SPA uses
   Viem `normalize`. Primary-name display additionally requires reverse and
   matching forward resolution for the explored chain's coin type.
 - Official ENS no-record may fall through to the configured current-chain
@@ -1019,8 +1020,8 @@ size alone is not sufficient justification to weaken those invariants.
   stale marker; reorg automatically removes orphan update influence.
 
 Preview uses pinned Kubo, Geth and Lighthouse nodes behind the official Caddy
-`preview-gateway`. Four explicit `*.etherview.localhost` hosts route app/API,
-read-only IPFS, execution JSON-RPC/WSS and Beacon REST/SSE. TLS terminates at
+`preview-gateway`. Five explicit `*.etherview.localhost` hosts route app/API,
+read-only IPFS, execution JSON-RPC/WSS, Beacon REST/SSE and Bundler JSON-RPC. TLS terminates at
 Caddy; API traffic inside the container network uses HTTP. The gateway is not
 an application role and its health does not depend on optional upstreams.
 Only Caddy holds its wildcard private key. Metadata trusts the public CA and
@@ -1032,6 +1033,15 @@ continues using the generated same-origin client and injected wallet boundary.
 Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
 The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
+
+Preview also runs the test-only x402 Facilitator and Local USD token on its
+Geth/Lighthouse chain. Token code, constructor storage, initial owner balance
+and Facilitator funding are predeployed in genesis. Startup validates the
+network bundle without deploying or funding contracts; recreation preserves
+chain and account state. The Facilitator is not a core role dependency;
+existing credit remains spendable during its outage. The API/all role owns the fingerprint pepper and the normal production
+billing components. The local Permit2 witness fixture and private-network HTTP
+exception remain development-only boundaries under ADR-0044.
 
 ## Operator Recovery Boundary
 
@@ -1178,3 +1188,7 @@ retries. Failures are typed and redacted, with no readiness dependency. Browser
 widgets are form-local, session-fenced and lazy; native API-key clients and
 watch operations retain their existing paths. ADR-0013, ADR-0024 and ADR-0051
 own the browser, verification and export contracts respectively.
+
+### Preview genesis application contracts
+
+See [Preview genesis application contracts](../../preview/docs/architecture.md#preview-genesis-application-contracts).

@@ -50,6 +50,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T18 | done    | P60-T03, P60-T09, P10, P20, P40-T01 | Private writer-authoritative watch management, bounded enrollment, fresh schema/typed queries, and ownership isolation                                             | OpenAPI/generation, schema, Cookie/Origin/CSRF, handler, watch-limit, and PostgreSQL regressions                         |
 | P60-T19 | done    | P60-T18, P20-T10                    | Durable transaction/token notifications, generation-fenced delivery, reorg/reattach handling, read watermarks, and bounded cleanup                                 | restart, lease/generation, concurrency, indexed matching, disabled-account replay, and PostgreSQL regressions            |
 | P60-T20 | done    | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                   |
+| P60-T21 | done    | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                            | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                       |
 
 ## Acceptance
 
@@ -167,3 +168,29 @@ this completed cleanup does not close the live staging gate.
 
 These are historical feature results, not tests rerun by this plan consolidation
 or evidence that the live-payment release gate has passed.
+
+### Preview x402 acceptance (P60-T21)
+
+The record below predates the genesis-predeployment migration. Its initializer
+reuse evidence describes that earlier implementation; the current gate checks
+block-zero token code and Facilitator recreation without chain-state changes.
+See [current Preview acceptance](../../preview/docs/testing.md#x402-billing-gate).
+
+On 2026-10-28, the working tree based on `69dedc09` passed local macOS/Docker
+Desktop acceptance with production image
+`sha256:7da318c5cd1a29eccf9a3710a8888a87af6c0501b4bb84237f8a548b83a84356`.
+After `make docker-build preview-x402-images`, `make check`, `make test-e2e`
+(149 browser tests), `make test-rustfs`, `make test-runtime-e2e-prebuilt`,
+`make test-preview-x402-prebuilt`, `make test-preview-metadata-prebuilt` and
+`make test-preview-consensus-prebuilt` passed.
+
+Preview's chain 48815 settled both methods: split-mode credit/debit/available
+was 200/1/199; after all-role continuation it was 400/2/398, matching on-chain
+recipient balances. Exact allowance consumption, replay rejection, initialization
+reuse without chain-state changes, restart and spending during Facilitator outage
+passed. Review regressions additionally paused the validator after payment
+broadcast, retained the exact pending hash, resumed mining and reconciled one
+credit without resending (final credit/debit/available 401/2/399). RPC/race tests
+cover broadcast uncertainty, receipt timeouts/errors, hash mismatch, indexing and
+confirmed reverts. The test-only Permit2 witness path and these local results do not establish
+production Permit2/proxy compatibility, remote CI or P60-T17 live acceptance.

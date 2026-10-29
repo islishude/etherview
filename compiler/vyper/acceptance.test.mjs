@@ -1,13 +1,14 @@
-import { canonical } from "./wasm/tooling.mjs";
-import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
+
 import { executorDigest, fixtureIdentity, runtimeFor, sharedRuntimes } from "./wasm/release.mjs";
+import { canonical } from "./wasm/tooling.mjs";
 const script = fileURLToPath(new URL("./acceptance.mjs", import.meta.url));
 const versions = JSON.parse(
   readFileSync(new URL("./versions/index.json", import.meta.url)),

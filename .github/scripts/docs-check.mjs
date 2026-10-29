@@ -27,6 +27,12 @@ const maintained = [
   "docs/operations.md",
   "docs/testing.md",
   "docs/development.md",
+  "preview/docs/operations.md",
+  "preview/docs/contracts.md",
+  "preview/docs/architecture.md",
+  "preview/docs/testing.md",
+  "preview/docs/setup.md",
+  "preview/docs/README.md",
 ];
 
 for (const file of maintained) {
@@ -45,10 +51,10 @@ check(
   "Makefile recreate-preview must require the read-only Preview network prerequisite",
 );
 contains(
-  "docs/operations.md",
+  "preview/docs/operations.md",
   "`make recreate-preview` reuses the existing network bundle without refreshing its timestamp",
 );
-contains("docs/operations.md", "it never creates or modifies a Genesis file");
+contains("preview/docs/operations.md", "it never creates or modifies a Genesis file");
 contains("deploy/README.md", "Public verification is configured in the mounted YAML through");
 forbid("docs/operations.md", "creating it once if missing");
 

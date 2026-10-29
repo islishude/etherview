@@ -1,6 +1,7 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+
 import { runtimePolicy } from "./runtime-policy.mjs";
 const versions = JSON.parse(
   readFileSync(new URL("../versions/index.json", import.meta.url)),

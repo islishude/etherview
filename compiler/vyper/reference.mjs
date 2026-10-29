@@ -3,8 +3,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { ROOT, versions } from "./wasm/tooling.mjs";
+
 import { lockedPackages } from "./wasm/packages.mjs";
+import { ROOT, versions } from "./wasm/tooling.mjs";
 export const RETIRED = new Set([
   "pyinstaller",
   "pyinstaller-hooks-contrib",

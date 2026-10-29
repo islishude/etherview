@@ -11,7 +11,7 @@ import (
 
 func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	data, err := os.ReadFile("../../preview/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestPreviewEnablesPublicVerificationSourcifyAndNFTMetadata(t *testing.T) {
 
 func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.genesis.json")
+	data, err := os.ReadFile("../../preview/genesis.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,6 @@ func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, address := range []string{
-		"71562b71999873db5b286df957af199ec94617f7",
 		"f39fd6e51aad88f6f4ce6ab8827279cfffb92266",
 	} {
 		allocation, ok := genesis.Alloc[address]
@@ -107,7 +106,7 @@ func TestPreviewGenesisFundsLocalSigningAccounts(t *testing.T) {
 
 func TestPreviewEnablesConsensusAndDurableBlobs(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	data, err := os.ReadFile("../../preview/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}

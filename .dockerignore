@@ -17,7 +17,8 @@
 AGENTS.md
 PLAN.md
 docs
-deploy
+deploy/*
+preview/*
 coverage
 data
 bin

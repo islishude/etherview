@@ -1,0 +1,80 @@
+services:
+  bundler:
+    image: ${PREVIEW_BUNDLER_IMAGE:-etherview-preview-bundler:local}
+    entrypoint: ["node", "/app/src/preview-start.mjs"]
+    depends_on:
+      geth:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4337',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_supportedEntryPoints',params:[]})}).then(r=>r.json()).then(r=>process.exit(r.result?.[0]?.toLowerCase()==='0x433709009b8330fda32311df1c2afa402ed8d009'?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 36
+      start_period: 10s
+
+  geth:
+    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.10}
+    entrypoint: ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"]
+    command:
+      - --networkid=48815
+      - --nodiscover
+      - --maxpeers=0
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=8551
+      - --authrpc.vhosts=geth
+      - --authrpc.jwtsecret=/run/engine/jwt.hex
+      - --syncmode=full
+      - --gcmode=archive
+      - --http
+      - --http.addr=0.0.0.0
+      - --http.port=8545
+      - --http.api=eth,net,web3,debug,txpool
+      - --http.vhosts=*
+      - --ws
+      - --ws.addr=0.0.0.0
+      - --ws.port=8546
+      - --ws.api=eth,net,web3,debug,txpool
+    ports:
+      - "127.0.0.1:${GETH_HTTP_PORT:-8545}:8545"
+      - "127.0.0.1:${GETH_WS_PORT:-8546}:8546"
+    restart: unless-stopped
+
+  lighthouse:
+    image: sigp/lighthouse:v8.3.2
+    command:
+      - lighthouse
+      - --testnet-dir=/network
+      - bn
+      - --datadir=/beacon
+      - --execution-endpoint=http://geth:8551
+      - --execution-jwt=/run/engine/jwt.hex
+      - --http
+      - --http-address=0.0.0.0
+      - --http-port=5052
+      - --disable-upnp
+      - --target-peers=0
+      - --supernode
+      - --prune-blobs=false
+      - --allow-insecure-genesis-sync
+      - --suggested-fee-recipient=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266
+    ports:
+      - "127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}:5052"
+    depends_on:
+      geth:
+        condition: service_started
+    restart: unless-stopped
+
+  validator:
+    image: sigp/lighthouse:v8.3.2
+    entrypoint: ["/bin/sh", "/validator.sh"]
+    depends_on:
+      lighthouse:
+        condition: service_started
+    restart: unless-stopped

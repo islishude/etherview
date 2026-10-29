@@ -40,7 +40,7 @@ permission-restricted Node 26.12.1 SEA subprocess.
 
 Use `make recreate-preview` to rebuild application roles while preserving data
 and the compiler cache. **`make stop-preview` deletes Preview and all its
-volumes.** See [Preview setup and lifecycle](deploy/README.md#full-stack-preview)
+volumes.** See [Preview setup and lifecycle](preview/docs/README.md)
 for prerequisites, compiler details, and endpoint overrides. The
 [IPFS file tool](docs/operations.md#ipfs-file-tool) uploads and downloads single
 files through the loopback Kubo API.

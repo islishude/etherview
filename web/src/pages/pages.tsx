@@ -46,16 +46,22 @@ export function isNFTStandard(standard: string): boolean {
 
 export function NFTTokenIDLink({
   address,
+  compact = false,
   prefix = false,
   tokenID,
 }: {
   address: string;
+  compact?: boolean;
   prefix?: boolean;
   tokenID: string;
 }) {
   return (
-    <Link to="/nft/$address/$tokenID" params={{ address, tokenID }}>
-      <code>{prefix ? `#${tokenID}` : tokenID}</code>
+    <Link
+      to="/nft/$address/$tokenID"
+      params={{ address, tokenID }}
+      title={compact ? tokenID : undefined}
+    >
+      <code>{`${prefix ? "#" : ""}${compact ? shorten(tokenID) : tokenID}`}</code>
     </Link>
   );
 }

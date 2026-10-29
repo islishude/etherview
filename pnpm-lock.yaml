@@ -248,6 +248,24 @@ importers:
         specifier: 2.57.8
         version: 2.57.8(typescript@7.0.2)(zod@4.6.6)
 
+  preview/contracts:
+    dependencies:
+      '@ensdomains/buffer':
+        specifier: 0.1.3
+        version: 0.1.3
+      '@openzeppelin/contracts':
+        specifier: 4.9.3
+        version: 4.9.3
+      '@openzeppelin/contracts-v5':
+        specifier: npm:@openzeppelin/contracts@5.1.0
+        version: '@openzeppelin/contracts@5.1.0'
+      solc:
+        specifier: 0.8.30
+        version: 0.8.30(debug@4.4.3(supports-color@7.2.0))
+      viem:
+        specifier: 2.57.8
+        version: 2.57.8(typescript@7.0.2)(zod@4.6.6)
+
   web:
     dependencies:
       '@codemirror/commands':
@@ -473,6 +491,9 @@ packages:
   '@cto.af/wtf8@0.0.5':
     resolution: {integrity: sha512-LfUFi+Vv4eDzj+XAtR89e3wwjXA/NZjUSwU5NhwbBrLecxPaBYFy3exCuc1j+D4UZeOVdqlsl8G7LmOt18V0tg==}
     engines: {node: '>=20'}
+
+  '@ensdomains/buffer@0.1.3':
+    resolution: {integrity: sha512-L/GoCkQFePjSn4DeVnBNfkGdm2CI8UxTxwgQztcZ1L9aHaFefRD+mTUXxtikk946KwwMHRQJDn38wo1IWtEpSg==}
 
   '@esbuild/aix-ppc64@0.28.2':
     resolution: {integrity: sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==}
@@ -904,6 +925,12 @@ packages:
     resolution: {integrity: sha512-n4a/vfRs114lXyUdYg7pyY8LvFKWvCDF5lEcRRAVxap8g6ZEdLqm+9tmt2zTtRHcNMxTYp9y5t6KBof4tHp7Og==}
     peerDependencies:
       '@openzeppelin/contracts': 5.6.1
+
+  '@openzeppelin/contracts@4.9.3':
+    resolution: {integrity: sha512-He3LieZ1pP2TNt5JbkPA4PNT9WC3gOTOlDcFGJW4Le4QKqwmiNJCRt44APfxMxvq7OugU/cqYuPcSBzOw38DAg==}
+
+  '@openzeppelin/contracts@5.1.0':
+    resolution: {integrity: sha512-p1ULhl7BXzjjbha5aqst+QMLY+4/LCWADXOCsmLHRM77AqiPjnd9vvUN9sosUfhL9JGKpZ0TjEGxgvnizmWGSA==}
 
   '@openzeppelin/contracts@5.6.1':
     resolution: {integrity: sha512-Ly6SlsVJ3mj+b18W3R8gNufB7dTICT105fJhodGAGgyC2oqnBAhqSiNDJ8V8DLY05cCz81GLI0CU5vNYA1EC/w==}
@@ -2769,9 +2796,9 @@ packages:
     peerDependencies:
       seroval: ^1.0
 
-  seroval@1.6.7:
-    resolution: {integrity: sha512-AeDcLh0yO2SFm9W71essgnSzLV9DI8ZH0x0knXn2DMnUZj728mpLbxjlbB6IqKCmqh8JA3cEqRyGoNkt584JcQ==}
-    engines: {node: '>=10'}
+  seroval@1.7.2:
+    resolution: {integrity: sha512-NPOYrDVbvtuTo5m9InqKE7O6wBASON46OabjyqLUGPvoXNDYp0pReuFYkqOQwGsoj1OpZVj6mIdnRRgt5O1/gQ==}
+    engines: {node: '>=20'}
 
   shebang-command@2.0.0:
     resolution: {integrity: sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==}
@@ -3292,6 +3319,8 @@ snapshots:
 
   '@cto.af/wtf8@0.0.5': {}
 
+  '@ensdomains/buffer@0.1.3': {}
+
   '@esbuild/aix-ppc64@0.28.2':
     optional: true
 
@@ -3713,6 +3742,10 @@ snapshots:
     dependencies:
       '@openzeppelin/contracts': 5.6.1
 
+  '@openzeppelin/contracts@4.9.3': {}
+
+  '@openzeppelin/contracts@5.1.0': {}
+
   '@openzeppelin/contracts@5.6.1': {}
 
   '@oxc-project/types@0.155.0': {}
@@ -4047,8 +4080,8 @@ snapshots:
     dependencies:
       '@tanstack/history': 1.162.4
       cookie-es: 3.1.1
-      seroval: 1.6.7
-      seroval-plugins: 1.6.7(seroval@1.6.7)
+      seroval: 1.7.2
+      seroval-plugins: 1.6.7(seroval@1.7.2)
 
   '@tanstack/store@0.11.1': {}
 
@@ -5274,11 +5307,11 @@ snapshots:
 
   semver@7.8.5: {}
 
-  seroval-plugins@1.6.7(seroval@1.6.7):
+  seroval-plugins@1.6.7(seroval@1.7.2):
     dependencies:
-      seroval: 1.6.7
+      seroval: 1.7.2
 
-  seroval@1.6.7: {}
+  seroval@1.7.2: {}
 
   shebang-command@2.0.0:
     dependencies:

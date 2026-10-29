@@ -217,6 +217,18 @@ func (dispatcher *OutboxDispatcher) DispatchOne(ctx context.Context) (OutboxDisp
 	if dispatcher == nil || dispatcher.db == nil || dispatcher.enqueuer == nil {
 		return OutboxDispatchResult{}, errors.New("dispatch using nil outbox dispatcher")
 	}
+	var result OutboxDispatchResult
+	err := retryAbortedQueueTransaction(ctx, func() error {
+		var err error
+		result, err = dispatcher.dispatchOneAttempt(ctx)
+		return err
+	})
+	return result, err
+}
+
+// Each aborted attempt releases its transaction before backoff and reclaims
+// the outbox row in a fresh snapshot. Ambiguous commits are never retried.
+func (dispatcher *OutboxDispatcher) dispatchOneAttempt(ctx context.Context) (OutboxDispatchResult, error) {
 	tx, err := dispatcher.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return OutboxDispatchResult{}, fmt.Errorf("begin enrichment outbox dispatch: %w", err)

@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { dirname } from "node:path";
 // Reproducible pure-Python bundles from authenticated upstream archives.
 import {
   existsSync,
@@ -9,8 +8,11 @@ import {
   readdirSync,
   lstatSync,
 } from "node:fs";
+import { dirname } from "node:path";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+
+import { makeTarGzip } from "./archives.mjs";
 import {
   ROOT,
   HERE,
@@ -22,7 +24,6 @@ import {
   regularFile,
   versions,
 } from "./tooling.mjs";
-import { makeTarGzip } from "./archives.mjs";
 export const CACHE = join(ROOT, ".local/vyper-wasm/downloads");
 export async function download(url, expected, cache = CACHE) {
   if (!/^[0-9a-f]{64}$/.test(expected) || !url.startsWith("https://"))

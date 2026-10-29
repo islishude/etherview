@@ -127,6 +127,32 @@ describe("proxy API adapter", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("refetches an unavailable proxy classification until classification is published without a new head", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        envelope({
+          address: proxyAddress,
+          status: "unavailable",
+          snapshot: snapshot(),
+          evidence: [],
+        }),
+      )
+      .mockResolvedValue(envelope(verifiedProxyDetail()));
+    vi.stubGlobal("fetch", fetcher);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+    });
+
+    const { result } = renderHook(() => useContractProxy(proxyAddress), {
+      wrapper: queryWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.data?.state).toBe("unavailable"));
+    await waitFor(() => expect(result.current.data?.state).toBe("verified"));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("exposes implementation and management artifacts only for an exact verified binding", async () => {
     vi.stubGlobal(
       "fetch",

@@ -1,11 +1,12 @@
 // Offline candidate comparison. Production SEA/native acceptance remains separate.
 import { execFileSync } from "node:child_process";
-import { join, resolve } from "node:path";
 import { writeFileSync, readFileSync, readdirSync, mkdirSync } from "node:fs";
-import { runtimeFor } from "./runtime-policy.mjs";
-import { fixtureIdentity } from "./release.mjs";
-import { ROOT, HERE, versions } from "./tooling.mjs";
+import { join, resolve } from "node:path";
+
 import { bundle } from "./packages.mjs";
+import { fixtureIdentity } from "./release.mjs";
+import { runtimeFor } from "./runtime-policy.mjs";
+import { ROOT, HERE, versions } from "./tooling.mjs";
 
 const outputBase = resolve(process.argv[2] ?? join(ROOT, ".local/vyper-wasm"));
 mkdirSync(outputBase, { recursive: true });

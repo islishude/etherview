@@ -198,3 +198,26 @@ func composeCommand(root string) string {
 	}
 	return filepath.Join(root, ".github", "scripts", "compose.sh")
 }
+
+// PreviewCompilerCache uses the same host validation and restricted lifecycle
+// container as daily Preview. The caller owns stopping its project before clean.
+func (p *Project) PreviewCompilerCache(ctx context.Context, action string) error {
+	command, err := p.Command()
+	if err != nil {
+		return err
+	}
+	command.Name = os.Getenv("NODE")
+	if command.Name == "" {
+		command.Name = "node"
+	}
+	// Command includes arguments belonging to COMPOSE itself (e.g. "compose"
+	// in "docker compose"); runCompose already supplies that command prefix.
+	composeArgs := command.Args[len(strings.Fields(p.Compose))-1:]
+	command.Args = append([]string{filepath.Join(p.Root, "preview/scripts/compiler-cache.mjs"), action}, composeArgs...)
+	command.Env = append(command.Env, "COMPOSE="+p.Compose)
+	output, err := p.Executor.Run(ctx, command)
+	if err != nil {
+		return fmt.Errorf("preview compiler cache %s: %w\n%s", action, err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}

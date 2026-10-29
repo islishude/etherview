@@ -1,9 +1,10 @@
 // Validate local package identities and metadata; no advisory-service queries.
 import { readdirSync, lstatSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, canonical, digest, regularFile, safeMember, versions } from "./tooling.mjs";
+
 import { metadata, normalized } from "./metadata.mjs";
 import { sharedRuntimes, runtimeFor } from "./release.mjs";
+import { ROOT, canonical, digest, regularFile, safeMember, versions } from "./tooling.mjs";
 export function inventory(root = ROOT, runtimes = sharedRuntimes, items = versions()) {
   const records = [];
   const base = join(root, ".local/vyper-wasm/shared");

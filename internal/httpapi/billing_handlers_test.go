@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/billing"
+	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/userauth"
 )
@@ -179,32 +180,96 @@ func TestBillingHistoryIsUnavailableBeforeParsingWhenUserAuthIsOff(t *testing.T)
 
 func TestPaymentSignatureIsRoutedOnlyToTopupPayEndpoint(t *testing.T) {
 	t.Parallel()
+	compatibility := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 	handler, err := New(Options{
-		Config: config.Default(), Reader: fakeReader{},
+		Config: config.Default(), Reader: fakeReader{}, Etherscan: compatibility,
 		RequestID: func() string { return "topup-payment-boundary" },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
-		path   string
-		code   string
-		status int
+		name, method, path, code string
+		status                   int
 	}{
-		{
-			path: "/api/v1/billing/topup-intents/74e5f6a2-30ef-4d7f-93b8-e430f1fdfac4/pay",
-			code: "billing_unavailable", status: http.StatusServiceUnavailable,
-		},
-		{
-			path: "/api/v1/billing/account",
-			code: "unexpected_payment_header", status: http.StatusBadRequest,
-		},
+		{"native", http.MethodGet, "/api/v1/status", "unexpected_payment_header", http.StatusBadRequest},
+		{"preflight", http.MethodOptions, "/api/v1/status", "unexpected_payment_header", http.StatusBadRequest},
+		{"compatibility", http.MethodGet, "/v2/api", "", http.StatusBadRequest},
+		{"billing account", http.MethodPost, "/api/v1/billing/account", "unexpected_payment_header", http.StatusBadRequest},
+		{"topup payment", http.MethodPost, "/api/v1/billing/topup-intents/74e5f6a2-30ef-4d7f-93b8-e430f1fdfac4/pay", "billing_unavailable", http.StatusServiceUnavailable},
 	} {
-		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodPost, test.path, nil)
-		request.Header.Set("PAYMENT-SIGNATURE", "opaque")
-		handler.ServeHTTP(recorder, request)
-		assertAuthError(t, recorder, test.status, test.code)
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(test.method, test.path, nil)
+			request.Header.Set(x402wire.PaymentSignatureHeader, "opaque")
+			handler.ServeHTTP(recorder, request)
+			if test.code == "" {
+				// Etherscan uses its own envelope, including for rejected payment headers.
+				var response struct {
+					Status, Message, Result string
+				}
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				if recorder.Code != test.status || response.Status != "0" || response.Message != "NOTOK" || !strings.Contains(response.Result, "payment authorization") {
+					t.Fatalf("compatibility status=%d body=%s", recorder.Code, recorder.Body.String())
+				}
+				return
+			}
+			assertAuthError(t, recorder, test.status, test.code)
+			if test.code == "unexpected_payment_header" && !strings.Contains(recorder.Body.String(), "payment authorization") {
+				t.Fatalf("missing payment authorization explanation: %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestTopupEndpointsRejectDisabledFeatures(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name           string
+		billingEnabled bool
+		code           string
+	}{
+		{name: "billing disabled", code: "billing_unavailable"},
+		{name: "topups disabled", billingEnabled: true, code: "topup_payment_unavailable"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := testHandler(t, fakeReader{}).(*Handler)
+			h.cfg.Features.APIBilling = test.billingEnabled
+			h.cfg.Features.X402Topups = false
+			h.prepaidBilling = &billing.PrepaidLedger{}
+			for _, endpoint := range []struct{ name, path string }{
+				{"create intent", "/api/v1/billing/topup-intents"},
+				{"pay intent", "/api/v1/billing/topup-intents/00000000-0000-4000-8000-000000000000/pay"},
+			} {
+				t.Run(endpoint.name, func(t *testing.T) {
+					response := httptest.NewRecorder()
+					h.ServeHTTP(response, httptest.NewRequest(http.MethodPost, endpoint.path, strings.NewReader(`{}`)))
+					assertAuthError(t, response, http.StatusServiceUnavailable, test.code)
+				})
+			}
+		})
+	}
+}
+
+func TestNativeReadsRemainFreeWhenBillingIsDisabled(t *testing.T) {
+	t.Parallel()
+	handler, err := New(Options{Config: config.Default(), Reader: fakeReader{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var envelope gen.StatusResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
 	}
 }
 

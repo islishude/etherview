@@ -110,8 +110,10 @@ remain independent.
 The reusable [runtime workflow](../.github/workflows/ci-runtime.yml) consumes
 only the AMD64 image, without waiting for compiler packages or verification.
 Its schema/runtime job uses the prebuilt targets. Its Preview job prepares
-certificates and pulls the official Caddy and external images once, then runs metadata
-and consensus/blob acceptance in separate sequential steps. All image consumers
+certificates, builds the Rundler and Facilitator helpers, and pulls the official
+Caddy and external images once. It then verifies reproducible genesis and Caddy
+boundaries, followed by metadata, contracts/Bundler/ENS, x402 and consensus/blob
+acceptance in separate sequential steps. All image consumers
 use the common load action with an exact producer artifact ID and validate
 source revision, architecture and image ID; none rebuilds a missing image.
 
@@ -147,11 +149,12 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
 
 - `make test-workflow-scripts`: exercise extracted workflow helpers with temporary
   Git repositories and stub commands, covering metadata, digest export,
-  PR flags, command order, prebuilt entry points, production-image/evidence
+  PR flags, toolchain versions, Makefile entry points, production-image/evidence
   handoff and failure propagation without pushing images or PRs.
-  It also tests the Compose check runner's scenario isolation and failure handling
-  with stub commands. `make compose-check` runs the real rendering matrix through
-  `.github/scripts/compose-check.mjs`, retaining the domain-specific validators.
+  `make compose-check` runs the production deployment rendering matrix through
+  `.github/scripts/compose-check.mjs`, with shared in-process assertions for
+  compiler ownership, credentials and verification-suite isolation.
+  Preview deployment behavior is exercised by its existing business E2E gates.
 - `make toolchain-check`: require at least Go 1.27.3, Node 26.12.1, and pnpm
   12.15.0 before generating or validating artifacts. Compatible newer stable
   versions are supported by this minimum-version check; older, malformed, and
@@ -216,16 +219,27 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
   and script directories. The existing frontend scope runs separately, using
-  its own configuration. `make lint` shares the frontend format prerequisite
-  with `make format-check`, so CI checks it once.
+  its own configuration. Root `pnpm run format` and `pnpm run format:check`
+  run repository formatting followed by `pnpm -r run format` and
+  `pnpm -r run format:check`, respectively. Recursive execution discovers child
+  workspaces with the matching script and excludes the root aggregator.
+  `make format` and `make format-check` use these root entry points.
+  `make lint` runs Go checks and root `pnpm run lint`, which runs Preview lint,
+  `pnpm -r run lint`, and repository format checking. Child workspace lint
+  scripts own their format checks, so frontend formatting runs once.
+  Individual `make web-lint` and `make preview-lint` targets remain available.
   Root exclusions cover dependencies, build outputs, local runtime files,
   generated `*.gen.*` / `*_generated.*` files, third-party license texts,
   `internal/**/testdata/**`, and Helm `templates/**`; ordinary Helm values and
   Chart YAML remain included. Git-ignored files are also excluded.
   Markdown preserves prose wrapping and leaves fenced code untouched. Both
   configurations retain two spaces, double quotes, semicolons, 100 columns,
-  LF, trailing commas, and disabled sorting. Tooling-policy regressions cover
+  LF and trailing commas. Root formatting enables import sorting; frontend
+  import order and the other sorting options remain unchanged. Tooling-policy regressions cover
   selection, exclusions, read-only failure, parse errors, and idempotence.
+- `make preview-lint`: run Oxlint on all scripts under `preview/`, including
+  contract generators and tests. Unused imports and variables fail with
+  `eslint(no-unused-vars)`. Both `make lint` and root `pnpm run lint` include this gate.
 - `make web-lint`: run TypeScript project checking, pinned Oxlint 1.85.0, and
   Oxfmt 0.70.0 format checking. Oxlint checks hand-written `src` TS/TSX for
   unused code, hook placement/dependencies, and size. Production files/functions
@@ -601,38 +615,8 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   working tree first.
   Verification, Sourcify, and pricing stay disabled because they require
   separately approved compiler or external-service boundaries.
-- `make test-preview-metadata`: rebuild the host-native production image and
-  run a Go-owned local Kubo acceptance gate against a unique full Preview
-  Compose project with fresh volumes and random loopback ports. The pinned Kubo
-  runs offline with `Gateway.NoFetch=true`; no public
-  gateway or P2P retrieval participates. Its startup script imports the reviewed
-  CIDv1 directory with `/metadata.json` and verifies the exact CID, 205 bytes and
-  SHA-256 `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`.
-  The test builds `cmd/ipfs` and exercises wrapped/repeated uploads, empty and
-  binary file roundtrips, unknown-CID failure, and gateway restart persistence.
-  Trusted TLS must pass, an untrusted CA must fail, and the HTTPS gateway must
-  not expose the management API. The reviewed solc 0.8.30 ERC-721/ERC-4906
-  creation artifact remains unchanged; the funded Hardhat development account
-  signs transactions locally for the real Lighthouse PoS network.
-  Both the initial version and no-Transfer `MetadataUpdate(1)` version require
-  exactly one successful attempt, exact JSON/content type/hash/size, canonical
-  holdings/inventory, source/document/job history, and restart-stable database
-  persistence. Every connected/resolved IP must belong to the owned gateway;
-  `policy_bypassed=true` is mandatory. A reused connection may omit new DNS
-  results. Reports record application/Kubo/Caddy image identities, offline mode,
-  CID, content digest and network evidence. Success and failure artifacts are
-  retained and their directory is printed. Run `make preview-cert` first (also
-  after upgrading a Preview that lacks the wildcard gateway certificate).
-  CI runs the same test through `make test-preview-metadata-prebuilt` in the
-  independent `Preview metadata, consensus, and blobs E2E` job on Ubuntu AMD64
-  for pull requests, main pushes and the daily schedule.
-  The job installs pinned mkcert 1.4.4 and uses `make preview-cert` with an
-  ephemeral runner-local CA and system trust. The wildcard gateway key remains
-  0600 and only Caddy mounts it. The job loads the production application image,
-  pulls official Caddy and node images, and uploads reports/diagnostics on success
-  or failure for seven days; certificate and CA private keys are never uploaded.
-  This gate remains outside `make check` and does not establish public IPFS
-  availability. Image pulls/builds require normal registry/toolchain access.
+  See [Metadata gate](../preview/docs/testing.md#metadata-gate).
+
 - `go test -race ./cmd/ipfs`: streaming upload/download regressions for binary
   and empty files, Kubo multipart filename encoding, literal and URI-encoded
   paths, encoded traversal rejection, input type, RPC and stream errors,
@@ -693,8 +677,8 @@ configuration enters that shared overlay:
    the always-on Holder and native-transfer stages make the UserOperation
    runtime publish nine stages, while feature-off Hardhat and Foundry
    verification topologies publish eight.
-4. Extend both `.github/scripts/hardhat3-compose-check.mjs` and
-   `.github/scripts/foundry-compose-check.mjs` to assert the feature-off value
+4. Extend the shared verification assertions in `.github/scripts/compose-check.mjs`
+   to assert the feature-off value
    and absence or empty value of its companion configuration on every
    application service. A successful render without these assertions is not
    isolation evidence.
@@ -821,13 +805,20 @@ make stop-x402-local
 The local environment uses deterministic development keys. Never fund or reuse
 them on any external network.
 
+See [x402 billing gate](../preview/docs/testing.md#x402-billing-gate).
+
 ## Evidence Rules
 
 - Record the exact target/command and a concise pass/fail summary in the PR or
   completion report. For planned work, retain milestone acceptance in the child
   plan once, with revision/environment and material limits. Do not paste full
   logs or create plan items merely to record test execution.
-- A targeted test is required for every fixed regression.
+- A targeted test is required for every fixed regression. Place it in the suite
+  that owns the behavior, named for the contract or input condition rather than
+  the incident, audit or redesign that introduced it. Extend an existing table
+  or scenario when setup and assertions match. Consolidation must preserve
+  distinct edge cases and the separate evidence provided by unit, PostgreSQL
+  integration and embedded-browser tests.
 - Integration tests that require optional local services must be reproducible
   through documented Compose profiles.
 - Load and soak evidence records the revision, dataset, hardware, RPC behavior,
@@ -998,39 +989,7 @@ that one exported file stays on its original canonical view.
 
 ### Preview gateway regressions
 
-`make test-preview-gateway` runs the shipped Caddyfile against the pinned
-`caddy:2.11.7-alpine` image with isolated upstreams and a test-only trusted CA.
-It covers domain routing, raw IPFS paths, CORS, TLS, request limits, streaming,
-cancellation, deadlines and WSS/SSE idle connections. The official image is
-pulled through `make preview-images`; no custom gateway binary is built.
-`make compose-check` validates loopback publication, Caddy-only key mounts and
-absence of optional-upstream/core dependency coupling.
-
-Preview browser acceptance requires the locked pnpm workspace and Chrome, or
-`PLAYWRIGHT_USE_BUNDLED=1` with `pnpm --dir web exec playwright install chromium`.
-The metadata gate runs real SIWE, CSRF, wallet URL and node CORS/WSS/SSE browser
-checks only after the first mined transaction, beyond the genesis waiting period.
-Metadata acceptance requires the explicitly allowlisted local IPFS image to
-project as `available` with its exact HTTPS navigation URL while the worker
-successfully fetches metadata text. Navigation regressions retain default-empty
-and unlisted-local-origin rejection, exact host/port matching, confirmation before
-requests, cancellation, and opener-free/no-referrer navigation. Config and app
-regressions prove that navigation exceptions never authorize media or metadata
-network fetches.
-It trusts only the test certificate SPKI and explicitly grants local-network
-permission to its test pages; it never disables general TLS verification.
-
-Full acceptance runs both `make test-preview-metadata` and
-`make test-preview-consensus`, plus `make check`, `make test-e2e`,
-`make test-runtime-e2e`, and `make test-rustfs`. Preview clients use the trusted
-HTTPS virtual hosts with test-owned ephemeral port mappings. The actual app
-still owns same-origin browser security and session checks.
-
-`go test ./e2e/previewmetadata -run TestPreviewGenesisSystemContracts` checks
-the Preview template against the pinned Geth system contract allocations in the
-ordinary Go test suite. Receipt polling retries only null results and Geth's
-specific transaction-indexing RPC error within the existing three-minute wait;
-other RPC/transport failures and mismatched transaction hashes remain fatal.
+See [Preview gateway regressions](../preview/docs/testing.md#preview-gateway-regressions).
 
 ## Amsterdam acceptance
 
@@ -1076,35 +1035,6 @@ a head event. It removes interception before observing native reconnect headers
 and checks fresh requests separately after the head and cursor recovery. SSE
 readiness alone does not establish that a lazy page has query observers.
 
-### Dual-runtime npm alias feasibility
-
-`make test-vyper-alias-feasibility VYPER_ALIAS_FEASIBILITY_OUTPUT=.local/alias-comparison-new`
-creates a new isolated pnpm project with exact dependencies `pyodide@314.0.7` and
-`pyodide-legacy@npm:pyodide@0.29.5`. It requires the ordinary compiler tooling
-install, but never changes its dependency pins or existing runtime outputs.
-The new output directory must not already exist. Downloads use the normal
-checksum-verified package builders; original/modified references are read-only.
-
-Only Vyper 0.4.0–0.4.3 selects the modern runtime; the other 21 baseline versions
-select the alias. Unknown versions fail without fallback. All checked-in compilations
-use fresh restricted processes with at most four concurrent children, a
-30-second deadline, 128 MiB V8 old-generation heap and 384 MiB WASM cap. Each
-child receives read permission for its selected runtime and package, not the
-sibling runtime. These memory limits do not bound total RSS.
-
-The experiment records the pnpm lockfile, resolved alias paths, runtime and
-package identities, reference digests and every input's output/command. Both
-runtimes get permission, memory, large-input and timeout/forced-cleanup probes.
-Wrong-Python identity rejection and a deliberately misrouted old compiler are
-negative controls. `report.json` contains the aggregate verdict; `results/`
-contains per-input evidence. Setup or compatibility failures return nonzero.
-
-This diagnostic preserves existing production pins and records its isolated
-runtime/package evidence separately. The dual-runtime policy is now implemented
-under ADR-0053, with application-locked distribution under ADR-0054. Passing
-this diagnostic establishes local alias/routing feasibility only; it does not
-replace the current native Linux matrix or production topology acceptance.
-
 ### Vyper update proposals
 
 `make test-vyper-update` runs complete version-set checks, publication allowlist
@@ -1114,10 +1044,10 @@ the required range from `compiler/vyper/pyproject.toml`. Metadata tests and
 update scripts share the
 committed tooling `uv.lock` through `uv run --locked`; no pip bootstrap is needed.
 Update recipe generation enforces the same range before invoking its isolated
-resolver. `make test-vyper-release` includes these checks, including tagged
-production-fixture/count regressions without starting
-Docker. Fixtures cover PEP 440 ordering, prerelease/yanked exclusion, wheel
-compatibility, digest mismatch, network failures and unchanged prior recipes.
+resolver. `make test-vyper-release` includes these checks alongside the
+package integrity and release acceptance regressions. Fixtures cover PEP 440
+ordering, prerelease/yanked exclusion, wheel compatibility, digest mismatch,
+network failures and unchanged prior recipes.
 
 The updater only generates reference fixtures for the requested new version.
 Its isolated candidate comparison does not replace the full native Linux matrix
@@ -1170,56 +1100,7 @@ not substitute for live-node retention and production backup/restore acceptance.
 
 ## Real Lighthouse Preview acceptance
 
-`make test-preview-metadata` now uses the real PoS Preview network and locally
-signed transactions. It preserves the offline Kubo, two-version NFT metadata,
-restart, Amsterdam header and exact native-transfer acceptance in split and
-all-role layouts. Every test owns its generated network bundle, Compose project,
-volumes and ephemeral loopback ports; it never overwrites the daily Preview.
-
-`make test-preview-consensus` runs the fixed Geth v1.17.10 / Lighthouse v8.3.2
-combination with Gloas at genesis and the durable RustFS archive. Daily Preview,
-metadata acceptance and consensus acceptance share three-second slots. Both
-acceptance suites verify the live Beacon slot duration and record it in their
-reports. The generator is part of the network fingerprint, so older six-second
-bundles require explicit reinitialization rather than silent reuse.
-It checks real blob transactions with cell proofs, exact Beacon/execution associations,
-consensus-first slots, independent Beacon/S3/API byte readback, checksum and
-commitment identity, read-only API credentials, client/object-store outages,
-core recreation during archive outages in both role layouts, failed and repeated
-archive initialization, container recreation and monolith publication.
-Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.4;
-the read-only denial check does not establish that property. Reevaluate 1.0.5
-against the [IAM clearing conditions](operations.md#preview-archive-iam-limitation);
-a passing `make test-rustfs` establishes application conditional-create behavior,
-not writer-policy enforcement.
-The test waits for a nonzero
-finalized epoch rather than treating container readiness as consensus acceptance.
-It has a 22-minute scenario budget and a 25-minute test-process deadline.
-Diagnostics and `consensus-report.json` remain in the test's temporary artifacts
-directory. These local private-network results do not prove public historical
-retention, production backup/restore, or native CI execution.
-
-`make preview-network-check` exercises immutable reuse, incomplete material,
-configuration drift, tampering, symlinks and rejected single-file overrides.
-It also checks Preview env creation, key-pair reuse and validation, operator-setting
-preservation and 0600 permissions. Deterministic short-scalar cases verify
-32-byte private-key encoding, unchanged public identity and reuse without rotation.
-Compose rendering verifies that a single env file supplies public configuration
-while private keys reach only maintenance/all.
-It also checks Compose command strings, executable paths with spaces, literal
-argument preservation, readiness port lookup and initialization failure propagation.
-`make compose-check` checks Engine JWT and validator-key isolation, scoped
-archive credentials, client images/commands, loopback-only Beacon exposure and
-the absence of direct or transitive optional dependencies from core roles.
-It also checks the default Preview entry point in `compose.yaml` and the
-external-chain template in `deploy/compose.yaml`, including project/volume
-identity and repository-root build and bind-mount resolution. Deployment
-render commands pass `--project-directory .`; the shared Go Compose helper
-anchors tests at the repository root, while the standalone x402 fixture
-explicitly retains its own directory. Runtime, compiler, schema and RustFS
-tests continue to exercise the external-chain template.
-Run both Preview gates, `make check`, `make test-rustfs` and
-`make test-runtime-e2e` for changes to this deployment.
+See [Real Lighthouse Preview acceptance](../preview/docs/testing.md#real-lighthouse-preview-acceptance).
 
 ### Execution requests acceptance
 
@@ -1308,3 +1189,7 @@ Acceptance requires `make check`, `make test-e2e`,
 `make test-integration-race` and `make test-runtime-e2e`. Controlled transport and
 browser fixtures establish local behavior only; production-domain Cloudflare
 widget validation is a separate operator smoke test.
+
+## Preview application contracts acceptance
+
+See [Preview application contracts acceptance](../preview/docs/testing.md#preview-application-contracts-acceptance).

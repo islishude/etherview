@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/testpgx"
 
 	pgtype "github.com/jackc/pgx/v5/pgtype"
@@ -197,6 +198,32 @@ func TestAccountTransactionsAreCanonicalDecimalAndStable(t *testing.T) {
 	want := `{"blockNumber":"10","timeStamp":"100","hash":"` + testTransactionHash(7, testRecipient).Hex() + `","nonce":"15","blockHash":"` + testHash(3) + `","transactionIndex":"1","from":"` + testTransactionSender().Hex() + `","to":"0xde709f2102306220921060314715629080e2fb77","value":"16","gas":"21000","gasPrice":"2000000000","isError":"0","txreceipt_status":"1","input":"0xdeadbeef00","contractAddress":"","cumulativeGasUsed":"42000","gasUsed":"21000","confirmations":"3","methodId":"0xdeadbeef","functionName":""}`
 	if string(encoded) != want {
 		t.Fatalf("transaction JSON\n got: %s\nwant: %s", encoded, want)
+	}
+}
+
+func TestAccountTransactionContractAddressRequiresSuccessfulCreation(t *testing.T) {
+	t.Parallel()
+	transaction := testSignedTransaction(7, "")
+	address := crypto.CreateAddress(testTransactionSender(), transaction.Nonce()).Hex()
+	for _, status := range []string{"0x0", "0x1"} {
+		t.Run(status, func(t *testing.T) {
+			item, err := scanAccountTransaction(dbgen.EtherscanAccountTransactionsRow{
+				TransactionRaw: testTransactionJSON(7, ""), ReceiptRaw: testReceiptJSON(status, address),
+				BlockTimestamp: "100", BlockBaseFee: new("0x3b9aca00"), BlockNumber: "10",
+				BlockHash: testHashBytes(3), TransactionIndex: 1,
+				TransactionHash: transaction.Hash().Bytes(), TipNumber: "12",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := ""
+			if status == "0x1" {
+				want = address
+			}
+			if item.ContractAddress != want {
+				t.Fatalf("contract address = %q, want %q", item.ContractAddress, want)
+			}
+		})
 	}
 }
 

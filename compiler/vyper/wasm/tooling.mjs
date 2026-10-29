@@ -1,9 +1,9 @@
 // Build/reference utilities. Never imported by the production SEA.
 import { createHash } from "node:crypto";
 import { readFileSync, lstatSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 export const HERE = fileURLToPath(new URL(".", import.meta.url));
 export const ROOT = resolve(HERE, "../../..");
 export const MAX_ARCHIVE = 200 << 20;

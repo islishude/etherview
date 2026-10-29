@@ -37,7 +37,10 @@ func (h *harness) assertSlotDuration(ctx context.Context) {
 
 func (h *harness) prepareNetwork(ctx context.Context) {
 	h.t.Helper()
-	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `import {prepareNetwork} from "./.github/scripts/preview-network.mjs"; prepareNetwork(process.argv[1]);`, h.project.Env["PREVIEW_NETWORK_DIR"])
+	if err := h.project.PreviewCompilerCache(ctx, "init"); err != nil {
+		h.t.Fatal(err)
+	}
+	command := exec.CommandContext(ctx, "node", "--input-type=module", "-e", `import {prepareNetwork} from "./preview/scripts/network.mjs"; prepareNetwork(process.argv[1]);`, h.project.Env["PREVIEW_NETWORK_DIR"])
 	command.Dir = h.root
 	command.Env = append(os.Environ(), "COMPOSE_PROJECT_NAME="+h.project.Name, "ETHERVIEW_GENESIS_FILE=", "GETH_GENESIS_FILE=")
 	output, err := command.CombinedOutput()

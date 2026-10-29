@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
 import {
   assignments,
   mergeEvidence,
@@ -8,8 +9,8 @@ import {
   shardOptions,
   versions,
 } from "./production-shards.mjs";
-import { fixtureIdentity, sha256, runtimeFor, sharedRuntimes } from "./release.mjs";
 import { versionEvidence } from "./production-shards.mjs";
+import { fixtureIdentity, sha256, runtimeFor, sharedRuntimes } from "./release.mjs";
 
 const groups = assignments(4);
 const identity = {
@@ -164,6 +165,7 @@ test("merge rejects stale image, runtime, descriptor, package and fixture identi
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { compile } from "./production-process.mjs";
 
 test("compiler subprocess preserves stdin/output and cleans only its container on failures", async () => {

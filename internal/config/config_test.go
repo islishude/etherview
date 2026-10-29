@@ -252,7 +252,7 @@ func TestWalletAddChainConfiguration(t *testing.T) {
 
 func TestPreviewPublicOriginMatchesBrowserAndWalletMetadata(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../deploy/preview.config.yaml")
+	data, err := os.ReadFile("../../preview/config.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1596,4 +1596,25 @@ func unsetHostEnvironment(t *testing.T, name string) {
 			_ = os.Unsetenv(name)
 		}
 	})
+}
+
+func TestENSModeConfiguration(t *testing.T) {
+	cfg := Default()
+	cfg.Features.ENS = true
+	cfg.ENS.Mode = "custom_only"
+	cfg.ENS.OfficialGateways = nil
+	cfg.ENS.Custom.Registry = "0x1111111111111111111111111111111111111111"
+	cfg.ENS.Custom.UniversalResolver = "0x2222222222222222222222222222222222222222"
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	cfg.ENS.Mode = "unknown"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("unknown ENS mode accepted")
+	}
+	cfg.ENS.Mode = "custom_only"
+	cfg.ENS.Custom = ENSCustomConfig{}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("custom-only mode without deployment accepted")
+	}
 }

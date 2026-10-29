@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
+
 import { validVersion } from "../../compiler/vyper/update.mjs";
 import { ROOT } from "../../compiler/vyper/wasm/tooling.mjs";
 

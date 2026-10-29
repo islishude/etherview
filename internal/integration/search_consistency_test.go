@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pgx "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/chainbundle"
@@ -75,7 +76,7 @@ func TestENSObservationsAreImmutableAndDriveSearchCatalog(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	first, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
 		PolicyKey: "sha256:" + fmt.Sprintf("%064x", 1), CoinType: big.NewInt(60),
-		OfficialEndpoint: "mainnet", OfficialBlock: ensresolver.BlockRef{Number: 100, Hash: testHash(100)},
+		OfficialEndpoint: "mainnet", OfficialBlock: &ensresolver.BlockRef{Number: 100, Hash: testHash(100)},
 		CreatedAt: now, FreshUntil: now.Add(time.Minute), RetainUntil: now.Add(time.Hour),
 	})
 	if err != nil {
@@ -134,7 +135,7 @@ func TestENSObservationsAreImmutableAndDriveSearchCatalog(t *testing.T) {
 	secondAt := now.Add(2 * time.Minute)
 	second, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
 		PolicyKey: first.PolicyKey, CoinType: big.NewInt(60), OfficialEndpoint: "mainnet",
-		OfficialBlock: ensresolver.BlockRef{Number: 101, Hash: testHash(101)},
+		OfficialBlock: &ensresolver.BlockRef{Number: 101, Hash: testHash(101)},
 		CreatedAt:     secondAt, FreshUntil: secondAt.Add(time.Minute), RetainUntil: secondAt.Add(time.Hour),
 	})
 	if err != nil {
@@ -183,6 +184,11 @@ func (resolve integrationNameResolver) ResolveForward(
 }
 
 func TestCustomENSGenerationAndSearchInvalidateOnReorg(t *testing.T) {
+	for _, only := range []bool{false, true} {
+		t.Run(fmt.Sprintf("custom_only=%v", only), func(t *testing.T) { testCustomENSReorg(t, only) })
+	}
+}
+func testCustomENSReorg(t *testing.T, only bool) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -202,15 +208,42 @@ func TestCustomENSGenerationAndSearchInvalidateOnReorg(t *testing.T) {
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	oldRef := mustBlockRef(t, oldOne)
-	generation, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
+	candidate := ensresolver.GenerationCandidate{
 		PolicyKey: "sha256:" + fmt.Sprintf("%064x", 2), CoinType: big.NewInt(60),
-		OfficialEndpoint: "mainnet", OfficialBlock: ensresolver.BlockRef{Number: 100, Hash: testHash(300)},
 		CustomEndpoint: "custom", CustomCoinType: big.NewInt(60),
 		CustomBlock: &ensresolver.BlockRef{Number: oldRef.Number, Hash: oldRef.Hash},
 		CreatedAt:   now, FreshUntil: now.Add(time.Minute), RetainUntil: now.Add(time.Hour),
-	})
+	}
+	if !only {
+		candidate.OfficialEndpoint = "mainnet"
+		candidate.OfficialBlock = &ensresolver.BlockRef{Number: 100, Hash: testHash(300)}
+	}
+	generation, err := repository.CreateGeneration(ctx, candidate)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if only && (generation.OfficialBlock != nil || generation.OfficialEndpoint != "") {
+		t.Fatal("custom-only generation fabricated official provenance")
+	}
+	if only {
+		// Enforce source completeness in PostgreSQL even when a caller bypasses
+		// the repository's candidate validation.
+		for _, mutation := range []string{
+			"official_endpoint='partial'",
+			"official_block_number=0",
+			"custom_block_hash=NULL",
+			"custom_endpoint=NULL,custom_block_number=NULL,custom_block_hash=NULL,custom_coin_type=NULL",
+		} {
+			var id int64
+			err := db.QueryRow(ctx, "UPDATE ens_resolution_generations SET "+mutation+" WHERE id=$1 RETURNING id", generation.ID).Scan(&id)
+			var constraint *pgconn.PgError
+			if !errors.As(err, &constraint) || constraint.Code != "23514" {
+				t.Fatalf("source constraint %s: %v", mutation, err)
+			}
+		}
+		if _, found, err := repository.FreshGeneration(ctx, "sha256:different-mode-policy", now); err != nil || found {
+			t.Fatalf("generation crossed cache policy: found=%v err=%v", found, err)
+		}
 	}
 	if _, err := repository.RecordObservation(ctx, ensresolver.Observation{
 		GenerationID: generation.ID, Source: ensresolver.SourceCustom, Direction: "forward",
@@ -255,7 +288,7 @@ func TestENSAddressNameSnapshotExpires(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	generation, err := repository.CreateGeneration(ctx, ensresolver.GenerationCandidate{
 		PolicyKey: "sha256:" + fmt.Sprintf("%064x", 3), CoinType: big.NewInt(60),
-		OfficialEndpoint: "mainnet", OfficialBlock: ensresolver.BlockRef{Number: 100, Hash: testHash(400)},
+		OfficialEndpoint: "mainnet", OfficialBlock: &ensresolver.BlockRef{Number: 100, Hash: testHash(400)},
 		CreatedAt: now, FreshUntil: now.Add(time.Minute), RetainUntil: now.Add(time.Hour),
 	})
 	if err != nil {

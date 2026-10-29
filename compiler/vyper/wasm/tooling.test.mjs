@@ -1,5 +1,3 @@
-import test from "node:test";
-import { retirePreviousFiles } from "./prepare.mjs";
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
@@ -14,16 +12,20 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import AdmZip from "adm-zip";
+import test from "node:test";
 import { gunzipSync } from "node:zlib";
-import { canonical, digest, HERE, ROOT, safeMember, readJSON } from "./tooling.mjs";
-import { makeZip, zipEntries } from "./archives.mjs";
-import { download, packRuntime } from "./packages.mjs";
-import { descriptor, buildRelease } from "./build-release.mjs";
-import { metadata } from "./metadata.mjs";
-import { inventory } from "./check-integrity.mjs";
-import { checkPackage } from "./package-licenses.mjs";
+
+import AdmZip from "adm-zip";
+
 import { prepareReference, referencePackages, RETIRED } from "../reference.mjs";
+import { makeZip, zipEntries } from "./archives.mjs";
+import { descriptor, buildRelease } from "./build-release.mjs";
+import { inventory } from "./check-integrity.mjs";
+import { metadata } from "./metadata.mjs";
+import { checkPackage } from "./package-licenses.mjs";
+import { download, packRuntime } from "./packages.mjs";
+import { retirePreviousFiles } from "./prepare.mjs";
+import { canonical, digest, HERE, ROOT, safeMember, readJSON } from "./tooling.mjs";
 function temporary(t) {
   const path = mkdtempSync(join(tmpdir(), "vyper-tools-"));
   t.after(() => rmSync(path, { recursive: true, force: true }));

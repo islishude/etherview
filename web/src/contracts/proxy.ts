@@ -218,6 +218,9 @@ export function useContractProxy(address: string, enabled = true) {
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 5_000,
+    // A head event can precede proxy-stage publication. That publication has
+    // no separate browser event, so recover without waiting for another head.
+    refetchInterval: (query) => (query.state.data?.state === "unavailable" ? 500 : false),
   });
 }
 

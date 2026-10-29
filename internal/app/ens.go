@@ -60,11 +60,16 @@ func newENSService(
 	if logger == nil {
 		logger = slog.Default()
 	}
-	officialPool, err := ensOfficialPool(ctx, cfg, rpcBuild, observer, logger)
-	if err != nil {
-		return nil, err
+	var officialPool *ethrpc.Pool
+	var gateways []string
+	if cfg.ENS.Mode != "custom_only" {
+		var err error
+		officialPool, err = ensOfficialPool(ctx, cfg, rpcBuild, observer, logger)
+		if err != nil {
+			return nil, err
+		}
+		gateways = append(gateways, cfg.ENS.OfficialGateways...)
 	}
-	gateways := append([]string(nil), cfg.ENS.OfficialGateways...)
 	gateways = append(gateways, cfg.ENS.Custom.Gateways...)
 	client, err := metadata.New(metadata.Policy{
 		Timeout: cfg.ENS.RequestTimeout, MaxBytes: cfg.ENS.MaxResponseBytes,
@@ -110,7 +115,7 @@ func newENSService(
 		customPool = rpcBuild.Pool
 	}
 	return ensresolver.NewService(ensresolver.ServiceOptions{
-		ChainID: cfg.Chain.ID, Repository: repository, Resolver: resolver,
+		Mode: cfg.ENS.Mode, ChainID: cfg.Chain.ID, Repository: repository, Resolver: resolver,
 		OfficialPool: officialPool, CustomPool: customPool, Canonical: ensCanonicalSource{source: canonical},
 		OfficialGateways: cfg.ENS.OfficialGateways, Custom: custom,
 		ResolutionFreshness: cfg.ENS.ResolutionFreshness, SnapshotTTL: cfg.ENS.SnapshotTTL,

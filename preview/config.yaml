@@ -1,0 +1,273 @@
+server:
+  address: 0.0.0.0:8080
+  metrics_address: 0.0.0.0:9090
+  public_url: https://app.etherview.localhost
+  shutdown_timeout: 20s
+  read_timeout: 15s
+  write_timeout: 45s
+
+chain:
+  id: 48815
+  genesis_file: /config/genesis.json
+  genesis_hash: ""
+  genesis_url: ""
+  genesis_sha256: ""
+  genesis_fetch_timeout: 60s
+  start_block: 0
+  name: Ethereum Preview
+  native_symbol: ETH
+  native_name: Ether
+  native_decimals: 18
+  max_reorg_depth: 128
+
+wallet:
+  add_chain:
+    rpc_urls: ["https://geth.etherview.localhost"]
+    block_explorer_urls: ["https://app.etherview.localhost"]
+    icon_urls: []
+
+database:
+  url: ""
+  read_url: ""
+  read_max_connections: 0
+  read_min_connections: 0
+  max_connections: 20
+  min_connections: 2
+  connect_timeout: 10s
+  statement_timeout: 30s
+
+rpc:
+  request_timeout: 20s
+  batch_size: 100
+  endpoints: []
+
+runtime:
+  roles: [all]
+  poll_interval: 2s
+  worker_count: 4
+  backfill_workers: 4
+  backfill_batch_blocks: 256
+  backfill_batch_bytes: 268435456
+  backfill_batch_rows: 200000
+  lease_duration: 30s
+
+mempool:
+  poll_interval: 3s
+  retention: 10m
+  max_transactions: 50000
+  max_response_bytes: 16777216
+
+maintenance:
+  interval: 15m
+  search_retention_generations: 100000
+  adapter_delete_batch: 1000
+
+observability:
+  environment: production
+  log_level: info
+  log_format: text
+  otlp_trace_endpoint: ""
+  otlp_trace_insecure: false
+  trace_sample_ratio: 0.1
+  trace_export_timeout: 5s
+  metrics_refresh_interval: 15s
+  sync_progress_log_interval: 30s
+
+metadata:
+  # Bound cold retrievals through the local Kubo gateway.
+  fetch_timeout: 30s
+  max_document_bytes: 2097152
+  max_redirects: 3
+  ipfs_gateway: https://ipfs.etherview.localhost
+  image_navigation_allowed_origins: ["https://ipfs.etherview.localhost"]
+  # The checked-in config stays strict. compose.yaml overrides this
+  # only in the metadata worker process for the controlled local gateway.
+  unsafe_allow_private_networks: false
+
+push:
+  enabled: false
+  public_key: ""
+  contact: ""
+  # Development only: allow private/Fake-IP destinations; TLS and redirect rules remain.
+  unsafe_allow_private_networks: false
+
+features:
+  trace: true
+  mempool: true
+  historical_state: true
+  verification: true
+  sourcify: true
+  nft_metadata: true
+  pricing: false
+  ens: true
+  user_auth: true
+  user_api_keys: true
+  api_billing: true
+  x402_topups: true
+  user_operations: true
+  safe_proxy_detection: true
+  diamond_proxy_detection: true
+
+erc4337:
+  entry_points:
+    - address: "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
+      version: "0.9"
+      from_block: 0
+
+security:
+  public_verification: true
+  api_key_pepper: "NOT_A_SECRET_PEPPER_250e1b7feee4"
+  ingress_rate: 1000
+  ingress_burst: 2000
+  sse_max_connections: 1024
+  sse_max_connections_per_client: 16
+  anonymous_rate: 5
+  anonymous_burst: 20
+  allowed_origins: []
+  trusted_proxies: []
+
+user_auth:
+  challenge_ttl: 5m
+  session_ttl: 168h
+  last_used_interval: 5m
+  max_message_bytes: 4096
+  max_signature_bytes: 65
+  api_key_rate: 20
+  api_key_burst: 40
+  max_active_api_keys: 5
+
+billing:
+  facilitator_url: http://x402-facilitator:8081
+  # Local Docker bridge addresses only; redirects remain forbidden. Override
+  # ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS for a custom Docker address pool.
+  facilitator_allowed_cidrs: [172.16.0.0/12, 192.168.0.0/16, 10.0.0.0/8]
+  facilitator_unsafe_allow_http: true
+  facilitator_timeout: 30s
+  facilitator_max_response_bytes: 1048576
+  network: eip155:48815
+  asset: "0x8464135c8F25Da09e49BC8782676a84730C318bC"
+  asset_decimals: 6
+  asset_eip712_name: Local USD
+  asset_eip712_version: "1"
+  recipient: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+  requirement_max_timeout: 60s
+  reservation_ttl: 2m
+  topup_intent_ttl: 10m
+  usage_reservation_ttl: 30s
+  minimum_topup_amount_atomic: "1"
+  maximum_topup_amount_atomic: "1000000000000"
+  asset_transfer_methods: [eip3009, permit2]
+  max_payment_header_bytes: 16384
+  max_buffered_response_bytes: 8388608
+  max_captured_header_bytes: 65536
+  operations:
+    etherscan.account.balance: { amount_atomic: "1" }
+    etherscan.contract.getabi: { amount_atomic: "1" }
+
+ens:
+  mode: custom_only
+  official_gateways: []
+  custom:
+    registry: "0xc469e7ae4ad962c30c7111dc580b4adbc7e914dd"
+    universal_resolver: "0x446c29fbfef829f81e236a2376191f648dbef995"
+    coin_type: "2147532463"
+    gateways: []
+  resolution_freshness: 1m
+  snapshot_ttl: 30m
+  failure_ttl: 30s
+  request_timeout: 8s
+  max_response_bytes: 1048576
+  max_ccip_depth: 4
+  max_batch_addresses: 100
+  max_concurrency: 8
+
+verification:
+  max_input_bytes: 5242880
+  max_output_bytes: 67108864
+  timeout: 2m
+  worker_count: 1
+  derived_enabled: true
+  derived_backfill_enabled: true
+  derived_forward_enabled: true
+  derived_worker_count: 1
+  derived_max_traces_per_scan: 100
+  # The API process owns the SEA executor and its rebuildable persistent cache.
+  cache_directory: /var/lib/etherview/compilers/cache
+  executor_path: /opt/etherview/solcjs/etherview-solcjs
+  geas_path: /usr/local/bin/etherview-geas-compiler
+  catalog_urls:
+    solidity: auto
+  allowed_download_origins:
+    - https://binaries.soliditylang.org
+  catalog_refresh_interval: 1h
+  catalog_max_staleness: 24h
+
+sourcify:
+  base_url: https://sourcify.dev/server
+  # Local Fake-IP/private-network development only; TLS verification stays enabled.
+  unsafe_allow_private_networks: true
+  timeout: 20s
+  max_request_bytes: 5242880
+  max_response_bytes: 33554432
+  attempts: 3
+  poll_interval: 1s
+  max_polls: 120
+
+adapters:
+  namespace: etherview
+  nats_url: ""
+  redis_url: ""
+  connect_timeout: 2s
+  operation_timeout: 500ms
+  redis_cache_ttl: 30s
+  s3_endpoint: ""
+  s3_bucket: ""
+  s3_prefix: etherview
+  s3_region: ""
+  s3_access_key: ""
+  s3_secret_key: ""
+  s3_session_token: ""
+  s3_path_style: false
+  s3_max_object_bytes: 16777216
+  price_base_url: ""
+  fetch_timeout: 5s
+  max_response_bytes: 1048576
+  max_redirects: 2
+  price_freshness: 5m
+  failure_ttl: "30s"
+
+# Preview runs a real, isolated Beacon network and a durable local archive.
+consensus:
+  enabled: true
+  url: http://lighthouse:5052
+  headers: {}
+  poll_interval: 6s
+  request_timeout: 10s
+  worker_count: 2
+  max_response_bytes: 33554432
+  blobs:
+    enabled: true
+    endpoint: http://object-storage:9000
+    bucket: etherview-preview-blobs
+    region: us-east-1
+    access_key: ""
+    secret_key: ""
+    session_token: ""
+    path_style: true
+
+# Preview enables remote source discovery with local verification.
+bytecode_db:
+  enabled: true
+  base_url: https://eth-bytecode-db.services.blockscout.com
+  # Local Fake-IP/private-network development only; TLS verification stays enabled.
+  unsafe_allow_private_networks: true
+  timeout: 20s
+  max_response_bytes: 33554432
+  max_concurrency: 2
+  request_interval: 1s
+  cooldown: 24h
+
+# Optional browser challenge. Secret is API/all environment-only.
+turnstile:
+  enabled: false
+  site_key: ""

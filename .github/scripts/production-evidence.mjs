@@ -1,11 +1,12 @@
 // Offline join of native fixtures and two independently cleaned application suites.
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
-import { canonical } from "../../compiler/vyper/wasm/tooling.mjs";
-import { sha256, sharedRuntimes } from "../../compiler/vyper/wasm/release.mjs";
+
 import { versionEvidence, versions } from "../../compiler/vyper/wasm/production-shards.mjs";
+import { sha256, sharedRuntimes } from "../../compiler/vyper/wasm/release.mjs";
+import { canonical } from "../../compiler/vyper/wasm/tooling.mjs";
 
 export const applicationVersions = ["0.2.1", "0.3.1", "0.3.4", "0.3.10", "0.4.0", "0.4.3"];
 export function validateApplication(role, result, identity) {

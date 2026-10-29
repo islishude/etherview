@@ -150,3 +150,49 @@ The generated Web SDK bundles runtime support from `@hey-api/openapi-ts@0.99.0`
 (MIT, Copyright (c) Hey API). Its license is retained in
 `licenses/hey-api-MIT.txt` and included by the production image's licenses copy.
 The generator version and package integrity are pinned in `pnpm-lock.yaml`.
+
+## Preview application contracts and Bundler
+
+The separate Preview Bundler image contains the official Rundler 0.11.0 binary
+from https://github.com/alchemyplatform/rundler/releases/tag/v0.11.0.
+Its executable is GPL-3.0-or-later and its libraries are LGPL-3.0-or-later.
+The matching source is available at that release tag. Both license texts are
+retained in `preview-rundler-GPL-3.0.txt` and `preview-rundler-LGPL-3.0.txt`
+and shipped under `/app/licenses/` in the image. The binary is copied from the
+official `alchemyplatform/rundler` image, whose version tag is set in
+`preview/bundler.Dockerfile` for both Linux ARM64 and AMD64.
+
+Preview genesis embeds account-abstraction v0.9.0 contracts (commit
+b36a1ed52ae00da6f8a4c8d50181e2877e4fa410, GPL-3.0) using canonical creation
+inputs with immutable source and digest provenance in
+`preview/contracts/upstream/account-abstraction-v09.json`.
+Those construction inputs originated in Alto's deployment constants; Alto and
+its simulation helpers are not included in the runtime image or genesis.
+Account-abstraction source is available from the official
+https://github.com/eth-infinitism/account-abstraction repository at that commit.
+
+ENS contracts 1.7.0 are MIT licensed (`preview-ens-MIT.txt`). Preview vendors the
+required Solidity import closure from the official GitHub commit
+9b034936a42f462fc04bc0a929a419ede5e18d59 and compiles it with pinned solc and
+OpenZeppelin packages. The ENS npm package is not installed because its package
+name is covered by GHSA-58x9-4xmp-8mg5. PreviewRegistrarController changes only
+the upstream controller name and `.eth` node/suffix to `.test`. The exact source
+snapshot and compiler settings are checked in. Genesis verification compiles
+these inputs through the ordinary API worker; startup does not fetch sources.
+
+ENS buffer 0.1.3 is BSD-2-Clause; `npm-clarifications.json` pins its reviewed
+license-file hash where the scanner otherwise reports only BSD.
+
+### Preview verification source bundles
+
+`preview/verification` retains inline compiler inputs for all genesis contracts.
+The account-abstraction and ENS license notices above also cover these source
+copies; OpenZeppelin imports (including 5.0.2 for the canonical SimpleAccount
+factory) retain their MIT SPDX and copyright comments.
+`Multicall3.json` retains the MIT-licensed mds1 Multicall3 source and its full
+license text in source comments. `ERC1820Registry.json` retains Jordi Baylina's
+ERC-1820 source and its CC0 dedication. Each snapshot records its source URL.
+The `sys-asm.json` bundle pins ethereum/sys-asm revision
+f808a29f280f0b844d83fec592d3e1c592d1c92a and retains its complete MIT license.
+Its BeaconRoots source explicitly uses PUSH3 for the deployed EIP-4788 constant;
+this adaptation is recorded alongside the upstream revision.

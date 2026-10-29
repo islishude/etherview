@@ -34,6 +34,7 @@ type CustomOptions struct {
 }
 
 type ServiceOptions struct {
+	Mode                string
 	ChainID             uint64
 	Repository          *Repository
 	Resolver            *Resolver
@@ -64,6 +65,7 @@ type Observer interface {
 }
 
 type Service struct {
+	mode                string
 	chainID             uint64
 	repository          *Repository
 	resolver            *Resolver
@@ -102,14 +104,23 @@ type PrimaryResolution struct {
 }
 
 func NewService(options ServiceOptions) (*Service, error) {
-	if options.ChainID == 0 || options.Repository == nil || options.Resolver == nil || options.OfficialPool == nil {
+	if options.Mode == "" {
+		options.Mode = "official_first"
+	}
+	if options.Mode != "official_first" && options.Mode != "custom_only" {
+		return nil, errors.New("invalid ENS mode")
+	}
+	if options.Mode == "custom_only" && (options.Custom == nil || options.OfficialPool != nil) {
+		return nil, errors.New("custom-only ENS requires a custom source and no official pool")
+	}
+	if options.ChainID == 0 || options.Repository == nil || options.Resolver == nil || (options.Mode == "official_first" && options.OfficialPool == nil) {
 		return nil, errors.New("ENS service core dependencies are incomplete")
 	}
 	coinType, ok := EVMCoinType(options.ChainID)
 	if !ok {
 		return nil, errors.New("ENS service chain coin type is unavailable")
 	}
-	if len(options.OfficialGateways) == 0 || len(options.OfficialGateways) > 4 {
+	if options.Mode == "official_first" && (len(options.OfficialGateways) == 0 || len(options.OfficialGateways) > 4) {
 		return nil, errors.New("ENS official gateways must contain 1 to 4 URLs")
 	}
 	if options.ResolutionFreshness <= 0 || options.SnapshotTTL < options.ResolutionFreshness ||
@@ -132,7 +143,7 @@ func NewService(options ServiceOptions) (*Service, error) {
 		return nil, err
 	}
 	return &Service{
-		chainID: options.ChainID, repository: options.Repository, resolver: options.Resolver,
+		mode: options.Mode, chainID: options.ChainID, repository: options.Repository, resolver: options.Resolver,
 		officialPool: options.OfficialPool, customPool: options.CustomPool, canonical: options.Canonical,
 		officialGateways: slices.Clone(options.OfficialGateways), custom: cloneCustomOptions(options.Custom),
 		coinType: coinType, policyKey: policyKey, resolutionFreshness: options.ResolutionFreshness,
@@ -161,6 +172,7 @@ func ensPolicyKey(options ServiceOptions, coinType *big.Int) (string, error) {
 		Endpoints         []string `json:"endpoints"`
 	}
 	policy := struct {
+		Mode              string        `json:"mode"`
 		Version           int           `json:"version"`
 		ChainID           uint64        `json:"chain_id"`
 		CoinType          string        `json:"coin_type"`
@@ -169,10 +181,15 @@ func ensPolicyKey(options ServiceOptions, coinType *big.Int) (string, error) {
 		Endpoints         []string      `json:"endpoints"`
 		Custom            *customPolicy `json:"custom,omitempty"`
 	}{
-		Version: 1, ChainID: options.ChainID, CoinType: coinType.String(),
+		Mode: options.Mode, Version: 2, ChainID: options.ChainID, CoinType: coinType.String(),
 		UniversalResolver: strings.ToLower(OfficialUniversalResolverAddress),
 		Gateways:          slices.Clone(options.OfficialGateways),
-		Endpoints:         options.OfficialPool.Names(ethrpc.PurposeState),
+	}
+	if options.Mode == "official_first" {
+		policy.Endpoints = options.OfficialPool.Names(ethrpc.PurposeState)
+	} else {
+		policy.UniversalResolver = ""
+		policy.Gateways = nil
 	}
 	if options.Custom != nil {
 		policy.Custom = &customPolicy{
@@ -197,23 +214,26 @@ func (service *Service) currentGeneration(ctx context.Context) (Generation, erro
 	} else if exists {
 		return current, nil
 	}
-	officialEndpoint, err := service.officialPool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		return Generation{}, resolutionError(CodeRPCUnavailable)
-	}
-	callCtx, cancel := context.WithTimeout(ctx, service.requestTimeout)
-	officialBlock, sourceErr := FinalizedMainnetRef(callCtx, officialEndpoint)
-	cancel()
-	if sourceErr != nil {
-		service.officialPool.ReportFailure(officialEndpoint.Name)
-		return Generation{}, sourceErr
-	}
-	service.officialPool.ReportSuccess(officialEndpoint.Name)
 	candidate := GenerationCandidate{
 		PolicyKey: service.policyKey, CoinType: service.coinType,
-		OfficialEndpoint: officialEndpoint.Name, OfficialBlock: officialBlock,
 		CreatedAt: now, FreshUntil: now.Add(service.resolutionFreshness),
 		RetainUntil: now.Add(service.snapshotTTL),
+	}
+	if service.mode == "official_first" {
+		officialEndpoint, err := service.officialPool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return Generation{}, resolutionError(CodeRPCUnavailable)
+		}
+		callCtx, cancel := context.WithTimeout(ctx, service.requestTimeout)
+		officialBlock, sourceErr := FinalizedMainnetRef(callCtx, officialEndpoint)
+		cancel()
+		if sourceErr != nil {
+			service.officialPool.ReportFailure(officialEndpoint.Name)
+			return Generation{}, sourceErr
+		}
+		service.officialPool.ReportSuccess(officialEndpoint.Name)
+		candidate.OfficialEndpoint = officialEndpoint.Name
+		candidate.OfficialBlock = &officialBlock
 	}
 	if service.custom != nil {
 		customBlock, err := service.canonical.Tip(ctx)
@@ -225,7 +245,7 @@ func (service *Service) currentGeneration(ctx context.Context) (Generation, erro
 			return Generation{}, resolutionError(CodeRPCUnavailable)
 		}
 		profile := service.customProfile(customBlock)
-		callCtx, cancel = context.WithTimeout(ctx, service.requestTimeout)
+		callCtx, cancel := context.WithTimeout(ctx, service.requestTimeout)
 		verifyErr := VerifyCustomDeployment(callCtx, customEndpoint, profile)
 		cancel()
 		if verifyErr != nil {
@@ -251,7 +271,7 @@ func (service *Service) officialProfile(generation Generation) Profile {
 	return Profile{
 		Source: SourceOfficial, UniversalResolver: common.HexToAddress(OfficialUniversalResolverAddress),
 		CoinType: new(big.Int).Set(generation.CoinType), Gateways: slices.Clone(service.officialGateways),
-		Block: generation.OfficialBlock,
+		Block: *generation.OfficialBlock,
 	}
 }
 
@@ -281,6 +301,13 @@ func (service *Service) ResolveForward(ctx context.Context, rawName string) (For
 	generation, err := service.currentGeneration(ctx)
 	if err != nil {
 		return ForwardResolution{}, err
+	}
+	if service.mode == "custom_only" {
+		result, err := service.resolveForwardSource(ctx, generation, SourceCustom, name)
+		if err == nil && result.Outcome == OutcomeResolved {
+			err = service.repository.EnsureObservationPublished(ctx, result.ObservationID)
+		}
+		return result, err
 	}
 	result, err := service.resolveForwardSource(ctx, generation, SourceOfficial, name)
 	if err != nil || result.Outcome == OutcomeResolved {
@@ -369,6 +396,9 @@ func (service *Service) ResolvePrimary(
 	generation Generation,
 	address common.Address,
 ) (PrimaryResolution, error) {
+	if service.mode == "custom_only" {
+		return service.resolvePrimarySource(ctx, generation, SourceCustom, address)
+	}
 	result, err := service.resolvePrimarySource(ctx, generation, SourceOfficial, address)
 	if err != nil || result.Outcome == OutcomeResolved {
 		return result, err
@@ -473,6 +503,9 @@ func (service *Service) source(
 ) (Profile, *ethrpc.Endpoint, *ethrpc.Pool, error) {
 	switch source {
 	case SourceOfficial:
+		if service.officialPool == nil || generation.OfficialBlock == nil || generation.OfficialEndpoint == "" {
+			return Profile{}, nil, nil, errors.New("official ENS source is unavailable")
+		}
 		endpoint, err := service.officialPool.AcquireNamed(ethrpc.PurposeState, generation.OfficialEndpoint)
 		return service.officialProfile(generation), endpoint, service.officialPool, err
 	case SourceCustom:

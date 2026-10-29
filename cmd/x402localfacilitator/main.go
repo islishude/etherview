@@ -1,5 +1,5 @@
 // Command x402localfacilitator is a test-only exact-EVM facilitator for the
-// disposable Anvil environment under e2e/x402local. It is built into a
+// disposable Anvil and Geth/Lighthouse Preview environments. It is built into a
 // separate image and is never included in the production Etherview image.
 package main
 
@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	x402 "github.com/x402-foundation/x402/go/v2"
 	"github.com/x402-foundation/x402/go/v2/mechanisms/evm"
 )
@@ -74,7 +75,7 @@ func main() {
 	network := requiredEnvironment("X402_LOCAL_NETWORK")
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
-		log.Fatal("connect Anvil")
+		log.Fatal("connect local chain")
 	}
 	key, err := crypto.HexToECDSA(strings.TrimPrefix(privateKey, "0x"))
 	if err != nil {
@@ -152,10 +153,17 @@ func (service *server) settle(writer http.ResponseWriter, request *http.Request)
 	defer cancel()
 	hash, err := service.send(ctx, data)
 	if err != nil {
-		writeJSON(writer, x402.SettleResponse{
+		response := x402.SettleResponse{
 			Success: false, ErrorReason: "settlement_rejected", Payer: payer.Hex(),
 			Network: x402.Network(service.network), Amount: value.String(),
-		})
+		}
+		if hash != (common.Hash{}) {
+			// Once broadcast may have happened, only reconciliation of this exact
+			// transaction can resolve settlement. Never advertise a safe retry.
+			response.ErrorReason = "settlement_pending"
+			response.Transaction = hash.Hex()
+		}
+		writeJSON(writer, response)
 		return
 	}
 	writeJSON(writer, x402.SettleResponse{
@@ -288,6 +296,10 @@ func (service *server) send(ctx context.Context, data []byte) (common.Hash, erro
 	if err != nil {
 		return common.Hash{}, err
 	}
+	// Geth's empty private chain can suggest a tip below its builder floor.
+	if tip.Cmp(big.NewInt(1_000_000_000)) < 0 {
+		tip = big.NewInt(1_000_000_000)
+	}
 	fee := new(big.Int).Add(tip, big.NewInt(2_000_000_000))
 	if header.BaseFee != nil {
 		fee = new(big.Int).Add(tip, new(big.Int).Mul(header.BaseFee, big.NewInt(2)))
@@ -307,24 +319,28 @@ func (service *server) send(ctx context.Context, data []byte) (common.Hash, erro
 		return common.Hash{}, err
 	}
 	if err := service.client.SendTransaction(ctx, signed); err != nil {
-		return common.Hash{}, err
+		// A transport error can occur after the node accepted the transaction.
+		return signed.Hash(), err
 	}
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		receipt, receiptErr := service.client.TransactionReceipt(ctx, signed.Hash())
 		if receiptErr == nil {
+			if receipt.TxHash != signed.Hash() {
+				return signed.Hash(), errors.New("receipt transaction hash mismatch")
+			}
 			if receipt.Status != types.ReceiptStatusSuccessful {
 				return common.Hash{}, errors.New("settlement reverted")
 			}
 			return signed.Hash(), nil
 		}
-		if !errors.Is(receiptErr, ethereum.NotFound) {
-			return common.Hash{}, receiptErr
+		if !receiptPending(receiptErr) {
+			return signed.Hash(), receiptErr
 		}
 		select {
 		case <-ctx.Done():
-			return common.Hash{}, ctx.Err()
+			return signed.Hash(), ctx.Err()
 		case <-ticker.C:
 		}
 	}
@@ -356,4 +372,13 @@ func requiredEnvironment(name string) string {
 		log.Fatalf("%s is required", name)
 	}
 	return value
+}
+
+// Geth can expose a mined block before its receipt index is ready.
+func receiptPending(err error) bool {
+	if errors.Is(err, ethereum.NotFound) {
+		return true
+	}
+	var rpcErr rpc.Error
+	return errors.As(err, &rpcErr) && rpcErr.ErrorCode() == -32000 && rpcErr.Error() == "transaction indexing is in progress"
 }

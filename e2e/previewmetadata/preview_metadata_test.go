@@ -164,6 +164,10 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	compilerDirectory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	image := valueOrDefault("IMAGE", "etherview:local")
 	network := filepath.Join(artifacts, "network")
 	for _, required := range []string{
@@ -182,8 +186,9 @@ func newHarness(t *testing.T) *harness {
 		"e2e/previewmetadata/compose.yaml",
 	)
 	project.Env = map[string]string{
+		"PREVIEW_COMPILER_CACHE_DIR":      compilerDirectory,
 		"ETHERVIEW_IMAGE":                 image,
-		"ETHERVIEW_CONFIG_FILE":           filepath.Join(root, "deploy", "preview.config.yaml"),
+		"ETHERVIEW_CONFIG_FILE":           filepath.Join(root, "preview", "config.yaml"),
 		"GETH_IMAGE":                      "ethereum/client-go:v1.17.10",
 		"RUSTFS_ACCESS_KEY":               "etherview",
 		"RUSTFS_SECRET_KEY":               "etherview-dev-only",
@@ -1000,7 +1005,9 @@ func (h *harness) cleanup() {
 	if h.project != nil {
 		h.captureDiagnostics(ctx)
 		if err := h.project.Down(ctx); err != nil {
-			h.t.Logf("Preview metadata cleanup: %v", err)
+			h.t.Errorf("Preview metadata cleanup: %v", err)
+		} else if err := h.project.PreviewCompilerCache(ctx, "clean"); err != nil {
+			h.t.Errorf("Preview compiler cache cleanup: %v", err)
 		}
 	}
 	if h.rpc != nil {
