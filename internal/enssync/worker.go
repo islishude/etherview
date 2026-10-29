@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/big"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -93,12 +94,14 @@ func (w *Worker) Schedule(ctx context.Context, limit int) error {
 		if e != nil {
 			return e
 		}
+		invalidated := false
 		for _, c := range candidates {
 			if c.PreviousJobID != nil {
 				if c.RefreshOnly {
 					_, e = q.RefreshENSSyncCandidate(ctx, c.SourceID, c.ID, c.RequestedGeneration)
 				} else {
 					_, e = q.InvalidateENSSyncCandidate(ctx, c.SourceID, c.ID, c.RequestedGeneration)
+					invalidated = true
 				}
 				if e != nil {
 					return e
@@ -113,6 +116,9 @@ func (w *Worker) Schedule(ctx context.Context, limit int) error {
 			if _, e = q.EnqueueENSSyncJob(ctx, dbgen.EnqueueENSSyncJobParams{SourceID: c.SourceID, CandidateID: c.ID, MaxAttempts: w.options.MaxAttempts, Deadline: stamp(time.Now().Add(time.Duration(w.options.MaxAttempts) * (w.options.FailureDelay + w.options.Timeout)))}); e != nil {
 				return e
 			}
+		}
+		if invalidated {
+			return q.EmitENSInvalidation(ctx, strconv.FormatInt(w.options.SourceID, 10))
 		}
 		return nil
 	}))

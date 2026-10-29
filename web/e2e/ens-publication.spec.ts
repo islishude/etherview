@@ -24,10 +24,22 @@ for (const language of ["en", "zh"] as const) {
       Object.assign(window, {
         EventSource: LocalEvents,
         ensSources: sources,
-        publishNames: () =>
+        publishProgress: () =>
           sources.forEach((source) =>
             source.dispatchEvent(
-              new MessageEvent("names", { data: '{"publication":"2"}', lastEventId: "2" }),
+              new MessageEvent("status", {
+                data: '{"source":"1","reason":"names_progress"}',
+                lastEventId: "2",
+              }),
+            ),
+          ),
+        publishNames: (invalidated = false) =>
+          sources.forEach((source) =>
+            source.dispatchEvent(
+              new MessageEvent("names", {
+                data: invalidated ? '{"source":"1","invalidated":true}' : '{"publication":"2"}',
+                lastEventId: "3",
+              }),
             ),
           ),
       });
@@ -38,7 +50,9 @@ for (const language of ["en", "zh"] as const) {
       body.data.features.ens = true;
       await route.fulfill({ response, json: body });
     });
+    let statusRequests = 0;
     await page.route("**/api/v1/status", async (route) => {
+      statusRequests++;
       const response = await route.fetch();
       const body = await response.json();
       body.data.names = [
@@ -58,9 +72,11 @@ for (const language of ["en", "zh"] as const) {
     let version = "1";
     let requests = 0;
     let expiry = Date.now() + 60000;
+    let hold: Promise<void> | undefined;
     await page.route("**/api/v1/address-names?*", async (route) => {
       requests++;
       const url = new URL(route.request().url());
+      await hold;
       await route.fulfill({
         json: {
           data: {
@@ -90,7 +106,8 @@ for (const language of ["en", "zh"] as const) {
           ? "Name history syncing; verified names available."
           : "名称历史同步中，已验证名称可用。",
       ),
-    ).toBeVisible();
+    ).toHaveCount(0);
+    expect(statusRequests).toBe(0);
     await expect(page.locator(".address-identity-value").first()).toHaveAttribute(
       "title",
       /^0x[0-9a-fA-F]{40}$/,
@@ -98,10 +115,45 @@ for (const language of ["en", "zh"] as const) {
     expect(
       await page.evaluate(() => (window as unknown as { ensSources: unknown[] }).ensSources.length),
     ).toBe(1);
+    await page.goto(`/address/0x${"1".repeat(40)}`);
+    const header = page.locator(".address-header-actions");
+    await expect(header.locator(".address-primary-name")).toHaveText("published-1.test");
+    const stableHeader = await header.boundingBox();
+    const beforeProgress = requests;
+    // Consecutive coverage transitions must not withdraw names or issue name reads.
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() =>
+        (window as unknown as { publishProgress: () => void }).publishProgress(),
+      );
+      await page.waitForTimeout(350); // Flush the 250ms SSE coalescing window.
+      await expect(header.locator(".address-primary-name")).toHaveText("published-1.test");
+      expect(await header.boundingBox()).toEqual(stableHeader);
+      expect(requests).toBe(beforeProgress);
+    }
+    let release!: () => void;
+    hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     version = "2";
-    expiry = Date.now() + 4000;
     await page.evaluate(() => (window as unknown as { publishNames: () => void }).publishNames());
-    await expect(page.locator(".address-primary-name").first()).toHaveText("published-2.test");
+    await expect.poll(() => requests).toBeGreaterThan(beforeProgress);
+    await expect(header.locator(".address-primary-name")).toHaveText("published-1.test");
+    expect(await header.boundingBox()).toEqual(stableHeader);
+    release();
+    await expect(header.locator(".address-primary-name")).toHaveText("published-2.test");
+    const beforeInvalidation = requests;
+    hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    version = "3";
+    expiry = Date.now() + 4000;
+    await page.evaluate(() =>
+      (window as unknown as { publishNames: (invalidated: boolean) => void }).publishNames(true),
+    );
+    await expect.poll(() => requests).toBeGreaterThan(beforeInvalidation);
+    await expect(page.locator(".address-primary-name")).toHaveCount(0);
+    release();
+    await expect(header.locator(".address-primary-name")).toHaveText("published-3.test");
     const settled = requests;
     expect((await new AxeBuilder({ page }).include("main").analyze()).violations).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath(`ens-${language}.png`) });
@@ -112,6 +164,16 @@ for (const language of ["en", "zh"] as const) {
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       ),
     ).toBeLessThanOrEqual(1);
+    expect(statusRequests).toBe(0);
+    await page.goto("/status");
+    await expect(
+      page.getByText(
+        language === "en"
+          ? "Name history syncing; verified names available."
+          : "名称历史同步中，已验证名称可用。",
+      ),
+    ).toBeVisible();
+    expect(statusRequests).toBe(1);
     expect(errors).toEqual([]);
   });
 }

@@ -1564,8 +1564,12 @@ paths:
         values return a typed 400 error, while replay backend failures return a
         typed 503 error. Both SSE routes share per-client and per-process active
         subscription limits; admission failure returns 429 with Retry-After.
-        A names event carries a decimal-string publication identity, or a source
-        identity and invalidated=true, and requires rereading published name data.
+        A names event carries a decimal-string publication or directory identity for
+        background rereading, or a source identity and invalidated=true for withdrawal
+        before rereading. Reorganizations and stream reconnections also withdraw names.
+        Sync coverage changes alone emit status with reason=names_progress and a
+        decimal-string source identity; they do not invalidate published names.
+        Background refresh never extends the previous observation validity deadline.
       parameters:
         - name: Last-Event-ID
           in: header

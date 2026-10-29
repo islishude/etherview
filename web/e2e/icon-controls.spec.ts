@@ -97,6 +97,43 @@ for (const width of [390, 1440]) {
         language,
         theme: language === "en" ? "light" : "dark",
       });
+      await page.clock.install();
+      const expires = Date.now() + 60_000;
+      const primaryName = "a-long-primary-name-for-address-layout-regression.test";
+      let publishName!: () => void;
+      const publication = new Promise<void>((resolve) => {
+        publishName = resolve;
+      });
+      await page.route("**/api/v1/config", async (route) => {
+        const response = await route.fetch();
+        const body = await response.json();
+        body.data.features.ens = true;
+        await route.fulfill({ response, json: body });
+      });
+      await page.route("**/api/v1/address-names?*", async (route) => {
+        await publication;
+        const addresses = new URL(route.request().url()).searchParams.get("addresses") ?? "";
+        await route.fulfill({
+          json: {
+            data: {
+              publication: "1",
+              snapshot: "layout-1",
+              items: addresses.split(",").map((value) => ({
+                address: value,
+                state: "resolved",
+                primary_name: {
+                  name: primaryName,
+                  publication: "1",
+                  observed_block_number: "100",
+                  observed_block_hash: `0x${"1".repeat(64)}`,
+                  valid_until: new Date(expires).toISOString(),
+                },
+              })),
+            },
+            meta: { request_id: "layout", chain_id: "1" },
+          },
+        });
+      });
       await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       await page.goto(`/address/${address}`);
       const header = page.locator(".address-header-actions");
@@ -105,6 +142,29 @@ for (const width of [390, 1440]) {
         exact: true,
       });
       const qr = header.locator(".address-qr-button");
+      const expectAlignment = async () => {
+        const copyBox = await header.locator(".copyable-copy-button").boundingBox();
+        const qrBox = await qr.boundingBox();
+        const valueBox = await header.locator(".address-identity-value").boundingBox();
+        expect(
+          Math.abs(copyBox!.y + copyBox!.height / 2 - qrBox!.y - qrBox!.height / 2),
+        ).toBeLessThan(2);
+        expect(
+          Math.abs(valueBox!.y + valueBox!.height / 2 - qrBox!.y - qrBox!.height / 2),
+        ).toBeLessThan(2);
+        expect(qrBox!.x).toBeGreaterThanOrEqual(copyBox!.x + copyBox!.width);
+        expect(await qr.locator("xpath=ancestor::a").count()).toBe(0);
+      };
+      await expect(copy).toBeVisible();
+      await expect(header.locator(".address-primary-name")).toHaveCount(0);
+      await expectAlignment();
+      publishName();
+      await expect(header.locator(".address-primary-name")).toHaveText(primaryName);
+      await expect(header.getByRole("link", { name: primaryName })).toHaveAttribute(
+        "href",
+        `/name/${primaryName}`,
+      );
+      await expectAlignment();
       const before = await copy.boundingBox();
       await copy.focus();
       expect(await copy.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe(
@@ -165,6 +225,10 @@ for (const width of [390, 1440]) {
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
       ).toBeLessThanOrEqual(1);
+      await page.clock.fastForward(61_000);
+      await expect(header.locator(".address-primary-name")).toHaveCount(0);
+      await expectAlignment();
+      await page.screenshot({ path: testInfo.outputPath("name-expired.png") });
     });
   }
 }

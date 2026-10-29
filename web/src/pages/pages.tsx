@@ -1,3 +1,4 @@
+import NameCoverageNotice from "@/ens/NameCoverageNotice";
 import { expirationText } from "@/ens/nameDetails";
 import { useNameFreshness } from "@/ens/useNameFreshness";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
@@ -739,6 +740,10 @@ export function StatusPage() {
       <QueryNotice
         loading={status.isPending || publicConfig.isPending}
         error={status.error ?? publicConfig.error}
+      />
+      <NameCoverageNotice
+        enabled={publicConfig.data?.features.ens === true}
+        names={status.data?.names}
       />
       {status.data && (
         <div className="status-layout">

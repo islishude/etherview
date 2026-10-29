@@ -122,3 +122,11 @@
 @position-try --system-tooltip-right {
   position-area: top span-right;
 }
+
+.address-identity-address-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 100%;
+}

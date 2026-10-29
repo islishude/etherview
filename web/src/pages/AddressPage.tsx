@@ -457,19 +457,26 @@ function AddressHeader({ address }: { address: string }) {
   return (
     <>
       <span className="address-header-actions">
-        <AddressIdentity address={address} compact={false} copy link={false} />
-        {isAddress(address) ? (
-          <button
-            aria-label={t("actions.showQRCode")}
-            aria-haspopup="dialog"
-            className="address-qr-button"
-            onClick={() => setOpen(true)}
-            ref={openButtonRef}
-            type="button"
-          >
-            <UIIcon icon={QrCode} size={16} />
-          </button>
-        ) : null}
+        <AddressIdentity
+          address={address}
+          compact={false}
+          copy
+          link={false}
+          actions={
+            isAddress(address) ? (
+              <button
+                aria-label={t("actions.showQRCode")}
+                aria-haspopup="dialog"
+                className="address-qr-button"
+                onClick={() => setOpen(true)}
+                ref={openButtonRef}
+                type="button"
+              >
+                <UIIcon icon={QrCode} size={16} />
+              </button>
+            ) : null
+          }
+        />
       </span>
       {open && isAddress(address) ? (
         <div

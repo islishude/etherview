@@ -80,6 +80,9 @@ func TestENSWorkerAutonomousResolutionAndTerminalBudget(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	if e = repo.RegisterPolicy(ctx, enssync.EffectivePolicy{TargetChainID: "1", CoinType: "60", Digest: f.manifest.Policy, SourceID: result.SourceID}); e != nil {
+		t.Fatal(e)
+	}
 	parsed, e := abi.JSON(strings.NewReader(ensWorkerABI))
 	if e != nil {
 		t.Fatal(e)
@@ -141,6 +144,7 @@ func TestENSWorkerAutonomousResolutionAndTerminalBudget(t *testing.T) {
 	if e = worker.Schedule(ctx, 100); e != nil {
 		t.Fatal(e)
 	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='names' AND payload->>'invalidated'='true'`, 0)
 	service.mu.Lock()
 	service.fail = true
 	service.mu.Unlock()
@@ -184,6 +188,9 @@ func TestENSWorkerLateRelevantLogSchedulesReplacement(t *testing.T) {
 	}
 	result, e := collector.Step(ctx, true)
 	if e != nil {
+		t.Fatal(e)
+	}
+	if e = repo.RegisterPolicy(ctx, enssync.EffectivePolicy{TargetChainID: "1", CoinType: "60", Digest: f.manifest.Policy, SourceID: result.SourceID}); e != nil {
 		t.Fatal(e)
 	}
 	parsed, e := abi.JSON(strings.NewReader(ensWorkerABI))
@@ -247,9 +254,14 @@ func TestENSWorkerLateRelevantLogSchedulesReplacement(t *testing.T) {
 	service.mu.Lock()
 	service.block = changed
 	service.mu.Unlock()
+	var eventFloor int64
+	if e = f.db.QueryRow(ctx, `SELECT COALESCE(max(id),0) FROM runtime_events`).Scan(&eventFloor); e != nil {
+		t.Fatal(e)
+	}
 	if e = worker.Schedule(ctx, 100); e != nil {
 		t.Fatal(e)
 	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE id>$1 AND event_type='names' AND payload->>'invalidated'='true'`, 1, eventFloor)
 	for range 20 {
 		worked, err := worker.Step(ctx)
 		if err != nil {

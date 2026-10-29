@@ -136,6 +136,18 @@ valid exact observations. The SPA uses the generated same-origin client, one
 existing SSE stream, atomic visible batches and expiry hiding. Show a compact
 incomplete-directory notice. No browser ENS RPC, extra EventSource or list poller.
 
+Coverage catch-up/lag transitions emit `status` with `reason: names_progress`,
+not a name invalidation. Source revision/state changes and known dependency
+invalidations retain `names` with `invalidated: true`. Publication/directory
+`names` events request background rereads without first clearing still-valid
+observations; visible address batches replace atomically. True invalidation,
+reorg and reconnect withdraw before rereading, and invalid snapshots and local
+expiry still withdraw. Refresh failure never extends an observation's deadline.
+Unknown or malformed name notifications are treated as invalidations. Scheduler
+invalidation of a candidate after known core-log/dependency changes emits one
+source invalidation in the same transaction as replacement jobs; ordinary
+freshness renewal does not emit a withdrawal.
+
 ### Acceptance
 
 P30-T150 requires real pinned contracts and production all/split behavior,

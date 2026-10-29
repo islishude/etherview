@@ -47,10 +47,10 @@ export function AddressNamesProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(
     () =>
-      subscribeNames(client, () => {
+      subscribeNames(client, (change) => {
         generation.current++;
         snapshot.current = undefined;
-        setNames(new Map());
+        if (change === "invalidate") setNames(new Map());
         setRevision((value) => value + 1);
       }),
     [client],
@@ -85,7 +85,9 @@ export function AddressNamesProvider({ children }: { children: ReactNode }) {
           setNames(result.names);
         }
       } catch {
-        reset();
+        // A failed refresh cannot renew prior observations. Keep only their
+        // existing bounded validity; invalid cursors and known invalidations
+        // already withdraw them through reset/the event listener.
       }
     };
     const scheduled = setTimeout(() => {

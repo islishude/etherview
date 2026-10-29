@@ -665,6 +665,11 @@ name directory membership, so expired and unresolved names remain searchable.
 Name detail and search compose immutable profile and resolution references in
 one read-only snapshot; their validity windows are independent. Names SSE and
 local expiry withdraw stale fields without manufacturing a new negative.
+Coverage transitions emit `status` with `reason: names_progress`; they do not
+withdraw valid names. Publication/directory events refresh visible names in the
+background and replace batches atomically. Explicit invalidation, reorg and
+reconnect withdraw immediately before rereading; failed refreshes never extend
+observation validity.
 
 ## Public Boundaries
 

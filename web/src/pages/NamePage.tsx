@@ -24,8 +24,8 @@ export function NamePage({ name }: { name: string }) {
   });
   useEffect(
     () =>
-      subscribeNames(client, () => {
-        setInvalid(true);
+      subscribeNames(client, (change) => {
+        if (change === "invalidate") setInvalid(true);
         void client.invalidateQueries({ queryKey: ["name-detail", name] });
       }),
     [client, name],

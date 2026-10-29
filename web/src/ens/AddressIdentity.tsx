@@ -15,6 +15,7 @@ export function AddressIdentity({
   contract = false,
   link = true,
   suffix,
+  actions,
 }: {
   address: string;
   activity?: boolean;
@@ -23,6 +24,7 @@ export function AddressIdentity({
   contract?: boolean;
   link?: boolean;
   suffix?: ReactNode;
+  actions?: ReactNode;
 }) {
   const primary = usePrimaryName(address);
   const { t } = useTranslation();
@@ -69,6 +71,14 @@ export function AddressIdentity({
   ) : (
     identity
   );
+  const addressRow = actions ? (
+    <span className="address-identity-address-row">
+      {addressContent}
+      {actions}
+    </span>
+  ) : (
+    addressContent
+  );
   return primary ? (
     <span className="address-identity has-primary-name">
       <Link className="address-primary-name-row" to="/name/$name" params={{ name: primary.name }}>
@@ -76,10 +86,10 @@ export function AddressIdentity({
           {primary.name}
         </bdi>
       </Link>
-      {addressContent}
+      {addressRow}
     </span>
   ) : (
-    addressContent
+    addressRow
   );
 }
 

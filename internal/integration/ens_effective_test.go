@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"fmt"
 	"github.com/jackc/pgx/v5/pgtype"
 	"math/big"
 	"testing"
@@ -134,4 +135,59 @@ func TestENSEffectiveHousekeepingPreservesActiveDependenciesAndSnapshotFloor(t *
 	if e != nil || got.State != enscontract.Resolved {
 		t.Fatal(got, e)
 	}
+}
+
+func TestENSProgressEventsPreserveValidNamesAndRealInvalidationWithdraws(t *testing.T) {
+	f := newENSSyncFixture(t)
+	ctx := t.Context()
+	f.discover(t)
+	f.cover(t, f.block, 1)
+	policy := enssync.EffectivePolicy{TargetChainID: "31337", CoinType: "60", Digest: f.lookup.PolicyDigest, SourceID: f.source}
+	if err := f.repo.RegisterPolicy(ctx, policy); err != nil {
+		t.Fatal(err)
+	}
+	f.enqueue(t, 3)
+	job := f.claim(t)
+	if _, err := f.repo.Publish(ctx, f.publication(job)); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := f.repo.Snapshot(ctx, policy.TargetChainID, policy.Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookup := enscontract.EffectiveLookup{TargetChainID: policy.TargetChainID, PolicyDigest: policy.Digest, Direction: enscontract.Forward, Key: f.lookup.Key, Snapshot: snapshot}
+	assertCurrent := func() {
+		t.Helper()
+		got, err := f.repo.LookupEffective(ctx, lookup)
+		if err != nil || got.State != enscontract.Resolved || got.Version != snapshot || got.Name != f.lookup.Key {
+			t.Fatalf("progress withdrew valid observation: %+v %v", got, err)
+		}
+	}
+	parent := f.block
+	for i := uint64(1); i <= 3; i++ {
+		hash := testHash(100 + i)
+		f.putBlock(t, fmt.Sprint(100+i), hash, parent)
+		for range 2 { // Same-head health refresh must not emit extra notifications.
+			n, err := f.q.SetENSSyncTarget(ctx, ensTime(time.Now().Add(time.Hour)), f.source, hash.Bytes())
+			if err != nil || n != 1 {
+				t.Fatal(n, err)
+			}
+			assertCurrent()
+		}
+		f.cover(t, hash, 1)
+		assertCurrent()
+		parent = hash
+	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='names' AND payload ? 'invalidated'`, 0)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='status' AND payload->>'reason'='names_progress' AND payload->>'source'=$1`, 6, fmt.Sprint(f.source))
+	if _, err := f.q.InvalidateENSSyncSource(ctx, f.source, 1); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.repo.LookupEffective(ctx, lookup)
+	if err != nil || got.State != enscontract.Unavailable || got.Name != "" {
+		t.Fatalf("source invalidation retained name: %+v %v", got, err)
+	}
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='names' AND payload->>'invalidated'='true'`, 1)
+	execFixture(t, ctx, f.db, `UPDATE ens_sync_progress SET state='unsupported' WHERE source_id=$1`, f.source)
+	assertRowCount(t, ctx, f.db, `SELECT count(*) FROM runtime_events WHERE event_type='names' AND payload->>'invalidated'='true'`, 2)
 }

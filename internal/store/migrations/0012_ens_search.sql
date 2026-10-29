@@ -727,10 +727,13 @@ CREATE TRIGGER ens_discovered_name AFTER INSERT ON ens_sync_candidate_origins FO
 
 CREATE FUNCTION notify_ens_source_change() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
- IF NEW.revision IS DISTINCT FROM OLD.revision OR NEW.state IS DISTINCT FROM OLD.state
-    OR ((NEW.target_hash IS DISTINCT FROM NEW.scanned_hash) IS DISTINCT FROM (OLD.target_hash IS DISTINCT FROM OLD.scanned_hash)) THEN
+ IF NEW.revision IS DISTINCT FROM OLD.revision OR NEW.state IS DISTINCT FROM OLD.state THEN
   INSERT INTO runtime_events(chain_id,event_type,payload)
   SELECT DISTINCT target_chain_id,'names',jsonb_build_object('source',NEW.source_id::text,'invalidated',true)
+  FROM ens_effective_policies WHERE source_id=NEW.source_id;
+ ELSIF (NEW.target_hash IS DISTINCT FROM NEW.scanned_hash) IS DISTINCT FROM (OLD.target_hash IS DISTINCT FROM OLD.scanned_hash) THEN
+  INSERT INTO runtime_events(chain_id,event_type,payload)
+  SELECT DISTINCT target_chain_id,'status',jsonb_build_object('source',NEW.source_id::text,'reason','names_progress')
   FROM ens_effective_policies WHERE source_id=NEW.source_id;
  END IF;
  RETURN NEW;

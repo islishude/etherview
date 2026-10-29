@@ -27,11 +27,17 @@ export function ChainEventInvalidation() {
     let refreshing = Promise.resolve();
     const pending = new Set<ChainEventType>();
     const pendingPublications = new Set<string>();
+    let withdrawNames = false;
     const flush = () => {
       scheduled = undefined;
       if (disposed) return;
       const types = [...pending];
-      if (types.includes("names") || types.includes("reorg")) notifyNames(queryClient);
+      if (types.includes("names") || types.includes("reorg"))
+        notifyNames(
+          queryClient,
+          withdrawNames || types.includes("reorg") ? "invalidate" : "refresh",
+        );
+      withdrawNames = false;
       pending.clear();
       const publications = [...pendingPublications];
       pendingPublications.clear();
@@ -91,6 +97,25 @@ export function ChainEventInvalidation() {
         current.addEventListener(type, (event) => {
           if (disposed || current !== source) return;
           observeEvent(queryClient, (event as MessageEvent).lastEventId ?? "");
+          if (type === "names") {
+            try {
+              const payload: unknown = JSON.parse((event as MessageEvent).data);
+              // Only recognized publication notifications are safe to
+              // refresh silently. Unknown or malformed events fail closed.
+              if (
+                typeof payload !== "object" ||
+                payload === null ||
+                ("invalidated" in payload && payload.invalidated !== false) ||
+                !(
+                  ("publication" in payload && decimalBlock(payload.publication)) ||
+                  ("directory" in payload && decimalBlock(payload.directory))
+                )
+              )
+                withdrawNames = true;
+            } catch {
+              withdrawNames = true;
+            }
+          }
           if (type === "status") {
             try {
               const payload: unknown = JSON.parse((event as MessageEvent).data);
@@ -112,12 +137,16 @@ export function ChainEventInvalidation() {
         });
       }
       current.onopen = () => {
-        if (!disposed && current === source) schedule(eventTypes);
+        if (!disposed && current === source) {
+          withdrawNames = true;
+          schedule(eventTypes);
+        }
       };
       current.onerror = () => {
         if (disposed || current !== source || current.readyState !== EventSource.CLOSED) return;
         current.close();
         source = undefined;
+        withdrawNames = true;
         schedule(eventTypes);
         reconnect = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 30_000);

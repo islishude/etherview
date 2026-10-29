@@ -1,3 +1,4 @@
+import { subscribeNames } from "@/ens/nameEvents";
 import {
   chainQueryMeta,
   statusQueryMeta,
@@ -41,7 +42,7 @@ class FakeEventSource {
     this.closed = true;
   }
 
-  emit(type: "head" | "reorg" | "status", lastEventId = "1", data = "{}") {
+  emit(type: "head" | "reorg" | "status" | "names", lastEventId = "1", data = "{}") {
     for (const listener of this.listeners.get(type) ?? [])
       listener(new MessageEvent(type, { lastEventId, data }));
   }
@@ -171,6 +172,50 @@ describe("durable chain event invalidation", () => {
     expect(client.getQueryData(["user-operation", "hash"])).toBeUndefined();
     expect(shouldInvalidateFromChainEvent("head", userOperationQueryMeta)).toBe(true);
     view.unmount();
+  });
+
+  it("separates progress and publication refresh from invalidation, reorg and reconnect", async () => {
+    const client = new QueryClient();
+    const notices = vi.fn();
+    const unsubscribe = subscribeNames(client, notices);
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChainEventInvalidation />
+      </QueryClientProvider>,
+    );
+    const source = FakeEventSource.instances[0]!;
+    const emit = async (type: "names" | "status" | "reorg", data: string) => {
+      await act(async () => {
+        source.emit(type, "1", data);
+        await vi.advanceTimersByTimeAsync(250);
+      });
+    };
+    await emit("status", '{"reason":"names_progress","source":"1"}');
+    expect(notices).not.toHaveBeenCalled();
+    await emit("names", '{"publication":"9007199254740993"}');
+    expect(notices).toHaveBeenLastCalledWith("refresh");
+    await emit("names", '{"directory":"2"}');
+    expect(notices).toHaveBeenLastCalledWith("refresh");
+    await act(async () => {
+      source.emit("names", "3", '{"source":"1","invalidated":true}');
+      source.emit("names", "4", '{"publication":"4"}');
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(notices).toHaveBeenLastCalledWith("invalidate");
+    for (const data of ["{}", "bad JSON", '{"publication":2}']) {
+      await emit("names", data);
+      expect(notices).toHaveBeenLastCalledWith("invalidate");
+    }
+    await emit("reorg", "{}");
+    expect(notices).toHaveBeenLastCalledWith("invalidate");
+    notices.mockClear();
+    await act(async () => {
+      source.onopen?.();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(notices).toHaveBeenCalledExactlyOnceWith("invalidate");
+    view.unmount();
+    unsubscribe();
   });
 
   it("invalidates chain queries without waking unrelated account work", () => {

@@ -8,7 +8,13 @@ export function useNameFreshness(items: SearchResult[] | undefined) {
   const client = useQueryClient();
   const [invalid, setInvalid] = useState(false);
   const [now, setNow] = useState(Date.now);
-  useEffect(() => subscribeNames(client, () => setInvalid(true)), [client]);
+  useEffect(
+    () =>
+      subscribeNames(client, (change) => {
+        if (change === "invalidate") setInvalid(true);
+      }),
+    [client],
+  );
   useEffect(() => {
     setInvalid(false);
     setNow(Date.now());

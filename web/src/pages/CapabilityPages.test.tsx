@@ -881,6 +881,40 @@ describe("P50 capability pages", () => {
     ).toBe(false);
   });
 
+  it.each([
+    { enabled: true, coverage: "incomplete", visible: true },
+    { enabled: true, coverage: "complete", visible: false },
+    { enabled: true, coverage: undefined, visible: false },
+    { enabled: false, coverage: "incomplete", visible: false },
+  ])(
+    "shows name history status only when applicable: %j",
+    async ({ enabled, coverage, visible }) => {
+      const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === "/api/v1/config") return configResponse({ ens: enabled });
+        if (path === "/api/v1/status") {
+          const body = await statusResponse("520", "500").json();
+          body.data.names = coverage ? [{ state: "sync_pending", coverage }] : [];
+          return Response.json(body);
+        }
+        return apiError("not_found", 404);
+      });
+      vi.stubGlobal("fetch", fetcher);
+      renderExplorer("/status");
+      await screen.findByRole("heading", { name: "Configured optional features" });
+      const notice = "Name history syncing; verified names available.";
+      if (visible) expect(await screen.findByText(notice)).toBeVisible();
+      else expect(screen.queryByText(notice)).not.toBeInTheDocument();
+      expect(
+        fetcher.mock.calls.filter(([input]) => String(input) === "/api/v1/status"),
+      ).toHaveLength(1);
+      await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+      const translated = "名称历史同步中，已验证名称可用。";
+      if (visible) expect(await screen.findByText(translated)).toBeVisible();
+      else expect(screen.queryByText(translated)).not.toBeInTheDocument();
+    },
+  );
+
   it("localizes sync facts separately from configured feature availability", async () => {
     vi.stubGlobal(
       "fetch",

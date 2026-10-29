@@ -3,6 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { SearchResult } from "@/api/heyapi/types.gen";
+import { notifyNames } from "./nameEvents";
 import { useNameFreshness } from "./useNameFreshness";
 
 afterEach(() => vi.useRealTimers());
@@ -38,6 +39,9 @@ it("withdraws profile fields while retaining known names at expiry without a str
     ),
   });
   expect(result.current.items).toHaveLength(2);
+  act(() => notifyNames(client, "refresh"));
+  expect(result.current.withdrawn).toBe(false);
+  expect(result.current.items?.[0]?.name_details?.registrant.state).toBe("value");
   act(() => vi.advanceTimersByTime(1000));
   expect(result.current.items).toHaveLength(2);
   expect(result.current.items?.[0]?.name_details?.registrant.state).toBe("pending");
@@ -46,4 +50,6 @@ it("withdraws profile fields while retaining known names at expiry without a str
   expect(result.current.items).toHaveLength(2);
   expect(result.current.items?.[1]?.name_details?.registrant.state).toBe("pending");
   expect(result.current.withdrawn).toBe(false);
+  act(() => notifyNames(client, "invalidate"));
+  expect(result.current.withdrawn).toBe(true);
 });

@@ -138,3 +138,109 @@ it("keeps missing and failed publication entries as exact addresses", async () =
   setup();
   expect(await screen.findByText(address(1))).toBeVisible();
 });
+
+it("retains the visible batch during publication refresh and atomically replaces it", async () => {
+  let pending: (() => void) | undefined;
+  let calls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const n = ++calls;
+      if (n === 4)
+        await new Promise<void>((resolve) => {
+          pending = resolve;
+        });
+      return response(
+        new URL(String(input), "http://localhost"),
+        n <= 2 ? "old.test" : "new.test",
+        n <= 2 ? "1" : "2",
+      );
+    }),
+  );
+  const { client } = setup(101);
+  expect(await screen.findAllByText("old.test")).toHaveLength(101);
+  act(() => notifyNames(client, "refresh"));
+  await waitFor(() => expect(pending).toBeTypeOf("function"));
+  expect(screen.getAllByText("old.test")).toHaveLength(101);
+  expect(screen.queryByText("new.test")).toBeNull();
+  await act(async () => pending!());
+  expect(await screen.findAllByText("new.test")).toHaveLength(101);
+  expect(screen.queryByText("old.test")).toBeNull();
+});
+
+it("withdraws immediately on real invalidation and ignores the in-flight refresh", async () => {
+  let pending: (() => void) | undefined;
+  let calls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const n = ++calls;
+      if (n === 2)
+        await new Promise<void>((resolve) => {
+          pending = resolve;
+        });
+      if (n === 3) throw new Error("unavailable after invalidation");
+      return response(new URL(String(input), "http://localhost"), "old.test", String(n));
+    }),
+  );
+  const { client } = setup();
+  await screen.findByText("old.test");
+  act(() => notifyNames(client, "refresh"));
+  await waitFor(() => expect(pending).toBeTypeOf("function"));
+  act(() => notifyNames(client, "invalidate"));
+  expect(screen.queryByText("old.test")).toBeNull();
+  await act(async () => pending!());
+  await waitFor(() => expect(calls).toBe(3));
+  expect(screen.queryByText("old.test")).toBeNull();
+});
+
+it("a failed background refresh does not withdraw or extend unexpired names", async () => {
+  let calls = 0;
+  const expiry = Date.now() + 500;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      if (++calls > 1) throw new Error("network unavailable");
+      return response(new URL(String(input), "http://localhost"), "brief.test", "1", expiry);
+    }),
+  );
+  const { client } = setup();
+  await screen.findByText("brief.test");
+  act(() => notifyNames(client, "refresh"));
+  await waitFor(() => expect(calls).toBe(2));
+  expect(screen.getByText("brief.test")).toBeVisible();
+  await waitFor(() => expect(screen.queryByText("brief.test")).toBeNull());
+  expect(calls).toBe(2);
+});
+
+it("withdraws an invalid snapshot during refresh before retrying the current publication", async () => {
+  let retry: (() => void) | undefined;
+  let calls = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const n = ++calls;
+      if (n === 2)
+        return Response.json(
+          { error: { code: "invalid_cursor", message: "Expired snapshot", request_id: "test" } },
+          { status: 400 },
+        );
+      if (n === 3)
+        await new Promise<void>((resolve) => {
+          retry = resolve;
+        });
+      return response(
+        new URL(String(input), "http://localhost"),
+        n === 1 ? "old.test" : "current.test",
+        String(n),
+      );
+    }),
+  );
+  const { client } = setup();
+  await screen.findByText("old.test");
+  act(() => notifyNames(client, "refresh"));
+  await waitFor(() => expect(retry).toBeTypeOf("function"));
+  expect(screen.queryByText("old.test")).toBeNull();
+  await act(async () => retry!());
+  expect(await screen.findByText("current.test")).toBeVisible();
+});
