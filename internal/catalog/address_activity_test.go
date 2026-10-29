@@ -128,7 +128,7 @@ func TestAddressERC20TransfersExposeExactBlockDecimals(t *testing.T) {
 func TestAddressActivityPendingIsExplicitAndHasNoRows(t *testing.T) {
 	reader, backend := openCatalog(t, snapshotStep("548", bytesOf(0xaa, 32)), browsingStep("pending"), catalogQueryStep{contains: "FROM candidates", rows: catalogRows(16)})
 	page, err := reader.AddressERC20Transfers(t.Context(), AddressActivityRequest{ChainID: "1", Address: "0x" + strings.Repeat("11", 20), Limit: 2})
-	if err != nil || len(page.Items) != 0 || page.Snapshot.Browsing.State != "pending" {
+	if err != nil || page.Items == nil || len(page.Items) != 0 || page.Snapshot.Browsing.State != "pending" {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	assertCatalogConsumed(t, backend)

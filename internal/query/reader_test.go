@@ -882,7 +882,7 @@ func TestSearchReadsUnknownNameFromCatalog(t *testing.T) {
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
 	results, _, err := reader.Search(t.Context(), "unknown.eth", "", 20)
-	if err != nil || len(results) != 0 {
+	if err != nil || results == nil || len(results) != 0 {
 		t.Fatalf("results=%v err=%v", results, err)
 	}
 }

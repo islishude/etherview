@@ -98,8 +98,8 @@ func TestHomeSnapshotSupportsEmptyChainWithoutRuntimeEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.EventID != 0 || len(snapshot.Blocks) != 0 ||
-		len(snapshot.Transactions) != 0 || snapshot.Status.CoreReady {
+	if snapshot.EventID != 0 || snapshot.Blocks == nil || len(snapshot.Blocks) != 0 ||
+		snapshot.Transactions == nil || len(snapshot.Transactions) != 0 || snapshot.Status.CoreReady {
 		t.Fatalf("empty home snapshot = %+v", snapshot)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/browsing"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/publicquery"
 )
@@ -121,6 +122,53 @@ func TestUserOperationHandlersFailExplicitlyWhenReaderIsUnavailable(t *testing.T
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/user-operations", nil))
 	if recorder.Code != http.StatusServiceUnavailable || !json.Valid(recorder.Body.Bytes()) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestUserOperationListsEncodeEmptyArraysAndPreserveBrowsingStatus(t *testing.T) {
+	t.Parallel()
+	hash := "0x" + repeatHex("12", 32)
+	address := "0x" + repeatHex("34", 20)
+	for _, state := range []string{"complete", "partial", "pending"} {
+		for _, resource := range []string{"user-operations", "transactions/" + hash + "/user-operations", "addresses/" + address + "/user-operations"} {
+			t.Run(state+"/"+resource, func(t *testing.T) {
+				reader := &fakeUserOperationReader{page: publicquery.UserOperationPage{
+					Items:         []gen.UserOperationSummary{},
+					CoverageStart: 10, CoverageEnd: 20,
+					Browsing: &browsing.Status{
+						State: state, ChainID: "1", BlockNumber: "20", BlockHash: hash,
+						FromBlock: "10", ToBlock: "20", Revision: "9007199254740993",
+					},
+				}}
+				handler, err := New(Options{Config: config.Default(), Reader: fakeReader{}, UserOperations: reader})
+				if err != nil {
+					t.Fatal(err)
+				}
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/"+resource, nil))
+				if recorder.Code != http.StatusOK {
+					t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+				}
+				var response gen.UserOperationListResponse
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Data == nil || len(response.Data) != 0 {
+					t.Fatalf("expected an empty JSON array, body=%s", recorder.Body.String())
+				}
+				status := response.Meta.Browsing
+				if status == nil || string(status.State) != state || status.Revision != "9007199254740993" ||
+					status.Snapshot.BlockHash != hash || status.Snapshot.BlockNumber != "20" ||
+					status.FromBlock != "10" || status.ToBlock != "20" {
+					t.Fatalf("browsing metadata changed: %+v", status)
+				}
+				if response.Meta.NextCursor != nil ||
+					(response.Meta.CoverageStart != nil) != (state == "complete") ||
+					(response.Meta.CoverageEnd != nil) != (state == "complete") {
+					t.Fatalf("misleading empty-page metadata: %+v", response.Meta)
+				}
+			})
+		}
 	}
 }
 
