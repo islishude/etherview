@@ -813,7 +813,12 @@ See [x402 billing gate](../preview/docs/testing.md#x402-billing-gate).
   completion report. For planned work, retain milestone acceptance in the child
   plan once, with revision/environment and material limits. Do not paste full
   logs or create plan items merely to record test execution.
-- A targeted test is required for every fixed regression.
+- A targeted test is required for every fixed regression. Place it in the suite
+  that owns the behavior, named for the contract or input condition rather than
+  the incident, audit or redesign that introduced it. Extend an existing table
+  or scenario when setup and assertions match. Consolidation must preserve
+  distinct edge cases and the separate evidence provided by unit, PostgreSQL
+  integration and embedded-browser tests.
 - Integration tests that require optional local services must be reproducible
   through documented Compose profiles.
 - Load and soak evidence records the revision, dataset, hardware, RPC behavior,

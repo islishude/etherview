@@ -74,29 +74,3 @@ test("feature styles retain grid transitions on both sides of their breakpoints"
     ).toBeLessThanOrEqual(1);
   }
 });
-
-for (const route of ["blocks", "transactions"]) {
-  test(`${route} list renders without coverage context or chain status requests`, async ({
-    page,
-  }, testInfo) => {
-    const statusRequests: string[] = [];
-    page.on("request", (request) => {
-      if (new URL(request.url()).pathname === "/api/v1/status") statusRequests.push(request.url());
-    });
-    await page.goto(`/${route}`);
-    await expect(page.getByRole("table")).toBeVisible();
-    for (const width of [390, 768, 1440]) {
-      await page.setViewportSize({ width, height: 1000 });
-      await expect(page.locator(".chain-context")).toHaveCount(0);
-      await expect(page.getByRole("note")).toHaveCount(0);
-      await expect(
-        page.getByRole("heading", { name: "Coverage and finality context" }),
-      ).toHaveCount(0);
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
-      ).toBeLessThanOrEqual(1);
-      await page.screenshot({ path: testInfo.outputPath(`${route}-${width}.png`), fullPage: true });
-    }
-    expect(statusRequests).toEqual([]);
-  });
-}

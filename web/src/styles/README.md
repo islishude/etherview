@@ -121,11 +121,11 @@ Use `numeric` for right-aligned quantities without rounding source strings.
 ## Visual acceptance
 
 `make test-e2e` serves the production SPA through the Go embedded browser fixture.
-`e2e/redesign.spec.ts` checks seven representative routes at 390, 768 and 1440px,
+`e2e/appearance.spec.ts` checks seven representative routes at 390, 768 and 1440px,
 in English and Chinese, in both themes. Each route checks WCAG 2.1 AA with axe,
 page overflow, CSP/console failures and unexpected external requests, then saves
 a named screenshot in `web/test-results/` and attaches it to the Playwright
 report. Inspect these artifacts after structural or token changes. The account
 and Watchlist browser flows also save authenticated account, billing-admin and
-browser notification settings. Navigation tests cover keyboard order, Escape, focus
+browser notification settings. `e2e/navigation.spec.ts` covers keyboard order, Escape, focus
 restoration, mobile disclosure and capability-gated entries.
