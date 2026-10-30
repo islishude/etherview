@@ -98,9 +98,15 @@ describe("billing pages", () => {
     await connectTestWallet(user);
     await user.click(document.querySelector(".auth-action-panel button") as HTMLElement);
 
-    expect(await screen.findByRole("heading", { name: "Payment history" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Add credit" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "History" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "History" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Record type" }), "payments");
+    expect(await screen.findByRole("heading", { name: "History" })).toBeVisible();
     expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();
-    expect(screen.getByText(/follows the HttpOnly Cookie session/)).toBeVisible();
+    for (const link of document.querySelectorAll(".identity-card .account-address")) {
+      expect(link).toHaveAttribute("href", `/address/${address}`);
+    }
     expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
     expect(document.body).not.toHaveTextContent(currentUserID);
     expect(document.body).not.toHaveTextContent(apiKeyPrefix);

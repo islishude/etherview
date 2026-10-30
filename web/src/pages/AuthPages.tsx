@@ -26,7 +26,7 @@ import { SIWELoginControl } from "@/components/SIWELoginControl";
 import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
 import { chainsMatch } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
-import { PersonalBillingHistory } from "./BillingPages";
+import { PersonalBilling } from "./PersonalBilling";
 import { Page } from "./pages";
 
 const ADMIN_PAGE_SIZE = 25;
@@ -105,7 +105,13 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
               </strong>
               {wallet.active ? (
                 <>
-                  <code>{wallet.active.account}</code>
+                  <Link
+                    className="account-address"
+                    to="/address/$address"
+                    params={{ address: wallet.active.account }}
+                  >
+                    <code>{wallet.active.account}</code>
+                  </Link>
                   <p>
                     {walletOnChain
                       ? t("auth.walletState.correctChain", {
@@ -140,7 +146,13 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
               </strong>
               {auth.session.authenticated && sessionUser ? (
                 <>
-                  <code>{sessionUser.address}</code>
+                  <Link
+                    className="account-address"
+                    to="/address/$address"
+                    params={{ address: sessionUser.address }}
+                  >
+                    <code>{sessionUser.address}</code>
+                  </Link>
                   <p>
                     {walletMatchesUser
                       ? t("auth.sessionState.walletMatches")
@@ -219,7 +231,13 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                   <div>
                     <dt>{t("auth.fields.address")}</dt>
                     <dd>
-                      <code>{sessionUser.address}</code>
+                      <Link
+                        className="account-address"
+                        to="/address/$address"
+                        params={{ address: sessionUser.address }}
+                      >
+                        <code>{sessionUser.address}</code>
+                      </Link>
                     </dd>
                   </div>
                   <div>
@@ -320,7 +338,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
           {billingEnabled &&
             auth.session.authenticated &&
             sessionUser &&
-            activeTab === "billing" && <PersonalBillingHistory />}
+            activeTab === "billing" && <PersonalBilling key={privateIdentity} />}
         </>
       )}
     </Page>

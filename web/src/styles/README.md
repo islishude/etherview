@@ -7,7 +7,8 @@ in cascade order:
    and navigation.
 2. `explorer.css` — import-only manifest for the explorer modules listed below.
 3. `wallet.css` — contract workspace, wallet controls, actions, and notices.
-4. `account.css` — account, API key, administration, and billing pages.
+4. `account.css` — account, API key, administration, and shared billing primitives.
+   `pages/PersonalBilling.css` loads with the account route and owns personal billing layout.
 5. `analytics.css` — shared form controls and chart pages.
 6. `verification.css` — verification, proxy history, and ABI forms.
 7. `responsive.css` — footer/network-picker additions, animations, and shared

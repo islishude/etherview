@@ -98,7 +98,7 @@ describe("browser backend boundary", () => {
   });
 
   it("loads the x402 SDK only from the explicit Account top-up action", () => {
-    const billingPage = readFileSync(`${sourceRoot}/pages/BillingPages.tsx`, "utf8");
+    const billingPage = readFileSync(`${sourceRoot}/pages/PersonalBilling.tsx`, "utf8");
     const topup = readFileSync(`${sourceRoot}/billing/topup.ts`, "utf8");
 
     expect(billingPage).not.toMatch(/from\s+["']@\/billing\/topup["']/u);
