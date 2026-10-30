@@ -72,6 +72,12 @@ func (reader *Reader) Detail(ctx context.Context, request DetailRequest) (Series
 		if queryErr != nil {
 			return queryErr
 		}
+		if request.To.After(snapshot.completedTo) {
+			request.To = snapshot.completedTo
+		}
+		if !request.From.Before(request.To) {
+			return ErrPending
+		}
 		coverage, queryErr = readCoverage(ctx, queries, chainNumeric)
 		if queryErr != nil {
 			return queryErr
@@ -80,7 +86,7 @@ func (reader *Reader) Detail(ctx context.Context, request DetailRequest) (Series
 			request.From.Before(*coverage.AvailableFrom) && !coverage.Complete {
 			return PendingError{Coverage: coverage}
 		}
-		if queryErr = requireCleanAnalyticsRange(ctx, queries, chainNumeric, request.From, request.To); queryErr != nil {
+		if queryErr = requireCleanAnalyticsRange(ctx, queries, chainNumeric, snapshot.BlockNumber, request.From, request.To); queryErr != nil {
 			if errors.Is(queryErr, ErrPending) {
 				return PendingError{Coverage: coverage}
 			}
@@ -123,12 +129,16 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 	var overview Overview
 	var hours []hourRow
 	var skipMetrics bool
+	asOf := now
 	err := dbaccess.WithTransactionOptions(ctx, reader.db, pgx.TxOptions{
 		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
 	}, func(queries *dbgen.Queries) error {
 		snapshot, queryErr := readSnapshot(ctx, queries, chainNumeric, chainID)
 		if queryErr != nil {
 			return queryErr
+		}
+		if asOf.After(snapshot.completedTo) {
+			asOf = snapshot.completedTo
 		}
 		coverage, queryErr := readCoverage(ctx, queries, chainNumeric)
 		if queryErr != nil {
@@ -138,7 +148,7 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 			GeneratedAt: now, Snapshot: snapshot, Coverage: coverage,
 			Pending: !coverage.Complete,
 		}
-		from := now.Add(-7 * 24 * time.Hour)
+		from := asOf.Add(-7 * 24 * time.Hour)
 		if coverage.AvailableFrom == nil || coverage.AvailableTo == nil {
 			overview.Pending = true
 			skipMetrics = true
@@ -147,7 +157,7 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 		if from.Before(*coverage.AvailableFrom) {
 			from = *coverage.AvailableFrom
 		}
-		if queryErr = requireCleanAnalyticsRange(ctx, queries, chainNumeric, from, now); queryErr != nil {
+		if queryErr = requireCleanAnalyticsRange(ctx, queries, chainNumeric, snapshot.BlockNumber, from, asOf); queryErr != nil {
 			if errors.Is(queryErr, ErrPending) {
 				overview.Pending = true
 				skipMetrics = true
@@ -157,7 +167,7 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 		}
 		rows, queryErr := queries.ListAnalyticsHours(ctx, dbgen.ListAnalyticsHoursParams{
 			BucketInterval: string(IntervalHour), ChainID: chainNumeric,
-			ToTime: analyticsTime(now), FromTime: analyticsTime(from),
+			ToTime: analyticsTime(asOf), FromTime: analyticsTime(from),
 		})
 		if queryErr != nil {
 			return fmt.Errorf("query overview hours: %w", queryErr)
@@ -171,11 +181,11 @@ func (reader *Reader) Overview(ctx context.Context, chainID string, now time.Tim
 	if skipMetrics {
 		return overview, nil
 	}
-	currentFrom, previousFrom := now.Add(-24*time.Hour), now.Add(-48*time.Hour)
+	currentFrom, previousFrom := asOf.Add(-24*time.Hour), asOf.Add(-48*time.Hour)
 	for _, metric := range metricOrder {
 		previewPoints := aggregateHours(hours, metric, IntervalDay, now)
 		previewPoints = latestPoints(previewPoints, 7)
-		current := aggregateWindow(hours, metric, currentFrom, now)
+		current := aggregateWindow(hours, metric, currentFrom, asOf)
 		previous := aggregateWindow(hours, metric, previousFrom, currentFrom)
 		var change *string
 		if current != nil && previous != nil {
@@ -495,12 +505,13 @@ func readSnapshot(
 		}
 		return Snapshot{}, fmt.Errorf("read analytics snapshot: %w", err)
 	}
-	if len(row.BlockHash) != 32 || !canonicalPositiveIntegerOrZero(row.BlockNumber) {
+	if len(row.BlockHash) != 32 || !canonicalPositiveIntegerOrZero(row.BlockNumber) || !row.CompletedTo.Valid {
 		return Snapshot{}, ErrCorruptData
 	}
 	return Snapshot{
 		ChainID: chainID, BlockNumber: row.BlockNumber,
-		BlockHash: "0x" + hex.EncodeToString(row.BlockHash),
+		BlockHash:   "0x" + hex.EncodeToString(row.BlockHash),
+		completedTo: row.CompletedTo.Time.UTC(),
 	}, nil
 }
 
@@ -525,23 +536,24 @@ func requireCleanAnalyticsRange(
 	ctx context.Context,
 	queries *dbgen.Queries,
 	chainNumeric pgtype.Numeric,
+	maxBlock string,
 	from, to time.Time,
 ) error {
-	dirty, err := queries.CountDirtyAnalyticsHours(ctx, chainNumeric, analyticsTime(to), analyticsTime(from))
+	dirty, err := queries.CountDirtyAnalyticsHours(ctx, dbgen.CountDirtyAnalyticsHoursParams{ChainID: chainNumeric, ToTime: analyticsTime(to), FromTime: analyticsTime(from), MaxBlockNumber: analyticsNumeric(maxBlock)})
 	if err != nil {
 		return fmt.Errorf("read analytics dirty range: %w", err)
 	}
 	if dirty != "0" {
 		return ErrPending
 	}
-	missing, err := queries.CountMissingAnalyticsRollups(ctx, chainNumeric, analyticsTime(from), analyticsTime(to))
+	missing, err := queries.CountMissingAnalyticsRollups(ctx, dbgen.CountMissingAnalyticsRollupsParams{ChainID: chainNumeric, ToTime: analyticsTime(to), FromTime: analyticsTime(from), MaxBlockNumber: analyticsNumeric(maxBlock)})
 	if err != nil {
 		return fmt.Errorf("read analytics rollup range: %w", err)
 	}
 	if missing != "0" {
 		return ErrPending
 	}
-	pending, err := queries.CountPendingAnalyticsSources(ctx, chainNumeric, analyticsTime(from), analyticsTime(to))
+	pending, err := queries.CountPendingAnalyticsSources(ctx, dbgen.CountPendingAnalyticsSourcesParams{ChainID: chainNumeric, ToTime: analyticsTime(to), FromTime: analyticsTime(from), MaxBlockNumber: analyticsNumeric(maxBlock)})
 	if err != nil {
 		return fmt.Errorf("read analytics source range: %w", err)
 	}

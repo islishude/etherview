@@ -371,7 +371,7 @@ func TestNFTOwnerAndBalancesRequireExactCanonicalReconciliation(t *testing.T) {
 			Exists: true, Owner: "0x" + strings.Repeat("12", 20), Confidence: NFTStateConfidenceRPCExact,
 		}}
 		catalog, backend := openCatalogWithOptions(t, Options{NFTState: state},
-			snapshotStep("100", bytesOf(0xaa, 32)), stageStep("complete"),
+			catalogQueryStep{contains: "CatalogCompletedSnapshot", rows: catalogRows(2, []any{"100", bytesOf(0xaa, 32)})}, stageStep("complete"),
 			catalogQueryStep{contains: "FROM token_contracts", rows: catalogRows(13, tokenRow(token, "erc721", "90"))},
 		)
 		ownership, err := catalog.NFTOwner(context.Background(), "1", "0x"+strings.Repeat("cc", 20), "99")
@@ -494,12 +494,12 @@ func statRow(block string) []any {
 
 func TestBlockStatsRequireCompleteCanonicalRange(t *testing.T) {
 	catalog, backend := openCatalog(t,
-		snapshotStep("101", bytesOf(0xaa, 32)),
+		catalogQueryStep{contains: "CatalogStatsReadSnapshot", rows: catalogRows(2, []any{"101", bytesOf(0xaa, 32)})},
 		catalogQueryStep{contains: "WITH heights AS", rows: catalogRows(3)},
 		catalogQueryStep{contains: "WITH heights AS", rows: catalogRows(3)},
 		catalogQueryStep{contains: "FROM block_statistics AS stats", rows: catalogRows(19, statRow("100"), statRow("101"))},
 	)
-	stats, err := catalog.BlockStats(context.Background(), BlockStatsRequest{ChainID: "1", FromBlock: "100", ToBlock: "101"})
+	stats, err := catalog.BlockStats(context.Background(), BlockStatsRequest{ChainID: "1", FromBlock: "100", ToBlock: "102"})
 	if err != nil || len(stats) != 2 || stats[0].TransactionCount != "9007199254740993" ||
 		stats[0].BaseFeePerGas == nil || stats[0].TransactionsPerSecond == nil || stats[0].NFTTransferCount != "3" {
 		t.Fatalf("stats=%+v err=%v", stats, err)
@@ -507,10 +507,10 @@ func TestBlockStatsRequireCompleteCanonicalRange(t *testing.T) {
 	assertCatalogConsumed(t, backend)
 
 	missing, missingBackend := openCatalog(t,
-		snapshotStep("101", bytesOf(0xaa, 32)),
+		catalogQueryStep{contains: "CatalogStatsReadSnapshot", rows: catalogRows(2, []any{"101", bytesOf(0xaa, 32)})},
 		catalogQueryStep{contains: "WITH heights AS", rows: catalogRows(3, []any{"100", bytesOf(0x64, 32), nil})},
 	)
-	_, err = missing.BlockStats(context.Background(), BlockStatsRequest{ChainID: "1", FromBlock: "100", ToBlock: "101"})
+	_, err = missing.BlockStats(context.Background(), BlockStatsRequest{ChainID: "1", FromBlock: "100", ToBlock: "102"})
 	var stageError StageUnavailableError
 	if !errors.As(err, &stageError) || stageError.Stage != StageStats || stageError.State != StageMissing {
 		t.Fatalf("missing stats error=%#v", err)

@@ -23,7 +23,7 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 	if err := validateChainID(request.ChainID); err != nil {
 		return nil, err
 	}
-	expectedCount, err := decimalRangeSize(request.FromBlock, request.ToBlock, catalog.options.MaxChartPoints)
+	_, err := decimalRangeSize(request.FromBlock, request.ToBlock, catalog.options.MaxChartPoints)
 	if err != nil {
 		return nil, err
 	}
@@ -32,12 +32,14 @@ func (catalog *Postgres) BlockStats(ctx context.Context, request BlockStatsReque
 		return nil, err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
+	snapshot, err := readCompletedStatsSnapshot(ctx, tx, request.ChainID, request.FromBlock, request.ToBlock)
 	if err != nil {
 		return nil, err
 	}
-	if compareUnsignedDecimal(request.ToBlock, snapshot.BlockNumber) > 0 {
-		return nil, fmt.Errorf("%w: statistics range exceeds the canonical snapshot", ErrInvalidInput)
+	request.ToBlock = snapshot.BlockNumber
+	expectedCount, err := decimalRangeSize(request.FromBlock, request.ToBlock, catalog.options.MaxChartPoints)
+	if err != nil {
+		return nil, err
 	}
 	if err := requireStageRange(ctx, tx, request.ChainID, request.FromBlock, request.ToBlock, StageStats); err != nil {
 		return nil, err
@@ -269,13 +271,11 @@ func (catalog *Postgres) AggregateStats(ctx context.Context, request AggregateSt
 		return AggregateStats{}, err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
+	snapshot, err := readCompletedStatsSnapshot(ctx, tx, request.ChainID, request.FromBlock, request.ToBlock)
 	if err != nil {
 		return AggregateStats{}, err
 	}
-	if compareUnsignedDecimal(request.ToBlock, snapshot.BlockNumber) > 0 {
-		return AggregateStats{}, fmt.Errorf("%w: statistics range exceeds the canonical snapshot", ErrInvalidInput)
-	}
+	request.ToBlock = snapshot.BlockNumber
 	for _, stage := range []Stage{StageStats, StageToken} {
 		if err := requireStageRange(ctx, tx, request.ChainID, request.FromBlock, request.ToBlock, stage); err != nil {
 			return AggregateStats{}, err

@@ -13,14 +13,39 @@ import (
 
 const countDirtyAnalyticsHours = `-- name: CountDirtyAnalyticsHours :one
 SELECT count(*)::text AS dirty_count
-FROM chart_rollup_dirty_hours
-WHERE chain_id = $1::numeric
-  AND bucket_start < $2::timestamptz
-  AND bucket_start + interval '1 hour' > $3::timestamptz
+FROM chart_rollup_dirty_hours AS dirty
+WHERE dirty.chain_id = $1::numeric
+  AND dirty.bucket_start < $2::timestamptz
+  AND dirty.bucket_start + interval '1 hour' > $3::timestamptz
+  AND NOT EXISTS (
+      SELECT 1 FROM chart_hourly_rollups AS rollup
+      WHERE rollup.chain_id = dirty.chain_id AND rollup.bucket_start = dirty.bucket_start
+  )
+  AND EXISTS (
+      SELECT 1 FROM canonical_blocks AS canonical
+      JOIN blocks AS block ON block.chain_id = canonical.chain_id
+       AND block.number = canonical.number AND block.hash = canonical.block_hash
+      WHERE canonical.chain_id = dirty.chain_id
+        AND canonical.number <= $4::numeric
+        AND block.timestamp >= extract(epoch FROM dirty.bucket_start)::numeric
+        AND block.timestamp < extract(epoch FROM dirty.bucket_start + interval '1 hour')::numeric
+  )
 `
 
-func (q *Queries) CountDirtyAnalyticsHours(ctx context.Context, chainID pgtype.Numeric, toTime pgtype.Timestamptz, fromTime pgtype.Timestamptz) (string, error) {
-	row := q.db.QueryRow(ctx, countDirtyAnalyticsHours, chainID, toTime, fromTime)
+type CountDirtyAnalyticsHoursParams struct {
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	ToTime         pgtype.Timestamptz `db:"to_time" json:"to_time"`
+	FromTime       pgtype.Timestamptz `db:"from_time" json:"from_time"`
+	MaxBlockNumber pgtype.Numeric     `db:"max_block_number" json:"max_block_number"`
+}
+
+func (q *Queries) CountDirtyAnalyticsHours(ctx context.Context, arg CountDirtyAnalyticsHoursParams) (string, error) {
+	row := q.db.QueryRow(ctx, countDirtyAnalyticsHours,
+		arg.ChainID,
+		arg.ToTime,
+		arg.FromTime,
+		arg.MaxBlockNumber,
+	)
 	var dirty_count string
 	err := row.Scan(&dirty_count)
 	return dirty_count, err
@@ -41,13 +66,26 @@ LEFT JOIN chart_hourly_rollups AS rollup
      'UTC'
  )
 WHERE canonical.chain_id = $1::numeric
-  AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM $3::timestamptz)::numeric
-  AND rollup.bucket_start IS NULL
+  AND canonical.number <= $2::numeric
+  AND block.timestamp >= extract(epoch FROM $3::timestamptz)::numeric
+  AND block.timestamp < extract(epoch FROM $4::timestamptz)::numeric
+  AND (rollup.bucket_start IS NULL OR canonical.number > rollup.to_block)
 `
 
-func (q *Queries) CountMissingAnalyticsRollups(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error) {
-	row := q.db.QueryRow(ctx, countMissingAnalyticsRollups, chainID, fromTime, toTime)
+type CountMissingAnalyticsRollupsParams struct {
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber pgtype.Numeric     `db:"max_block_number" json:"max_block_number"`
+	FromTime       pgtype.Timestamptz `db:"from_time" json:"from_time"`
+	ToTime         pgtype.Timestamptz `db:"to_time" json:"to_time"`
+}
+
+func (q *Queries) CountMissingAnalyticsRollups(ctx context.Context, arg CountMissingAnalyticsRollupsParams) (string, error) {
+	row := q.db.QueryRow(ctx, countMissingAnalyticsRollups,
+		arg.ChainID,
+		arg.MaxBlockNumber,
+		arg.FromTime,
+		arg.ToTime,
+	)
 	var missing_count string
 	err := row.Scan(&missing_count)
 	return missing_count, err
@@ -75,13 +113,26 @@ LEFT JOIN published_block_stage_results AS token_result
  AND token_result.stage_version = 2
  AND token_result.state = 'complete'
 WHERE canonical.chain_id = $1::numeric
-  AND block.timestamp >= extract(epoch FROM $2::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM $3::timestamptz)::numeric
+  AND canonical.number <= $2::numeric
+  AND block.timestamp >= extract(epoch FROM $3::timestamptz)::numeric
+  AND block.timestamp < extract(epoch FROM $4::timestamptz)::numeric
   AND (stats_result.block_number IS NULL OR token_result.block_number IS NULL)
 `
 
-func (q *Queries) CountPendingAnalyticsSources(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error) {
-	row := q.db.QueryRow(ctx, countPendingAnalyticsSources, chainID, fromTime, toTime)
+type CountPendingAnalyticsSourcesParams struct {
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	MaxBlockNumber pgtype.Numeric     `db:"max_block_number" json:"max_block_number"`
+	FromTime       pgtype.Timestamptz `db:"from_time" json:"from_time"`
+	ToTime         pgtype.Timestamptz `db:"to_time" json:"to_time"`
+}
+
+func (q *Queries) CountPendingAnalyticsSources(ctx context.Context, arg CountPendingAnalyticsSourcesParams) (string, error) {
+	row := q.db.QueryRow(ctx, countPendingAnalyticsSources,
+		arg.ChainID,
+		arg.MaxBlockNumber,
+		arg.FromTime,
+		arg.ToTime,
+	)
 	var pending_count string
 	err := row.Scan(&pending_count)
 	return pending_count, err
@@ -127,22 +178,26 @@ func (q *Queries) GetAnalyticsCoverage(ctx context.Context, chainID pgtype.Numer
 }
 
 const getAnalyticsSnapshot = `-- name: GetAnalyticsSnapshot :one
-SELECT canonical.number::text AS block_number, canonical.block_hash
-FROM canonical_blocks AS canonical
-WHERE canonical.chain_id = $1::numeric
-ORDER BY canonical.number DESC
+SELECT canonical.number::text AS block_number, canonical.block_hash,
+       (rollup.bucket_start + interval '1 hour')::timestamptz AS completed_to
+FROM chart_hourly_rollups AS rollup
+JOIN canonical_blocks AS canonical
+ ON canonical.chain_id = rollup.chain_id AND canonical.number = rollup.to_block
+WHERE rollup.chain_id = $1::numeric
+ORDER BY canonical.number DESC, rollup.bucket_start DESC
 LIMIT 1
 `
 
 type GetAnalyticsSnapshotRow struct {
-	BlockNumber string `db:"block_number" json:"block_number"`
-	BlockHash   []byte `db:"block_hash" json:"block_hash"`
+	BlockNumber string             `db:"block_number" json:"block_number"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	CompletedTo pgtype.Timestamptz `db:"completed_to" json:"completed_to"`
 }
 
 func (q *Queries) GetAnalyticsSnapshot(ctx context.Context, chainID pgtype.Numeric) (GetAnalyticsSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, getAnalyticsSnapshot, chainID)
 	var i GetAnalyticsSnapshotRow
-	err := row.Scan(&i.BlockNumber, &i.BlockHash)
+	err := row.Scan(&i.BlockNumber, &i.BlockHash, &i.CompletedTo)
 	return i, err
 }
 

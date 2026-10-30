@@ -139,7 +139,7 @@ func (catalog *Postgres) TokenHolderCount(
 		return TokenHolderSummary{}, err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	snapshot, err := readCanonicalSnapshot(ctx, tx, chainID)
+	snapshot, err := readCompletedHolderSnapshot(ctx, tx, chainID, tokenAddress)
 	if err != nil {
 		return TokenHolderSummary{}, err
 	}
@@ -171,7 +171,7 @@ func holderRequestSnapshot(
 	tokenAddress []byte,
 ) (Snapshot, []byte, bool, string, error) {
 	if request.Cursor == "" {
-		snapshot, err := readCanonicalSnapshot(ctx, tx, request.ChainID)
+		snapshot, err := readCompletedHolderSnapshot(ctx, tx, request.ChainID, tokenAddress)
 		return snapshot, make([]byte, 20), false, "", err
 	}
 	var cursor tokenHolderCursor

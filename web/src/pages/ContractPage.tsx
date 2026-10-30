@@ -131,6 +131,11 @@ export function ContractPage({ address }: { address: string }) {
       (proxy.data.state !== "unavailable" &&
         proxy.data.state !== "failed" &&
         proxy.data.detail.mechanism !== "cwia"));
+  // Published address artifacts are readable independently of proxy readiness.
+  // Keep interaction and submission eligibility behind classification above.
+  const showDirectSource =
+    showDirectArtifact ||
+    (validAddress && artifact.data !== undefined && proxy.data?.detail.mechanism !== "cwia");
   const interactionTargets = useMemo<readonly ContractInteractionTarget[]>(() => {
     if (!validAddress) return [];
     try {
@@ -376,7 +381,7 @@ export function ContractPage({ address }: { address: string }) {
                         {showProxySummary && proxyDetail ? (
                           <ProxySummary key={address} detail={proxyDetail} />
                         ) : null}
-                        {showDirectArtifact ? (
+                        {showDirectSource ? (
                           <ArtifactPanel
                             address={address}
                             artifact={artifact.data}

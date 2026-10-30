@@ -81,10 +81,18 @@ than the historical mechanism-only publication:
   the BeaconProxy runtime immutable. UUPS upgrades use the implementation ABI
   with the proxy as transaction target and have no separate management
   contract.
-- Completion and public reads recheck the current canonical Proxy observation
-  and current code identity for the proxy, implementation, and management
-  contract on the PostgreSQL writer. A reorg, upgrade, or metamorphic code
-  change hides the old binding without mutating its historical result.
+- All proxy detail reads select the latest successfully completed canonical
+  `proxy@2` publication. Page loads, manual refresh and pre-operation reads use
+  the same selection; pending, unavailable or failed processing at newer blocks
+  does not displace a complete snapshot. With no complete publication the API
+  returns not-ready. All observations, negative evidence, summaries, bindings,
+  implementation/management identities and Beacon counts are bounded by that
+  snapshot's exact hash in one writer transaction, retaining publication-generation
+  witnesses. The browser keeps its response until explicit refresh.
+- Pre-operation identity checks compare against the latest completed snapshot,
+  without requiring enrichment at the newest core block. Changed identities or
+  bindings still require refreshing the displayed target. Canonical and generation
+  checks remain scoped to the selected snapshot; there is no separate tip mode.
 - A generic or partial observation may remain visible as discovery evidence
   and, when the relation is unambiguous and high-confidence, may support
   ordinary implementation ABI calls through the proxy under a fresh full

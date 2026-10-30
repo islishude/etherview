@@ -4838,7 +4838,7 @@ export type GetTokenHolderCountError = GetTokenHolderCountErrors[keyof GetTokenH
 
 export type GetTokenHolderCountResponses = {
     /**
-     * Exact reconciled ERC-20 holder count at the current canonical snapshot.
+     * Exact reconciled ERC-20 holder count at the latest completed canonical snapshot.
      */
     200: TokenHolderCountResponse;
 };

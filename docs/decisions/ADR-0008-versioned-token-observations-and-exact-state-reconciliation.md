@@ -18,6 +18,11 @@ be retained under the same write-once trust boundary as NFT state.
 
 ## Decision
 
+NFT owner reads select the latest canonical completed `token@2` publication on
+both initial requests and refresh. Exact-state reconciliation uses that selected
+block hash; newer incomplete core blocks do not block the read. Database
+snapshots still close before RPC and canonicality is rechecked afterwards.
+
 - Token contract observations are immutable per chain, address, code hash, and
   observed block hash. Repeating the same code hash at a later block creates a
   new observation. Readers select the newest observation at or before their

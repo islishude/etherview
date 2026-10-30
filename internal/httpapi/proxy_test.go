@@ -149,6 +149,9 @@ func TestProxyHistoryRejectsStaleCursorAndBoundsInputs(t *testing.T) {
 	reader.err = errors.New("must not be called")
 	for _, path := range []string{
 		"/api/v1/contracts/not-an-address/proxy",
+		"/api/v1/contracts/" + address + "/proxy?fresh=true",
+		"/api/v1/contracts/" + address + "/proxy?fresh=",
+		"/api/v1/contracts/" + address + "/proxy?fresh=true&fresh=false",
 		"/api/v1/contracts/" + address + "/proxy?code_hash=ignored",
 		"/api/v1/contracts/" + address + "/proxy/upgrades?limit=101",
 		"/api/v1/contracts/" + address + "/proxy/upgrades?limit=01",

@@ -66,7 +66,7 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T15 | done   | P40-T12                            | Endpoint-scoped mempool replacement observations and unified included/pending/replaced transaction detail API                                                                          | migration, PostgreSQL, OpenAPI, handler, writer-routing, integration, and runtime E2E tests                       |
 | P40-T17 | done   | P20-T13, P30-T15, P40-T02          | Exact transaction-list Method projections from published execution identity and verified ABI selectors                                                                                 | OpenAPI/generation, exact identity/canonicality, selector collisions, pagination and integration tests            |
 | P40-T20 | done   | P20-T17, P40-T02, P40-T07, P40-T08 | Generated global/detail/transaction/address UserOperation resources, userOpHash search, and configuration-bound pagination                                                             | OpenAPI/generation, HTTP/query, coverage/cursor, raw-value, configuration, and runtime parity tests               |
-| P40-T21 | done   | P20-T18, P40-T03, P40-T06, P60-T13 | Native holder list/count and billable Etherscan list/count from complete current-tip snapshots                                                                                         | OpenAPI/generation, handler, cursor/reorg, billing, compatibility, and PostgreSQL tests                           |
+| P40-T21 | done   | P20-T18, P40-T03, P40-T06, P60-T13 | Native holder list/count and billable Etherscan list/count from complete published snapshots                                                                                         | OpenAPI/generation, handler, cursor/reorg, billing, compatibility, and PostgreSQL tests                           |
 | P40-T22 | done   | P20-T19, P20-T20, P40-T12          | Generated consensus/blob metadata, consensus-first slots with execution fallback, and exact-hash binary downloads                                                                      | generated contracts, HTTP/query, integrity, freshness, and runtime tests                                          |
 | P40-T23 | done   | P60-T18, P40-T08                   | SIWE/CSRF-authenticated address CSV exports, writer snapshot/coverage checks, bounded PostgreSQL admission, and exact complete files                                                   | OpenAPI/generation, snapshot/reorg, row/byte/time limits, JSON-only failure, concurrency, and runtime regressions |
 | P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                             |
@@ -74,6 +74,8 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T27 | done   | P20-T29                            | Database-only ENS reads, immutable snapshots and separate directory/resolution status                                                                                                  | Generated contracts, no upstream or ENS writes, canonical/expiry and pagination tests                             |
 | P40-T28 | done   | P20-T30                            | Database-only name detail and name-identity search with independent field states and publication snapshots                                                                             | Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests                           |
 | P40-T29 | done   | P20-T31                            | Database-only transaction-grouped ENS history and snapshot-bound event pagination                                                                                                      | ENS history regressions, generated contracts and applicable production/browser gates                              |
+| P40-T30 | done | P40-T11, P50-T84 | Published proxy browsing snapshots independent of the canonical tip, exact-hash fact selection, and unified completed-snapshot interaction reads | PostgreSQL snapshot/reorg/generation regressions, API/client, frontend/browser and generation/source/docs/plan gates |
+| P40-T31 | done | P40-T21, P40-T30 | Latest completed holder, NFT owner and statistics snapshots on initial reads and refresh; wallet actions independent of unrelated browsing invalidation | Snapshot lag/refresh/reorg regressions, wallet read/write regression, schema image and generated/source/docs/plan checks |
 
 P40-T06's authoritative compatibility reads build on P20, the native API,
 P60-T09 user authentication/scoped keys, and P60-T13 prepaid read billing.
@@ -268,3 +270,19 @@ aliases, independent observations and pagination invalidation (including
 registration expiry) are covered in the [extension report](../reviews/ens-name-details-acceptance.md).
 
 P40-T29: Database-only history groups transactions and separately bounds event pages; snapshots reject reorgs and late associations while remaining stable across new heads. Verified by HTTP contract/input-boundary tests, PostgreSQL pagination/reorg regressions and generated-contract checks.
+
+P40-T30 passed local proxy/Beacon/CWIA PostgreSQL race regressions, focused
+query/app/HTTP tests, 831 frontend tests, 221 embedded browser tests, and
+web-lint, generate-check, lint-go, docs-check and plan-check. Browsing, manual
+refresh and pre-operation reads all select the latest complete canonical
+publication; newer pending or failed processing does not displace it. Includes
+replay withdrawal and reorg rejection. Running Preview and remote CI were not
+updated.
+
+P40-T31 passed PostgreSQL race regressions for native/compatibility holders,
+exact NFT owner selection, statistics range clipping, same-hour analytics
+retention, refresh advancement and reorg withdrawal. Wallet regressions cover
+actual simulated read/write calls with unrelated browsing invalidation. Focused
+Go tests, 831 frontend tests, 221 embedded browser tests, production-image
+fresh-schema E2E, generate-check, lint-go, web-lint, docs-check and plan-check
+passed locally. Running Preview and remote CI were not updated.

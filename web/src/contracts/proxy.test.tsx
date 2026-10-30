@@ -9,6 +9,7 @@ import {
   adaptContractProxy,
   classifyProxyReadError,
   getContractProxy,
+  getContractProxyResponse,
   listContractDiamondCuts,
   listContractProxyInitializations,
   listContractProxyUpgrades,
@@ -160,6 +161,17 @@ describe("proxy API adapter", () => {
     });
     await waitFor(() => expect(result.current.data?.state).toBe("verified"));
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the same latest published snapshot endpoint for browsing and interactions", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockImplementation(async () => envelope(verifiedProxyDetail()));
+    vi.stubGlobal("fetch", fetcher);
+    await getContractProxy(proxyAddress);
+    await getContractProxyResponse(proxyAddress);
+    expect(new URL(String(fetcher.mock.calls[0]?.[0]), "http://localhost").search).toBe("");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(fetcher.mock.calls[0]?.[0]);
   });
 
   it("exposes implementation and management artifacts only for an exact verified binding", async () => {

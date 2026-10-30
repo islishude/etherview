@@ -79,6 +79,9 @@ func (h *Handler) blockStats(w http.ResponseWriter, r *http.Request) {
 		models[index] = blockStatModel(items[index])
 	}
 	meta := h.meta(r)
+	if len(items) > 0 {
+		from, to = items[0].BlockNumber, items[len(items)-1].BlockNumber
+	}
 	meta.CoverageStart, meta.CoverageEnd = &from, &to
 	writeJSON(w, http.StatusOK, gen.BlockStatListResponse{Data: models, Meta: meta})
 }
@@ -97,7 +100,7 @@ func (h *Handler) aggregateStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	meta := h.catalogPageMeta(r, "", item.Snapshot)
-	meta.CoverageStart, meta.CoverageEnd = &from, &to
+	meta.CoverageStart, meta.CoverageEnd = &item.FromBlock, &item.ToBlock
 	writeJSON(w, http.StatusOK, gen.AggregateStatsResponse{Data: aggregateStatsModel(item), Meta: meta})
 }
 

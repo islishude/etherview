@@ -8,6 +8,15 @@ WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
     WHERE chain_id = sqlc.arg('chain_id')::numeric
+      AND EXISTS (
+          SELECT 1 FROM published_block_stage_results AS published
+          WHERE published.chain_id = canonical_blocks.chain_id
+            AND published.block_number = canonical_blocks.number
+            AND published.block_hash = canonical_blocks.block_hash
+            AND published.stage = 'proxy'
+            AND published.stage_version = 2
+            AND published.state = 'complete'
+      )
     ORDER BY number DESC
     LIMIT 1
 ), history_epoch AS (
@@ -77,8 +86,7 @@ WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
     WHERE chain_id = sqlc.arg('chain_id')::numeric
-    ORDER BY number DESC
-    LIMIT 1
+      AND block_hash = sqlc.arg('snapshot_hash')::bytea
 ), latest_raw AS (
     SELECT observation.*, witness.id AS observation_generation_id,
            witness.durable_job_id, witness.job_generation,
@@ -363,6 +371,11 @@ JOIN published_block_stage_results AS published
  AND published.job_generation = evidence.job_generation
  AND published.state = 'complete'
 WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
+  AND evidence.block_number <= (
+      SELECT number FROM canonical_blocks
+      WHERE chain_id = sqlc.arg('chain_id')::numeric
+        AND block_hash = sqlc.arg('snapshot_hash')::bytea
+  )
   AND evidence.address = sqlc.arg('proxy_address')::bytea
   AND evidence.candidate_kind = 'proxy'
   AND evidence.stage_version = 2
@@ -387,6 +400,11 @@ JOIN published_block_stage_results AS published
  AND published.job_generation = evidence.job_generation
  AND published.state = 'complete'
 WHERE evidence.chain_id = sqlc.arg('chain_id')::numeric
+  AND evidence.block_number <= (
+      SELECT number FROM canonical_blocks
+      WHERE chain_id = sqlc.arg('chain_id')::numeric
+        AND block_hash = sqlc.arg('snapshot_hash')::bytea
+  )
   AND evidence.address = sqlc.arg('proxy_address')::bytea
   AND evidence.candidate_kind = 'proxy_resolution'
   AND evidence.stage_version = 2
@@ -400,8 +418,7 @@ WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
     WHERE chain_id = sqlc.arg('chain_id')::numeric
-    ORDER BY number DESC
-    LIMIT 1
+      AND block_hash = sqlc.arg('snapshot_hash')::bytea
 ), candidate AS (
     SELECT binding.*, tip.number AS snapshot_number,
            tip.block_hash AS snapshot_hash,
@@ -412,6 +429,7 @@ WITH canonical_tip AS (
       ON binding.chain_id = sqlc.arg('chain_id')::numeric
      AND binding.proxy_address = sqlc.arg('proxy_address')::bytea
      AND binding.observation_stage_version = 2
+     AND binding.context_block_number <= tip.number
     LEFT JOIN proxy_artifact_resolutions AS resolution
       ON resolution.id = binding.artifact_resolution_id
     JOIN canonical_blocks AS binding_context
@@ -854,8 +872,7 @@ WITH canonical_tip AS (
     SELECT number
     FROM canonical_blocks
     WHERE chain_id = sqlc.arg('chain_id')::numeric
-    ORDER BY number DESC
-    LIMIT 1
+      AND block_hash = sqlc.arg('snapshot_hash')::bytea
 ), current_proxy AS (
     SELECT DISTINCT ON (observation.proxy_address)
            observation.proxy_address, observation.proxy_code_hash,

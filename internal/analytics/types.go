@@ -89,6 +89,7 @@ func ParseInterval(value string) (Interval, bool) {
 }
 
 type Snapshot struct {
+	completedTo time.Time
 	ChainID     string
 	BlockNumber string
 	BlockHash   string

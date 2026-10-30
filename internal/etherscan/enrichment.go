@@ -14,9 +14,8 @@ import (
 )
 
 const (
-	tokenStage  = "token"
-	traceStage  = "trace"
-	holderStage = "holder"
+	tokenStage = "token"
+	traceStage = "trace"
 )
 
 type enrichmentQueryer = dbgen.DBTX

@@ -63,9 +63,16 @@ The API may read hourly rollups, dirty state, and coverage from the optional
 read pool in one repeatable-read snapshot. Recalculation, backfill state, and
 all other mutations use the writer.
 
-If a requested range contains dirty or not-yet-backfilled hours, the detail
-endpoint returns a stable analytics-pending response instead of stale
-aggregates. The overview reports the available historical range and backfill
+Each request, including refresh, selects the newest completed canonical
+hourly rollup and caps its range at that hour's end. New blocks, including
+additions to the same hour, preserve the last completed rollup. Dirty triggers atomically delete an old rollup only when the changed
+block is at or below its published end; reorgs and source replay therefore
+withdraw affected aggregates before rebuilding. A newer pending suffix does
+not block previously completed data. The returned range and canonical snapshot
+identify the data used; overview comparison windows end at this cutoff (or now,
+if earlier). Missing or withdrawn hours inside the resulting range still
+return analytics-pending rather than fabricated aggregates. The overview
+reports the available historical range and backfill
 progress so recent data can become useful before the full backfill completes.
 Every response contains a canonical snapshot and no more than 500 points.
 

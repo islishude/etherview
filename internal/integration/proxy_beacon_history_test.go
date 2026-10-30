@@ -100,7 +100,7 @@ func TestUpgradeableBeaconSharedHistoryFanoutAndReorg(t *testing.T) {
 		creation.Block.Hash().Bytes(), beacon.Bytes(), proxyOne.Bytes(), proxyTwo.Bytes())
 	assertSharedBeaconImplementation(t, ctx, db, creation, beacon, implementationA, proxyOne, proxyTwo)
 	assertOneEthCall(t, calls[creation.Block.Hash().String()])
-	beaconProxyCount, err := dbgen.New(db).CountCurrentBeaconProxies(ctx, beacon.Bytes(), pgtype.Numeric{Int: common.Big1, Valid: true})
+	beaconProxyCount, err := dbgen.New(db).CountCurrentBeaconProxies(ctx, beacon.Bytes(), pgtype.Numeric{Int: common.Big1, Valid: true}, creation.Block.Hash().Bytes())
 	if err != nil {
 		t.Fatalf("count current Beacon proxies: %v", err)
 	}

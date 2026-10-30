@@ -16,8 +16,7 @@ WITH canonical_tip AS (
     SELECT number
     FROM canonical_blocks
     WHERE chain_id = $2::numeric
-    ORDER BY number DESC
-    LIMIT 1
+      AND block_hash = $3::bytea
 ), current_proxy AS (
     SELECT DISTINCT ON (observation.proxy_address)
            observation.proxy_address, observation.proxy_code_hash,
@@ -124,8 +123,8 @@ FROM effective_current
 WHERE beacon_address = $1::bytea
 `
 
-func (q *Queries) CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric) (string, error) {
-	row := q.db.QueryRow(ctx, countCurrentBeaconProxies, beaconAddress, chainID)
+func (q *Queries) CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric, snapshotHash []byte) (string, error) {
+	row := q.db.QueryRow(ctx, countCurrentBeaconProxies, beaconAddress, chainID, snapshotHash)
 	var proxy_count string
 	err := row.Scan(&proxy_count)
 	return proxy_count, err
@@ -199,8 +198,7 @@ WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
     WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
+      AND block_hash = $2::bytea
 ), candidate AS (
     SELECT binding.chain_id, binding.proxy_address, binding.proxy_code_hash, binding.observation_block_number, binding.observation_block_hash, binding.observation_stage_version, binding.proxy_kind, binding.proxy_pattern, binding.standard_version, binding.implementation_address, binding.implementation_code_hash, binding.admin_address, binding.admin_code_hash, binding.beacon_address, binding.beacon_code_hash, binding.management_kind, binding.management_address, binding.management_code_hash, binding.observation_generation_id, binding.artifact_resolution_id, binding.beacon_generation_id, binding.context_block_number, binding.context_block_hash, binding.verification_job_id, binding.request_digest, binding.created_at, binding.uups_generation_id, tip.number AS snapshot_number,
            tip.block_hash AS snapshot_hash,
@@ -209,8 +207,9 @@ WITH canonical_tip AS (
     FROM canonical_tip AS tip
     JOIN verified_proxy_bindings AS binding
       ON binding.chain_id = $1::numeric
-     AND binding.proxy_address = $2::bytea
+     AND binding.proxy_address = $3::bytea
      AND binding.observation_stage_version = 2
+     AND binding.context_block_number <= tip.number
     LEFT JOIN proxy_artifact_resolutions AS resolution
       ON resolution.id = binding.artifact_resolution_id
     JOIN canonical_blocks AS binding_context
@@ -650,8 +649,8 @@ type GetCurrentVerifiedProxyBindingRow struct {
 	ImplementationObservationBlockHash   []byte      `db:"implementation_observation_block_hash" json:"implementation_observation_block_hash"`
 }
 
-func (q *Queries) GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error) {
-	row := q.db.QueryRow(ctx, getCurrentVerifiedProxyBinding, chainID, proxyAddress)
+func (q *Queries) GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, snapshotHash []byte, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error) {
+	row := q.db.QueryRow(ctx, getCurrentVerifiedProxyBinding, chainID, snapshotHash, proxyAddress)
 	var i GetCurrentVerifiedProxyBindingRow
 	err := row.Scan(
 		&i.BindingID,
@@ -781,8 +780,7 @@ WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
     WHERE chain_id = $1::numeric
-    ORDER BY number DESC
-    LIMIT 1
+      AND block_hash = $2::bytea
 ), latest_raw AS (
     SELECT observation.chain_id, observation.proxy_address, observation.block_number, observation.block_hash, observation.proxy_code_hash, observation.proxy_kind, observation.implementation_address, observation.beacon_address, observation.implementation_code_hash, observation.confidence, observation.canonical, observation.details, observation.stage_version, observation.proxy_pattern, observation.standard_version, observation.admin_address, observation.admin_code_hash, observation.beacon_code_hash, observation.immutable_args, observation.evidence_state, witness.id AS observation_generation_id,
            witness.durable_job_id, witness.job_generation,
@@ -796,7 +794,7 @@ WITH canonical_tip AS (
          AND canonical.number = candidate.block_number
          AND canonical.block_hash = candidate.block_hash
         WHERE candidate.chain_id = $1::numeric
-          AND candidate.proxy_address = $2::bytea
+          AND candidate.proxy_address = $3::bytea
           AND candidate.stage_version = 2
           AND candidate.canonical = TRUE
           AND candidate.block_number <= tip.number
@@ -1076,8 +1074,8 @@ type GetLatestPublishedProxyDetectionRow struct {
 	BeaconVerified                       bool    `db:"beacon_verified" json:"beacon_verified"`
 }
 
-func (q *Queries) GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error) {
-	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetection, chainID, proxyAddress)
+func (q *Queries) GetLatestPublishedProxyDetection(ctx context.Context, chainID pgtype.Numeric, snapshotHash []byte, proxyAddress []byte) (GetLatestPublishedProxyDetectionRow, error) {
+	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetection, chainID, snapshotHash, proxyAddress)
 	var i GetLatestPublishedProxyDetectionRow
 	err := row.Scan(
 		&i.ObservationBlockNumber,
@@ -1123,7 +1121,12 @@ JOIN published_block_stage_results AS published
  AND published.job_generation = evidence.job_generation
  AND published.state = 'complete'
 WHERE evidence.chain_id = $1::numeric
-  AND evidence.address = $2::bytea
+  AND evidence.block_number <= (
+      SELECT number FROM canonical_blocks
+      WHERE chain_id = $1::numeric
+        AND block_hash = $2::bytea
+  )
+  AND evidence.address = $3::bytea
   AND evidence.candidate_kind = 'proxy_resolution'
   AND evidence.stage_version = 2
   AND evidence.canonical = TRUE
@@ -1132,8 +1135,8 @@ ORDER BY evidence.block_number DESC, evidence.block_hash DESC,
 LIMIT 1
 `
 
-func (q *Queries) GetLatestPublishedProxyDetectionSummary(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetectionSummary, chainID, proxyAddress)
+func (q *Queries) GetLatestPublishedProxyDetectionSummary(ctx context.Context, chainID pgtype.Numeric, snapshotHash []byte, proxyAddress []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getLatestPublishedProxyDetectionSummary, chainID, snapshotHash, proxyAddress)
 	var details []byte
 	err := row.Scan(&details)
 	return details, err
@@ -1157,7 +1160,12 @@ JOIN published_block_stage_results AS published
  AND published.job_generation = evidence.job_generation
  AND published.state = 'complete'
 WHERE evidence.chain_id = $1::numeric
-  AND evidence.address = $2::bytea
+  AND evidence.block_number <= (
+      SELECT number FROM canonical_blocks
+      WHERE chain_id = $1::numeric
+        AND block_hash = $2::bytea
+  )
+  AND evidence.address = $3::bytea
   AND evidence.candidate_kind = 'proxy'
   AND evidence.stage_version = 2
   AND evidence.canonical = TRUE
@@ -1175,8 +1183,8 @@ type GetLatestPublishedProxyNegativeEvidenceRow struct {
 	Details        []byte `db:"details" json:"details"`
 }
 
-func (q *Queries) GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error) {
-	row := q.db.QueryRow(ctx, getLatestPublishedProxyNegativeEvidence, chainID, proxyAddress)
+func (q *Queries) GetLatestPublishedProxyNegativeEvidence(ctx context.Context, chainID pgtype.Numeric, snapshotHash []byte, proxyAddress []byte) (GetLatestPublishedProxyNegativeEvidenceRow, error) {
+	row := q.db.QueryRow(ctx, getLatestPublishedProxyNegativeEvidence, chainID, snapshotHash, proxyAddress)
 	var i GetLatestPublishedProxyNegativeEvidenceRow
 	err := row.Scan(
 		&i.BlockNumber,
@@ -1195,6 +1203,15 @@ WITH canonical_tip AS (
     SELECT number, block_hash
     FROM canonical_blocks
     WHERE chain_id = $1::numeric
+      AND EXISTS (
+          SELECT 1 FROM published_block_stage_results AS published
+          WHERE published.chain_id = canonical_blocks.chain_id
+            AND published.block_number = canonical_blocks.number
+            AND published.block_hash = canonical_blocks.block_hash
+            AND published.stage = 'proxy'
+            AND published.stage_version = 2
+            AND published.state = 'complete'
+      )
     ORDER BY number DESC
     LIMIT 1
 ), history_epoch AS (

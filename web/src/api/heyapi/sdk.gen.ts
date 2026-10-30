@@ -389,10 +389,19 @@ export const getToken = <ThrowOnError extends boolean = false>(options: Options<
 
 export const listTokenTransfers = <ThrowOnError extends boolean = false>(options: Options<ListTokenTransfersData, ThrowOnError>): RequestResult<ListTokenTransfersResponses, ListTokenTransfersErrors, ThrowOnError> => options.client.get<ListTokenTransfersResponses, ListTokenTransfersErrors, ThrowOnError>({ url: '/tokens/{address}/transfers', ...options });
 
+/**
+ * Selects the latest completed canonical holder snapshot on each first-page request, including refresh. Continuation cursors retain their snapshot. Newer pending blocks do not block reads.
+ */
 export const listTokenHolders = <ThrowOnError extends boolean = false>(options: Options<ListTokenHoldersData, ThrowOnError>): RequestResult<ListTokenHoldersResponses, ListTokenHoldersErrors, ThrowOnError> => options.client.get<ListTokenHoldersResponses, ListTokenHoldersErrors, ThrowOnError>({ url: '/tokens/{address}/holders', ...options });
 
+/**
+ * Selects the latest completed canonical holder snapshot on every request, independently of newer pending blocks.
+ */
 export const getTokenHolderCount = <ThrowOnError extends boolean = false>(options: Options<GetTokenHolderCountData, ThrowOnError>): RequestResult<GetTokenHolderCountResponses, GetTokenHolderCountErrors, ThrowOnError> => options.client.get<GetTokenHolderCountResponses, GetTokenHolderCountErrors, ThrowOnError>({ url: '/tokens/{address}/holders/count', ...options });
 
+/**
+ * Reads exact ownership at the latest canonical block with a completed token publication. Every request selects the latest completed snapshot; RPC remains pinned to its block hash.
+ */
 export const getNftOwner = <ThrowOnError extends boolean = false>(options: Options<GetNftOwnerData, ThrowOnError>): RequestResult<GetNftOwnerResponses, GetNftOwnerErrors, ThrowOnError> => options.client.get<GetNftOwnerResponses, GetNftOwnerErrors, ThrowOnError>({ url: '/nfts/{address}/{token_id}', ...options });
 
 /**
@@ -409,12 +418,24 @@ export const getNftMedia = <ThrowOnError extends boolean = false>(options: Optio
     ...options
 });
 
+/**
+ * Returns the contiguous completed stats and token range starting at from_block, capped at to_block. A pending suffix is omitted; response coverage identifies the actual range. Every request selects the newest completed range.
+ */
 export const getBlockStats = <ThrowOnError extends boolean = false>(options: Options<GetBlockStatsData, ThrowOnError>): RequestResult<GetBlockStatsResponses, GetBlockStatsErrors, ThrowOnError> => options.client.get<GetBlockStatsResponses, GetBlockStatsErrors, ThrowOnError>({ url: '/stats/blocks', ...options });
 
+/**
+ * Returns the contiguous completed stats and token range starting at from_block, capped at to_block. A pending suffix is omitted; response coverage identifies the actual range. Every request selects the newest completed range.
+ */
 export const getAggregateStats = <ThrowOnError extends boolean = false>(options: Options<GetAggregateStatsData, ThrowOnError>): RequestResult<GetAggregateStatsResponses, GetAggregateStatsErrors, ThrowOnError> => options.client.get<GetAggregateStatsResponses, GetAggregateStatsErrors, ThrowOnError>({ url: '/stats/summary', ...options });
 
+/**
+ * Reads the newest completed canonical hourly rollups, retaining completed prefixes while newer blocks in the same or later hour are processed. Each request selects the latest completed data; returned ranges and snapshot identify the data used.
+ */
 export const getChartOverview = <ThrowOnError extends boolean = false>(options: Options<GetChartOverviewData, ThrowOnError>): RequestResult<GetChartOverviewResponses, GetChartOverviewErrors, ThrowOnError> => options.client.get<GetChartOverviewResponses, GetChartOverviewErrors, ThrowOnError>({ url: '/stats/charts/overview', ...options });
 
+/**
+ * Reads the newest completed canonical hourly rollups, retaining completed prefixes while newer blocks in the same or later hour are processed. Each request selects the latest completed data; returned ranges and snapshot identify the data used.
+ */
 export const getChartMetric = <ThrowOnError extends boolean = false>(options: Options<GetChartMetricData, ThrowOnError>): RequestResult<GetChartMetricResponses, GetChartMetricErrors, ThrowOnError> => options.client.get<GetChartMetricResponses, GetChartMetricErrors, ThrowOnError>({ url: '/stats/charts/{metric}', ...options });
 
 export const search = <ThrowOnError extends boolean = false>(options: Options<SearchData, ThrowOnError>): RequestResult<SearchResponses, SearchErrors, ThrowOnError> => options.client.get<SearchResponses, SearchErrors, ThrowOnError>({ url: '/search', ...options });
@@ -541,7 +562,7 @@ export const importSourcifyContract = <ThrowOnError extends boolean = false>(opt
 });
 
 /**
- * Current canonical OpenZeppelin-aware proxy detection and exact interaction binding. Partial or generic evidence is visible but never authorizes implementation-as-proxy or management writes.
+ * Published canonical OpenZeppelin-aware proxy detection and exact interaction binding. Partial or generic evidence is visible but never authorizes implementation-as-proxy or management writes. Every read selects the latest successfully completed canonical proxy publication, independently of the core tip. Page loads, manual refresh and pre-interaction reads use the same snapshot selection.
  */
 export const getContractProxy = <ThrowOnError extends boolean = false>(options: Options<GetContractProxyData, ThrowOnError>): RequestResult<GetContractProxyResponses, GetContractProxyErrors, ThrowOnError> => options.client.get<GetContractProxyResponses, GetContractProxyErrors, ThrowOnError>({ url: '/contracts/{address}/proxy', ...options });
 

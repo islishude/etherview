@@ -875,3 +875,48 @@ func newExactStatePool(t *testing.T, service any, observers ...ethrpc.Observer) 
 	}
 	return pool
 }
+
+func TestLatestCompletedNFTOwnerSnapshot(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(0, testHash(190000), testHash(0), testHash(191000), "nft-completed")
+	next := testBundle(1, testHash(190001), testHash(190000), testHash(191001), "nft-pending")
+	commitCanonical(t, ctx, repository, genesis)
+	markTokenStageComplete(t, ctx, db, genesis)
+	token, owner := testAddress(190010), testAddress(190011)
+	insertTokenObservation(t, ctx, db, genesis, token, testHash(190012), "NFT completed snapshot")
+	execFixture(t, ctx, db, `UPDATE token_contracts SET standard='erc721' WHERE chain_id=1 AND address=$1`, mustBytes(t, token))
+	caller := &exactNFTCaller{owner: owner}
+	reconciler, err := state.NewTokenReconciler(db, newExactStatePool(t, caller, nil), state.PostgresCanonicalSource{DB: db, ChainID: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := catalog.NewPostgres(db, catalog.Options{NFTState: reconciler})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitCanonical(t, ctx, repository, next)
+	retained, err := reader.NFTOwner(ctx, "1", token.Hex(), "42")
+	if err != nil || retained.Snapshot.BlockNumber != "0" || retained.Owner != owner.Hex() {
+		t.Fatalf("pending owner=%+v err=%v", retained, err)
+	}
+	if caller.selectors[0]["blockHash"] != genesis.Block.Hash().Hex() {
+		t.Fatalf("owner selector=%+v", caller.selectors)
+	}
+	markTokenStageComplete(t, ctx, db, next)
+	refreshed, err := reader.NFTOwner(ctx, "1", token.Hex(), "42")
+	if err != nil || refreshed.Snapshot.BlockNumber != "1" || refreshed.Snapshot.BlockHash != next.Block.Hash().Hex() {
+		t.Fatalf("refreshed owner=%+v err=%v", refreshed, err)
+	}
+	replacement := testBundle(1, testHash(190002), testHash(190000), testHash(191002), "nft-replacement-pending")
+	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{next}, []chainbundle.Bundle{replacement}, "nft completed snapshot reorg")
+	retained, err = reader.NFTOwner(ctx, "1", token.Hex(), "42")
+	if err != nil || retained.Snapshot.BlockNumber != "0" {
+		t.Fatalf("reorg owner=%+v err=%v", retained, err)
+	}
+}

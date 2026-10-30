@@ -150,6 +150,26 @@ func TestAuthoritativeHolderStagePublishesNativeAndCompatibilityReads(t *testing
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{next}); err != nil {
 		t.Fatal(err)
 	}
+	lagging, err := catalogReader.TokenHolders(ctx, catalog.TokenHolderRequest{ChainID: "1", TokenAddress: token.Hex(), Limit: 50})
+	if err != nil || lagging.Summary.Snapshot.BlockNumber != "1" || lagging.Items[0].Balance != "7" {
+		t.Fatalf("lagging holder snapshot=%+v err=%v", lagging, err)
+	}
+	laggingCount, err := catalogReader.TokenHolderCount(ctx, "1", token.Hex())
+	if err != nil || laggingCount.Snapshot.BlockNumber != "1" || laggingCount.HolderCount != "1" {
+		t.Fatalf("lagging holder count=%+v err=%v", laggingCount, err)
+	}
+	retainedCompatibility, err := backend.Execute(ctx, etherscan.Request{Module: "token", Action: "tokenholderlist", Values: url.Values{"contractaddress": {token.Hex()}, "offset": {"100"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	retainedRows := etherscanResultRows(t, retainedCompatibility)
+	if len(retainedRows) != 1 || retainedRows[0]["TokenHolderQuantity"] != "7" {
+		t.Fatalf("pending compatibility=%+v", retainedRows)
+	}
+	retainedCount, err := backend.Execute(ctx, etherscan.Request{Module: "token", Action: "tokenholdercount", Values: url.Values{"contractaddress": {token.Hex()}}})
+	if err != nil || retainedCount != "1" {
+		t.Fatalf("pending compatibility count=%+v err=%v", retainedCount, err)
+	}
 	markProxyStageComplete(t, ctx, db, next)
 	markTokenStageComplete(t, ctx, db, next)
 	nextReference := mustBlockRef(t, next)
@@ -192,10 +212,9 @@ func TestAuthoritativeHolderStagePublishesNativeAndCompatibilityReads(t *testing
 		SELECT count(*) FROM erc20_holder_balances
 		WHERE chain_id = 1 AND token_address = $1 AND holder_address = $2 AND canonical = FALSE`,
 		1, mustBytes(t, token), mustBytes(t, owner))
-	if _, err := catalogReader.TokenHolders(ctx, catalog.TokenHolderRequest{
-		ChainID: "1", TokenAddress: token.Hex(), Limit: 50,
-	}); !errors.Is(err, catalog.ErrUnavailable) {
-		t.Fatalf("replacement holder query error=%v, want unavailable", err)
+	retained, err := catalogReader.TokenHolders(ctx, catalog.TokenHolderRequest{ChainID: "1", TokenAddress: token.Hex(), Limit: 50})
+	if err != nil || retained.Summary.Snapshot.BlockNumber != "1" || retained.Items[0].Balance != "7" {
+		t.Fatalf("replacement retained snapshot=%+v err=%v", retained, err)
 	}
 }
 

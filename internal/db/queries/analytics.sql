@@ -1,8 +1,11 @@
 -- name: GetAnalyticsSnapshot :one
-SELECT canonical.number::text AS block_number, canonical.block_hash
-FROM canonical_blocks AS canonical
-WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
-ORDER BY canonical.number DESC
+SELECT canonical.number::text AS block_number, canonical.block_hash,
+       (rollup.bucket_start + interval '1 hour')::timestamptz AS completed_to
+FROM chart_hourly_rollups AS rollup
+JOIN canonical_blocks AS canonical
+ ON canonical.chain_id = rollup.chain_id AND canonical.number = rollup.to_block
+WHERE rollup.chain_id = sqlc.arg('chain_id')::numeric
+ORDER BY canonical.number DESC, rollup.bucket_start DESC
 LIMIT 1;
 
 -- name: GetAnalyticsCoverage :one
@@ -24,10 +27,23 @@ LEFT JOIN chart_rollup_backfill AS backfill
 
 -- name: CountDirtyAnalyticsHours :one
 SELECT count(*)::text AS dirty_count
-FROM chart_rollup_dirty_hours
-WHERE chain_id = sqlc.arg('chain_id')::numeric
-  AND bucket_start < sqlc.arg('to_time')::timestamptz
-  AND bucket_start + interval '1 hour' > sqlc.arg('from_time')::timestamptz;
+FROM chart_rollup_dirty_hours AS dirty
+WHERE dirty.chain_id = sqlc.arg('chain_id')::numeric
+  AND dirty.bucket_start < sqlc.arg('to_time')::timestamptz
+  AND dirty.bucket_start + interval '1 hour' > sqlc.arg('from_time')::timestamptz
+  AND NOT EXISTS (
+      SELECT 1 FROM chart_hourly_rollups AS rollup
+      WHERE rollup.chain_id = dirty.chain_id AND rollup.bucket_start = dirty.bucket_start
+  )
+  AND EXISTS (
+      SELECT 1 FROM canonical_blocks AS canonical
+      JOIN blocks AS block ON block.chain_id = canonical.chain_id
+       AND block.number = canonical.number AND block.hash = canonical.block_hash
+      WHERE canonical.chain_id = dirty.chain_id
+        AND canonical.number <= sqlc.arg('max_block_number')::numeric
+        AND block.timestamp >= extract(epoch FROM dirty.bucket_start)::numeric
+        AND block.timestamp < extract(epoch FROM dirty.bucket_start + interval '1 hour')::numeric
+  );
 
 -- name: CountPendingAnalyticsSources :one
 SELECT count(*)::text AS pending_count
@@ -51,6 +67,7 @@ LEFT JOIN published_block_stage_results AS token_result
  AND token_result.stage_version = 2
  AND token_result.state = 'complete'
 WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND canonical.number <= sqlc.arg('max_block_number')::numeric
   AND block.timestamp >= extract(epoch FROM sqlc.arg('from_time')::timestamptz)::numeric
   AND block.timestamp < extract(epoch FROM sqlc.arg('to_time')::timestamptz)::numeric
   AND (stats_result.block_number IS NULL OR token_result.block_number IS NULL);
@@ -70,9 +87,10 @@ LEFT JOIN chart_hourly_rollups AS rollup
      'UTC'
  )
 WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND canonical.number <= sqlc.arg('max_block_number')::numeric
   AND block.timestamp >= extract(epoch FROM sqlc.arg('from_time')::timestamptz)::numeric
   AND block.timestamp < extract(epoch FROM sqlc.arg('to_time')::timestamptz)::numeric
-  AND rollup.bucket_start IS NULL;
+  AND (rollup.bucket_start IS NULL OR canonical.number > rollup.to_block);
 
 -- name: ListAnalyticsHours :many
 WITH requested AS (

@@ -466,19 +466,23 @@ snapshot or chain-lock boundary. P00 owns database acceptance; P30 tracks produc
   route remains block-hash-bound and generation-fenced, performs no RPC during
   reads, and cannot change verification state or authorize writes. Other proxy
   mechanisms retain their existing implementation-artifact rules.
-- Every implementation-as-proxy operation still fetches a fresh proxy
-  snapshot. A transient `unavailable` latest proxy stage aborts only that
-  operation before wallet RPC; it is not treated as target-change evidence and
-  therefore cannot erase the last published target or redirect the active tab.
-  The next attempt refetches, while real identity or binding differences keep
-  the existing refresh-and-fail-closed fence.
+- All proxy reads choose the latest successfully completed canonical proxy
+  publication, with identities, summaries and bindings bounded by its exact
+  block hash and publication generation. Newer pending, unavailable or failed
+  processing does not replace that snapshot; no complete publication returns
+  not-ready. The browser holds the response until manual refresh.
+- Page loads, manual refresh and pre-operation checks use the same snapshot
+  selection. An unprocessed core tip does not block interaction with the completed
+  snapshot. A changed identity or binding still requires refreshing the target.
 - Once the current proxy projection recognizes mechanism `cwia`, the shell's
   Code tab omits the direct Verified artifact and submission panel. Source and
   ABI presentation remains attached to the fixed implementation identity;
   ordinary contracts and other proxy mechanisms retain their direct artifact
-  surface. A transient unavailable classification suppresses this choice and
-  is re-read every 500 ms until publication, preventing a direct-entry flash
-  without serializing the independent artifact request.
+  surface. Published exact-address source remains readable independently of
+  pending, unavailable, or failed proxy classification. This does not enable
+  interaction or verification-submission controls. Manual refresh applies newly
+  published classification, including hiding a recognized CWIA shell artifact;
+  no classification recovery polling is introduced.
 - Proxy, implementation, admin, and beacon code hashes, block hash,
   canonicality, confidence, and bounded controlled provenance commit in one
   idempotent stage transaction. Append-only proxy and beacon generation
@@ -1021,9 +1025,11 @@ a manual-refresh notice without withdrawing current profile fields.
   observation, coverage gaps, code/proxy generation changes, and the rotating
   audit lane perform a full candidate reconciliation. Native and compatibility
   holder reads are PostgreSQL-only, address ordered, and require
-  Holder coverage through the current canonical tip. A reorg, replay,
-  unavailable state endpoint, non-standard supply, or incomplete snapshot is
-  an explicit unavailable capability rather than a partial list.
+  Holder coverage through the selected latest completed canonical snapshot.
+  Newer pending processing does not block that snapshot. Reorgs and replay
+  reject affected publications; the newest retained valid snapshot remains
+  readable. If no coherent completed snapshot exists, availability is explicit
+  rather than a partial list.
   Orphan cache rows are retained but cannot satisfy a canonical lookup. Token
   classifications are retained per observed block hash, so a reorg can fall
   back to an older canonical observation even when the runtime code hash did
@@ -1277,3 +1283,12 @@ Only home and chain status refresh from events; verification and payment jobs
 retain terminal polling. Navigation can load stale queries; focus and network
 recovery do not. Search, exports and Etherscan retain their strict
 snapshot and coverage contracts.
+
+Holder first-page/count, NFT owner, block statistics and historical analytics
+reads select their latest completed canonical publications on each request,
+including manual refresh. Holder continuation cursors retain the selected
+snapshot. Statistics report their actual completed range; unfinished suffixes
+at the chain head do not block published data. Exact NFT calls stay pinned to
+the selected hash. Wallet actions do not inherit unrelated browsing query
+invalidation; their wallet, chain and interaction-target checks remain local
+to the operation.

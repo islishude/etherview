@@ -180,7 +180,7 @@ type proxyHistoryCursor struct {
 	BeforeLogIndex    int64  `json:"before_log_index,omitempty"`
 }
 
-// Proxy returns the latest published proxy@2 state from the writer. Exact
+// Proxy returns the latest complete published proxy@2 snapshot. Exact
 // implementation-as-proxy and management interaction is exposed only when an
 // immutable P30 binding still matches the current canonical state, code epochs,
 // shared Beacon/UUPS observations, and continuous interaction coverage.
@@ -217,7 +217,7 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 			return fmt.Errorf("stored proxy stage state %q is invalid", snapshot.StageState)
 		}
 		summary, summaryErr := queries.GetLatestPublishedProxyDetectionSummary(
-			ctx, chainID, address.Bytes(),
+			ctx, chainID, snapshot.SnapshotHash, address.Bytes(),
 		)
 		if summaryErr == nil {
 			if !json.Valid(summary) {
@@ -229,12 +229,12 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		}
 
 		detection, detectionErr := queries.GetLatestPublishedProxyDetection(
-			ctx, chainID, address.Bytes(),
+			ctx, chainID, snapshot.SnapshotHash, address.Bytes(),
 		)
 		if errors.Is(detectionErr, pgx.ErrNoRows) {
 			result.Status = ProxyStatusNotDetected
 			negative, negativeErr := queries.GetLatestPublishedProxyNegativeEvidence(
-				ctx, chainID, address.Bytes(),
+				ctx, chainID, snapshot.SnapshotHash, address.Bytes(),
 			)
 			if negativeErr == nil {
 				evidence, evidenceErr := negativeProxyEvidence(address, negative)
@@ -255,7 +255,7 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		}
 
 		binding, bindingErr := queries.GetCurrentVerifiedProxyBinding(
-			ctx, chainID, address.Bytes(),
+			ctx, chainID, snapshot.SnapshotHash, address.Bytes(),
 		)
 		if bindingErr != nil && !errors.Is(bindingErr, pgx.ErrNoRows) {
 			return bindingErr
@@ -267,7 +267,7 @@ func (r *PostgresReader) Proxy(ctx context.Context, rawAddress string) (ProxyDet
 		}
 		if bindingErr == nil && result.Management != nil && result.Management.Kind == "upgradeable_beacon" {
 			count, countErr := queries.CountCurrentBeaconProxies(
-				ctx, binding.BeaconAddress, chainID,
+				ctx, binding.BeaconAddress, chainID, snapshot.SnapshotHash,
 			)
 			if countErr != nil {
 				return countErr

@@ -1756,7 +1756,7 @@ func hardhatProxyDetailDatabaseDiagnostic(
 			"state":  snapshot.StageState,
 		}
 	}
-	detection, err := queries.GetLatestPublishedProxyDetection(ctx, chainID, proxyAddress)
+	detection, err := queries.GetLatestPublishedProxyDetection(ctx, chainID, snapshot.SnapshotHash, proxyAddress)
 	if err != nil {
 		diagnostic["detection_error"] = diagnosticError(err)
 	} else {
@@ -1767,7 +1767,7 @@ func hardhatProxyDetailDatabaseDiagnostic(
 			"implementation_block": detection.ImplementationObservationBlockNumber,
 		}
 	}
-	binding, err := queries.GetCurrentVerifiedProxyBinding(ctx, chainID, proxyAddress)
+	binding, err := queries.GetCurrentVerifiedProxyBinding(ctx, chainID, snapshot.SnapshotHash, proxyAddress)
 	if err != nil {
 		diagnostic["binding_error"] = diagnosticError(err)
 	} else {
@@ -1778,7 +1778,7 @@ func hardhatProxyDetailDatabaseDiagnostic(
 			"pattern":              binding.ProxyPattern,
 			"implementation_block": binding.ImplementationObservationBlockNumber,
 		}
-		count, countErr := queries.CountCurrentBeaconProxies(ctx, binding.BeaconAddress, chainID)
+		count, countErr := queries.CountCurrentBeaconProxies(ctx, binding.BeaconAddress, chainID, snapshot.SnapshotHash)
 		if countErr != nil {
 			diagnostic["beacon_count_error"] = diagnosticError(countErr)
 		} else {

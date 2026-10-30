@@ -124,6 +124,22 @@ describe("contract proxy route", () => {
     }
   });
 
+  it("shows published source while proxy classification is pending", async () => {
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const pendingResponse = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    installContractAPI({ pattern: "none", proxyResponse: () => pendingResponse });
+    renderContractRoute();
+    try {
+      expect(await screen.findByRole("heading", { name: "Verified artifact" })).toBeVisible();
+      expect(screen.queryByRole("tab", { name: "Read contract" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Write contract" })).toBeNull();
+    } finally {
+      resolveResponse?.(envelope(proxyDetail("none")));
+    }
+  });
+
   it.each([
     ["read-contract", "Read contract"],
     ["write-contract", "Write contract"],
@@ -174,7 +190,7 @@ describe("contract proxy route", () => {
   });
 
   it.each(["unavailable", "failed"] as const)(
-    "explains a %s proxy classification without displaying unchecked artifacts",
+    "shows verified source with a %s proxy classification without enabling interactions",
     async (status) => {
       installContractAPI({
         pattern: "none",
@@ -185,12 +201,16 @@ describe("contract proxy route", () => {
       expect(
         await within(panel).findByText(i18n.t(`contracts.proxy.status.${status}`)),
       ).toBeVisible();
-      expect(within(panel).queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+      expect(
+        await within(panel).findByRole("heading", { name: "Verified artifact" }),
+      ).toBeVisible();
+      expect(screen.queryByRole("tab", { name: "Read contract" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Write contract" })).toBeNull();
     },
   );
 
   it.each(["none", "cwia"] as const)(
-    "manually refreshes an unavailable classification to %s without showing the wrong source panel",
+    "manually refreshes an unavailable classification to %s and applies source ownership",
     async (pattern) => {
       let ready = false;
       installContractAPI({
@@ -204,7 +224,11 @@ describe("contract proxy route", () => {
       const panel = await screen.findByRole("tabpanel", { name: "Code" });
       expect(await within(panel).findByText("Unavailable", { exact: true })).toBeVisible();
       expect(within(panel).queryByText(i18n.t("state.loading"))).toBeNull();
-      expect(within(panel).queryByRole("heading", { name: "Verified artifact" })).toBeNull();
+      expect(
+        await within(panel).findByRole("heading", { name: "Verified artifact" }),
+      ).toBeVisible();
+      expect(screen.queryByRole("tab", { name: "Read contract" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Write contract" })).toBeNull();
       ready = true;
       await userEvent.setup().click(screen.getByRole("button", { name: "Refresh" }));
       await waitFor(() =>
