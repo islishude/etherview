@@ -1283,6 +1283,18 @@ func (h *harness) assertENS(ctx context.Context) {
 		h.t.Fatalf("runtime registration profile: %+v", detail.Data)
 	}
 
+	var history gen.NameHistoryResponse
+	h.mustGetJSON(ctx, "/api/v1/names/"+runtimeENSName+"/history", &history)
+	if len(history.Data.Items) == 0 || history.Data.Snapshot == "" {
+		h.t.Fatalf("runtime history: %+v", history.Data)
+	}
+	first := history.Data.Items[0]
+	var events gen.NameHistoryEventsResponse
+	h.mustGetJSON(ctx, "/api/v1/names/"+runtimeENSName+"/history/"+first.TransactionHash+"/events?block_hash="+first.BlockHash+"&snapshot="+url.QueryEscape(history.Data.Snapshot), &events)
+	if len(events.Data.Items) == 0 {
+		h.t.Fatal("runtime history lost transaction events")
+	}
+
 	for _, name := range []string{"plain.eth", "wrapped.eth", "locked.eth"} {
 		waitFor(h.t, ctx, "migrated forward "+name, func() (bool, string, error) {
 			var count int

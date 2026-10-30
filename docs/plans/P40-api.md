@@ -81,8 +81,11 @@ holding pages, reader/writer routing, and production runtime parity. Their
 acceptance is independent of P60's still-blocked live-payment gate.
 
 | P40-T28 | done | P20-T30 | Database-only name detail and name-identity search with independent field states and publication snapshots | Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests |
+| P40-T29 | done | P20-T31 | Database-only transaction-grouped ENS history and snapshot-bound event pagination | ENS history regressions, generated contracts and applicable production/browser gates |
 
 ## Acceptance
+
+- [x] P40-T29: Database-only history groups transactions and separately bounds event pages; snapshots reject reorgs and late associations while remaining stable across new heads. Verified by HTTP contract/input-boundary tests, PostgreSQL pagination/reorg regressions and generated-contract checks.
 
 - [x] P40-T28: Database-only name detail and name-identity search with independent field states and publication snapshots. Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests. Existing historical reports do not validate this extension.
 

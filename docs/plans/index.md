@@ -64,10 +64,10 @@ change. New plan IDs start at P80; all lower gaps and retired prefixes stay rese
 | ------------- | ----------------------------- |
 | P00           | 14                            |
 | P10           | 7                             |
-| P20           | 30                            |
+| P20           | 31                            |
 | P30           | 151                           |
-| P40           | 28                            |
-| P50           | 82                            |
+| P40           | 29                            |
+| P50           | 83                            |
 | P60           | 21                            |
 | P70           | 52                            |
 | P55 (retired) | 4                             |
@@ -77,3 +77,5 @@ Name registration browsing extends ADR-0058 through P20-T30 → P40-T28 → P50-
 These milestones retain independent profile/resolution validity, canonical known-name
 search and database-only reads. Existing runtime scenarios are extended; earlier
 completed IDs and Mainnet evidence are not reopened or reused as new acceptance.
+
+ENS operation history and the compact name page are complete under P20-T31 → P40-T29 → P50-T83.

@@ -5,11 +5,12 @@ import { useTranslation } from "react-i18next";
 import { getName } from "@/api/heyapi/sdk.gen";
 import type { NameField, NameObservation } from "@/api/heyapi/types.gen";
 import { apiClient, requireEnvelope } from "@/api/client";
-import { CopyableField } from "@/components/CopyButton";
+import { CopyButton, CopyableField } from "@/components/CopyButton";
 import { QueryNotice } from "@/components/QueryNotice";
 import { subscribeNames } from "@/ens/nameEvents";
 import { expirationText, freshNameDetail, nameDeadlines } from "@/ens/nameDetails";
-import { Detail, DetailList, Page } from "./pages";
+import { NameHistory } from "@/ens/NameHistory";
+import "./NamePage.css";
 
 export function NamePage({ name }: { name: string }) {
   const { t, i18n } = useTranslation();
@@ -46,44 +47,65 @@ export function NamePage({ name }: { name: string }) {
   const detail = query.data ? freshNameDetail(query.data, now, invalid) : undefined;
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <Page title={t("names.title")} description={detail?.name ?? name} mono>
+    <div className="page-stack inner-page name-page">
+      <header className="name-heading">
+        <p className="name-eyebrow">ENS</p>
+        <div className="name-title-row">
+          <h1>{detail?.name ?? name}</h1>
+          <CopyButton value={detail?.name ?? name} />
+        </div>
+        {detail?.state === "indexed" && (
+          <span className={`name-status name-status-${detail.registration_state}`}>
+            {t(`names.${detail.registration_state}`)}
+          </span>
+        )}
+      </header>
       <QueryNotice loading={query.isPending} error={query.error} />
-      {detail?.state === "not_indexed" && <p className="quiet">{t("names.notIndexed")}</p>}
+      {detail?.state === "not_indexed" && <p className="context-note">{t("names.notIndexed")}</p>}
       {detail?.state === "indexed" && (
-        <>
-          <p>{t(`names.${detail.registration_state}`)}</p>
-          <DetailList label={t("names.title")}>
-            <Detail
-              label={t("names.registrant")}
-              value={<AddressField field={detail.registrant} />}
-            />
-            <Detail
-              label={t("names.controller")}
-              value={<AddressField field={detail.controller} />}
-            />
-            <Detail
-              label={t("names.expiration")}
-              value={
-                detail.expiration_time.state === "value"
+        <section className="name-overview" aria-label={t("names.title")}>
+          <dl className="name-facts">
+            <div>
+              <dt>{t("names.registrant")}</dt>
+              <dd>
+                <AddressField field={detail.registrant} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t("names.controller")}</dt>
+              <dd>
+                <AddressField field={detail.controller} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t("names.address")}</dt>
+              <dd>
+                <AddressField field={detail.resolved_address} />
+              </dd>
+            </div>
+            <div>
+              <dt>{t("names.expiration")}</dt>
+              <dd>
+                {detail.expiration_time.state === "value"
                   ? expirationText(detail.expiration_time.value, locale)
-                  : t(`names.${detail.expiration_time.state}`)
-              }
-            />
-            <Detail
-              label={t("names.address")}
-              value={<AddressField field={detail.resolved_address} />}
-            />
-          </DetailList>
-          <p className="quiet">{t("names.managerNote")}</p>
-          {detail.profile_observation && (
-            <Observation label={t("names.profile")} value={detail.profile_observation} />
-          )}
-          {detail.resolution_observation && (
-            <Observation label={t("names.resolution")} value={detail.resolution_observation} />
-          )}
-        </>
+                  : t(`names.${detail.expiration_time.state}`)}
+              </dd>
+            </div>
+          </dl>
+          <details className="name-data-details">
+            <summary>{t("names.dataDetails")}</summary>
+            <p className="quiet">{t("names.managerNote")}</p>
+            {detail.profile_observation && (
+              <Observation label={t("names.profile")} value={detail.profile_observation} />
+            )}
+            {detail.resolution_observation && (
+              <Observation label={t("names.resolution")} value={detail.resolution_observation} />
+            )}
+          </details>
+        </section>
       )}
-    </Page>
+      <NameHistory key={name} name={detail?.name ?? name} />
+    </div>
   );
 }
 function AddressField({ field }: { field: NameField }) {

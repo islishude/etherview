@@ -671,6 +671,22 @@ background and replace batches atomically. Explicit invalidation, reorg and
 reconnect withdraw immediately before rereading; failed refreshes never extend
 observation validity.
 
+Name history references core logs and captures event-position protocol state
+under the collector's canonical/source fence. Node identities and event-time v2
+registry paths or record links select relevant operations. Resolver permission
+resources describe setter arguments, not record IDs, and are not expanded to
+names. Historical text values are inert, bounded event evidence. Unknown
+preimages do not hide directly matching namehash events. Unlinked record writes
+are not retrospectively attributed after a link.
+
+History reads use writer read-only snapshots, group by block/transaction and
+page expanded logs separately. Their opaque cursors freeze a canonical block,
+source revision and name-association watermark. Newer blocks preserve a page;
+reorgs or late associations reject the old traversal. History remains available
+when current registration/resolution observations expire. The compact name page
+uses the existing stream; `names` with `history=true, invalidated=false` requests
+a background refresh without withdrawing current profile fields.
+
 ## Public Boundaries
 
 - Native HTTP API lives under `/api/v1`; Etherscan compatibility lives at

@@ -102,6 +102,20 @@ for (const language of ["en", "zh"] as const) {
         },
       });
     });
+    await page.route("**/api/v1/names/*/history?*", async (route) =>
+      route.fulfill({
+        json: {
+          data: {
+            name: "alice.eth",
+            state: "indexed",
+            snapshot: "",
+            items: [],
+            coverage: { state: "pending", start: "0", pending: "0" },
+          },
+          meta: { chain_id: "1", request_id: "test" },
+        },
+      }),
+    );
     await page.goto("/search?q=alice");
     await expect(page.locator(".search-name-result")).toHaveCount(2);
     await expect(
@@ -125,6 +139,7 @@ for (const language of ["en", "zh"] as const) {
     );
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
     await page
+      .locator(".name-overview")
       .getByRole("button", { name: language === "en" ? "Copy" : "复制", exact: true })
       .first()
       .click();

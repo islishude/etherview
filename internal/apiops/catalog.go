@@ -198,6 +198,8 @@ var catalog = []Spec{
 	spec("getAddress", "GET", "/addresses/{address}", true,
 		pathParameter("address", ParameterAddress)),
 	spec("getName", "GET", "/names/{name}", true, nameParameter()),
+	spec("listNameHistory", "GET", "/names/{name}/history", true, nameParameter(), cursorParameter(), limitParameter("25")),
+	spec("listNameHistoryEvents", "GET", "/names/{name}/history/{transactionHash}/events", true, nameParameter(), pathParameter("transactionHash", ParameterHash), requiredQueryParameter("block_hash", ParameterHash), cursorParameter(), limitParameter("50"), requiredHistorySnapshot()),
 
 	spec("listAddressNames", "GET", "/address-names", true,
 		boundedTextParameter("addresses", true, 42, 4299, false),
@@ -443,3 +445,5 @@ func nameParameter() ParameterSpec {
 	p.MaximumBytes = 255
 	return p
 }
+
+func requiredHistorySnapshot() ParameterSpec { p := snapshotParameter(); p.Required = true; return p }

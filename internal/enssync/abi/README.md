@@ -16,8 +16,9 @@ not enable an arbitrary emitter merely because its topics match.
   `9b034936a42f462fc04bc0a929a419ede5e18d59`.
 - Wrapper transfers use the standard ERC-1155 single/batch event layouts.
 
-The manifest digest includes each profile's SHA-256 digest. These subsets
-intentionally omit unrelated approvals/text/metadata events; matching emitter log identities reference core storage. Deployment addresses and historical activation are
+The manifest digest includes each profile's SHA-256 digest. Name history additionally includes name-scoped approvals, text, content, ABI, DNS,
+interface and public-key events from the same pinned fixtures. Account-wide
+approvals are not expanded into per-name history; matching emitter log identities reference core storage. Deployment addresses and historical activation are
 operator-reviewed input, not inferred from this ABI catalog. Public network
 activation and completeness remain the independent P30-T151 gate.
 
@@ -25,7 +26,8 @@ The v2 registry, resolver and factory profiles are event subsets of the official
 [deployment artifacts](https://github.com/ensdomains/contracts-v2/tree/4f47cbcc11462fb413196e6b5c0f8090247a6c08/contracts/deployments/mainnet),
 revision `4f47cbcc11462fb413196e6b5c0f8090247a6c08`. They retain registry lifecycle,
 role/resource/token identity, proxy creation, name links and address/primary
-record updates. Text/content/ABI records are outside this presentation feature.
+record updates. Text/content/ABI changes are included as bounded event evidence in name history;
+this does not introduce current-record pages or external content fetching.
 The same revision supplies the real EVM fixture below; this does not assert
 Mainnet v2 activation.
 

@@ -375,6 +375,8 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"listAddressWithdrawals",
 		"listBlockTransactions",
 		"listBlocks",
+		"listNameHistory",
+		"listNameHistoryEvents",
 		"listPendingTransactions",
 		"listTokenHolders",
 		"listTokenTransfers",

@@ -236,6 +236,11 @@ func (c *Collector) commit(ctx context.Context, source int64, expected dbgen.Ens
 				return ErrFenceLost
 			}
 		}
+		if len(blocks) > 0 {
+			if e = q.EmitENSHistoryRefresh(ctx, source); e != nil {
+				return e
+			}
+		}
 		if progress.ProjectionRevision != expected.ProjectionRevision {
 			return q.EmitENSInvalidation(ctx, strconv.FormatInt(source, 10))
 		}
@@ -309,6 +314,12 @@ func (c *Collector) projectBlock(ctx context.Context, q *dbgen.Queries, source i
 			if e = saveProjection(ctx, q, source, deployment.Address, log.BlockHash, projection{Kind: "lifecycle", Key: contractRevisionKey(deployment.Address), Fields: map[string]any{"event": v2Origin(log)}}, revision); e != nil {
 				return e
 			}
+		}
+		if e = q.CaptureENSHistoryStates(ctx, dbgen.CaptureENSHistoryStatesParams{SourceID: source, BlockHash: log.BlockHash.Bytes(), LogIndex: int64(log.Index), AfterRevision: beforeRevision}); e != nil {
+			return e
+		}
+		if e = c.recordHistory(ctx, q, source, deployment, log, int64(b.Header.Time)); e != nil {
+			return e
 		}
 		identity := log.BlockHash.Hex() + "/" + strconv.FormatUint(uint64(log.Index), 10)
 		for _, value := range event.Candidates {

@@ -198,3 +198,28 @@ Address. Primary names link to it; reverse/forward agreement remains mandatory.
 Use the existing single names SSE stream and local expiry timers, safe normalized
 URLs, bilingual/mobile layouts and independent address navigation/copy actions.
 No account-owned-name enumeration or registration management is introduced.
+
+### Name operation history (P20-T31/P40-T29/P50-T83)
+
+History is a separate immutable projection of reviewed contract events, referencing
+core logs. It preserves event-time name identity, including v2 registry paths,
+token/resource identities and resolver links. Current ownership or a current
+resolver link cannot attribute an older event. Global account permissions are
+not expanded into all owned names. Namehash preimages may be discovered later
+without changing the event's identity. Records written before a name link are
+resource history, not operations on that name.
+
+Collection commits history under the existing source revision and canonical
+attachment fences. Bounded association repair uses the event's historical
+position, never latest state. Orphan facts remain stored but are not publicly
+selected. Coverage reports the declared start, scan boundary and unresolved
+associations separately from profile validity. Empty incomplete history is not
+proof that no operation occurred. Historical events do not expire with profiles.
+
+Read-only name history groups by block and transaction, with separately bounded
+event pages. Cursors bind chain, name, policy/manifest, canonical snapshot and
+association watermark. Reorgs and historical association changes reject old
+traversals; append-only later blocks do not. The API never performs ENS RPC or
+writes work. The existing names stream announces history changes. Unknown names
+remain not_indexed, and unprovided event values remain unavailable. Text and
+binary records are bounded inert display data, never remotely fetched assets.

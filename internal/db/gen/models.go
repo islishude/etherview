@@ -944,6 +944,41 @@ type EnsEffectiveRetention struct {
 	MinPublication int64          `db:"min_publication" json:"min_publication"`
 }
 
+type EnsHistoryEvent struct {
+	SourceID    int64          `db:"source_id" json:"source_id"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex    int64          `db:"log_index" json:"log_index"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	EventName   string         `db:"event_name" json:"event_name"`
+	Action      string         `db:"action" json:"action"`
+	Fields      []byte         `db:"fields" json:"fields"`
+}
+
+type EnsHistoryPending struct {
+	SourceID  int64              `db:"source_id" json:"source_id"`
+	BlockHash []byte             `db:"block_hash" json:"block_hash"`
+	LogIndex  int64              `db:"log_index" json:"log_index"`
+	Attempts  int32              `db:"attempts" json:"attempts"`
+	RetryAt   pgtype.Timestamptz `db:"retry_at" json:"retry_at"`
+}
+
+type EnsHistoryState struct {
+	SourceID  int64  `db:"source_id" json:"source_id"`
+	BlockHash []byte `db:"block_hash" json:"block_hash"`
+	LogIndex  int64  `db:"log_index" json:"log_index"`
+	Kind      string `db:"kind" json:"kind"`
+	Key       string `db:"key" json:"key"`
+	Payload   []byte `db:"payload" json:"payload"`
+}
+
+type EnsHistorySubject struct {
+	ID        int64  `db:"id" json:"id"`
+	SourceID  int64  `db:"source_id" json:"source_id"`
+	BlockHash []byte `db:"block_hash" json:"block_hash"`
+	LogIndex  int64  `db:"log_index" json:"log_index"`
+	Node      []byte `db:"node" json:"node"`
+}
+
 type EnsSyncAddressCursor struct {
 	SourceID     int64  `db:"source_id" json:"source_id"`
 	AfterAddress []byte `db:"after_address" json:"after_address"`

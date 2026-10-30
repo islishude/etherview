@@ -628,6 +628,22 @@ source/policy only after resolving the conflict. Replay cannot clear integrity
 halts or invent coverage. P30-T150 owns production/local acceptance; P30-T151
 real Mainnet acceptance is separate and is not implied by fixture checks.
 
+Name operation history reports its declared start, scanned block, current core
+target and pending event associations independently of profile freshness. The
+name page keeps canonical records visible while coverage is partial. History
+covers reviewed event ABIs, not arbitrary offchain changes or account-wide
+permissions. Earlier writes to an unlinked shared record are not operations on
+names linked later. An event omitting a value cannot be repaired by reading the
+current resolver value.
+
+Historical association repair runs under the existing collector bounds, with at
+most eight attempts separated by 30 seconds. Exhausted or unprovable associations
+remain explicit pending coverage; restarts do not reset them. Preserve original
+log and block identities when diagnosing missing association evidence. Changes
+to reviewed ABI manifests follow the fresh-database policy; there is no startup
+backfill for an old schema or manifest. Local history tests do not establish
+Mainnet completeness.
+
 ## Capacity, HA, and failover
 
 `deploy/config.reference-capacity.yaml` and the Helm

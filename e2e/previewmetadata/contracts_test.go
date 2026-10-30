@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/api/gen"
 )
 
 type contractScenarioReport struct {
@@ -215,6 +216,12 @@ func (h *harness) assertContractAPI(ctx context.Context, report contractScenario
 		}
 		err := h.getJSON(ctx, h.apiURL+"/api/v1/names/"+report.Name, &response)
 		return err == nil && response.Data.ProfileObservation != nil && response.Data.Registrant.State == "value" && strings.EqualFold(response.Data.Registrant.Value, report.NameOwner), fmt.Sprintf("%+v %v", response.Data, err), nil
+	})
+
+	waitFor(h.t, ctx, "name operation history", func() (bool, string, error) {
+		var history gen.NameHistoryResponse
+		err := h.getJSON(ctx, h.apiURL+"/api/v1/names/"+report.Name+"/history", &history)
+		return err == nil && len(history.Data.Items) > 0 && history.Data.Snapshot != "", fmt.Sprintf("%+v %v", history.Data, err), nil
 	})
 
 	var total, sources int

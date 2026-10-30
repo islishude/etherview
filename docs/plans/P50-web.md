@@ -64,8 +64,11 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T81 | done   | P40-T27                            | Published names with atomic refresh, expiry hiding and compact incomplete-directory notice                                                                                                             | Generated-client, single SSE, bilingual mobile and browser regressions                                                         |
 
 | P50-T82 | done | P40-T28 | Bilingual name detail, name search and primary-name links without source badges | Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions |
+| P50-T83 | done | P40-T29 | Compact name overview and bilingual expandable ENS transaction history | ENS history regressions, generated contracts and applicable production/browser gates |
 
 ## Acceptance
+
+- [x] P50-T83: Compact overview and lazy expandable history support both languages/themes and 390px/1440px layouts. All 161 embedded-browser scenarios passed, including accessibility, inert record values, pagination and single-SSE refresh; production all/split runtime checks, Preview contracts and `make check` passed. Local fixtures do not establish complete live history coverage.
 
 - [x] P50-T82: Bilingual name detail, name search and primary-name links without source badges. Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions. Existing historical reports do not validate this extension.
 

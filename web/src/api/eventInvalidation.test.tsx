@@ -196,13 +196,21 @@ describe("durable chain event invalidation", () => {
     expect(notices).toHaveBeenLastCalledWith("refresh");
     await emit("names", '{"directory":"2"}');
     expect(notices).toHaveBeenLastCalledWith("refresh");
+    await emit("names", '{"history":true,"invalidated":false}');
+    expect(notices).toHaveBeenLastCalledWith("refresh");
     await act(async () => {
       source.emit("names", "3", '{"source":"1","invalidated":true}');
       source.emit("names", "4", '{"publication":"4"}');
       await vi.advanceTimersByTimeAsync(250);
     });
     expect(notices).toHaveBeenLastCalledWith("invalidate");
-    for (const data of ["{}", "bad JSON", '{"publication":2}']) {
+    for (const data of [
+      "{}",
+      "bad JSON",
+      '{"publication":2}',
+      '{"history":true}',
+      '{"history":"true","invalidated":false}',
+    ]) {
       await emit("names", data);
       expect(notices).toHaveBeenLastCalledWith("invalidate");
     }

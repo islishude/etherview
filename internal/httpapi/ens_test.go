@@ -199,3 +199,45 @@ func TestNameDetailReturnsPartialAndNotIndexedWithoutResolution(t *testing.T) {
 		})
 	}
 }
+
+type nameHistoryReaderStub struct {
+	addressNameReaderStub
+	err error
+}
+
+func (r nameHistoryReaderStub) NameHistory(_ context.Context, request enscontract.HistoryRequest) (enscontract.HistoryPage, string, error) {
+	return enscontract.HistoryPage{Name: request.Name, State: "indexed", Snapshot: "snapshot", Coverage: enscontract.HistoryCoverage{State: "partial", Start: "0", Pending: "1"}, Items: []enscontract.HistoryTransaction{{TransactionHash: "0x" + strings.Repeat("1", 64), BlockHash: "0x" + strings.Repeat("2", 64), BlockNumber: "9007199254740993", Timestamp: "2026-10-30T00:00:00Z", Actions: []string{"registration", "address"}, EventCount: "2"}}}, "next", r.err
+}
+func (r nameHistoryReaderStub) NameHistoryEvents(_ context.Context, _ enscontract.HistoryEventsRequest) (enscontract.HistoryEventsPage, string, error) {
+	return enscontract.HistoryEventsPage{Items: []enscontract.HistoryEvent{}}, "", r.err
+}
+func TestNameHistoryContractAndBounds(t *testing.T) {
+	cfg := config.Default()
+	cfg.Features.ENS = true
+	h, e := New(Options{Config: cfg, Reader: fakeReader{}, AddressNames: nameHistoryReaderStub{}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/names/alice.eth/history?limit=25", nil))
+	var body gen.NameHistoryResponse
+	if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &body) != nil || len(body.Data.Items) != 1 || body.Data.Items[0].BlockNumber != "9007199254740993" || body.Meta.NextCursor == nil {
+		t.Fatalf("%d %s", response.Code, response.Body)
+	}
+	for _, path := range []string{"/api/v1/names/alice.eth/history?limit=101", "/api/v1/names/alice.eth/history?limit=1&limit=2", "/api/v1/names/alice.eth/history?cursor=" + strings.Repeat("a", 1025), "/api/v1/names/alice.eth/history/0x" + strings.Repeat("1", 64) + "/events"} {
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != 400 {
+			t.Fatalf("bounds %s: %d", path, response.Code)
+		}
+	}
+	h, e = New(Options{Config: cfg, Reader: fakeReader{}, AddressNames: nameHistoryReaderStub{err: enscontract.ErrSnapshotInvalid}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	response = httptest.NewRecorder()
+	h.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/names/alice.eth/history", nil))
+	if response.Code != 400 || !strings.Contains(response.Body.String(), "invalid_cursor") {
+		t.Fatal(response.Code, response.Body)
+	}
+}

@@ -1296,6 +1296,71 @@ export type TransactionAuthorizations = TransactionSubresourceIdentity & {
     items: Array<Eip7702Authorization>;
 };
 
+export type NameHistoryField = {
+    key: string;
+    /**
+     * ABI scalar type, array type or hash for an indexed dynamic argument.
+     */
+    type: string;
+    /**
+     * Inert event evidence; omitted event values are never inferred from current records.
+     */
+    value: string;
+    truncated: boolean;
+};
+
+export type NameHistoryEvent = {
+    log_index: Quantity;
+    emitter: Address;
+    event_name: string;
+    action: NameHistoryAction;
+    fields: Array<NameHistoryField>;
+};
+
+export type NameHistoryAction = 'registration' | 'reservation' | 'renewal' | 'unregistration' | 'transfer' | 'subname' | 'resolver' | 'ttl' | 'address' | 'name' | 'text' | 'contenthash' | 'abi' | 'dns' | 'pubkey' | 'interface' | 'data' | 'clear' | 'permission' | 'wrap' | 'unwrap' | 'fuses' | 'migration' | 'link' | 'resource';
+
+export type NameHistoryCoverage = {
+    state: 'complete' | 'partial' | 'pending' | 'unavailable';
+    start: Quantity;
+    scanned?: Quantity;
+    target?: Quantity;
+    pending: Quantity;
+};
+
+export type NameHistoryTransaction = {
+    transaction_hash: Hash;
+    block_hash: Hash;
+    block_number: Quantity;
+    timestamp: string;
+    actions: Array<NameHistoryAction>;
+    event_count: Quantity;
+};
+
+export type NameHistory = {
+    name: string;
+    state: 'indexed' | 'not_indexed';
+    coverage: NameHistoryCoverage;
+    /**
+     * Opaque event-page snapshot, empty before any history scan.
+     */
+    snapshot: string;
+    items: Array<NameHistoryTransaction>;
+};
+
+export type NameHistoryEvents = {
+    items: Array<NameHistoryEvent>;
+};
+
+export type NameHistoryResponse = {
+    data: NameHistory;
+    meta: Meta;
+};
+
+export type NameHistoryEventsResponse = {
+    data: NameHistoryEvents;
+    meta: Meta;
+};
+
 export type NameField = {
     state: 'value' | 'pending' | 'not_applicable' | 'unsupported' | 'multi_account' | 'not_set';
     /**
@@ -4215,6 +4280,69 @@ export type GetNameResponses = {
 };
 
 export type GetNameResponse = GetNameResponses[keyof GetNameResponses];
+
+export type ListNameHistoryData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+    };
+    url: '/names/{name}/history';
+};
+
+export type ListNameHistoryErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListNameHistoryError = ListNameHistoryErrors[keyof ListNameHistoryErrors];
+
+export type ListNameHistoryResponses = {
+    /**
+     * Canonical ENS event history at a frozen snapshot with explicit coverage.
+     */
+    200: NameHistoryResponse;
+};
+
+export type ListNameHistoryResponse = ListNameHistoryResponses[keyof ListNameHistoryResponses];
+
+export type ListNameHistoryEventsData = {
+    body?: never;
+    path: {
+        name: string;
+        transactionHash: Hash;
+    };
+    query: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+        block_hash: Hash;
+        snapshot: OpaqueCursor;
+    };
+    url: '/names/{name}/history/{transactionHash}/events';
+};
+
+export type ListNameHistoryEventsErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListNameHistoryEventsError = ListNameHistoryEventsErrors[keyof ListNameHistoryEventsErrors];
+
+export type ListNameHistoryEventsResponses = {
+    /**
+     * Canonical ENS event history at a frozen snapshot with explicit coverage.
+     */
+    200: NameHistoryEventsResponse;
+};
+
+export type ListNameHistoryEventsResponse = ListNameHistoryEventsResponses[keyof ListNameHistoryEventsResponses];
 
 export type ListAddressNamesData = {
     body?: never;

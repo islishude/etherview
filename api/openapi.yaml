@@ -1001,6 +1001,69 @@ paths:
                 $ref: "#/components/schemas/NameDetailResponse"
         default:
           $ref: "#/components/responses/Error"
+  /names/{name}/history:
+    get:
+      operationId: listNameHistory
+      tags: [ens]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical ENS event history at a frozen snapshot with explicit coverage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameHistoryResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /names/{name}/history/{transactionHash}/events:
+    get:
+      operationId: listNameHistoryEvents
+      tags: [ens]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - $ref: "#/components/parameters/Cursor"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: transactionHash
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: block_hash
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: snapshot
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/OpaqueCursor"
+      responses:
+        "200":
+          description: Canonical ENS event history at a frozen snapshot with explicit coverage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameHistoryEventsResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /address-names:
     get:
       operationId: listAddressNames
@@ -1565,7 +1628,8 @@ paths:
         typed 503 error. Both SSE routes share per-client and per-process active
         subscription limits; admission failure returns 429 with Retry-After.
         A names event carries a decimal-string publication or directory identity for
-        background rereading, or a source identity and invalidated=true for withdrawal
+        background rereading, history=true with invalidated=false for a history refresh,
+        or a source identity and invalidated=true for withdrawal
         before rereading. Reorganizations and stream reconnections also withdraw names.
         Sync coverage changes alone emit status with reason=names_progress and a
         decimal-string source identity; they do not invalidate published names.
@@ -5598,6 +5662,149 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/EIP7702Authorization"
+    NameHistoryField:
+      type: object
+      additionalProperties: false
+      required: [key, type, value, truncated]
+      properties:
+        key:
+          type: string
+        type:
+          type: string
+          description: ABI scalar type, array type or hash for an indexed dynamic argument.
+        value:
+          type: string
+          description: Inert event evidence; omitted event values are never inferred from current records.
+        truncated:
+          type: boolean
+    NameHistoryEvent:
+      type: object
+      additionalProperties: false
+      required: [log_index, emitter, event_name, action, fields]
+      properties:
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        emitter:
+          $ref: "#/components/schemas/Address"
+        event_name:
+          type: string
+        action:
+          $ref: "#/components/schemas/NameHistoryAction"
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryField"
+    NameHistoryAction:
+      type: string
+      enum:
+        [
+          registration,
+          reservation,
+          renewal,
+          unregistration,
+          transfer,
+          subname,
+          resolver,
+          ttl,
+          address,
+          name,
+          text,
+          contenthash,
+          abi,
+          dns,
+          pubkey,
+          interface,
+          data,
+          clear,
+          permission,
+          wrap,
+          unwrap,
+          fuses,
+          migration,
+          link,
+          resource,
+        ]
+    NameHistoryCoverage:
+      type: object
+      additionalProperties: false
+      required: [state, start, pending]
+      properties:
+        state:
+          type: string
+          enum: [complete, partial, pending, unavailable]
+        start:
+          $ref: "#/components/schemas/Quantity"
+        scanned:
+          $ref: "#/components/schemas/Quantity"
+        target:
+          $ref: "#/components/schemas/Quantity"
+        pending:
+          $ref: "#/components/schemas/Quantity"
+    NameHistoryTransaction:
+      type: object
+      additionalProperties: false
+      required: [transaction_hash, block_hash, block_number, timestamp, actions, event_count]
+      properties:
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        timestamp:
+          type: string
+          format: date-time
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryAction"
+        event_count:
+          $ref: "#/components/schemas/Quantity"
+    NameHistory:
+      type: object
+      additionalProperties: false
+      required: [name, state, coverage, snapshot, items]
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+          enum: [indexed, not_indexed]
+        coverage:
+          $ref: "#/components/schemas/NameHistoryCoverage"
+        snapshot:
+          type: string
+          maxLength: 1024
+          description: Opaque event-page snapshot, empty before any history scan.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryTransaction"
+    NameHistoryEvents:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryEvent"
+    NameHistoryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NameHistory"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    NameHistoryEventsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NameHistoryEvents"
+        meta:
+          $ref: "#/components/schemas/Meta"
     NameField:
       type: object
       additionalProperties: false

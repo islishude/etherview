@@ -125,6 +125,10 @@ func decodeEvent(m Manifest, d Deployment, profile contractProfile, log types.Lo
 			put("control", recordKey(d.Address, node, "ttl"), map[string]any{"ttl": decimalValue(values["ttl"])}, false)
 		}
 	case "registrar":
+		if event.Name == "Approval" {
+			result.Nodes = append(result.Nodes, nodeFor(nameHash(m.ParentName), hashValue(values["tokenId"])))
+			return result, nil
+		}
 		id := values["id"]
 		if id == nil {
 			id = values["tokenId"]
@@ -225,6 +229,9 @@ func decodeWrapper(result decodedEvent, d Deployment, _ types.Log, event string,
 	node := hashValue(v["node"])
 	fields := map[string]any{}
 	switch event {
+	case "Approval":
+		result.Nodes = append(result.Nodes, hashValue(v["tokenId"]))
+		return result, nil
 	case "NameWrapped":
 		name, err := decodeDNSName(v["name"].([]byte))
 		if err != nil || nameHash(name) != node {
@@ -334,6 +341,10 @@ func unpackEvent(event abi.Event, log types.Log) (map[string]any, error) {
 		return nil, ErrInvalidEvent
 	}
 	for i, arg := range indexed {
+		// Indexed dynamic values are hashes, not reconstructible ABI values.
+		if arg.Type.T == abi.StringTy || arg.Type.T == abi.BytesTy || arg.Type.T == abi.SliceTy || arg.Type.T == abi.ArrayTy {
+			continue
+		}
 		b, e := (abi.Arguments{arg}).Pack(values[arg.Name])
 		if e != nil || !bytes.Equal(b, log.Topics[i+1].Bytes()) {
 			return nil, ErrInvalidEvent

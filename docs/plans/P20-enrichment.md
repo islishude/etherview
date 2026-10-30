@@ -71,8 +71,11 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 | P20-T29 | done   | P20-T28                            | Exact resolution independent of directory coverage, bounded refresh and atomic publication                                                                       | Lagging coverage, stale events, expiry, leases, canonical and publication races                                 |
 
 | P20-T30 | done | P20-T29 | Independent exact registration profiles and canonical known-name directory; remove ENS source classifications | Protocol ownership/expiry/permissions, lifecycle, canonical publication and PostgreSQL race |
+| P20-T31 | done | P20-T30 | Canonical ENS operation history with temporal name associations and bounded recovery | ENS history regressions, generated contracts and applicable production/browser gates |
 
 ## Acceptance
+
+- [x] P20-T31: Canonical event facts retain source, block and log identity; event-time v2 associations exclude later aliases and recover persisted pending work after restart. Verified by the ENS PostgreSQL race suite, temporal/restart regressions and fresh production-schema gate.
 
 - [x] P20-T30: Independent exact registration profiles and canonical known-name directory; remove ENS source classifications. Protocol ownership/expiry/permissions, lifecycle, canonical publication and PostgreSQL race. Existing historical reports do not validate this extension.
 

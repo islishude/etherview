@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	goens "github.com/ensdomains/go-ens/v4"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
@@ -157,7 +158,28 @@ func TestENSV2RealContractsDiscoveryAndSharedPaths(t *testing.T) {
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_projections WHERE kind='registration' AND payload->>'label'='reserved' AND payload->>'reserved'='true' AND payload->>'registered'='false'`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM (SELECT DISTINCT ON(key) payload FROM ens_sync_projections WHERE kind='registration' ORDER BY key,revision DESC) latest WHERE payload->>'label'='gone' AND payload->>'registered'='false'`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM (SELECT DISTINCT ON(key) payload FROM ens_sync_projections WHERE kind='lifecycle' ORDER BY key,revision DESC) latest WHERE payload->>'label_hash'=$1 AND payload ? 'resource'`, 2, crypto.Keccak256Hash([]byte("alice")).Hex())
-	if _, e = collector.Step(ctx, true); e != nil {
+
+	// The alias link happens after the original address write. The earlier write
+	// belongs only to wallet.alice.eth even though both names share record 1 now.
+	walletName, _ := goens.NameHash("wallet.alice.eth")
+	aliasName, _ := goens.NameHash("wallet.alias.eth")
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_history_subjects h JOIN ens_history_events e USING(source_id,block_hash,log_index) WHERE h.node=$1 AND e.event_name='AddressUpdated'`, 1, walletName[:])
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_history_subjects h JOIN ens_history_events e USING(source_id,block_hash,log_index) WHERE h.node=$1 AND e.event_name='AddressUpdated'`, 0, aliasName[:])
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_history_subjects h JOIN ens_history_events e USING(source_id,block_hash,log_index) WHERE h.node=$1 AND e.event_name='Linked'`, 1, aliasName[:])
+	// The disconnected child registration cannot be retroactively claimed by
+	// either parent path; a later resolver link is separate evidence.
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_history_subjects h JOIN ens_history_events e USING(source_id,block_hash,log_index) WHERE h.node=$1 AND e.event_name='LabelRegistered'`, 0, walletName[:])
+	// Repair a persisted dynamic-instance association with no new block logs.
+	// The restarted collector initially knows only manifest deployments.
+	execFixture(t, ctx, db, `INSERT INTO ens_history_pending(source_id,block_hash,log_index)
+ SELECT e.source_id,e.block_hash,e.log_index FROM ens_history_events e JOIN ens_sync_events l USING(source_id,block_hash,log_index)
+ WHERE l.emitter=$1 AND e.event_name='Linked' ON CONFLICT DO NOTHING`, real.Resolver.Bytes())
+	restarted, err := enssync.NewCollector(repo, manifest, pool, enssync.CollectorOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, e = restarted.Step(ctx, true); e != nil {
 		t.Fatal(e)
 	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_history_pending p JOIN ens_history_events e USING(source_id,block_hash,log_index) WHERE e.event_name='Linked'`, 0)
 }

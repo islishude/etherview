@@ -66,6 +66,7 @@ type Querier interface {
 	BytecodeDBResetCooldowns(ctx context.Context, serviceID []byte) error
 	BytecodeDBRetryUnavailable(ctx context.Context, arg BytecodeDBRetryUnavailableParams) (int64, error)
 	BytecodeDBScanReady(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) (bool, error)
+	CaptureENSHistoryStates(ctx context.Context, arg CaptureENSHistoryStatesParams) error
 	CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error)
 	CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error)
 	CatalogAddressTokenTransfers(ctx context.Context, arg CatalogAddressTokenTransfersParams) ([]CatalogAddressTokenTransfersRow, error)
@@ -107,6 +108,7 @@ type Querier interface {
 	ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error)
 	ClaimENSSyncJob(ctx context.Context, leaseToken pgtype.UUID, leaseSeconds int32, sourceID int64) (EnsSyncJob, error)
 	CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error)
+	CompleteENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
 	ConfirmENSSyncPublication(ctx context.Context, arg ConfirmENSSyncPublicationParams) (int64, error)
 	ConsensusAdvanceDiscovery(ctx context.Context, arg ConsensusAdvanceDiscoveryParams) error
 	ConsensusBindNetwork(ctx context.Context, chainID pgtype.Numeric, identity []byte) (int64, error)
@@ -197,6 +199,7 @@ type Querier interface {
 	ERC4337SourceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
 	ERC4337SourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
 	ERC4337ValidateSnapshot(ctx context.Context, arg ERC4337ValidateSnapshotParams) (bool, error)
+	EmitENSHistoryRefresh(ctx context.Context, sourceID int64) error
 	EmitENSInvalidation(ctx context.Context, sourceID string) error
 	EmitENSNamesEvent(ctx context.Context, targetChainID pgtype.Numeric, publication string) error
 	EnqueueENSSyncJob(ctx context.Context, arg EnqueueENSSyncJobParams) (int64, error)
@@ -481,6 +484,10 @@ type Querier interface {
 	ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error)
 	ListDiamondCutHistory(ctx context.Context, arg ListDiamondCutHistoryParams) ([]ListDiamondCutHistoryRow, error)
 	ListENSEffectivePoliciesForSource(ctx context.Context, sourceID int64) ([]EnsEffectivePolicy, error)
+	ListENSHistoryPending(ctx context.Context, sourceID int64, rowLimit int32) ([]ListENSHistoryPendingRow, error)
+	ListENSHistoryStates(ctx context.Context, arg ListENSHistoryStatesParams) ([]ListENSHistoryStatesRow, error)
+	ListENSHistoryTransactionEvents(ctx context.Context, arg ListENSHistoryTransactionEventsParams) ([]ListENSHistoryTransactionEventsRow, error)
+	ListENSHistoryTransactions(ctx context.Context, arg ListENSHistoryTransactionsParams) ([]ListENSHistoryTransactionsRow, error)
 	ListENSSyncCoreLogs(ctx context.Context, arg ListENSSyncCoreLogsParams) ([]ListENSSyncCoreLogsRow, error)
 	ListENSSyncEmitterDeployments(ctx context.Context, sourceID int64, addresses [][]byte) ([]ListENSSyncEmitterDeploymentsRow, error)
 	ListENSSyncJobDependencies(ctx context.Context, sourceID int64, jobID int64) ([]EnsSyncProjection, error)
@@ -598,6 +605,9 @@ type Querier interface {
 	PushTokenSources(ctx context.Context, arg PushTokenSourcesParams) ([]PushTokenSourcesRow, error)
 	PushValidateDelivery(ctx context.Context, arg PushValidateDeliveryParams) (bool, error)
 	PutENSEffectivePublication(ctx context.Context, arg PutENSEffectivePublicationParams) (int64, error)
+	PutENSHistoryEvent(ctx context.Context, arg PutENSHistoryEventParams) error
+	PutENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
+	PutENSHistorySubject(ctx context.Context, arg PutENSHistorySubjectParams) (int64, error)
 	PutENSSyncBlock(ctx context.Context, arg PutENSSyncBlockParams) (int64, error)
 	PutENSSyncDeployment(ctx context.Context, arg PutENSSyncDeploymentParams) error
 	PutENSSyncEvent(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) (int64, error)
@@ -628,6 +638,10 @@ type Querier interface {
 	ReadENSEffectiveName(ctx context.Context, arg ReadENSEffectiveNameParams) (ReadENSEffectiveNameRow, error)
 	ReadENSEffectivePublication(ctx context.Context, arg ReadENSEffectivePublicationParams) (EnsEffectivePublication, error)
 	ReadENSEffectiveSnapshot(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (ReadENSEffectiveSnapshotRow, error)
+	ReadENSHistoryFence(ctx context.Context, sourceID int64, node []byte, snapshotHash []byte) (ReadENSHistoryFenceRow, error)
+	ReadENSHistoryMintLabel(ctx context.Context, arg ReadENSHistoryMintLabelParams) ([]byte, error)
+	ReadENSHistoryScope(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte) (ReadENSHistoryScopeRow, error)
+	ReadENSHistoryState(ctx context.Context, arg ReadENSHistoryStateParams) ([]byte, error)
 	ReadENSKnownName(ctx context.Context, name string, chainID pgtype.Numeric, policyDigest []byte) (bool, error)
 	ReadENSLatestProfileIDs(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte, name string) (ReadENSLatestProfileIDsRow, error)
 	ReadENSNameSourceStatus(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) ([]ReadENSNameSourceStatusRow, error)
@@ -653,6 +667,7 @@ type Querier interface {
 	RequestsWriteItems(ctx context.Context, arg RequestsWriteItemsParams) ([]int32, error)
 	RequestsWriteSet(ctx context.Context, arg RequestsWriteSetParams) (int64, error)
 	ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error)
+	RetryENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
 	RetryENSSyncJob(ctx context.Context, arg RetryENSSyncJobParams) (int64, error)
 	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) error
 	RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)

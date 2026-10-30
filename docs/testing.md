@@ -52,6 +52,15 @@ independent invalidation, retained expired names and canonical discovery fences.
 Runtime/Preview exercise the same profile worker and generated detail contract.
 Earlier Mainnet samples do not establish acceptance of the new profile fields.
 
+ENS operation history adds `TestENSHistory` and event-time shared-resolver
+assertions to the same `^TestENS` PostgreSQL race suite. Tests cover grouped
+transactions, separately bounded event pagination, unknown names, partial
+coverage, new-head cursor stability and immediate core-reorg rejection. Runtime
+all/split and Preview contracts assert public history from actual fixture logs.
+`name-history.spec.ts` verifies bilingual light/dark mobile and desktop layouts,
+keyboard expansion, inert record text, lazy event requests and the single SSE
+stream. Fixture coverage remains distinct from complete live history.
+
 ## Restricted automation hosts
 
 Codex and other filesystem-restricted automation should preserve the exact

@@ -210,6 +210,9 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 	if err = c.expandGraph(ctx, source); err != nil {
 		return result, err
 	}
+	if err = c.repairHistory(ctx, source); err != nil {
+		return result, err
+	}
 	return result, nil
 }
 

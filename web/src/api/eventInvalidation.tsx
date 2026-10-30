@@ -108,7 +108,11 @@ export function ChainEventInvalidation() {
                 ("invalidated" in payload && payload.invalidated !== false) ||
                 !(
                   ("publication" in payload && decimalBlock(payload.publication)) ||
-                  ("directory" in payload && decimalBlock(payload.directory))
+                  ("directory" in payload && decimalBlock(payload.directory)) ||
+                  ("history" in payload &&
+                    payload.history === true &&
+                    "invalidated" in payload &&
+                    payload.invalidated === false)
                 )
               )
                 withdrawNames = true;

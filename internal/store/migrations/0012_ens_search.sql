@@ -422,6 +422,50 @@ SELECT r.source_id,r.block_hash,r.log_index,l.tx_hash AS transaction_hash,
 FROM ens_sync_event_refs r JOIN logs l ON l.chain_id=r.chain_id
  AND l.block_number=r.block_number AND l.block_hash=r.block_hash AND l.log_index=r.log_index;
 
+-- Event-time history, retaining core log identity and bounded decoded values.
+CREATE TABLE ens_history_events (
+    source_id bigint NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    event_name text NOT NULL CHECK (octet_length(event_name) BETWEEN 1 AND 128),
+    action text NOT NULL CHECK (action ~ '^[a-z_]{1,32}$'),
+    fields jsonb NOT NULL CHECK (jsonb_typeof(fields) = 'array' AND octet_length(fields::text) <= 65536),
+    PRIMARY KEY(source_id, block_hash, log_index),
+    FOREIGN KEY(source_id, block_hash, log_index) REFERENCES ens_sync_event_refs(source_id, block_hash, log_index)
+);
+CREATE TABLE ens_history_states (
+    source_id bigint NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    kind text NOT NULL,
+    key text NOT NULL,
+    payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object' AND octet_length(payload::text) <= 65536),
+    PRIMARY KEY(source_id, block_hash, log_index, kind, key),
+    FOREIGN KEY(source_id, block_hash, log_index) REFERENCES ens_sync_event_refs(source_id, block_hash, log_index)
+);
+CREATE INDEX ens_history_states_key ON ens_history_states(source_id, kind, key);
+CREATE INDEX ens_history_states_payload ON ens_history_states USING gin(payload jsonb_path_ops);
+CREATE TABLE ens_history_subjects (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    source_id bigint NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    node bytea NOT NULL CHECK(octet_length(node) = 32),
+    UNIQUE(source_id, block_hash, log_index, node),
+    FOREIGN KEY(source_id, block_hash, log_index) REFERENCES ens_history_events(source_id, block_hash, log_index)
+);
+CREATE INDEX ens_history_subjects_node ON ens_history_subjects(source_id, node);
+CREATE TABLE ens_history_pending (
+    source_id bigint NOT NULL,
+    block_hash bytea NOT NULL,
+    log_index bigint NOT NULL,
+    attempts integer NOT NULL DEFAULT 0 CHECK(attempts BETWEEN 0 AND 8),
+    retry_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY(source_id, block_hash, log_index),
+    FOREIGN KEY(source_id, block_hash, log_index) REFERENCES ens_history_events(source_id, block_hash, log_index)
+);
+
 -- Versioned protocol facts include graph edges, record bundles, lifecycle and
 -- preimages. Projectors own each bounded payload's protocol-specific shape.
 -- Versions advance independently of the source epoch. Jobs pin only the
@@ -587,6 +631,9 @@ END
 $$;
 CREATE TRIGGER ens_sync_sources_immutable BEFORE UPDATE ON ens_sync_sources FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_deployments_immutable BEFORE UPDATE ON ens_sync_deployments FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
+CREATE TRIGGER ens_history_events_immutable BEFORE UPDATE ON ens_history_events FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
+CREATE TRIGGER ens_history_states_immutable BEFORE UPDATE ON ens_history_states FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
+CREATE TRIGGER ens_history_subjects_immutable BEFORE UPDATE ON ens_history_subjects FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_events_immutable BEFORE UPDATE ON ens_sync_event_refs FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_projections_immutable BEFORE UPDATE ON ens_sync_projections FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();
 CREATE TRIGGER ens_sync_observations_immutable BEFORE UPDATE ON ens_sync_observations FOR EACH ROW EXECUTE FUNCTION reject_ens_sync_mutation();

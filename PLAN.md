@@ -80,3 +80,5 @@ verification once at its owning change or milestone, not in a root changelog.
 ENS registration browsing and name-identity search are complete under P20-T30,
 P40-T28 and P50-T82. This extends the completed current-chain rewrite; existing
 P60/P70 safety, capacity, recovery and live acceptance boundaries remain in force.
+
+ENS operation history and name-page redesign are complete under P20-T31 → P40-T29 → P50-T83.

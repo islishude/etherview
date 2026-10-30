@@ -197,19 +197,19 @@ func (e AddressSummaryType) Valid() bool {
 
 // Defines values for AddressTokenTransferKind.
 const (
-	Burn     AddressTokenTransferKind = "burn"
-	Mint     AddressTokenTransferKind = "mint"
-	Transfer AddressTokenTransferKind = "transfer"
+	AddressTokenTransferKindBurn     AddressTokenTransferKind = "burn"
+	AddressTokenTransferKindMint     AddressTokenTransferKind = "mint"
+	AddressTokenTransferKindTransfer AddressTokenTransferKind = "transfer"
 )
 
 // Valid indicates whether the value is a known member of the AddressTokenTransferKind enum.
 func (e AddressTokenTransferKind) Valid() bool {
 	switch e {
-	case Burn:
+	case AddressTokenTransferKindBurn:
 		return true
-	case Mint:
+	case AddressTokenTransferKindMint:
 		return true
-	case Transfer:
+	case AddressTokenTransferKindTransfer:
 		return true
 	default:
 		return false
@@ -1812,6 +1812,135 @@ func (e NameFieldState) Valid() bool {
 	case NameFieldStateUnsupported:
 		return true
 	case NameFieldStateValue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameHistoryState.
+const (
+	NameHistoryStateIndexed    NameHistoryState = "indexed"
+	NameHistoryStateNotIndexed NameHistoryState = "not_indexed"
+)
+
+// Valid indicates whether the value is a known member of the NameHistoryState enum.
+func (e NameHistoryState) Valid() bool {
+	switch e {
+	case NameHistoryStateIndexed:
+		return true
+	case NameHistoryStateNotIndexed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameHistoryAction.
+const (
+	NameHistoryActionAbi            NameHistoryAction = "abi"
+	NameHistoryActionAddress        NameHistoryAction = "address"
+	NameHistoryActionClear          NameHistoryAction = "clear"
+	NameHistoryActionContenthash    NameHistoryAction = "contenthash"
+	NameHistoryActionData           NameHistoryAction = "data"
+	NameHistoryActionDns            NameHistoryAction = "dns"
+	NameHistoryActionFuses          NameHistoryAction = "fuses"
+	NameHistoryActionInterface      NameHistoryAction = "interface"
+	NameHistoryActionLink           NameHistoryAction = "link"
+	NameHistoryActionMigration      NameHistoryAction = "migration"
+	NameHistoryActionName           NameHistoryAction = "name"
+	NameHistoryActionPermission     NameHistoryAction = "permission"
+	NameHistoryActionPubkey         NameHistoryAction = "pubkey"
+	NameHistoryActionRegistration   NameHistoryAction = "registration"
+	NameHistoryActionRenewal        NameHistoryAction = "renewal"
+	NameHistoryActionReservation    NameHistoryAction = "reservation"
+	NameHistoryActionResolver       NameHistoryAction = "resolver"
+	NameHistoryActionResource       NameHistoryAction = "resource"
+	NameHistoryActionSubname        NameHistoryAction = "subname"
+	NameHistoryActionText           NameHistoryAction = "text"
+	NameHistoryActionTransfer       NameHistoryAction = "transfer"
+	NameHistoryActionTtl            NameHistoryAction = "ttl"
+	NameHistoryActionUnregistration NameHistoryAction = "unregistration"
+	NameHistoryActionUnwrap         NameHistoryAction = "unwrap"
+	NameHistoryActionWrap           NameHistoryAction = "wrap"
+)
+
+// Valid indicates whether the value is a known member of the NameHistoryAction enum.
+func (e NameHistoryAction) Valid() bool {
+	switch e {
+	case NameHistoryActionAbi:
+		return true
+	case NameHistoryActionAddress:
+		return true
+	case NameHistoryActionClear:
+		return true
+	case NameHistoryActionContenthash:
+		return true
+	case NameHistoryActionData:
+		return true
+	case NameHistoryActionDns:
+		return true
+	case NameHistoryActionFuses:
+		return true
+	case NameHistoryActionInterface:
+		return true
+	case NameHistoryActionLink:
+		return true
+	case NameHistoryActionMigration:
+		return true
+	case NameHistoryActionName:
+		return true
+	case NameHistoryActionPermission:
+		return true
+	case NameHistoryActionPubkey:
+		return true
+	case NameHistoryActionRegistration:
+		return true
+	case NameHistoryActionRenewal:
+		return true
+	case NameHistoryActionReservation:
+		return true
+	case NameHistoryActionResolver:
+		return true
+	case NameHistoryActionResource:
+		return true
+	case NameHistoryActionSubname:
+		return true
+	case NameHistoryActionText:
+		return true
+	case NameHistoryActionTransfer:
+		return true
+	case NameHistoryActionTtl:
+		return true
+	case NameHistoryActionUnregistration:
+		return true
+	case NameHistoryActionUnwrap:
+		return true
+	case NameHistoryActionWrap:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameHistoryCoverageState.
+const (
+	NameHistoryCoverageStateComplete    NameHistoryCoverageState = "complete"
+	NameHistoryCoverageStatePartial     NameHistoryCoverageState = "partial"
+	NameHistoryCoverageStatePending     NameHistoryCoverageState = "pending"
+	NameHistoryCoverageStateUnavailable NameHistoryCoverageState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the NameHistoryCoverageState enum.
+func (e NameHistoryCoverageState) Valid() bool {
+	switch e {
+	case NameHistoryCoverageStateComplete:
+		return true
+	case NameHistoryCoverageStatePartial:
+		return true
+	case NameHistoryCoverageStatePending:
+		return true
+	case NameHistoryCoverageStateUnavailable:
 		return true
 	default:
 		return false
@@ -5801,6 +5930,102 @@ type NameFieldModel string
 // NameFieldState defines model for NameField.State.
 type NameFieldState string
 
+// NameHistory defines model for NameHistory.
+type NameHistory struct {
+	Coverage NameHistoryCoverage      `json:"coverage"`
+	Items    []NameHistoryTransaction `json:"items"`
+	Name     string                   `json:"name"`
+
+	// Snapshot Opaque event-page snapshot, empty before any history scan.
+	Snapshot string           `json:"snapshot"`
+	State    NameHistoryState `json:"state"`
+}
+
+// NameHistoryState defines model for NameHistory.State.
+type NameHistoryState string
+
+// NameHistoryAction defines model for NameHistoryAction.
+type NameHistoryAction string
+
+// NameHistoryCoverage defines model for NameHistoryCoverage.
+type NameHistoryCoverage struct {
+	// Pending A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Pending Quantity `json:"pending"`
+
+	// Scanned A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Scanned *Quantity `json:"scanned,omitempty"`
+
+	// Start A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Start Quantity                 `json:"start"`
+	State NameHistoryCoverageState `json:"state"`
+
+	// Target A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Target *Quantity `json:"target,omitempty"`
+}
+
+// NameHistoryCoverageState defines model for NameHistoryCoverage.State.
+type NameHistoryCoverageState string
+
+// NameHistoryEvent defines model for NameHistoryEvent.
+type NameHistoryEvent struct {
+	Action NameHistoryAction `json:"action"`
+
+	// Emitter A 20-byte address; responses use the EIP-55 checksum form.
+	Emitter   Address            `json:"emitter"`
+	EventName string             `json:"event_name"`
+	Fields    []NameHistoryField `json:"fields"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex Quantity `json:"log_index"`
+}
+
+// NameHistoryEvents defines model for NameHistoryEvents.
+type NameHistoryEvents struct {
+	Items []NameHistoryEvent `json:"items"`
+}
+
+// NameHistoryEventsResponse defines model for NameHistoryEventsResponse.
+type NameHistoryEventsResponse struct {
+	Data NameHistoryEvents `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// NameHistoryField defines model for NameHistoryField.
+type NameHistoryField struct {
+	Key       string `json:"key"`
+	Truncated bool   `json:"truncated"`
+
+	// Type ABI scalar type, array type or hash for an indexed dynamic argument.
+	Type string `json:"type"`
+
+	// Value Inert event evidence; omitted event values are never inferred from current records.
+	Value string `json:"value"`
+}
+
+// NameHistoryResponse defines model for NameHistoryResponse.
+type NameHistoryResponse struct {
+	Data NameHistory `json:"data"`
+	Meta Meta        `json:"meta"`
+}
+
+// NameHistoryTransaction defines model for NameHistoryTransaction.
+type NameHistoryTransaction struct {
+	Actions []NameHistoryAction `json:"actions"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// EventCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	EventCount Quantity  `json:"event_count"`
+	Timestamp  time.Time `json:"timestamp"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+}
+
 // NameObservation defines model for NameObservation.
 type NameObservation struct {
 	// ObservedBlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
@@ -8206,6 +8431,20 @@ type ListGenesisAccountsParams struct {
 type GetHomeSnapshotParams struct {
 	// MinEventId Minimum durable event version; waits at most two seconds for the local snapshot.
 	MinEventId *RuntimeEventID `form:"min_event_id,omitempty" json:"min_event_id,omitempty"`
+}
+
+// ListNameHistoryParams defines parameters for ListNameHistory.
+type ListNameHistoryParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListNameHistoryEventsParams defines parameters for ListNameHistoryEvents.
+type ListNameHistoryEventsParams struct {
+	Cursor    *Cursor      `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit     *int         `form:"limit,omitempty" json:"limit,omitempty"`
+	BlockHash Hash         `form:"block_hash" json:"block_hash"`
+	Snapshot  OpaqueCursor `form:"snapshot" json:"snapshot"`
 }
 
 // ListPendingTransactionsParams defines parameters for ListPendingTransactions.
