@@ -94,6 +94,11 @@ still expose state-backed capabilities without weakening their error contract.
   logged only with a stable code and retried with bounded backoff; it neither
   exits the component nor withdraws process readiness. PostgreSQL remains the
   only dependency of this cleanup path.
+- Block statistics and aggregate reads select the contiguous completed
+  `stats@4`/`token@2` prefix beginning at the requested start, capped by the
+  requested end. Pending suffixes do not block completed data. Every request,
+  including refresh, repeats selection and reports the actual returned range.
+  No completed prefix remains typed unavailable; gaps are not counted as zero.
 - Statistics use `stats@4` under
   [ADR-0052](ADR-0052-amsterdam-explorer-support.md); earlier stage versions
   cannot satisfy the current projection. Except for the exact configured

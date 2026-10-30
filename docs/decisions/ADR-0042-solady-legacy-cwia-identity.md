@@ -99,14 +99,11 @@ derive access offsets without retaining the complete AST or parsing source text.
   so an exact-address/code-hash transition is a target change. Upgrade,
   ProxyAdmin, and Beacon-management interaction continues to require the exact
   current binding and exact-address identities.
-- A fresh-operation response whose latest proxy stage is `unavailable` is not
-  evidence that the displayed binding or code identity changed. The operation
-  fails before `eth_call` or wallet submission with a retryable unavailable
-  result, but does not trigger the binding-change callback, replace the last
-  published interaction target, or redirect its selected tab. A subsequent
-  operation always performs another fresh fence. Actual binding, code,
-  artifact-resolution, schema, or management changes retain the existing
-  target-change refresh and fail-closed behavior.
+- Pre-operation reads use the same latest completed proxy snapshot as browsing.
+  Pending, unavailable or failed processing at a newer core block does not erase
+  a published interaction target or block it solely because enrichment lags.
+  Actual binding, code, artifact-resolution, schema or management differences
+  between completed snapshots retain the target-change refresh behavior.
 - The exact CWIA shell observation may also route that same code-hash-resolved
   implementation ABI into block-bound transaction events, call-like Trace
   frames, transaction Method selectors, and calldata reads. Exact-address
@@ -128,10 +125,12 @@ derive access offsets without retaining the complete AST or parsing source text.
   is the current implementation artifact exposed through Proxy identity and
   implementation-as-proxy tabs. The implementation address's own Code page and
   artifact-resolution provenance remain unchanged; non-CWIA contracts and
-  proxies retain their direct artifact entry. While the latest proxy stage is
-  `unavailable`, the page withholds the direct entry and refetches classification
-  every 500 ms until a published state proves CWIA or non-CWIA; the independent
-  artifact request may load concurrently but cannot flash the wrong surface.
+  proxies retain their direct artifact entry. Published exact-address source
+  artifacts remain readable while proxy classification is pending, unavailable,
+  or failed. That read-only display does not authorize contract interactions or
+  verification submission. A recognized CWIA classification still hides the
+  shell artifact; manual refresh applies newly published classification without
+  introducing background polling.
 - Etherscan `getabi` and `getsourcecode` may resolve the exact verified
   implementation when the immutable shell itself has no source artifact, but
   only through the current writer-authoritative binding. `getsourcecode`

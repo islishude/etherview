@@ -1,3 +1,5 @@
+import { QueryClient, QueryClientProvider, QueryObserver } from "@tanstack/react-query";
+import { markBrowsingQuery, snapshotInvalid } from "@/api/browsingState";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -273,7 +275,7 @@ describe("AbiFunctionExplorer", () => {
     vi.mocked(getContractProxyResponse).mockResolvedValue(proxyResponse());
   });
 
-  it("renders and reads the published ERC1820Registry ABI with constant/payable flags", async () => {
+  it("reads with a connected wallet even when an unrelated browsing snapshot is invalidated", async () => {
     const managerABI = [
       {
         type: "function",
@@ -291,7 +293,7 @@ describe("AbiFunctionExplorer", () => {
       }),
     );
     mockWallet({ readContract });
-    renderExplorer(erc1820RegistryABI, "read", directTargets());
+    renderExplorer(erc1820RegistryABI, "read", directTargets(), undefined, true);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("interfaceHash(string)", { selector: "code" })).toBeVisible();
     expect(
@@ -606,10 +608,10 @@ describe("AbiFunctionExplorer", () => {
     );
   });
 
-  it("shows and forwards native value only for payable functions", async () => {
+  it("writes with a connected wallet after unrelated browsing invalidation and forwards payable value", async () => {
     const sendTransaction = vi.fn(async () => TRANSACTION_HASH);
     mockWallet({ sendTransaction });
-    renderExplorer(payableABI, "write", directTargets());
+    renderExplorer(payableABI, "write", directTargets(), undefined, true);
     const user = userEvent.setup();
     const writeText = mockClipboard();
     const payable = await openFunctionCard(user, "deposit()");
@@ -936,7 +938,22 @@ function renderExplorer(
   mode: "read" | "write" | "all",
   targets: readonly ContractInteractionTarget[],
   onBindingChanged?: () => void,
+  invalidBrowsing = false,
 ) {
+  const client = new QueryClient();
+  if (invalidBrowsing) {
+    const observer = new QueryObserver(client, {
+      queryKey: ["unrelated-address-activity"],
+      initialData: { value: 1 },
+      staleTime: Infinity,
+      meta: { chainEvents: ["status"] },
+    });
+    observer.subscribe(() => {});
+    const query = client.getQueryCache().find({ queryKey: ["unrelated-address-activity"] })!;
+    markBrowsingQuery(query);
+    expect(query.isActive()).toBe(true);
+    expect(snapshotInvalid(query)).toBe(true);
+  }
   const rootRoute = createRootRoute();
   const transactionRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -952,14 +969,16 @@ function renderExplorer(
     routeTree: rootRoute.addChildren([transactionRoute]),
   });
   render(
-    <RouterContextProvider router={router}>
-      <AbiFunctionExplorer
-        abi={abi}
-        mode={mode}
-        onBindingChanged={onBindingChanged}
-        targets={targets}
-      />
-    </RouterContextProvider>,
+    <QueryClientProvider client={client}>
+      <RouterContextProvider router={router}>
+        <AbiFunctionExplorer
+          abi={abi}
+          mode={mode}
+          onBindingChanged={onBindingChanged}
+          targets={targets}
+        />
+      </RouterContextProvider>
+    </QueryClientProvider>,
   );
   return { history };
 }

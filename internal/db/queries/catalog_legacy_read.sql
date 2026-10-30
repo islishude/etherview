@@ -917,3 +917,37 @@ SELECT EXISTS (
     FROM canonical_blocks
     WHERE chain_id = sqlc.arg('chain_id')::numeric AND number = sqlc.arg('number')::numeric AND block_hash = sqlc.arg('block_hash')
 );
+
+-- name: CatalogCompletedSnapshot :one
+SELECT canonical.number::text, canonical.block_hash
+FROM canonical_blocks AS canonical
+JOIN published_block_stage_results AS publication
+  ON publication.chain_id = canonical.chain_id
+ AND publication.block_number = canonical.number
+ AND publication.block_hash = canonical.block_hash
+WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+  AND publication.stage = sqlc.arg('stage')::text
+  AND publication.stage_version = sqlc.arg('stage_version')::integer
+  AND publication.state = 'complete'
+ORDER BY canonical.number DESC
+LIMIT 1;
+
+-- name: CatalogStatsReadSnapshot :one
+WITH completed AS (
+ SELECT canonical.number, canonical.block_hash,
+        row_number() OVER (ORDER BY canonical.number) AS ordinal
+ FROM canonical_blocks AS canonical
+ JOIN published_block_stage_results AS stats
+   ON stats.chain_id = canonical.chain_id AND stats.block_number = canonical.number
+  AND stats.block_hash = canonical.block_hash AND stats.stage = 'stats'
+  AND stats.stage_version = 4 AND stats.state = 'complete'
+ JOIN published_block_stage_results AS token
+   ON token.chain_id = canonical.chain_id AND token.block_number = canonical.number
+  AND token.block_hash = canonical.block_hash AND token.stage = 'token'
+  AND token.stage_version = 2 AND token.state = 'complete'
+ WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
+   AND canonical.number BETWEEN sqlc.arg('from_block')::numeric AND sqlc.arg('to_block')::numeric
+)
+SELECT number::text, block_hash FROM completed
+WHERE number = sqlc.arg('from_block')::numeric + ordinal - 1
+ORDER BY number DESC LIMIT 1;

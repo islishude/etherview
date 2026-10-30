@@ -38,6 +38,11 @@ BEGIN
         attempts = 0,
         next_attempt_at = now(),
         dirtied_at = now();
+    -- Appended blocks leave the last completed prefix readable. Changes within
+    -- that prefix withdraw it atomically; the worker will publish its replacement.
+    DELETE FROM chart_hourly_rollups
+    WHERE chain_id = source_chain AND bucket_start = hour_start
+      AND to_block >= source_number;
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
 END
@@ -79,6 +84,11 @@ BEGIN
         attempts = 0,
         next_attempt_at = now(),
         dirtied_at = now();
+    -- Appended blocks leave the last completed prefix readable. Changes within
+    -- that prefix withdraw it atomically; the worker will publish its replacement.
+    DELETE FROM chart_hourly_rollups
+    WHERE chain_id = source_chain AND bucket_start = hour_start
+      AND to_block >= source_number;
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
 END
@@ -107,6 +117,11 @@ BEGIN
         attempts = 0,
         next_attempt_at = now(),
         dirtied_at = now();
+    -- Appended blocks leave the last completed prefix readable. Changes within
+    -- that prefix withdraw it atomically; the worker will publish its replacement.
+    DELETE FROM chart_hourly_rollups
+    WHERE chain_id = source_chain AND bucket_start = hour_start
+      AND to_block >= source_number;
 END
 $$;
 

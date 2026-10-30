@@ -107,7 +107,10 @@ test("Code refreshes manually after proxy publication", async ({ page }) => {
   const panel = page.getByRole("tabpanel", { name: "Code", exact: true });
   await expect(panel.getByText("Unavailable", { exact: true })).toBeVisible();
   await expect(panel.getByText("Loading indexed data…")).toHaveCount(0);
-  await expect(panel.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await expect(panel.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
+  await expect(panel.locator(".cm-content")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Read contract", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Write contract", exact: true })).toHaveCount(0);
   await page.waitForTimeout(1200);
   expect(requests).toBe(1);
   published = true;

@@ -508,19 +508,12 @@ func (b *PostgresBackend) tokenHolders(ctx context.Context, values url.Values) (
 		return nil, err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	tip, err := b.requireCanonicalStageRange(ctx, tx, holderStage, "0", nil, ErrStateUnavailable)
+	tip, err := b.completedHolderTip(ctx, tx, tokenAddress)
 	if err != nil {
 		return nil, err
 	}
 	if err := requireEtherscanHolderDependencies(ctx, tx, b.chain, tip); err != nil {
 		return nil, err
-	}
-	token, err := b.canonicalTokenContract(ctx, tx, tokenAddress)
-	if err != nil {
-		return nil, err
-	}
-	if token.standard != "erc20" || token.confidence != "high" && token.confidence != "verified" {
-		return nil, ErrStateUnavailable
 	}
 	snapshot, err := etherscanHolderSnapshot(ctx, tx, b.chain, tokenAddress, tip)
 	if err != nil {
@@ -579,19 +572,12 @@ func (b *PostgresBackend) tokenHolderCount(ctx context.Context, values url.Value
 		return "", err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	tip, err := b.requireCanonicalStageRange(ctx, tx, holderStage, "0", nil, ErrStateUnavailable)
+	tip, err := b.completedHolderTip(ctx, tx, tokenAddress)
 	if err != nil {
 		return "", err
 	}
 	if err := requireEtherscanHolderDependencies(ctx, tx, b.chain, tip); err != nil {
 		return "", err
-	}
-	token, err := b.canonicalTokenContract(ctx, tx, tokenAddress)
-	if err != nil {
-		return "", err
-	}
-	if token.standard != "erc20" || token.confidence != "high" && token.confidence != "verified" {
-		return "", ErrStateUnavailable
 	}
 	snapshot, err := etherscanHolderSnapshot(ctx, tx, b.chain, tokenAddress, tip)
 	if err != nil {

@@ -647,6 +647,33 @@ func (q *Queries) CatalogCanonicalTransactionInclusion(ctx context.Context, chai
 	return i, err
 }
 
+const catalogCompletedSnapshot = `-- name: CatalogCompletedSnapshot :one
+SELECT canonical.number::text, canonical.block_hash
+FROM canonical_blocks AS canonical
+JOIN published_block_stage_results AS publication
+  ON publication.chain_id = canonical.chain_id
+ AND publication.block_number = canonical.number
+ AND publication.block_hash = canonical.block_hash
+WHERE canonical.chain_id = $1::numeric
+  AND publication.stage = $2::text
+  AND publication.stage_version = $3::integer
+  AND publication.state = 'complete'
+ORDER BY canonical.number DESC
+LIMIT 1
+`
+
+type CatalogCompletedSnapshotRow struct {
+	CanonicalNumber string `db:"canonical_number" json:"canonical_number"`
+	BlockHash       []byte `db:"block_hash" json:"block_hash"`
+}
+
+func (q *Queries) CatalogCompletedSnapshot(ctx context.Context, chainID pgtype.Numeric, stage string, stageVersion int32) (CatalogCompletedSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, catalogCompletedSnapshot, chainID, stage, stageVersion)
+	var i CatalogCompletedSnapshotRow
+	err := row.Scan(&i.CanonicalNumber, &i.BlockHash)
+	return i, err
+}
+
 const catalogErc20BalanceCandidates = `-- name: CatalogErc20BalanceCandidates :many
 SELECT d.token_address
 FROM token_balance_deltas AS d
@@ -909,6 +936,39 @@ func (q *Queries) CatalogNftBalanceCandidates(ctx context.Context, arg CatalogNf
 		return nil, err
 	}
 	return items, nil
+}
+
+const catalogStatsReadSnapshot = `-- name: CatalogStatsReadSnapshot :one
+WITH completed AS (
+ SELECT canonical.number, canonical.block_hash,
+        row_number() OVER (ORDER BY canonical.number) AS ordinal
+ FROM canonical_blocks AS canonical
+ JOIN published_block_stage_results AS stats
+   ON stats.chain_id = canonical.chain_id AND stats.block_number = canonical.number
+  AND stats.block_hash = canonical.block_hash AND stats.stage = 'stats'
+  AND stats.stage_version = 4 AND stats.state = 'complete'
+ JOIN published_block_stage_results AS token
+   ON token.chain_id = canonical.chain_id AND token.block_number = canonical.number
+  AND token.block_hash = canonical.block_hash AND token.stage = 'token'
+  AND token.stage_version = 2 AND token.state = 'complete'
+ WHERE canonical.chain_id = $2::numeric
+   AND canonical.number BETWEEN $1::numeric AND $3::numeric
+)
+SELECT number::text, block_hash FROM completed
+WHERE number = $1::numeric + ordinal - 1
+ORDER BY number DESC LIMIT 1
+`
+
+type CatalogStatsReadSnapshotRow struct {
+	Number    string `db:"number" json:"number"`
+	BlockHash []byte `db:"block_hash" json:"block_hash"`
+}
+
+func (q *Queries) CatalogStatsReadSnapshot(ctx context.Context, fromBlock pgtype.Numeric, chainID pgtype.Numeric, toBlock pgtype.Numeric) (CatalogStatsReadSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, catalogStatsReadSnapshot, fromBlock, chainID, toBlock)
+	var i CatalogStatsReadSnapshotRow
+	err := row.Scan(&i.Number, &i.BlockHash)
+	return i, err
 }
 
 const catalogTokenEvents = `-- name: CatalogTokenEvents :many

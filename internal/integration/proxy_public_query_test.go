@@ -51,19 +51,70 @@ func TestProxyPublicQueryReadinessBoundaries(t *testing.T) {
 	genesis := testBundle(0, testHash(99_000), testHash(0), testHash(99_100), "proxy-query-readiness")
 	commitCanonical(t, ctx, repository, genesis)
 
-	detail, err := reader.Proxy(ctx, address.Hex())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if detail.Status != query.ProxyStatusUnavailable || detail.Snapshot.Number != "0" ||
-		common.HexToHash(detail.Snapshot.Hash) != genesis.Block.Hash() {
-		t.Fatalf("proxy detail without proxy@2 publication=%+v", detail)
+	if _, err := reader.Proxy(ctx, address.Hex()); !errors.Is(err, httpapi.ErrNotReady) {
+		t.Fatalf("unpublished browsing snapshot error=%v, want ErrNotReady", err)
 	}
 	if _, err := reader.ProxyUpgrades(ctx, address.Hex(), "", 20); !errors.Is(err, httpapi.ErrNotReady) {
 		t.Fatalf("proxy upgrades without proxy@2 publication error=%v, want ErrNotReady", err)
 	}
 	if _, err := reader.ProxyInitializations(ctx, address.Hex(), "", 20); !errors.Is(err, httpapi.ErrNotReady) {
 		t.Fatalf("proxy initializations without proxy@2 publication error=%v, want ErrNotReady", err)
+	}
+}
+
+func TestProxyPublicQueryKeepsLatestCompletePublication(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := query.NewPostgresReader(db, query.Options{ChainID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(0, testHash(99_399), testHash(0), testHash(99_499), "proxy-complete-snapshot")
+	commitCanonical(t, ctx, repository, genesis)
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{
+		proxyStateEndpoint(t, "proxy-snapshot", map[string]map[string]proxyContractState{}, nil, &sync.Mutex{}, make(map[string][]string)),
+	}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	processor, err := enrich.NewPostgresProxyProcessor(db, pool, enrich.ProxyLimits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{ID: "proxy-snapshot", LeaseDuration: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runDurableProxyBlock(t, ctx, db, queue, worker, genesis)
+	parent := genesis.Block.Hash()
+	for i, state := range []enrich.ResultState{enrich.ResultUnavailable, enrich.ResultFailed} {
+		block := testBundle(uint64(i+1), testHash(99_400+uint64(i)), parent, testHash(99_500+uint64(i)), "proxy-terminal-snapshot")
+		commitCanonical(t, ctx, repository, block)
+		execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
+		ref := mustBlockRef(t, block)
+		if _, err := queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: enrich.ProxyStage, ChainID: "1", BlockHash: ref.Hash, BlockNumber: ref.Number}); err != nil {
+			t.Fatal(err)
+		}
+		lease, found, err := queue.Claim(ctx, "proxy-terminal-snapshot", []enrich.StageID{enrich.ProxyStage}, time.Minute)
+		if err != nil || !found {
+			t.Fatalf("claim terminal: found=%v error=%v", found, err)
+		}
+		if err := queue.Finish(ctx, lease, enrich.StageResult{State: state, Error: "fixture terminal"}); err != nil {
+			t.Fatal(err)
+		}
+		detail, err := reader.Proxy(ctx, testAddress(9_900).Hex())
+		if err != nil || detail.Snapshot.Hash != genesis.Block.Hash().Hex() || detail.Status != query.ProxyStatusNotDetected {
+			t.Fatalf("newer failed processing replaced complete snapshot: %+v error=%v", detail, err)
+		}
+		parent = block.Block.Hash()
 	}
 }
 
@@ -227,6 +278,11 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 	}
 
 	commitCanonical(t, ctx, repository, blockFour)
+	published, err := reader.Proxy(ctx, proxy.Hex())
+	if err != nil || published.Snapshot != detail.Snapshot || published.Implementation == nil ||
+		published.Implementation.Address != detail.Implementation.Address || string(published.Detection) != string(detail.Detection) {
+		t.Fatalf("published detail changed before newer core publication: %+v error=%v", published, err)
+	}
 	runDurableProxyBlock(t, ctx, db, queue, worker, blockFour)
 	afterNewHead, err := reader.ProxyUpgrades(ctx, proxy.Hex(), firstPage.NextCursor, 1)
 	if err != nil {
@@ -257,6 +313,19 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 		len(replaced.Detection) == 0 {
 		t.Fatalf("proxy detail after code replacement=%+v", replaced)
 	}
+	replayFour, err := queue.Enqueue(ctx, enrich.EnqueueRequest{
+		Stage: enrich.ProxyStage, ChainID: "1", BlockHash: blockFour.Block.Hash(), BlockNumber: 4,
+		Replay: enrich.ReplaySource{Kind: "proxy-snapshot-regression", Key: jobs[3].Job.ID},
+	})
+	if err != nil || !replayFour.Replayed {
+		t.Fatalf("replay latest: %+v %v", replayFour, err)
+	}
+	duringReplay, err := reader.Proxy(ctx, proxy.Hex())
+	if err != nil || duringReplay.Snapshot.Hash != blockThree.Block.Hash().Hex() ||
+		duringReplay.Implementation == nil || common.HexToAddress(duringReplay.Implementation.Address) != implementationThree {
+		t.Fatalf("replay mixed newer code/negative evidence into older snapshot: %+v %v", duringReplay, err)
+	}
+	processOne(t, ctx, worker)
 	initializations, err := reader.ProxyInitializations(ctx, proxy.Hex(), "", 20)
 	if err != nil {
 		t.Fatal(err)
@@ -341,6 +410,19 @@ func TestProxyPublicQueryHistoryCursorReplacementAndClone(t *testing.T) {
 		!cloneInitializations.Items[0].Implementation.Verified {
 		t.Fatalf("Clone initialization history=%+v", cloneInitializations)
 	}
+	blockSix := testBundle(6, testHash(99_206), blockFive.Block.Hash(), testHash(99_306), "proxy-unpublished-tip")
+	commitCanonical(t, ctx, repository, blockSix)
+	publishedClone, err := reader.Proxy(ctx, clone.Hex())
+	if err != nil || publishedClone.Snapshot != cloneDetail.Snapshot || publishedClone.BindingID != cloneDetail.BindingID {
+		t.Fatalf("published binding lost to newer tip: %+v %v", publishedClone, err)
+	}
+	replacementFive := testBundle(5, testHash(99_215), blockFour.Block.Hash(), testHash(99_315), "proxy-replacement-fork")
+	applyDerivedReorg(t, ctx, repository, blockFour, []chainbundle.Bundle{blockFive, blockSix}, []chainbundle.Bundle{replacementFive}, "published proxy snapshot reorg")
+	afterReorg, err := reader.Proxy(ctx, clone.Hex())
+	if err != nil || afterReorg.Snapshot.Hash != blockFour.Block.Hash().Hex() || afterReorg.BindingID != "" || afterReorg.Implementation != nil {
+		t.Fatalf("orphan snapshot leaked after reorg: %+v %v", afterReorg, err)
+	}
+
 }
 
 func bindCloneProxy(

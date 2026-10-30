@@ -1327,6 +1327,7 @@ paths:
   /tokens/{address}/holders:
     get:
       operationId: listTokenHolders
+      description: Selects the latest completed canonical holder snapshot on each first-page request, including refresh. Continuation cursors retain their snapshot. Newer pending blocks do not block reads.
       tags: [tokens]
       parameters:
         - $ref: "#/components/parameters/Address"
@@ -1344,12 +1345,13 @@ paths:
   /tokens/{address}/holders/count:
     get:
       operationId: getTokenHolderCount
+      description: Selects the latest completed canonical holder snapshot on every request, independently of newer pending blocks.
       tags: [tokens]
       parameters:
         - $ref: "#/components/parameters/Address"
       responses:
         "200":
-          description: Exact reconciled ERC-20 holder count at the current canonical snapshot.
+          description: Exact reconciled ERC-20 holder count at the latest completed canonical snapshot.
           content:
             application/json:
               schema:
@@ -1359,6 +1361,7 @@ paths:
   /nfts/{address}/{token_id}:
     get:
       operationId: getNFTOwner
+      description: Reads exact ownership at the latest canonical block with a completed token publication. Every request selects the latest completed snapshot; RPC remains pinned to its block hash.
       tags: [tokens, nfts]
       parameters:
         - $ref: "#/components/parameters/Address"
@@ -1487,6 +1490,7 @@ paths:
           $ref: "#/components/responses/Error"
   /stats/blocks:
     get:
+      description: Returns the contiguous completed stats and token range starting at from_block, capped at to_block. A pending suffix is omitted; response coverage identifies the actual range. Every request selects the newest completed range.
       operationId: getBlockStats
       tags: [stats]
       parameters:
@@ -1511,6 +1515,7 @@ paths:
           $ref: "#/components/responses/Error"
   /stats/summary:
     get:
+      description: Returns the contiguous completed stats and token range starting at from_block, capped at to_block. A pending suffix is omitted; response coverage identifies the actual range. Every request selects the newest completed range.
       operationId: getAggregateStats
       tags: [stats]
       parameters:
@@ -1535,6 +1540,7 @@ paths:
           $ref: "#/components/responses/Error"
   /stats/charts/overview:
     get:
+      description: Reads the newest completed canonical hourly rollups, retaining completed prefixes while newer blocks in the same or later hour are processed. Each request selects the latest completed data; returned ranges and snapshot identify the data used.
       operationId: getChartOverview
       tags: [stats]
       responses:
@@ -1550,6 +1556,7 @@ paths:
           $ref: "#/components/responses/Error"
   /stats/charts/{metric}:
     get:
+      description: Reads the newest completed canonical hourly rollups, retaining completed prefixes while newer blocks in the same or later hour are processed. Each request selects the latest completed data; returned ranges and snapshot identify the data used.
       operationId: getChartMetric
       tags: [stats]
       parameters:
@@ -1911,9 +1918,12 @@ paths:
       operationId: getContractProxy
       tags: [contracts, proxy]
       description: >-
-        Current canonical OpenZeppelin-aware proxy detection and exact
+        Published canonical OpenZeppelin-aware proxy detection and exact
         interaction binding. Partial or generic evidence is visible but never
-        authorizes implementation-as-proxy or management writes.
+        authorizes implementation-as-proxy or management writes. Every read selects
+        the latest successfully completed canonical proxy publication,
+        independently of the core tip. Page loads, manual refresh and
+        pre-interaction reads use the same snapshot selection.
       parameters:
         - $ref: "#/components/parameters/Address"
       responses:

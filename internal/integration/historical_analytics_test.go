@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/analytics"
+	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/store"
 )
@@ -76,6 +77,10 @@ func TestHistoricalAnalyticsRecomputesNewestFirstAndCorrectsReorgs(t *testing.T)
 		[]chainbundle.Bundle{oldBlock}, []chainbundle.Bundle{replacement},
 		"historical analytics reorg",
 	)
+	duringReorg := readAnalyticsTransactions(t, ctx, reader, base, base.Add(2*time.Hour), now)
+	if duringReorg.Snapshot.BlockNumber != "0" || len(duringReorg.Points) != 1 {
+		t.Fatalf("reorg retained analytics=%+v", duringReorg)
+	}
 	published.process(t, ctx, replacement)
 	now = analyticsRollupTestTime(t, ctx, db, now)
 	recomputed, err := worker.RunOnce(ctx)
@@ -90,6 +95,58 @@ func TestHistoricalAnalyticsRecomputesNewestFirstAndCorrectsReorgs(t *testing.T)
 	if err != nil || idle.Published || !idle.BucketStart.IsZero() {
 		t.Fatalf("idempotent idle rollup=%+v error=%v", idle, err)
 	}
+	pending := analyticsBundle(t, 2, replacement.Block.Hash(), uint64(base.Add(2*time.Hour).Unix()), 1, 4, "analytics-pending")
+	commitCanonical(t, ctx, repository, pending)
+	lagging := readAnalyticsTransactions(t, ctx, reader, base, base.Add(3*time.Hour), now)
+	if lagging.Snapshot.BlockNumber != "1" || len(lagging.Points) != 2 || !lagging.ToTime.Equal(base.Add(2*time.Hour)) {
+		t.Fatalf("lagging analytics=%+v", lagging)
+	}
+	overview, err := reader.Overview(ctx, "1", base.Add(3*time.Hour))
+	if err != nil || len(overview.Metrics) == 0 || overview.Snapshot.BlockNumber != "1" {
+		t.Fatalf("lagging overview=%+v err=%v", overview, err)
+	}
+	catalogReader, err := catalog.NewPostgres(db, catalog.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := catalogReader.BlockStats(ctx, catalog.BlockStatsRequest{ChainID: "1", FromBlock: "0", ToBlock: "2"})
+	if err != nil || len(stats) != 2 || stats[1].BlockNumber != "1" {
+		t.Fatalf("lagging stats=%+v err=%v", stats, err)
+	}
+	aggregate, err := catalogReader.AggregateStats(ctx, catalog.AggregateStatsRequest{ChainID: "1", FromBlock: "0", ToBlock: "2"})
+	if err != nil || aggregate.ToBlock != "1" || aggregate.Snapshot.BlockNumber != "1" {
+		t.Fatalf("lagging aggregate=%+v err=%v", aggregate, err)
+	}
+	published.process(t, ctx, pending)
+	now = analyticsRollupTestTime(t, ctx, db, now)
+	if result, err := worker.RunOnce(ctx); err != nil || !result.Published {
+		t.Fatalf("publish pending=%+v err=%v", result, err)
+	}
+	refreshed := readAnalyticsTransactions(t, ctx, reader, base, base.Add(3*time.Hour), now)
+	if refreshed.Snapshot.BlockNumber != "2" || len(refreshed.Points) != 3 {
+		t.Fatalf("refreshed analytics=%+v", refreshed)
+	}
+	stats, err = catalogReader.BlockStats(ctx, catalog.BlockStatsRequest{ChainID: "1", FromBlock: "0", ToBlock: "2"})
+	if err != nil || len(stats) != 3 {
+		t.Fatalf("refreshed stats=%+v err=%v", stats, err)
+	}
+
+	sameHour := analyticsBundle(t, 3, pending.Block.Hash(), uint64(base.Add(2*time.Hour+time.Minute).Unix()), 1, 5, "analytics-same-hour-pending")
+	commitCanonical(t, ctx, repository, sameHour)
+	retained := readAnalyticsTransactions(t, ctx, reader, base, base.Add(3*time.Hour), now)
+	if retained.Snapshot.BlockNumber != "2" || len(retained.Points) != 3 || retained.Points[2].Value != "1" {
+		t.Fatalf("same-hour retained=%+v", retained)
+	}
+	published.process(t, ctx, sameHour)
+	now = analyticsRollupTestTime(t, ctx, db, now)
+	if result, err := worker.RunOnce(ctx); err != nil || !result.Published {
+		t.Fatalf("publish same hour=%+v err=%v", result, err)
+	}
+	refreshed = readAnalyticsTransactions(t, ctx, reader, base, base.Add(3*time.Hour), now)
+	if refreshed.Snapshot.BlockNumber != "3" || len(refreshed.Points) != 3 || refreshed.Points[2].Value != "2" {
+		t.Fatalf("same-hour refreshed=%+v", refreshed)
+	}
+
 }
 
 func analyticsRollupTestTime(

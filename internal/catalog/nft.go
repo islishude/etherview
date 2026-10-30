@@ -25,7 +25,7 @@ func (catalog *Postgres) NFTOwner(ctx context.Context, chainID, tokenAddressText
 		return NFTOwnership{}, err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	snapshot, err := readCanonicalSnapshot(ctx, tx, chainID)
+	snapshot, err := readCompletedTokenSnapshot(ctx, tx, chainID)
 	if err != nil {
 		return NFTOwnership{}, err
 	}

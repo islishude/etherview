@@ -386,3 +386,75 @@ FROM latest
 WHERE latest.balance > 0
 ORDER BY latest.holder_address
 LIMIT sqlc.arg('row_limit')::bigint OFFSET sqlc.arg('row_offset')::bigint;
+
+-- name: CatalogHolderReadSnapshot :one
+WITH completed AS (
+ SELECT canonical.number, row_number() OVER (ORDER BY canonical.number) AS ordinal
+FROM core_index_configuration AS configuration
+LEFT JOIN canonical_blocks AS canonical
+  ON canonical.chain_id = configuration.chain_id
+
+LEFT JOIN published_block_stage_results AS published
+  ON published.chain_id = canonical.chain_id
+ AND published.block_number = canonical.number
+ AND published.block_hash = canonical.block_hash
+ AND published.stage = 'holder'
+ AND published.stage_version = 1
+ AND published.state = 'complete'
+LEFT JOIN published_block_stage_results AS token_publication
+  ON token_publication.chain_id = canonical.chain_id
+ AND token_publication.block_number = canonical.number
+ AND token_publication.block_hash = canonical.block_hash
+ AND token_publication.stage = 'token'
+ AND token_publication.stage_version = 2
+ AND token_publication.state = 'complete'
+LEFT JOIN published_block_stage_results AS proxy_publication
+  ON proxy_publication.chain_id = canonical.chain_id
+ AND proxy_publication.block_number = canonical.number
+ AND proxy_publication.block_hash = canonical.block_hash
+ AND proxy_publication.stage = 'proxy'
+ AND proxy_publication.stage_version = 2
+ AND proxy_publication.state IN ('complete', 'unavailable')
+WHERE configuration.chain_id = sqlc.arg('chain_id')::numeric
+ AND configuration.configured_start = 0
+ AND published.block_number IS NOT NULL
+ AND token_publication.block_number IS NOT NULL
+ AND proxy_publication.block_number IS NOT NULL
+), boundary AS (
+ SELECT max(number) AS number FROM completed WHERE number = ordinal - 1
+)
+SELECT snapshot.block_number::text AS number, snapshot.block_hash
+FROM erc20_holder_snapshots AS snapshot
+JOIN canonical_blocks AS canonical
+ ON canonical.chain_id = snapshot.chain_id AND canonical.number = snapshot.block_number
+ AND canonical.block_hash = snapshot.block_hash
+WHERE snapshot.chain_id = sqlc.arg('chain_id')::numeric
+ AND snapshot.token_address = sqlc.arg('token_address')::bytea
+ AND snapshot.canonical AND snapshot.state = 'complete'
+ AND snapshot.block_number <= (SELECT number FROM boundary)
+ AND EXISTS (
+           SELECT 1
+           FROM published_block_stage_results AS holder_publication
+           WHERE holder_publication.chain_id = snapshot.chain_id
+             AND holder_publication.block_number = snapshot.block_number
+             AND holder_publication.block_hash = snapshot.block_hash
+             AND holder_publication.stage = 'holder'
+             AND holder_publication.stage_version = 1
+             AND holder_publication.state = 'complete'
+             AND NOT EXISTS (
+                 SELECT 1
+                 FROM published_block_stage_results AS source_publication
+                 JOIN canonical_blocks AS source_canonical
+                   ON source_canonical.chain_id = source_publication.chain_id
+                  AND source_canonical.number = source_publication.block_number
+                  AND source_canonical.block_hash = source_publication.block_hash
+                 WHERE source_publication.chain_id = snapshot.chain_id
+                   AND source_publication.block_number <= snapshot.block_number
+                   AND (
+                       (source_publication.stage = 'token' AND source_publication.stage_version = 2 AND source_publication.state = 'complete') OR
+                       (source_publication.stage = 'proxy' AND source_publication.stage_version = 2 AND source_publication.state IN ('complete', 'unavailable'))
+                   )
+                   AND source_publication.completed_at > holder_publication.completed_at
+             )
+       )
+ORDER BY snapshot.block_number DESC LIMIT 1;

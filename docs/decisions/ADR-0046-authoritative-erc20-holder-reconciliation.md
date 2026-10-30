@@ -15,7 +15,7 @@ holder list would therefore turn incomplete evidence into false current state.
 - `holder@1` is an always-scheduled derived stage and a v1 release dependency.
   Holder availability remains separate from Core readiness.
 - Candidate addresses come only from canonical high/verified ERC-20 Transfer
-  participants and require continuous block-zero-through-tip Token coverage.
+  participants and require continuous block-zero-through-snapshot Token coverage.
 - A token becomes available only after every candidate has an exact
   block-hash-scoped `balanceOf` observation, the exact `totalSupply` equals the
   sum of all balances, and the anchor remains canonical. Zero balances remain
@@ -33,9 +33,11 @@ holder list would therefore turn incomplete evidence into false current state.
 - Native cursors bind the exact canonical snapshot and holder publication
   epoch. Reorg or replay at or below that snapshot invalidates the cursor;
   later blocks do not.
-- Public reads require Holder coverage through the current canonical tip.
-  Lagging, rebuilding, inconsistent, or unavailable state returns a stable
-  typed unavailable result. A successful empty result requires an exact zero
+- First-page and count reads select the latest completed, coherent canonical
+  token snapshot with contiguous Holder/Token/Proxy coverage from genesis
+  through that snapshot. Manual refresh repeats this selection. Newer pending
+  blocks do not displace a usable publication. No usable completed snapshot,
+  inconsistent state, or withdrawn provenance returns typed unavailable. A successful empty result requires an exact zero
   supply and zero holder count.
 - Native pages are address-ascending. Historical holder queries, balance-ranked
   Top Holders, NFT holder enumeration, rebasing adapters, and operator

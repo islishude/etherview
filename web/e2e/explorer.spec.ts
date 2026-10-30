@@ -1978,7 +1978,7 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
 
   await page.goto(`/address/${cwiaReadOnlyAddress}#code`);
   await expect(page.getByRole("tab", { name: "Code" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Submit a verification request" })).toHaveCount(0);
   allowReadOnlyClassification = true;
   await page.evaluate(async () => {
@@ -1988,6 +1988,7 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByRole("button", { name: "View proxy details" })).toBeVisible();
   await page.getByRole("button", { name: "View proxy details" }).click();
+  await expect(page.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
   await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();
   await expect(
     page.getByText(/writes are disabled.*no current compiler-derived CWIA AST analysis/u),

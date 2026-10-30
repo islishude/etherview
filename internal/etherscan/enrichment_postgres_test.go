@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/testpgx"
@@ -350,10 +351,9 @@ func TestAuthoritativeTokenHolderListAndCount(t *testing.T) {
 		}
 	}
 	listDB := fakeDatabase(t,
-		completeCoreCoverageExpectation("0", "", "12"),
-		completedStageExpectation(holderStage, "0", ""),
+		sqlExpectation{contains: "CatalogHolderReadSnapshot", columns: fakeColumns(2), rows: [][]any{{"12", testHashBytes(4)}}},
+		sqlExpectation{contains: "CatalogTokenContract", columns: fakeColumns(13), rows: [][]any{append(append([]any{"1"}, canonicalTokenRow("erc20", "10")...), time.Now())}},
 		holderDependenciesExpectation(),
-		tokenContractExpectation(canonicalTokenRow("erc20", "10")),
 		snapshotExpectation(),
 		sqlExpectation{
 			contains: "FROM erc20_holder_balances AS balance",
@@ -386,10 +386,9 @@ func TestAuthoritativeTokenHolderListAndCount(t *testing.T) {
 	}
 
 	countDB := fakeDatabase(t,
-		completeCoreCoverageExpectation("0", "", "12"),
-		completedStageExpectation(holderStage, "0", ""),
+		sqlExpectation{contains: "CatalogHolderReadSnapshot", columns: fakeColumns(2), rows: [][]any{{"12", testHashBytes(4)}}},
+		sqlExpectation{contains: "CatalogTokenContract", columns: fakeColumns(13), rows: [][]any{append(append([]any{"1"}, canonicalTokenRow("erc20", "10")...), time.Now())}},
 		holderDependenciesExpectation(),
-		tokenContractExpectation(canonicalTokenRow("erc20", "10")),
 		snapshotExpectation(),
 	)
 	countBackend := testPostgresBackend(t, countDB, PostgresOptions{ChainID: 1})
