@@ -1,3 +1,4 @@
+import "@/i18n/resources/billingPrices";
 import { Message } from "@/components/Message";
 import "./PersonalBilling.css";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
@@ -24,6 +25,14 @@ import { SelectControl } from "@/components/SelectControl";
 import { useWallet } from "@/wallet/WalletProvider";
 import { chainsMatch } from "@/wallet/eip6963";
 import { BillingLoadError, BillingPagination } from "./BillingPages";
+
+import {
+  amountInputLength,
+  displayBillingAmount,
+  matchingAssetConfig,
+  topupAmount,
+} from "@/billing/amount";
+import { BillingPrices } from "./BillingPrices";
 
 const PAGE_SIZE = 10;
 type HistoryKind = "topups" | "payments";
@@ -98,13 +107,20 @@ export function PersonalBilling() {
     completed.current.add(intent.id);
     setPendingID(undefined);
     if (intent.state === "credited") {
-      setNotice(t("billing.topup.credited", { amount: intent.amount_atomic }));
+      setNotice(
+        t("billing.topup.credited", {
+          amount: displayBillingAmount(
+            intent.amount_atomic,
+            matchingAssetConfig(intent, config.data),
+          ),
+        }),
+      );
       setAmount("");
     } else {
       setError(t("billing.topup.failed"));
     }
     void client.invalidateQueries({ queryKey: ["private-account", identity, "billing"] });
-  }, [client, identity, pending.data, pendingID, t]);
+  }, [client, config.data, identity, pending.data, pendingID, t]);
 
   const walletReady = Boolean(
     wallet.active &&
@@ -138,13 +154,15 @@ export function PersonalBilling() {
       setError(t("billing.topup.walletRequired"));
       return;
     }
+    const atomic = topupAmount(amount, config.data);
+    if (!atomic) return;
     const signal = lifetime();
     submittingRef.current = true;
     setSubmitting(true);
     try {
       const { payBillingTopup } = await import("@/billing/topup");
       signal.throwIfAborted();
-      const intent = await createBillingTopupIntent(amount, auth.session.csrf_token);
+      const intent = await createBillingTopupIntent(atomic, auth.session.csrf_token);
       signal.throwIfAborted();
       const receipt = await payBillingTopup({
         config: config.data,
@@ -175,7 +193,14 @@ export function PersonalBilling() {
       });
       signal.throwIfAborted();
       completed.current.add(receipt.intent.id);
-      setNotice(t("billing.topup.credited", { amount: receipt.intent.amount_atomic }));
+      setNotice(
+        t("billing.topup.credited", {
+          amount: displayBillingAmount(
+            receipt.intent.amount_atomic,
+            matchingAssetConfig(receipt.intent, config.data),
+          ),
+        }),
+      );
       setAmount("");
       await refreshBilling();
     } catch (cause) {
@@ -188,6 +213,8 @@ export function PersonalBilling() {
       ) {
         setPendingID(cause.intentID);
         await refreshBilling();
+      } else if (cause instanceof Error && cause.name === "TopupAuthorizationError") {
+        setError(t("billing.topup.notSubmitted"));
       } else {
         setError(t("billing.topup.failed"));
       }
@@ -209,7 +236,12 @@ export function PersonalBilling() {
             retry={() => void account.refetch()}
           />
         )}
-        {account.data && !account.error && <BalanceSummary account={account.data} />}
+        {account.data && !account.error && (
+          <BalanceSummary
+            account={account.data}
+            config={matchingAssetConfig(account.data, config.data)}
+          />
+        )}
       </section>
       <div
         className="billing-view-switch"
@@ -286,13 +318,14 @@ export function PersonalBilling() {
               ))}
           </section>
         )}
-        <PersonalHistory visible={view === "history"} />
+        <PersonalHistory visible={view === "history"} config={config.data} />
+        {config.data && !config.error && <BillingPrices config={config.data} />}
       </div>
     </div>
   );
 }
 
-function BalanceSummary({ account }: { account: BillingAccount }) {
+function BalanceSummary({ account, config }: { account: BillingAccount; config?: BillingConfig }) {
   const { t } = useTranslation();
   return (
     <>
@@ -306,11 +339,13 @@ function BalanceSummary({ account }: { account: BillingAccount }) {
         ).map(([label, value]) => (
           <div key={label}>
             <dt>{t(`billing.topup.${label}`)}</dt>
-            <dd className="numeric">{value}</dd>
+            <dd className="numeric">{displayBillingAmount(value, config)}</dd>
           </div>
         ))}
       </dl>
-      <p className="billing-muted">{t("billing.workspace.atomicUnits")}</p>
+      <p className="billing-muted">
+        {t("billing.workspace.tokenAmount")} · <code>{account.asset}</code> · {account.network}
+      </p>
     </>
   );
 }
@@ -335,12 +370,7 @@ function TopupForm({
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const validAmount =
-    /^[1-9][0-9]{0,77}$/u.test(amount) &&
-    (!config.minimum_topup_amount_atomic ||
-      BigInt(amount) >= BigInt(config.minimum_topup_amount_atomic)) &&
-    (!config.maximum_topup_amount_atomic ||
-      BigInt(amount) <= BigInt(config.maximum_topup_amount_atomic));
+  const validAmount = topupAmount(amount, config) !== undefined;
   return (
     <form
       className="billing-topup-form"
@@ -356,9 +386,8 @@ function TopupForm({
         <label htmlFor="billing-topup-amount">{t("billing.topup.amount")}</label>
         <input
           id="billing-topup-amount"
-          inputMode="numeric"
-          pattern="[1-9][0-9]{0,77}"
-          maxLength={78}
+          inputMode="decimal"
+          maxLength={amountInputLength(config.asset_decimals ?? 0)}
           required
           value={amount}
           disabled={blocked}
@@ -367,8 +396,12 @@ function TopupForm({
         />
         <small id="billing-amount-range">
           {t("billing.workspace.range", {
-            min: config.minimum_topup_amount_atomic ?? "—",
-            max: config.maximum_topup_amount_atomic ?? "—",
+            min: config.minimum_topup_amount_atomic
+              ? displayBillingAmount(config.minimum_topup_amount_atomic, config)
+              : "—",
+            max: config.maximum_topup_amount_atomic
+              ? displayBillingAmount(config.maximum_topup_amount_atomic, config)
+              : "—",
           })}
         </small>
       </div>
@@ -434,7 +467,7 @@ function TopupForm({
   );
 }
 
-function PersonalHistory({ visible }: { visible: boolean }) {
+function PersonalHistory({ visible, config }: { visible: boolean; config?: BillingConfig }) {
   const { t, i18n } = useTranslation();
   const identity = usePrivateIdentity();
   const [kind, setKind] = useState<HistoryKind>("topups");
@@ -503,6 +536,7 @@ function PersonalHistory({ visible }: { visible: boolean }) {
                 <HistoryRecord
                   key={`${kind}:${record.id}`}
                   record={record}
+                  config={matchingAssetConfig(record, config)}
                   locale={i18n.resolvedLanguage ?? "en"}
                 />
               ))}
@@ -524,9 +558,11 @@ function PersonalHistory({ visible }: { visible: boolean }) {
 function HistoryRecord({
   record,
   locale,
+  config,
 }: {
   record: BillingTopupIntent | BillingPayment;
   locale: string;
+  config?: BillingConfig;
 }) {
   const { t } = useTranslation();
   const state =
@@ -538,8 +574,10 @@ function HistoryRecord({
       <div className="billing-record-summary">
         <time dateTime={record.created_at}>{formatTimestamp(record.created_at, locale)}</time>
         <span className="billing-record-amount numeric">
-          <span>{record.amount_atomic}</span>
-          <small>{t("billing.workspace.atomicUnits")}</small>
+          <span>{displayBillingAmount(record.amount_atomic, config)}</span>
+          <small>
+            {config?.asset_decimals !== undefined && t("billing.workspace.tokenAmount")}
+          </small>
         </span>
         <span className={`billing-state ${state}`}>{t(`billing.states.${state}`)}</span>
       </div>

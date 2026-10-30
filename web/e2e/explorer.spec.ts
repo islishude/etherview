@@ -2827,7 +2827,7 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
   await page.getByRole("combobox", { name: "Record type" }).selectOption("payments");
   const personalHistory = page.locator(".billing-history-section");
   await expect(personalHistory.getByRole("heading", { name: "History" })).toBeVisible();
-  await expect(personalHistory.getByText(billingAmount, { exact: true })).toBeVisible();
+  await expect(personalHistory.getByText(`${billingAmount} atomic`, { exact: true })).toBeVisible();
   await expect(personalHistory).not.toContainText(billingHiddenUserID);
   await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);
   await expect(personalHistory.getByRole("columnheader", { name: "User ID" })).toHaveCount(0);

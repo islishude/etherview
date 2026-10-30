@@ -1190,8 +1190,10 @@ Initialize the current baseline with both features off. The schema retains
 `legacy_request` as an audit-only payment purpose; such rows never produce
 account credit. The baseline does not import historical accountless payments.
 Configure `features.api_billing`, the CAIP-2 network,
-asset, reservation TTLs, and the explicit
-`billing.operations.<etherscan.module.action>.amount_atomic` catalog first.
+asset, reservation TTLs, and positive `billing.base_price_atomic` first.
+Every V2 query price is its catalog complexity weight times this base; the public
+billing configuration lists the complete schedule. The former `billing.operations`
+map is rejected. Whole-token UI input is converted exactly to atomic units.
 Native `/api/v1` reads remain free regardless of this catalog.
 
 Enable `features.x402_topups` only after SIWE and user-owned API keys are
@@ -1239,9 +1241,11 @@ reservations; it never refunds a committed debit, including when the process
 crashes after commit but before response delivery. Administrator corrections
 use the authenticated adjustment endpoint with an explicit reason.
 
-For rollback, first clear `billing.operations` so no new usage reservations
-start, then disable `features.x402_topups`, and finally disable
-`features.api_billing` if required. Permanently retain accounts, balances,
+For rollback, first block new V2 traffic at ingress and disable new top-ups,
+then drain or reconcile active usage and settlement work. Disable
+`features.api_billing` and clear `billing.base_price_atomic` together if required.
+Do not use a missing price as a traffic stop: missing query prices are errors.
+Permanently retain accounts, balances,
 entries, usage, intents, payments, and payment events. Never convert legacy
 accountless request settlements into credit.
 

@@ -11,6 +11,7 @@ import (
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 func newBillingServices(
@@ -86,9 +87,9 @@ func newPrepaidServices(
 	if err != nil {
 		return nil, nil, err
 	}
-	prices := make(map[string]string, len(cfg.Billing.Operations))
-	for operation, operationConfig := range cfg.Billing.Operations {
-		prices[operation] = operationConfig.AmountAtomic
+	prices, err := etherscanops.Prices(cfg.Billing.BasePriceAtomic)
+	if err != nil {
+		return nil, nil, err
 	}
 	dispatcher, err := billing.NewUsageDispatcher(billing.UsageDispatcherOptions{
 		Ledger: ledger, Prices: prices,

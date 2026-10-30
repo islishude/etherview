@@ -111,13 +111,15 @@ Private key: ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 Local USD: 0x8464135c8F25Da09e49BC8782676a84730C318bC (6 decimals)
 ```
 
-Sign in, open Billing, and top up `100` atomic units with each of `eip3009` and
+Sign in, open Billing, and enter `0.0001` whole tokens (100 atomic units) to top up with each of `eip3009` and
 `permit2`. The latter asks for an exact-amount approval followed by a signature.
 The initial token allocation is 10^18 atomic units. Create a user API key with
 `api:read`, then call `/v2/api?chainid=48815&module=account&action=balance&address=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266&apikey=YOUR_KEY`.
-Each successful `account.balance` or `contract.getabi` call costs one atomic
-unit; failed calls release their reservation. Native explorer reads stay free.
-After two top-ups and one successful priced read the available credit is `199`.
+Each successful `account.balance` call costs 2 atomic units; `contract.getabi`
+costs 1. All supported query prices derive from their complexity weights and
+`billing.base_price_atomic: "1"`; failed calls release their reservation.
+Native explorer reads stay free. After two top-ups and one successful balance
+read the available credit is `0.000198` whole tokens (198 atomic units).
 
 The Facilitator has no host port and cannot block API/core readiness. Stopping
 it prevents new settlement but existing credit remains spendable. The local

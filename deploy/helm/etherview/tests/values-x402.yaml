@@ -19,9 +19,7 @@ config:
     minimum_topup_amount_atomic: "1"
     maximum_topup_amount_atomic: "1000000"
     asset_transfer_methods: [eip3009, permit2]
-    operations:
-      etherscan.account.balance:
-        amount_atomic: "1000"
+    base_price_atomic: "1"
 
 networkPolicy:
   allowExternalHTTPS: false

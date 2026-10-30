@@ -87,6 +87,11 @@ bytes in the configured Secret key. The chart injects
 Migration Jobs, schema-compatibility init containers, and non-API roles never
 receive it.
 
+Prepaid billing requires a positive `config.billing.base_price_atomic`. All V2
+query prices derive from mandatory catalog complexity weights; the old
+`config.billing.operations` map is rejected. Run `doctor` to check derived-price
+uint256 bounds before rollout.
+
 x402 top-ups are disabled by default. Enabling them requires `api_billing`,
 `user_auth`, and `user_api_keys`, plus a root public origin, fixed HTTPS
 facilitator origin on port 443, canonical non-empty facilitator CIDRs,

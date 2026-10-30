@@ -100,10 +100,7 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	cfg.Billing.FacilitatorHeaders = map[string]string{
 		"Authorization": "Bearer facilitator-secret",
 	}
-	cfg.Billing.Operations = map[string]config.BillingOperationConfig{
-		"etherscan.account.balance":       {AmountAtomic: "10"},
-		"etherscan.transaction.getstatus": {AmountAtomic: "20"},
-	}
+	cfg.Billing.BasePriceAtomic = "5"
 	handler, err := New(Options{Config: cfg, Reader: fakeReader{}})
 	if err != nil {
 		t.Fatal(err)
@@ -127,9 +124,11 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 		*response.Data.Asset != "0x52908400098527886E0F7030069857D2E4169EE7" ||
 		response.Data.Recipient == nil ||
 		*response.Data.Recipient != "0xde709f2102306220921060314715629080e2fb77" ||
-		len(response.Data.Operations) != 2 ||
-		response.Data.Operations[0].Operation != "etherscan.account.balance" ||
-		response.Data.Operations[1].Operation != "etherscan.transaction.getstatus" {
+		len(response.Data.Operations) != 30 ||
+		response.Data.Operations[0].Operation != "etherscan.account.addresstokenbalance" ||
+		response.Data.Operations[0].AmountAtomic != "500" ||
+		response.Data.Operations[0].ComplexityWeight != 100 ||
+		response.Data.BasePriceAtomic == nil || *response.Data.BasePriceAtomic != "5" {
 		t.Fatalf("unexpected enabled billing config: %#v", response.Data)
 	}
 	body := recorder.Body.String()

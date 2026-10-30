@@ -415,3 +415,13 @@ than baseline and the other was slightly faster. These short samples establish
 neither a latency improvement nor a regression and do not satisfy the P70
 reference-capacity gate. Performance acceptance requires separate repeated
 measurements with the dataset, hardware, duration and load documented.
+
+## V2 query pricing changes
+
+Every new supported Etherscan V2 action must declare its billing classification in
+`internal/etherscanops`. Queries require an explicit positive complexity weight and
+cost rationale, plus catalog/handler coverage tests. Reassess bounded query work when
+changing existing query paths or limits. Do not add zero weights, missing-price free
+fallbacks, or deployment-specific per-action prices. Public prices and reservation
+amounts derive from the same catalog and `billing.base_price_atomic`; rate-limit
+buckets still spend one token per request. See ADR-0044.

@@ -107,7 +107,9 @@ describe("billing pages", () => {
     for (const link of document.querySelectorAll(".identity-card .account-address")) {
       expect(link).toHaveAttribute("href", `/address/${address}`);
     }
-    expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("340282366920938463463374607431768.211455", { exact: true }).length,
+    ).toBeGreaterThan(0);
     expect(document.body).not.toHaveTextContent(currentUserID);
     expect(document.body).not.toHaveTextContent(apiKeyPrefix);
     expect(document.body).not.toHaveTextContent(csrfToken);
@@ -347,7 +349,11 @@ function billingConfigResponse() {
     minimum_topup_amount_atomic: "1",
     maximum_topup_amount_atomic: amount,
     asset_transfer_methods: ["eip3009", "permit2"],
-    operations: {},
+    operations: [],
+    asset_decimals: 6,
+    base_price_atomic: "1",
+    x402_version: 2,
+    scheme: "exact",
     asset_eip712_name: "Billing Token",
     asset_eip712_version: "1",
   });
@@ -356,6 +362,8 @@ function billingConfigResponse() {
 function billingAccountResponse() {
   return envelope({
     user_id: currentUserID,
+    network: "eip155:1",
+    asset,
     total_credit_atomic: amount,
     total_debit_atomic: "0",
     reserved_atomic: "0",

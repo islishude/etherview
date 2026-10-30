@@ -7,6 +7,7 @@
 }
 
 .billing-balance,
+.billing-prices,
 .billing-payment {
   padding: clamp(1rem, 3vw, 1.5rem);
   min-width: 0;
@@ -74,6 +75,7 @@
   font-weight: 650;
 }
 
+.billing-prices h2,
 .billing-payment h2,
 .personal-billing-history h2 {
   margin: 0;
@@ -255,4 +257,19 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
   }
+}
+
+.billing-prices {
+  margin-top: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.billing-prices > p {
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+#billing-view {
+  min-width: 0;
 }

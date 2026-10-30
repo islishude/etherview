@@ -58,7 +58,10 @@ const config: billing.BillingConfig = {
   asset_transfer_methods: ["eip3009", "permit2"],
   minimum_topup_amount_atomic: "10",
   maximum_topup_amount_atomic: amount,
-  operations: [],
+  asset_decimals: 6,
+  operations: [
+    { operation: "etherscan.account.balance", amount_atomic: "2", complexity_weight: 2 },
+  ],
 };
 const account: billing.BillingAccount = {
   user_id: "user-a",
@@ -123,7 +126,7 @@ async function openHistory(user: ReturnType<typeof userEvent.setup>) {
 }
 async function ready() {
   await waitFor(() =>
-    expect(screen.getByRole("textbox", { name: "Top-up amount (atomic units)" })).toBeEnabled(),
+    expect(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" })).toBeEnabled(),
   );
 }
 
@@ -143,6 +146,17 @@ describe("personal billing workspace", () => {
     });
   });
 
+  it("shows unmatched historical assets in atomic units exactly once", async () => {
+    vi.mocked(billing.listCurrentBillingTopupIntents).mockResolvedValue(
+      list([{ ...intent, network: "eip155:84532" }]),
+    );
+    const { user } = setup();
+    await ready();
+    await openHistory(user);
+    expect(await screen.findByText("123 atomic", { exact: true })).toBeVisible();
+    expect(document.querySelector(".billing-record-amount")?.textContent).toBe("123 atomic");
+  });
+
   it("preserves the draft and exact balances while lazily switching histories and independent cursors", async () => {
     vi.mocked(billing.listCurrentBillingTopupIntents).mockImplementation(async (_limit, cursor) =>
       list([{ ...intent, id: cursor ?? "first" }], cursor ? undefined : "topup/page 2"),
@@ -153,18 +167,18 @@ describe("personal billing workspace", () => {
     const { user } = setup();
     await ready();
     expect(screen.getByRole("button", { name: "Payment" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(amount)).toBeVisible();
+    expect(screen.getByText("340282366920938463463374607431768.211455")).toBeVisible();
     expect(billing.listCurrentUserBillingPayments).not.toHaveBeenCalled();
     await user.type(screen.getByRole("textbox"), "120");
     await user.selectOptions(screen.getByRole("combobox", { name: "Payment method" }), "permit2");
     await openHistory(user);
-    expect(await screen.findByText("123", { exact: true })).toBeVisible();
+    expect(await screen.findByText("0.000123", { exact: true })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() =>
       expect(billing.listCurrentBillingTopupIntents).toHaveBeenCalledWith(10, "topup/page 2"),
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Record type" }), "payments");
-    expect(await screen.findByText("456", { exact: true })).toBeVisible();
+    expect(await screen.findByText("0.000456", { exact: true })).toBeVisible();
     expect(screen.getByText("Page 1")).toBeVisible();
     await user.click(screen.getByText("Details", { exact: true }));
     expect(screen.getByText(transactionHash)).toBeVisible();
@@ -188,12 +202,12 @@ describe("personal billing workspace", () => {
     });
     const { user } = setup();
     expect(await screen.findByText(/Top-ups are currently unavailable/)).toBeVisible();
-    expect(screen.getByText(amount)).toBeVisible();
+    expect(screen.getByText("340282366920938463463374607431768.211455")).toBeVisible();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     await openHistory(user);
     expect(await screen.findByText("No records yet.")).toBeVisible();
     await user.selectOptions(screen.getByRole("combobox"), "payments");
-    expect(await screen.findByText("456")).toBeVisible();
+    expect(await screen.findByText("0.000456")).toBeVisible();
   });
 
   it("retries balance and history failures without rendering false empty results", async () => {
@@ -208,13 +222,13 @@ describe("personal billing workspace", () => {
     expect(alert).toHaveTextContent("Balance is unavailable");
     expect(document.body).not.toHaveTextContent("private backend detail");
     await user.click(within(alert).getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText(amount)).toBeVisible();
+    expect(await screen.findByText("340282366920938463463374607431768.211455")).toBeVisible();
     await openHistory(user);
     await user.selectOptions(screen.getByRole("combobox"), "payments");
     const historyError = await screen.findByRole("alert");
     expect(screen.queryByText("No records yet.")).not.toBeInTheDocument();
     await user.click(within(historyError).getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("456")).toBeVisible();
+    expect(await screen.findByText("0.000456")).toBeVisible();
   });
 
   it("blocks new payments until recovery succeeds and keeps pending failures inspectable", async () => {
@@ -245,9 +259,7 @@ describe("personal billing workspace", () => {
     expect(document.body).not.toHaveTextContent("private status error");
     vi.mocked(billing.getBillingTopupIntent).mockResolvedValue({ ...intent, state: "failed" });
     await user.click(within(pendingError).getByRole("button", { name: "Try again" }));
-    expect(
-      await screen.findByText("The top-up failed or its outcome requires inspection."),
-    ).toBeVisible();
+    expect(await screen.findByText("Top-up failed or needs inspection.")).toBeVisible();
     await ready();
     expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
   });
@@ -260,15 +272,31 @@ describe("personal billing workspace", () => {
     const { user } = setup();
     await ready();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    await user.type(screen.getByRole("textbox"), "9");
+    await user.type(screen.getByRole("textbox"), "0.000009");
     expect(screen.getByRole("button", { name: "Confirm and top up" })).toBeDisabled();
     await user.clear(screen.getByRole("textbox"));
-    await user.type(screen.getByRole("textbox"), "123");
+    await user.type(screen.getByRole("textbox"), "1.25");
     await user.click(screen.getByRole("button", { name: "Confirm and top up" }));
-    expect(await screen.findByText("123 atomic units were credited.")).toBeVisible();
-    expect(billing.createBillingTopupIntent).toHaveBeenCalledExactlyOnceWith("123", "test-csrf");
+    expect(await screen.findByText("0.000123 was credited.")).toBeVisible();
+    expect(billing.createBillingTopupIntent).toHaveBeenCalledExactlyOnceWith(
+      "1250000",
+      "test-csrf",
+    );
     expect(payBillingTopup).toHaveBeenCalledWith(expect.objectContaining({ method: "permit2" }));
     expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+
+  it("distinguishes authorization failure from uncertain settlement without exposing details", async () => {
+    vi.mocked(payBillingTopup).mockRejectedValueOnce(
+      Object.assign(new Error("private SDK detail"), { name: "TopupAuthorizationError" }),
+    );
+    const { user } = setup();
+    await ready();
+    await user.type(screen.getByRole("textbox"), "1.25");
+    await user.click(screen.getByRole("button", { name: "Confirm and top up" }));
+    expect(await screen.findByText("Payment was not submitted.")).toBeVisible();
+    expect(document.body).not.toHaveTextContent("private SDK detail");
+    expect(payBillingTopup).toHaveBeenCalledOnce();
   });
 
   it("recovers a pending transaction across views without repaying and refreshes on credit", async () => {
@@ -293,7 +321,7 @@ describe("personal billing workspace", () => {
         queryKey: ["private-account", "user-a:2099-01-01", "billing", "intent"],
       });
     });
-    expect(await screen.findByText("123 atomic units were credited.")).toBeVisible();
+    expect(await screen.findByText("0.000123 was credited.")).toBeVisible();
     expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
     expect(payBillingTopup).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Payment" }));
@@ -335,7 +363,7 @@ describe("personal billing workspace", () => {
     });
     const { user } = setup();
     await ready();
-    await user.type(screen.getByRole("textbox"), "123");
+    await user.type(screen.getByRole("textbox"), "1.25");
     await user.click(screen.getByRole("button", { name: "Confirm and top up" }));
     expect(await screen.findByText(transactionHash)).toBeVisible();
     await openHistory(user);
@@ -353,7 +381,7 @@ describe("personal billing workspace", () => {
     );
     const { user, rerender } = setup();
     await ready();
-    await user.type(screen.getByRole("textbox"), "123");
+    await user.type(screen.getByRole("textbox"), "1.25");
     await user.click(screen.getByRole("button", { name: "Confirm and top up" }));
     await waitFor(() => expect(billing.createBillingTopupIntent).toHaveBeenCalledTimes(1));
     state.userID = "user-b";
@@ -364,6 +392,6 @@ describe("personal billing workspace", () => {
       resolve(intent);
     });
     expect(payBillingTopup).not.toHaveBeenCalled();
-    expect(screen.queryByText("123 atomic units were credited.")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.000123 was credited.")).not.toBeInTheDocument();
   });
 });

@@ -15,6 +15,7 @@ import (
 
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/billing"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 type fakeBackend struct {
@@ -812,5 +813,90 @@ func assertCompatibilityGolden(t *testing.T, recorder *httptest.ResponseRecorder
 	}
 	if got := recorder.Body.String(); got != wantBody {
 		t.Fatalf("body mismatch\n got: %q\nwant: %q", got, wantBody)
+	}
+}
+
+// Every public action must make an explicit billing decision when introduced.
+func TestSupportedActionsHaveBillingPolicy(t *testing.T) {
+	prices, err := etherscanops.Prices("1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for module, actions := range supported {
+		for action := range actions {
+			count++
+			spec, ok := etherscanops.LookupAction(module, action)
+			if !ok {
+				t.Fatalf("%s.%s has no billing policy", module, action)
+			}
+			if module == "contract" && (action == "verifysourcecode" || action == "checkverifystatus" || action == "verifyproxycontract" || action == "checkproxyverification") {
+				if spec.Classification != "verification" {
+					t.Fatal(spec)
+				}
+			} else if module == "stats" && action == "ethsupply" {
+				if spec.Classification != "unavailable" {
+					t.Fatal(spec)
+				}
+			} else if spec.Classification != "query" || prices[spec.ID] == "" {
+				t.Fatalf("query lacks positive price: %+v", spec)
+			}
+		}
+	}
+	if count != len(etherscanops.All()) {
+		t.Fatal("billing catalog contains unsupported actions")
+	}
+}
+
+func TestMissingQueryPriceFailsClosed(t *testing.T) {
+	usage, err := billing.NewUsageDispatcher(billing.UsageDispatcherOptions{
+		Ledger: &fakeUsageLedger{}, Prices: map[string]string{}, MaxBodyBytes: 1 << 20, MaxHeaderBytes: 4096,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dispatcher := range []*billing.UsageDispatcher{usage, nil} {
+		backend := &fakeBackend{result: "123"}
+		handler := Handler{ChainID: 1, Backend: backend, Usage: dispatcher, APIBilling: true}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/v2/api?chainid=1&module=account&action=balance&address="+testSender, nil))
+		if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), "API billing is unavailable") || backend.calls != 0 {
+			t.Fatalf("missing price response=%d backend calls=%d body=%s", recorder.Code, backend.calls, recorder.Body.String())
+		}
+	}
+
+}
+
+func TestAllQueryPricesReachReservation(t *testing.T) {
+	prices, err := etherscanops.Prices("3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := &fakeUsageLedger{}
+	dispatcher, err := billing.NewUsageDispatcher(billing.UsageDispatcherOptions{
+		Ledger: ledger, Prices: prices, MaxBodyBytes: 1 << 20, MaxHeaderBytes: 4096,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, spec := range etherscanops.All() {
+		if !spec.BillingEligible {
+			continue
+		}
+		t.Run(spec.ID, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			dispatcher.Serve(recorder, httptest.NewRequest(http.MethodGet, "/v2/api", nil), billing.UsageRequest{
+				UserID: "00000000-0000-4000-8000-000000000001", APIKeyPrefix: "aaaaaaaaaa", Operation: spec.ID,
+				MaxBodyBytes: 1 << 20, Chargeable: etherscanChargeable,
+			}, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = w.Write([]byte(`{"status":"1","message":"OK","result":[]}`))
+			}))
+			if recorder.Code != 200 || len(ledger.reserves) != len(ledger.commits) {
+				t.Fatalf("response=%d reserves=%d commits=%d", recorder.Code, len(ledger.reserves), len(ledger.commits))
+			}
+			if got := ledger.reserves[len(ledger.reserves)-1].AmountAtomic; got != prices[spec.ID] {
+				t.Fatalf("price=%s want %s", got, prices[spec.ID])
+			}
+		})
 	}
 }

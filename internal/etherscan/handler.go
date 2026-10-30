@@ -66,6 +66,7 @@ type Handler struct {
 	MaxBody      int64
 	PublicOrigin string
 	Usage        *billing.UsageDispatcher
+	APIBilling   bool
 	Quota        func(http.Handler) http.Handler
 }
 
@@ -233,6 +234,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	amount, priced := h.Usage.Price(operation.ID)
 	_ = amount
+	if (h.APIBilling || h.Usage != nil) && operation.BillingEligible && !priced {
+		h.writeUsageError(w, http.StatusServiceUnavailable, "billing_unavailable", "API billing is unavailable")
+		return
+	}
 	if priced {
 		values, err = canonicalBillableValues(r.Method, module, action, values, spec)
 		if err != nil {

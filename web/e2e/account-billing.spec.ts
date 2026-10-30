@@ -82,7 +82,11 @@ for (const appearance of appearanceCases) {
             asset_transfer_methods: ["eip3009", "permit2"],
             minimum_topup_amount_atomic: "1",
             maximum_topup_amount_atomic: largeAmount,
-            operations: [],
+            asset_decimals: 6,
+            base_price_atomic: "1",
+            operations: [
+              { operation: "etherscan.account.balance", complexity_weight: 2, amount_atomic: "2" },
+            ],
           }),
         });
       if (path.endsWith("/account"))
@@ -149,8 +153,10 @@ for (const appearance of appearanceCases) {
       });
     };
     await checkView("payment");
+    await expect(page.locator(".billing-balance-values dd").first()).toHaveText("25");
+    await expect(page.getByRole("cell", { name: "0.000002", exact: true })).toBeVisible();
     const amountInput = page.locator("#billing-topup-amount");
-    await amountInput.fill("123");
+    await amountInput.fill("1.25");
     const historyButton = page.locator(".billing-view-switch button").nth(1);
     await historyButton.focus();
     await page.keyboard.press("Enter");
@@ -165,7 +171,7 @@ for (const appearance of appearanceCases) {
     await expect(page.locator(".billing-records li")).toHaveCount(1);
     await checkView("payment-history");
     await page.locator(".billing-view-switch button").first().click();
-    await expect(amountInput).toHaveValue("123");
+    await expect(amountInput).toHaveValue("1.25");
     await page.goto("/account");
     await expect(page.locator(".profile-details .account-address")).toHaveAttribute(
       "href",

@@ -2,9 +2,9 @@ package config
 
 import (
 	"encoding/json"
+	"math/big"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -25,7 +25,7 @@ func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 		cfg.Billing.ReservationTTL.String() != "2m0s" ||
 		cfg.UserAuth.APIKeyRate != 20 || cfg.UserAuth.APIKeyBurst != 40 ||
 		cfg.UserAuth.MaxActiveAPIKeys != 5 ||
-		len(cfg.Billing.Operations) != 0 || cfg.Billing.TopupIntentTTL.String() != "10m0s" ||
+		cfg.Billing.BasePriceAtomic != "" || cfg.Billing.TopupIntentTTL.String() != "10m0s" ||
 		cfg.Billing.UsageReservationTTL.String() != "2m0s" {
 		t.Fatalf("unexpected auth or billing defaults: auth=%#v billing=%#v", cfg.UserAuth, cfg.Billing)
 	}
@@ -46,8 +46,9 @@ func TestRemovedRequestPaymentConfigurationIsRejected(t *testing.T) {
 		t.Fatalf("removed environment error = %v", err)
 	}
 	for name, contents := range map[string]string{
-		"feature": "features:\n  x402_billing: false\n",
-		"routes":  "billing:\n  routes: {}\n",
+		"feature":    "features:\n  x402_billing: false\n",
+		"routes":     "billing:\n  routes: {}\n",
+		"operations": "billing:\n  operations: {}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
@@ -217,7 +218,7 @@ billing:
   minimum_topup_amount_atomic: "1"
   maximum_topup_amount_atomic: "1000000"
   asset_transfer_methods: [eip3009, permit2]
-  operations: {}
+  base_price_atomic: "1"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -372,32 +373,18 @@ func TestPrepaidConfigurationUsesClosedEligibleCatalog(t *testing.T) {
 	if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Billing.Operations["getStatus"] = BillingOperationConfig{AmountAtomic: "1"}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not eligible") {
-		t.Fatalf("ineligible billing route passed: %v", err)
+	for _, base := range []string{"", "0", "01", "-1", "1.2", "115792089237316195423570985008687907853269984665640564039457584007913129639935"} {
+		cfg.Billing.BasePriceAtomic = base
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("invalid or overflowing base price %q passed", base)
+		}
 	}
-	delete(cfg.Billing.Operations, "getStatus")
-	cfg.Billing.Operations["etherscan.contract.verifysourcecode"] = BillingOperationConfig{AmountAtomic: "1"}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "not eligible") {
-		t.Fatalf("free verified-artifact read remained billable: %v", err)
-	}
-	delete(cfg.Billing.Operations, "etherscan.contract.verifysourcecode")
-	cfg.Billing.Operations["etherscan.account.balance"] = BillingOperationConfig{AmountAtomic: "01"}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fit in uint256") {
-		t.Fatalf("non-canonical amount passed: %v", err)
-	}
-	cfg.Billing.Operations["etherscan.account.balance"] = BillingOperationConfig{
-		AmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639935",
-	}
+	maximum := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+	cfg.Billing.BasePriceAtomic = maximum.Div(maximum, big.NewInt(100)).String()
 	if err := cfg.Validate(); err != nil {
-		t.Fatalf("maximum uint256 amount rejected: %v", err)
+		t.Fatalf("largest safe base rejected: %v", err)
 	}
-	cfg.Billing.Operations["etherscan.account.balance"] = BillingOperationConfig{
-		AmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639936",
-	}
-	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "fit in uint256") {
-		t.Fatalf("uint256 overflow amount passed: %v", err)
-	}
+
 }
 
 func TestX402FacilitatorHeadersAreStrictAndRedacted(t *testing.T) {
@@ -457,14 +444,11 @@ func validX402Config() Config {
 	cfg.Billing.AssetTransferMethods = []string{"eip3009", "permit2"}
 	cfg.Billing.FingerprintPepper = strings.Repeat("f", 32)
 	cfg.Billing.FacilitatorHeaders = map[string]string{"Authorization": "Bearer opaque"}
-	cfg.Billing.Operations = map[string]BillingOperationConfig{
-		"etherscan.account.balance": {AmountAtomic: "1000"},
-	}
+	cfg.Billing.BasePriceAtomic = "1"
 	return cfg
 }
 
-func TestHelmBillingOperationEnumMatchesEligibleCatalog(t *testing.T) {
-	t.Parallel()
+func TestHelmBillingBasePriceSchema(t *testing.T) {
 	encoded, err := os.ReadFile("../../deploy/helm/etherview/values.schema.json")
 	if err != nil {
 		t.Fatal(err)
@@ -474,33 +458,15 @@ func TestHelmBillingOperationEnumMatchesEligibleCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	value := any(document)
-	for _, key := range []string{
-		"properties", "config", "properties", "billing", "properties", "operations", "propertyNames", "enum",
-	} {
-		object, ok := value.(map[string]any)
-		if !ok {
-			t.Fatalf("Helm billing route schema before %q is not an object", key)
-		}
-		value, ok = object[key]
-		if !ok {
-			t.Fatalf("Helm billing route schema lacks %q", key)
-		}
+	for _, key := range []string{"properties", "config", "properties", "billing", "properties"} {
+		value = value.(map[string]any)[key]
 	}
-	rawOperations, ok := value.([]any)
-	if !ok {
-		t.Fatal("Helm billing operation enum is not an array")
+	properties := value.(map[string]any)
+	if properties["operations"] != nil || properties["base_price_atomic"] == nil {
+		t.Fatal("expected only base-price configuration")
 	}
-	actual := make([]string, len(rawOperations))
-	for index, operation := range rawOperations {
-		actual[index], ok = operation.(string)
-		if !ok {
-			t.Fatalf("Helm billing operation %d is not a string", index)
-		}
-	}
-	expected := etherscanops.EligibleIDs()
-	slices.Sort(actual)
-	slices.Sort(expected)
-	if !slices.Equal(actual, expected) {
-		t.Fatalf("Helm billing routes=%v, want eligible catalog=%v", actual, expected)
+	prices, err := etherscanops.Prices("1")
+	if err != nil || len(prices) != 30 {
+		t.Fatalf("prices=%v error=%v", prices, err)
 	}
 }

@@ -61,6 +61,13 @@ export class TopupPendingError extends Error {
   }
 }
 
+export class TopupAuthorizationError extends Error {
+  constructor() {
+    super("Top-up authorization could not be completed");
+    this.name = "TopupAuthorizationError";
+  }
+}
+
 export async function payBillingTopup(options: {
   config: BillingConfig;
   intent: BillingTopupIntent;
@@ -102,13 +109,28 @@ export async function payBillingTopup(options: {
   };
   const selector = (_version: number, requirements: PaymentRequirements[]) => {
     const selected = requirements.find(
-      (requirement) => requirement.extra?.assetTransferMethod === method,
+      (requirement) =>
+        requirement.extra?.assetTransferMethod === method &&
+        requirement.network === network &&
+        getAddress(requirement.asset) === asset &&
+        getAddress(requirement.payTo) === recipient &&
+        requirement.amount === intent.amount_atomic,
     );
     if (!selected) throw new TypeError("Selected x402 transfer method is unavailable");
     return selected;
   };
-  const client = new x402Client(selector).register(network, new ExactEvmScheme(signer));
-  const fetchWithPayment = wrapFetchWithPayment(globalThis.fetch, client);
+  const client = new x402Client(selector)
+    .register(network, new ExactEvmScheme(signer))
+    .setSpendControls({
+      allowedAssets: [{ network, asset, maxAmountPerPayment: intent.amount_atomic }],
+    });
+  let paymentSubmitted = false;
+  const fetchWithPayment = wrapFetchWithPayment((input, init) => {
+    const request = new Request(input, init);
+    // Mark before transport: a lost response does not prove settlement failed.
+    if (request.headers.has("PAYMENT-SIGNATURE")) paymentSubmitted = true;
+    return globalThis.fetch(request);
+  }, client);
   const response = await fetchWithPayment(
     `/api/v1/billing/topup-intents/${encodeURIComponent(intent.id)}/pay`,
     {
@@ -120,7 +142,10 @@ export async function payBillingTopup(options: {
         "X-CSRF-Token": csrfToken,
       },
     },
-  );
+  ).catch((cause: unknown) => {
+    if (!paymentSubmitted) throw new TopupAuthorizationError();
+    throw cause;
+  });
   if (response.status === 402 && response.headers.has("PAYMENT-RESPONSE")) {
     throw new TopupPendingError(intent.id);
   }

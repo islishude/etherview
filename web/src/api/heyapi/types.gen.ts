@@ -211,11 +211,13 @@ export type BillingAssetTransferMethod = 'eip3009' | 'permit2';
 export type BillingPaymentState = 'reserved' | 'verified' | 'settling' | 'settled' | 'failed' | 'expired';
 
 export type BillingOperationPrice = {
+    complexity_weight: number;
     operation: string;
     amount_atomic: Quantity;
 };
 
 export type BillingConfig = {
+    base_price_atomic?: Quantity;
     api_billing_enabled: boolean;
     x402_topups_enabled: boolean;
     x402_version: 2;

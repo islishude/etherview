@@ -162,8 +162,8 @@ user_auth:
   api_key_burst: 40
   max_active_api_keys: 5
 
-# Prepaid API billing and x402 top-ups are independently disabled. Only
-# configured bounded Etherscan V2 operations consume account credit. The
+# Prepaid API billing and x402 top-ups are independently disabled. When enabled,
+# all supported bounded Etherscan V2 queries consume complexity-priced credit. The
 # facilitator is used only for top-ups and has a fixed HTTPS origin whose DNS
 # answers must remain inside these canonical CIDRs. Supply
 # ETHERVIEW_X402_FINGERPRINT_PEPPER(_FILE) and optional
@@ -190,7 +190,7 @@ billing:
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
-  operations: {}
+  base_price_atomic: ""
 
 # Official Ethereum Mainnet RPC endpoints are ENS-role secrets supplied through
 # ENS shares the current-chain RPC pool in enrich; the manifest is public.
