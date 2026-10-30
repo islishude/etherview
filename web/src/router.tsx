@@ -149,9 +149,14 @@ const nameRoute = createRoute({
 const addressRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/address/$address",
-  validateSearch: (search: Record<string, unknown>): { tab?: string } => {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: string; asset?: "tokens" | "nfts" } => {
     const tab = typeof search.tab === "string" ? search.tab : "transactions";
     if (tab === "transactions") return {};
+    if (tab === "assets") {
+      return { tab, asset: search.asset === "nfts" ? "nfts" : "tokens" };
+    }
     return [
       "native-transfers",
       "internal-transactions",
@@ -321,8 +326,15 @@ function UserOperationRoutePage() {
 
 function AddressRoutePage() {
   const { address } = addressRoute.useParams();
-  const { tab } = addressRoute.useSearch();
-  return <EntityPage kind="address" identifier={address} addressTab={tab ?? "transactions"} />;
+  const { tab, asset } = addressRoute.useSearch();
+  return (
+    <EntityPage
+      kind="address"
+      identifier={address}
+      addressTab={tab ?? "transactions"}
+      addressAsset={asset}
+    />
+  );
 }
 
 function TokenRoutePage() {

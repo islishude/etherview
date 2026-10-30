@@ -176,15 +176,14 @@ describe("P50 capability pages", () => {
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/address/${owner}?tab=assets`);
+    renderExplorer(`/address/${owner}?tab=assets&asset=nfts`);
 
     expect(await screen.findByRole("heading", { name: "Canonical NFT balances" })).toBeVisible();
-    expect(await screen.findByText(tokenID)).toBeVisible();
-    expect(screen.getByText(tokenID).closest("a")).toHaveAttribute(
-      "href",
-      `/nft/${address}/${tokenID}`,
-    );
-    expect(screen.getByText(balance)).toBeVisible();
+    expect(await screen.findByTitle(tokenID)).toBeVisible();
+    expect(screen.getByTitle(tokenID)).toHaveAttribute("href", `/nft/${address}/${tokenID}`);
+    expect(
+      screen.getByText(`Quantity: ${new Intl.NumberFormat("en").format(BigInt(balance))}`),
+    ).toBeVisible();
     expect(screen.getByText("Exact RPC observation")).toBeVisible();
     expect(screen.getByText("Exact state reconciled against canonical block 999.")).toBeVisible();
     expect(screen.getByRole("link", { name: "0x121212…121212" })).toHaveAttribute(
@@ -503,7 +502,7 @@ describe("P50 capability pages", () => {
         return apiError("not_found", 404);
       }),
     );
-    renderExplorer(`/address/${owner}?tab=assets`);
+    renderExplorer(`/address/${owner}?tab=assets&asset=nfts`);
 
     expect(await screen.findByText("This data is currently unavailable.")).toBeVisible();
     expect(screen.queryByText("stage_unavailable")).not.toBeInTheDocument();

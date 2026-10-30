@@ -17,6 +17,14 @@ export const addressesResources = {
       delegation: "Delegation",
       contract: "Contract",
     },
+    addressAssets: {
+      navigation: "Asset types",
+      tokens: "Token",
+      nfts: "NFT",
+      balance: "Balance",
+      rawAmount: "Raw units",
+      quantity: "Quantity: {{quantity}}",
+    },
     delegation: {
       sections: "Delegated account sections",
       tabs: {
@@ -82,6 +90,14 @@ export const addressesResources = {
       userOperations: "User Ops",
       delegation: "委托",
       contract: "合约",
+    },
+    addressAssets: {
+      navigation: "资产类型",
+      tokens: "Token",
+      nfts: "NFT",
+      balance: "持有数量",
+      rawAmount: "原始数量",
+      quantity: "持有数量：{{quantity}}",
     },
     delegation: {
       sections: "委托账户分区",

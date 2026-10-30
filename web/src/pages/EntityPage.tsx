@@ -1,3 +1,4 @@
+import type { AddressAssetTab } from "./AddressAssets";
 import { AddressDetailPage } from "./AddressPage";
 import { BlockDetailPage } from "./BlockPage";
 import { TokenDetailPage, NFTDetailPage } from "./TokenNFTPage";
@@ -11,6 +12,7 @@ export function EntityPage({
   secondary,
   transactionTab,
   addressTab,
+  addressAsset,
   blockTab,
 }: {
   kind: EntityKind;
@@ -18,6 +20,7 @@ export function EntityPage({
   secondary?: string;
   transactionTab?: string;
   addressTab?: string;
+  addressAsset?: AddressAssetTab;
   blockTab?: string;
 }) {
   switch (kind) {
@@ -26,7 +29,13 @@ export function EntityPage({
     case "transaction":
       return <TransactionDetailPage hash={identifier} tab={transactionTab ?? "overview"} />;
     case "address":
-      return <AddressDetailPage address={identifier} tab={addressTab ?? "transactions"} />;
+      return (
+        <AddressDetailPage
+          address={identifier}
+          tab={addressTab ?? "transactions"}
+          asset={addressAsset}
+        />
+      );
     case "token":
       return <TokenDetailPage address={identifier} />;
     case "nft":

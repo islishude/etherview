@@ -9,6 +9,7 @@ for (const tab of [
   "nft-transfers",
   "native-transfers",
   "assets",
+  "assets-nfts",
   "user-operations",
   "contract",
 ]) {
@@ -48,13 +49,17 @@ for (const tab of [
       const url = new URL(request.url());
       if (/^\/api\/v1\/(addresses|contracts)\//.test(url.pathname)) requests.push(url.pathname);
     });
-    await page.goto(`/address/${address}${tab === "contract" ? "#code" : `?tab=${tab}`}`);
+    await page.goto(
+      `/address/${address}${tab === "contract" ? "#code" : `?tab=${tab === "assets-nfts" ? "assets&asset=nfts" : tab}`}`,
+    );
     const suffixes =
       tab === "contract"
         ? ["/proxy", "/verification"]
         : tab === "assets"
-          ? ["/nfts", "/erc20-balances"]
-          : [`/${tab}`];
+          ? ["/erc20-balances"]
+          : tab === "assets-nfts"
+            ? ["/nfts"]
+            : [`/${tab}`];
     for (const suffix of suffixes)
       await expect.poll(() => requests.some((path) => path.endsWith(suffix))).toBe(true);
     const refresh = page

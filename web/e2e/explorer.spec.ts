@@ -1370,7 +1370,11 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await page.goto(`/address/${address}?tab=assets`);
   await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();
-  await expect(page.getByText("123.45 EXT", { exact: true })).toBeVisible();
+  await expect(page.getByText("123.45", { exact: true })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Asset types" })
+    .getByRole("link", { name: "NFT", exact: true })
+    .click();
   const nftBalances = page.getByRole("region", { name: "Canonical NFT balances" });
   await expect(
     nftBalances.getByRole("heading", { name: "Canonical NFT balances", level: 2 }),
