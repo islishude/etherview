@@ -26,7 +26,11 @@ it("discards cursors on every identity transition, including returning to an ear
   rerender("second");
   expect(result.current.page).toBe(1);
   rerender("first");
-  expect(result.current.request).toEqual({ cursor: undefined, refreshGeneration: 0 });
+  expect(result.current.request).toEqual({
+    cursor: undefined,
+    refreshGeneration: 0,
+    identity: "first",
+  });
   act(() => {
     result.current.reset();
   });

@@ -7,7 +7,10 @@
 `make test-preview-gateway` runs the shipped Caddyfile against the pinned
 `caddy:2.11.7-alpine` image with isolated upstreams and a test-only trusted CA.
 It covers domain routing, raw IPFS paths, CORS, TLS, request limits, streaming,
-cancellation, deadlines and WSS/SSE idle connections. The official image is
+cancellation, deadlines and WSS/SSE idle connections. Origin regressions cover
+arbitrary website, extension, null and absent Origins for Geth RPC/preflight/WSS,
+plus the unchanged Beacon/Bundler allowlist and its override. These checks do
+not establish an actual MetaMask extension connection. The official image is
 pulled through `make preview-images`; no custom gateway binary is built.
 
 Preview browser acceptance requires the locked pnpm workspace and Chrome, or

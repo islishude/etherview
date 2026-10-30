@@ -980,6 +980,90 @@ paths:
                 $ref: "#/components/schemas/TransactionAuthorizationResponse"
         default:
           $ref: "#/components/responses/Error"
+  /names/{name}:
+    get:
+      operationId: getName
+      tags: [ens]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      responses:
+        "200":
+          description: Known name with independently valid partial fields, or explicit not_indexed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameDetailResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /names/{name}/history:
+    get:
+      operationId: listNameHistory
+      tags: [ens]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Canonical ENS event history at a frozen snapshot with explicit coverage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameHistoryResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /names/{name}/history/{transactionHash}/events:
+    get:
+      operationId: listNameHistoryEvents
+      tags: [ens]
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - $ref: "#/components/parameters/Cursor"
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: transactionHash
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: block_hash
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: snapshot
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/OpaqueCursor"
+      responses:
+        "200":
+          description: Canonical ENS event history at a frozen snapshot with explicit coverage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameHistoryEventsResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /address-names:
     get:
       operationId: listAddressNames
@@ -1537,12 +1621,19 @@ paths:
       operationId: streamHeadEvents
       tags: [system]
       description: >-
-        Server-sent head, reorganization, and sync status events with bounded
+        Server-sent head, reorganization, sync status, and names publication events with bounded
         replay from the durable PostgreSQL event ledger. Last-Event-ID resumes
         within the retained durable range; malformed, expired, and future cursor
         values return a typed 400 error, while replay backend failures return a
         typed 503 error. Both SSE routes share per-client and per-process active
         subscription limits; admission failure returns 429 with Retry-After.
+        A names event carries a decimal-string publication or directory identity for
+        background rereading, history=true with invalidated=false for a history refresh,
+        or a source identity and invalidated=true for withdrawal
+        before rereading. Reorganizations and stream reconnections also withdraw names.
+        Sync coverage changes alone emit status with reason=names_progress and a
+        decimal-string source identity; they do not invalidate published names.
+        Background refresh never extends the previous observation validity deadline.
       parameters:
         - name: Last-Event-ID
           in: header
@@ -2594,8 +2685,10 @@ components:
         "address":
           "$ref": "#/components/schemas/Address"
         "kind":
+          "description": "all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total."
           "type": "string"
           "enum":
+            - "all"
             - "transaction"
             - "erc20"
             - "nft"
@@ -3379,6 +3472,49 @@ components:
           $ref: "#/components/schemas/Quantity"
         completeness:
           $ref: "#/components/schemas/Completeness"
+        names:
+          type: array
+          maxItems: 1
+          items:
+            $ref: "#/components/schemas/NameSourceStatus"
+    NameSourceStatus:
+      type: object
+      additionalProperties: false
+      required: [state, protocols, pending, coverage]
+      properties:
+        state:
+          type: string
+          enum: [not_indexed, sync_pending, resolution_pending, current, stale, unsupported_source]
+        protocols:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items:
+            type: string
+            enum: [v1, v2]
+        coverage:
+          type: string
+          enum: [not_started, incomplete, complete]
+          description: Directory coverage from the configured protocol start, independent of exact resolution validity.
+        coverage_start:
+          $ref: "#/components/schemas/Quantity"
+        target:
+          $ref: "#/components/schemas/Quantity"
+        scanned:
+          $ref: "#/components/schemas/Quantity"
+        last_published_block:
+          $ref: "#/components/schemas/Quantity"
+        pending:
+          $ref: "#/components/schemas/Quantity"
+        last_success:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        code:
+          type: string
+          maxLength: 64
     PublicConfig:
       type: object
       required: [chain_id, chain_name, native_symbol, native_name, native_decimals, features]
@@ -5528,13 +5664,228 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/EIP7702Authorization"
+    NameHistoryField:
+      type: object
+      additionalProperties: false
+      required: [key, type, value, truncated]
+      properties:
+        key:
+          type: string
+        type:
+          type: string
+          description: ABI scalar type, array type or hash for an indexed dynamic argument.
+        value:
+          type: string
+          description: Inert event evidence; omitted event values are never inferred from current records.
+        truncated:
+          type: boolean
+    NameHistoryEvent:
+      type: object
+      additionalProperties: false
+      required: [log_index, emitter, event_name, action, fields]
+      properties:
+        log_index:
+          $ref: "#/components/schemas/Quantity"
+        emitter:
+          $ref: "#/components/schemas/Address"
+        event_name:
+          type: string
+        action:
+          $ref: "#/components/schemas/NameHistoryAction"
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryField"
+    NameHistoryAction:
+      type: string
+      enum:
+        [
+          registration,
+          reservation,
+          renewal,
+          unregistration,
+          transfer,
+          subname,
+          resolver,
+          ttl,
+          address,
+          name,
+          text,
+          contenthash,
+          abi,
+          dns,
+          pubkey,
+          interface,
+          data,
+          clear,
+          permission,
+          wrap,
+          unwrap,
+          fuses,
+          migration,
+          link,
+          resource,
+        ]
+    NameHistoryCoverage:
+      type: object
+      additionalProperties: false
+      required: [state, start, pending]
+      properties:
+        state:
+          type: string
+          enum: [complete, partial, pending, unavailable]
+        start:
+          $ref: "#/components/schemas/Quantity"
+        scanned:
+          $ref: "#/components/schemas/Quantity"
+        target:
+          $ref: "#/components/schemas/Quantity"
+        pending:
+          $ref: "#/components/schemas/Quantity"
+    NameHistoryTransaction:
+      type: object
+      additionalProperties: false
+      required: [transaction_hash, block_hash, block_number, timestamp, actions, event_count]
+      properties:
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        timestamp:
+          type: string
+          format: date-time
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryAction"
+        event_count:
+          $ref: "#/components/schemas/Quantity"
+    NameHistory:
+      type: object
+      additionalProperties: false
+      required: [name, state, coverage, snapshot, items]
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+          enum: [indexed, not_indexed]
+        coverage:
+          $ref: "#/components/schemas/NameHistoryCoverage"
+        snapshot:
+          type: string
+          maxLength: 1024
+          description: Opaque event-page snapshot, empty before any history scan.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryTransaction"
+    NameHistoryEvents:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NameHistoryEvent"
+    NameHistoryResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NameHistory"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    NameHistoryEventsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NameHistoryEvents"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    NameField:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [value, pending, not_applicable, unsupported, multi_account, not_set]
+        value:
+          type: string
+          description: Address or unsigned Unix seconds for expiration_time, never a fabricated empty value.
+        model:
+          type: string
+          enum: [registry_manager, wrapped_manager, permissioned_registry]
+    NameObservation:
+      type: object
+      additionalProperties: false
+      required: [publication, observed_block_number, observed_block_hash, valid_until]
+      properties:
+        publication:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_number:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_hash:
+          $ref: "#/components/schemas/Hash"
+        valid_until:
+          type: string
+          format: date-time
+    NameDetail:
+      type: object
+      additionalProperties: false
+      required:
+        [name, state, registration_state, registrant, controller, expiration_time, resolved_address]
+      properties:
+        name:
+          type: string
+        state:
+          type: string
+          enum: [indexed, not_indexed]
+        registration_state:
+          type: string
+          enum:
+            [
+              pending,
+              unsupported,
+              not_applicable,
+              unregistered,
+              registered,
+              reserved,
+              grace_period,
+              expired,
+            ]
+        registrant:
+          $ref: "#/components/schemas/NameField"
+        controller:
+          $ref: "#/components/schemas/NameField"
+        expiration_time:
+          $ref: "#/components/schemas/NameField"
+        resolved_address:
+          $ref: "#/components/schemas/NameField"
+        profile_observation:
+          $ref: "#/components/schemas/NameObservation"
+        resolution_observation:
+          $ref: "#/components/schemas/NameObservation"
+    NameDetailResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/NameDetail"
+        meta:
+          $ref: "#/components/schemas/Meta"
     SearchResult:
       type: object
       required: [kind, key, label, rank]
       properties:
         kind:
           type: string
-          enum: [block, transaction, user_operation, address, contract, token, nft, label]
+          enum: [block, transaction, user_operation, address, contract, token, nft, label, name]
         key:
           type: string
         label:
@@ -5543,21 +5894,27 @@ components:
           type: integer
         canonical:
           type: boolean
-        name_source:
-          type: string
-          enum: [ens, custom_ens]
+        name_details:
+          $ref: "#/components/schemas/NameDetail"
     PrimaryName:
       type: object
       additionalProperties: false
-      required: [name, source]
+      required: [name, publication, valid_until, observed_block_number, observed_block_hash]
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 255
-        source:
+        publication:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_number:
+          $ref: "#/components/schemas/Quantity"
+        observed_block_hash:
+          $ref: "#/components/schemas/Hash"
+        valid_until:
           type: string
-          enum: [ens, custom_ens]
+          format: date-time
+          description: Hide the name after this deadline even without a server event.
     AddressNameLookup:
       type: object
       additionalProperties: false
@@ -5577,7 +5934,7 @@ components:
     AddressNamePage:
       type: object
       additionalProperties: false
-      required: [items, snapshot]
+      required: [items, snapshot, publication]
       properties:
         items:
           type: array
@@ -5586,6 +5943,8 @@ components:
             $ref: "#/components/schemas/AddressNameLookup"
         snapshot:
           $ref: "#/components/schemas/OpaqueCursor"
+        publication:
+          $ref: "#/components/schemas/Quantity"
     VerifierLanguage:
       type: string
       enum: [solidity, yul, geas, vyper]

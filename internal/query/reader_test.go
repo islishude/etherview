@@ -19,7 +19,6 @@ import (
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/testpgx"
 
-	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/publicquery"
@@ -779,8 +778,8 @@ func TestSearchTreatsLowNumericAddressAsAddressBeforeBlockNumber(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(7),
-			rows: [][]any{{"contract", address, "Artifact", int64(104), false, nil, false}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(8),
+			rows: [][]any{{"contract", address, "Artifact", int64(104), false, nil, nil, false}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -801,13 +800,15 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(7),
+			contains: "FROM search_catalog_documents AS document", columns: columns(8),
 			rows: [][]any{
-				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), false, nil, false},
-				{"address", "0xde709f2102306220921060314715629080e2fb77", "alice.eth", int64(100), true, "ens", true},
-				{"token", tokenAddress, "Example Token", int64(65), true, nil, true},
+				{"contract", "0x52908400098527886e0f7030069857d2e4169ee7", "Treasury", int64(110), false, nil, nil, false},
+				{"name", "alice.eth", "alice.eth", int64(100), true, int64(1), nil, true},
+				{"token", tokenAddress, "Example Token", int64(65), true, nil, nil, true},
 			},
 		},
+		queryExpectation{contains: "ReadENSKnownName", columns: columns(1), rows: [][]any{{true}}},
+		queryExpectation{contains: "ReadENSProfilePublications", columns: columns(9)},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
 	results, _, err := reader.Search(context.Background(), "Treasury", "", 20)
@@ -815,7 +816,7 @@ func TestSearchCoversCanonicalNamesTokensContractsAndLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(results) != 3 || results[0].Kind != gen.SearchResultKindContract || results[0].Key != "0x52908400098527886E0F7030069857D2E4169EE7" ||
-		results[1].Kind != gen.SearchResultKindAddress || results[1].Canonical == nil || !*results[1].Canonical ||
+		results[1].Kind != gen.SearchResultKindName || results[1].Canonical == nil || !*results[1].Canonical ||
 		results[2].Kind != gen.SearchResultKindToken || results[2].Key != tokenAddress {
 		t.Fatalf("results=%+v", results)
 	}
@@ -849,8 +850,8 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
 		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
 		queryExpectation{
-			contains: "FROM search_catalog_documents AS document", columns: columns(7),
-			rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, false}},
+			contains: "FROM search_catalog_documents AS document", columns: columns(8),
+			rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, nil, false}},
 		},
 	)
 	reader := testReader(t, db, Options{ChainID: 1})
@@ -863,78 +864,26 @@ func TestSearchRejectsMalformedPersistedEntityKey(t *testing.T) {
 func TestSearchTextRejectsMalformedPersistedEntityKey(t *testing.T) {
 	t.Parallel()
 	db := testDatabase(t, queryExpectation{
-		contains: "FROM search_catalog_documents AS document", columns: columns(7),
-		rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, false}},
+		contains: "FROM search_catalog_documents AS document", columns: columns(8),
+		rows: [][]any{{"transaction", "not-a-hash", "bad", int64(80), false, nil, nil, false}},
 	})
 	reader := testReader(t, db, Options{ChainID: 1})
-	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, 0, nil, 20)
+	results, err := reader.searchText(context.Background(), db, "bad", 2, 7, nil, 20)
 	if err == nil || !strings.Contains(err.Error(), "invalid transaction") {
 		t.Fatalf("results=%+v error=%v", results, err)
 	}
 }
 
-type controlledNameResolverError struct {
-	capability string
-	state      string
-	code       string
-	message    string
-}
-
-func (err controlledNameResolverError) Error() string { return err.message }
-
-func (err controlledNameResolverError) CapabilityDetails() (string, string, string) {
-	return err.capability, err.state, err.code
-}
-
-type failingNameResolver struct{ err error }
-
-func (resolver failingNameResolver) ResolveForward(context.Context, string) (ensresolver.ForwardResolution, error) {
-	return ensresolver.ForwardResolution{}, resolver.err
-}
-
-func TestSearchMapsOnlyControlledNameCapabilityDetails(t *testing.T) {
-	t.Parallel()
-	secret := "https://operator:secret@example.invalid/private"
-	for _, test := range []struct {
-		name     string
-		resolver NameResolver
-		state    string
-		code     string
-	}{
-		{name: "not configured", state: "unavailable", code: "not_configured"},
-		{
-			name: "controlled adapter failure",
-			resolver: failingNameResolver{err: controlledNameResolverError{
-				capability: "name", state: "unavailable", code: "unsafe_url", message: secret,
-			}},
-			state: "unavailable", code: "unsafe_url",
-		},
-		{
-			name:     "arbitrary resolver failure",
-			resolver: failingNameResolver{err: errors.New(secret)},
-			state:    "failed", code: "resolver_failure",
-		},
-		{
-			name: "unrecognized controlled code",
-			resolver: failingNameResolver{err: controlledNameResolverError{
-				capability: "name", state: "failed", code: "upstream_credential", message: secret,
-			}},
-			state: "failed", code: "resolver_failure",
-		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			reader := testReader(t, testDatabase(t), Options{ChainID: 1, NameResolver: test.resolver})
-			_, _, err := reader.Search(context.Background(), "alice.eth", "", 20)
-			var capability *httpapi.CapabilityUnavailableError
-			if !errors.As(err, &capability) || capability.Capability != "name" ||
-				capability.State != test.state || capability.Code != test.code {
-				t.Fatalf("capability error=%#v", err)
-			}
-			if strings.Contains(err.Error(), secret) {
-				t.Fatalf("resolver text leaked through error: %q", err)
-			}
-		})
+func TestSearchReadsUnknownNameFromCatalog(t *testing.T) {
+	db := testDatabase(t,
+		queryExpectation{contains: "ORDER BY canonical.number DESC", columns: columns(2), rows: [][]any{{"2", testHashBytes(3)}}},
+		queryExpectation{contains: "search_catalog_generations", columns: columns(2), rows: [][]any{{int64(7), int64(1)}}},
+		queryExpectation{contains: "FROM search_catalog_documents AS document", columns: columns(8)},
+	)
+	reader := testReader(t, db, Options{ChainID: 1})
+	results, _, err := reader.Search(t.Context(), "unknown.eth", "", 20)
+	if err != nil || results == nil || len(results) != 0 {
+		t.Fatalf("results=%v err=%v", results, err)
 	}
 }
 

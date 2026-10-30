@@ -86,7 +86,7 @@ function canonicalChallenge(): AuthChallenge {
 }
 
 function expectInvalid(operation: () => unknown) {
-  expect(operation).toThrowError(
+  expect(operation).toThrow(
     expect.objectContaining<Partial<WalletBoundaryError>>({
       code: "INVALID_REQUEST",
     }),

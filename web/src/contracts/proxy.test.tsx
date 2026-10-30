@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { PropsWithChildren } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -127,7 +127,7 @@ describe("proxy API adapter", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("refetches an unavailable proxy classification until classification is published without a new head", async () => {
+  it("keeps an unavailable classification until explicit refresh", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -149,6 +149,15 @@ describe("proxy API adapter", () => {
     });
 
     await waitFor(() => expect(result.current.data?.state).toBe("unavailable"));
+    vi.useFakeTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+    await act(async () => {
+      await result.current.refetch();
+    });
     await waitFor(() => expect(result.current.data?.state).toBe("verified"));
     expect(fetcher).toHaveBeenCalledTimes(2);
   });

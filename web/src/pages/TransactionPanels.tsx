@@ -43,7 +43,7 @@ export function TransactionAccessListPanel({
             <article className="transaction-log" key={entry.address}>
               <header>
                 <strong>
-                  <AddressIdentity address={entry.address} compact={false} />
+                  <AddressIdentity nameOnly address={entry.address} compact={false} />
                 </strong>
               </header>
               {entry.storage_keys.length > 0 ? (
@@ -342,12 +342,12 @@ export function TransactionInternalTransactionsPanel({
                       <span className="transaction-trace-kind">{item.call_type}</span>
                     </td>
                     <td>
-                      <AddressIdentity address={item.from} copy />
+                      <AddressIdentity nameOnly address={item.from} copy />
                     </td>
                     <td>
                       {destination ? (
                         <span className="table-primary">
-                          <AddressIdentity address={destination} copy />
+                          <AddressIdentity nameOnly address={destination} copy />
                           {item.created_address ? <small>{t("activity.created")}</small> : null}
                         </span>
                       ) : (

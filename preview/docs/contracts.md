@@ -187,7 +187,7 @@ preview_contracts ens resolve alice.test
 ```
 
 Names are normalized and limited to one label of at least three characters
-under `.test`. The explorer displays `custom_ens` names only after reverse/forward
+under `.test`. The explorer displays primary names only after reverse/forward
 matching; transfer alone does not update those records. Use an ordinary funded
 account for experiments, not the Bundler executor or ENS administrator.
 

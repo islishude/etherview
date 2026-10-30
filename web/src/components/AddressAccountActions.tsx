@@ -1,165 +1,232 @@
-import { UIIcon } from "@/components/UIIcon";
-import { SelectControl } from "@/components/SelectControl";
-import { Bell, BellRing, Download, ChevronDown } from "lucide-react";
-import { useTurnstile } from "./TurnstileChallenge";
-import "./AddressAccountActions.css";
-import { type FormEvent, useState } from "react";
+import { Message } from "@/components/Message";
+import "@/i18n/resources/addressActions";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { Bell, BellRing, Download, LoaderCircle, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "@/auth/AuthProvider";
+import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
 import { usePrivateIdentity, useWatches } from "@/api/privateAccount";
-import {
-  deleteWatch,
-  downloadAddressCSV,
-  saveWatch,
-  type AddressExportRequest,
-} from "@/api/watchlist";
-import { AccountActionError, useAccountAction } from "@/pages/WatchlistPages";
+import { deleteWatch, saveWatch, type AddressWatch } from "@/api/watchlist";
+import { AccountActionError, useAccountAction } from "./AccountAction";
+import { SIWELoginControl } from "./SIWELoginControl";
+import { UIIcon } from "./UIIcon";
+import "./AddressAccountActions.css";
 
-export function AddressAccountActions({ address }: { address: string }) {
+export function AddressWatchButton({ address }: { address: string }) {
+  const auth = useAuth();
   const identity = usePrivateIdentity();
+  const [loginOpen, setLoginOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    setLoginOpen(false);
+  }, [identity, address]);
+  if (!auth.enabled) return null;
+  return (
+    <>
+      <WatchButton
+        key={`${identity}:${address}`}
+        address={address}
+        trigger={trigger}
+        onLogin={() => setLoginOpen(true)}
+      />
+      {loginOpen && <WatchLoginDialog trigger={trigger} onClose={() => setLoginOpen(false)} />}
+    </>
+  );
+}
+
+function WatchButton({
+  address,
+  trigger,
+  onLogin,
+}: {
+  address: string;
+  trigger: RefObject<HTMLButtonElement | null>;
+  onLogin: () => void;
+}) {
+  const auth = useAuth();
+  const identity = usePrivateIdentity();
+  const { t } = useTranslation();
+  const query = useWatches();
+  const client = useQueryClient();
+  const action = useAccountAction();
+  const watch = query.data?.find((item) => item.address.toLowerCase() === address.toLowerCase());
+  const signedIn = auth.session.authenticated;
+  const busy = auth.loading || action.pending || (signedIn && query.isPending);
+  const limit = signedIn && !watch && (query.data?.length ?? 0) >= 5;
+  const unknown = signedIn && (!query.data || query.isError);
+  const label = t(
+    busy
+      ? "watchlist.loading"
+      : unknown
+        ? "watchlist.watchUnknown"
+        : watch
+          ? "watchlist.remove"
+          : "watchlist.add",
+  );
+  async function toggle() {
+    if (!signedIn) {
+      onLogin();
+      return;
+    }
+    if (unknown || action.pending || limit) return;
+    await action.run(
+      async (csrf, signal) => {
+        const saved = watch
+          ? (await deleteWatch(watch.id, csrf, signal), undefined)
+          : await saveWatch(
+              {
+                address,
+                label: "",
+                kinds: ["transaction", "erc20", "erc721", "erc1155"],
+                direction: "both",
+                enabled: true,
+              },
+              csrf,
+              signal,
+            );
+        if (signal.aborted) return;
+        const queryKey = ["private-account", identity, "watches"];
+        await client.cancelQueries({ queryKey });
+        if (signal.aborted) return;
+        client.setQueryData<AddressWatch[]>(queryKey, (items) => {
+          const remaining = (items ?? []).filter(
+            (item) => item.address.toLowerCase() !== address.toLowerCase(),
+          );
+          return saved ? [...remaining, saved] : remaining;
+        });
+      },
+      t(watch ? "watchlist.removed" : "watchlist.added"),
+    );
+  }
+  return (
+    <>
+      <button
+        type="button"
+        ref={trigger}
+        className="address-qr-button address-watch-button"
+        data-watching={!busy && Boolean(watch)}
+        aria-pressed={unknown ? undefined : Boolean(watch)}
+        aria-label={label}
+        title={label}
+        aria-busy={busy}
+        disabled={auth.loading || action.pending || limit}
+        aria-disabled={busy || Boolean(unknown) || limit}
+        onClick={() => void toggle()}
+      >
+        <UIIcon
+          icon={busy ? LoaderCircle : watch ? BellRing : Bell}
+          className={busy ? "query-loading-spinner" : undefined}
+          size={16}
+        />
+      </button>
+      {action.error && <AccountActionError code={action.error} />}
+      {action.success && <Message type="success">{action.success}</Message>}
+      {(query.isError || limit) && (
+        <span className="address-watch-feedback">
+          <AccountActionError
+            inline
+            code={query.isError ? "activity_unavailable" : "watchlist_limit"}
+          />
+          {query.isError && (
+            <button
+              type="button"
+              className="address-action"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
+            >
+              {t("watchlist.retry")}
+            </button>
+          )}
+        </span>
+      )}
+    </>
+  );
+}
+
+function WatchLoginDialog({
+  trigger,
+  onClose,
+}: {
+  trigger: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const auth = useAuth();
+  const dialog = useRef<HTMLDialogElement>(null);
+  // Login remounts the account-bound button; restore focus to the current trigger.
+  const restoreFocus = useCallback(() => trigger.current?.focus(), [trigger]);
+  useEffect(() => {
+    const element = dialog.current!;
+    element.showModal();
+    // Use the native dialog boundary: a shell-owned Message can portal here.
+    const containFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      const controls = element.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    element.addEventListener("keydown", containFocus);
+    return () => {
+      element.removeEventListener("keydown", containFocus);
+      element.close();
+      restoreFocus();
+    };
+  }, [restoreFocus]);
+  return createPortal(
+    <dialog
+      ref={dialog}
+      className="address-watch-dialog"
+      aria-labelledby="watch-login-title"
+      onCancel={onClose}
+      onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom
+        )
+          onClose();
+      }}
+    >
+      <div className="qr-dialog-heading">
+        <h2 id="watch-login-title">{t("watchlist.add")}</h2>
+        <button
+          type="button"
+          className="dialog-close"
+          aria-label={t("common.close")}
+          onClick={onClose}
+        >
+          <UIIcon icon={X} size={16} />
+        </button>
+      </div>
+      <SIWELoginControl full label={t("watchlist.watchSignIn")} />
+      {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
+    </dialog>,
+    document.body,
+  );
+}
+
+export function AddressExportLink({ address }: { address: string }) {
   const auth = useAuth();
   const { t } = useTranslation();
   if (!auth.enabled) return null;
-  if (!identity)
-    return (
-      <p className="address-actions-login">
-        <Link to="/account">{t("watchlist.loginHint")}</Link>
-      </p>
-    );
-  return <AddressActions key={`${identity}:${address}`} address={address} />;
-}
-function AddressActions({ address }: { address: string }) {
-  const { t } = useTranslation();
-  const query = useWatches();
-  const action = useAccountAction();
-  const challenge = useTurnstile("csv_export");
-  const watch = query.data?.find((item) => item.address.toLowerCase() === address.toLowerCase());
-  const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<AddressExportRequest["kind"]>("transaction");
-  const [direction, setDirection] = useState<AddressExportRequest["direction"]>("both");
-  const [from, setFrom] = useState(() =>
-    new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 16),
-  );
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 16));
-  function download(event: FormEvent) {
-    event.preventDefault();
-    if (!challenge.ready || action.pending) return;
-    const token = challenge.consume({ deferRefresh: true });
-    void action
-      .run((csrf, signal) =>
-        downloadAddressCSV(
-          { address, kind, direction, from: `${from}:00Z`, to: `${to}:00Z` },
-          csrf,
-          signal,
-          token,
-        ),
-      )
-      .finally(challenge.refresh);
-  }
   return (
-    <section
-      className="address-actions"
-      aria-label={t("watchlist.actions")}
-      aria-busy={action.pending}
-    >
-      <div className="address-actions-toolbar">
-        <button
-          className="address-action"
-          aria-pressed={Boolean(watch)}
-          aria-label={
-            watch ? `${t("watchlist.watching")}: ${t("watchlist.remove")}` : t("watchlist.add")
-          }
-          title={t(watch ? "watchlist.remove" : "watchlist.add")}
-          disabled={action.pending || !query.data}
-          onClick={() =>
-            void action.run((csrf, signal) =>
-              watch
-                ? deleteWatch(watch.id, csrf, signal)
-                : saveWatch(
-                    {
-                      address,
-                      label: "",
-                      kinds: ["transaction", "erc20", "erc721", "erc1155"],
-                      direction: "both",
-                      enabled: true,
-                    },
-                    csrf,
-                    signal,
-                  ),
-            )
-          }
-        >
-          {watch ? <UIIcon icon={BellRing} /> : <UIIcon icon={Bell} />}
-          {t(watch ? "watchlist.watching" : "watchlist.add")}
-        </button>
-        <button
-          className="address-action"
-          aria-expanded={open}
-          aria-controls={open ? "address-csv-export" : undefined}
-          onClick={() => setOpen(!open)}
-        >
-          <UIIcon icon={Download} />
-          {t("watchlist.export")}
-          <UIIcon icon={ChevronDown} className="address-action-chevron" />
-        </button>
-      </div>
-      {open && (
-        <form
-          id="address-csv-export"
-          className="profile-form address-export-form"
-          onSubmit={download}
-        >
-          <p>{t("watchlist.exportHint")}</p>
-          <label className="field-control">
-            <span>{t("watchlist.kinds")}</span>
-            <SelectControl
-              value={kind}
-              onChange={(e) => setKind(e.target.value as AddressExportRequest["kind"])}
-            >
-              <option value="transaction">{t("watchlist.transactions")}</option>
-              <option value="erc20">ERC-20</option>
-              <option value="nft">NFT (ERC-721 / ERC-1155)</option>
-            </SelectControl>
-          </label>
-          <label className="field-control">
-            <span>{t("watchlist.fromUTC")}</span>
-            <input
-              required
-              type="datetime-local"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-            />
-          </label>
-          <label className="field-control">
-            <span>{t("watchlist.toUTC")}</span>
-            <input
-              required
-              type="datetime-local"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-            />
-          </label>
-          <label className="field-control">
-            <span>{t("watchlist.direction")}</span>
-            <SelectControl
-              value={direction}
-              onChange={(e) => setDirection(e.target.value as AddressExportRequest["direction"])}
-            >
-              {["both", "in", "out"].map((d) => (
-                <option key={d} value={d}>
-                  {t(`watchlist.${d}`)}
-                </option>
-              ))}
-            </SelectControl>
-          </label>
-          {challenge.challenge}
-          <button className="button primary" disabled={action.pending || !challenge.ready}>
-            {t(action.pending ? "watchlist.loading" : "watchlist.download")}
-          </button>
-        </form>
-      )}
-      <AccountActionError code={action.error || (query.isError ? "activity_unavailable" : "")} />
-    </section>
+    <div className="address-export-footer">
+      <Link className="address-action" to="/address/$address/export" params={{ address }}>
+        <UIIcon icon={Download} />
+        {t("watchlist.export")}
+      </Link>
+    </div>
   );
 }

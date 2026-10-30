@@ -353,6 +353,9 @@ func (b *Backend) adminLabel(ctx context.Context, db *pgxpool.Pool, cfg config.C
 }
 
 func (b *Backend) Repair(ctx context.Context, cfg config.Config, operation string, args []string) error {
+	if operation == "ens" {
+		return b.ensOperation(ctx, cfg, args)
+	}
 	fs := flag.NewFlagSet(operation, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	from := fs.Uint64("from", 0, "first block")

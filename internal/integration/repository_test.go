@@ -360,27 +360,19 @@ func insertRefreshFixtures(t *testing.T, ctx context.Context, db *pgxpool.Pool, 
 			observed_block_number, observed_block_hash
 		) VALUES (1, $1, $2, 'erc20', 'high', 'complete', $3, $4)`,
 		tokenAddress, codeHash, reference.Number, blockHash)
-	execFixture(t, ctx, db, `
-		WITH generation AS (
-			INSERT INTO ens_resolution_generations (
-				chain_id, policy_key, coin_type,
-				official_endpoint, official_block_number, official_block_hash,
-				custom_endpoint, custom_coin_type, custom_block_number, custom_block_hash,
-				created_at, fresh_until, retain_until
-			) VALUES (
-				1, 'sha256:integration-refresh', 60,
-				'mainnet', 1, $1,
-				'custom', 60, $2, $1,
-				now(), now() + interval '1 hour', now() + interval '2 hours'
-			) RETURNING id
-		)
-		INSERT INTO ens_name_observations (
-			generation_id, chain_id, source, direction, lookup_key, outcome,
-			name, address, resolver, observed_at
-		)
-		SELECT id, 1, 'custom_ens', 'forward', 'integration.eth', 'resolved',
-			'integration.eth', $3, $4, now()
-		FROM generation`, blockHash, reference.Number, ownerAddress, tokenAddress)
+	// ENS source facts have their own replay lifecycle and survive core refresh.
+	execFixture(t, ctx, db, `WITH source AS (
+      INSERT INTO ens_sync_sources(target_chain_id,source_chain_id,genesis_hash,policy_digest,manifest_digest,start_number,start_hash)
+      VALUES(1,1,$1,$1,$1,$2,$1) RETURNING id
+    ), block AS (
+      INSERT INTO ens_sync_block_refs(source_id,chain_id,hash,core_canonical_at)
+      SELECT s.id,1,$1,c.updated_at FROM source s JOIN canonical_blocks c ON c.chain_id=1 AND c.number=$2 AND c.block_hash=$1 RETURNING source_id
+    ), deployment AS (
+      INSERT INTO ens_sync_deployments(source_id,address,protocol,block_hash,code_hash,abi_digest)
+      SELECT source_id,$4,'v1',$1,$1,$1 FROM block RETURNING source_id
+    ) INSERT INTO ens_sync_projections(source_id,revision,kind,key,deployment,block_hash,payload)
+      SELECT source_id,1,'resolver_record','integration.eth',$4,$1,jsonb_build_object('address',encode($3::bytea,'hex')) FROM deployment`, blockHash, reference.Number, ownerAddress, tokenAddress)
+
 }
 
 func assertRefreshFixtures(
@@ -416,12 +408,8 @@ func assertRefreshFixtures(
 			stateObservationCount, blockHash,
 		)
 	}
-	assertRowCount(t, ctx, db, `SELECT count(*)
-		FROM ens_name_observations AS observation
-		JOIN ens_resolution_generations AS generation ON generation.id = observation.generation_id
-		WHERE observation.chain_id = 1 AND generation.custom_block_hash = $1`,
-		stateObservationCount, blockHash,
-	)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM ens_sync_projections WHERE block_hash=$1`, stateObservationCount, blockHash)
+
 	assertRowCount(t, ctx, db,
 		`SELECT count(*) FROM token_contracts WHERE chain_id = 1 AND observed_block_hash = $1`,
 		stateObservationCount, blockHash,

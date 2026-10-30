@@ -14,19 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/metadata"
 )
 
-const OfficialUniversalResolverAddress = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
+const MainnetUniversalResolverAddress = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
 
-type Source string
-
-const (
-	SourceOfficial Source = "ens"
-	SourceCustom   Source = "custom_ens"
-)
-
-type Outcome string
+type Outcome = enscontract.State
 
 const (
 	OutcomeResolved Outcome = "resolved"
@@ -43,25 +37,9 @@ const (
 	CodeResolverFailure     = "resolver_failure"
 	CodeForwardMismatch     = "forward_mismatch"
 	CodeSourceIdentity      = "source_identity_mismatch"
-	CodeCustomDeployment    = "custom_deployment_unavailable"
 )
 
-type ResolutionError struct {
-	Code string
-}
-
-func (err *ResolutionError) Error() string { return "ENS resolution unavailable" }
-
-func (err *ResolutionError) CapabilityDetails() (capability, state, code string) {
-	state = "failed"
-	if err != nil && (err.Code == CodeRPCUnavailable || err.Code == CodeCCIPUnavailable) {
-		state = "unavailable"
-	}
-	if err == nil {
-		return "name", "failed", CodeResolverFailure
-	}
-	return "name", state, err.Code
-}
+type ResolutionError = enscontract.UnavailableError
 
 func resolutionError(code string) error { return &ResolutionError{Code: code} }
 
@@ -71,7 +49,6 @@ type BlockRef struct {
 }
 
 type Profile struct {
-	Source            Source
 	Registry          common.Address
 	UniversalResolver common.Address
 	CoinType          *big.Int
@@ -183,7 +160,7 @@ func (resolver *Resolver) forwardNormalized(
 		return ForwardResult{}, resolutionError(CodeInvalidResponse)
 	}
 	if !found {
-		return ForwardResult{Outcome: OutcomeNoRecord, Name: name}, nil
+		return ForwardResult{Outcome: OutcomeNoRecord, Name: name, Resolver: resolverAddress}, nil
 	}
 	return ForwardResult{
 		Outcome: OutcomeResolved, Name: name, Address: address, Resolver: resolverAddress,
@@ -225,7 +202,11 @@ func (resolver *Resolver) Reverse(
 		return PrimaryResult{}, resolutionError(CodeInvalidResponse)
 	}
 	if name == "" {
-		return PrimaryResult{Outcome: OutcomeNoRecord, Address: address}, nil
+		reverseResolver, ok := values[2].(common.Address)
+		if !ok {
+			return PrimaryResult{}, resolutionError(CodeInvalidResponse)
+		}
+		return PrimaryResult{Outcome: OutcomeNoRecord, Address: address, ReverseResolver: reverseResolver}, nil
 	}
 	normalized, normalizeErr := resolver.normalizer.Normalize(ctx, name)
 	if normalizeErr != nil || normalized != name {
@@ -256,16 +237,13 @@ func validateProfile(caller RPCCaller, profile Profile) error {
 	if caller == nil {
 		return errors.New("ENS RPC caller is nil")
 	}
-	if profile.Source != SourceOfficial && profile.Source != SourceCustom {
-		return errors.New("ENS profile source is invalid")
-	}
 	if profile.UniversalResolver == (common.Address{}) || profile.Block.Hash == (common.Hash{}) ||
 		profile.CoinType == nil || profile.CoinType.Sign() <= 0 || profile.CoinType.BitLen() > 256 ||
 		len(profile.Gateways) > 4 {
 		return errors.New("ENS profile is invalid")
 	}
-	if profile.Source == SourceCustom && profile.Registry == (common.Address{}) {
-		return errors.New("custom ENS registry is invalid")
+	if profile.Registry == (common.Address{}) {
+		return errors.New("ENS registry is invalid")
 	}
 	return nil
 }

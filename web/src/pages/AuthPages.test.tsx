@@ -31,6 +31,18 @@ describe("authentication pages", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("en");
     document.title = "Etherview";
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+      configurable: true,
+      value: function (this: HTMLDialogElement) {
+        this.setAttribute("open", "");
+      },
+    });
+    Object.defineProperty(HTMLDialogElement.prototype, "close", {
+      configurable: true,
+      value: function (this: HTMLDialogElement) {
+        this.removeAttribute("open");
+      },
+    });
   });
 
   afterEach(() => {
@@ -39,6 +51,59 @@ describe("authentication pages", () => {
       window.removeEventListener(EIP6963_REQUEST_EVENT, listener);
     }
   });
+
+  it.each(["watch", "export"])(
+    "signs in on the address %s page without submitting an operation",
+    async (kind) => {
+      const fake = fakeProvider();
+      registerProvider(fake.provider);
+      const mutations: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
+          const url = String(input);
+          if (url === "/api/v1/config") return configResponse(true);
+          if (url === "/api/v1/auth/session") return envelope({ authenticated: false });
+          if (url === "/api/v1/auth/challenge") return envelope(authSIWEChallenge());
+          if (url === "/api/v1/auth/verify") return envelope(authSession(userRecord()));
+          if (url.startsWith("/api/v1/users/me/") && request?.method !== "GET") mutations.push(url);
+          if (url === "/api/v1/users/me/watchlist") return envelope([]);
+          return notFound();
+        }),
+      );
+      renderRoute(`/address/${targetAccount}${kind === "watch" ? "" : "/export"}`);
+      if (kind === "watch")
+        await userEvent.click(await screen.findByRole("button", { name: "Watch address" }));
+      await screen.findByText(
+        kind === "watch"
+          ? "Sign in to manage this address watch."
+          : "Sign in to export address activity.",
+      );
+      const panel = document.querySelector<HTMLElement>(
+        kind === "watch" ? ".address-watch-dialog" : ".address-action-login",
+      )!;
+      const login = within(panel).getByRole("button", {
+        name: kind === "watch" ? "Sign in to manage this address watch." : "Sign in",
+      });
+      await waitFor(() => expect(login).toBeEnabled());
+      await userEvent.setup().click(login);
+      const action = await screen.findByRole("button", {
+        name: kind === "watch" ? "Watch address" : "Download CSV",
+      });
+      await waitFor(() => expect(action).toBeEnabled());
+      if (kind === "export") {
+        expect(screen.getByRole("link", { name: "Back to address" })).toHaveAttribute(
+          "href",
+          `/address/${targetAccount}`,
+        );
+        expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Export CSV");
+      } else {
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Address");
+      }
+      expect(mutations).toEqual([]);
+    },
+  );
 
   it("renders the disabled feature without inventing user authority", async () => {
     vi.stubGlobal(

@@ -28,6 +28,8 @@ availability does not gate core readiness.
 
 ## References
 
+- [ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+
 - [ADR-0056](../decisions/ADR-0056-bytecode-db-source-discovery.md)
 - [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
 - [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md)
@@ -94,17 +96,30 @@ availability does not gate core readiness.
 | P30-T140 | done   | P30-T10                                                       | Optional Etherscan credentials for Sourcify imports, authenticated encryption before durable enqueue, credential-safe request identity and bilingual Web inputs                                                         | API, redaction/tamper/deduplication, PostgreSQL worker and browser regressions                                                                                          |
 | P30-T141 | done   | P30-T10, P30-T140                                             | Sourcify-to-Etherview source import through canonical local verification, explicit post-publication import and accessible verification choices                                                                          | API authorization, hostile-source and PostgreSQL publication regressions, bilingual browser and select visual checks                                                    |
 | P30-T142 | done   | P30-T138                                                      | Caddy Preview HTTPS migration for app, IPFS, Geth and Beacon on *.etherview.localhost, including browser origins and streaming                                                                                          | Real Caddy boundary regressions, browser authentication, Preview metadata/consensus, runtime/RustFS and common gates                                                    |
-| P30-T143 | done   | P20-T22, P20-T17, P30-T138                                    | Reproducible Preview genesis ERC-4337 v0.9 and .test ENS contracts, Alto Bundler and management CLI                                                                                                                     | Reproducible genesis, real PoS safe-mode Bundler and ENS CLI/API/browser, split/all restart and existing Preview gates                                                  |
+| P30-T143 | done   | P20-T17, P30-T138                                             | Reproducible Preview genesis ERC-4337 v0.9 contracts, Alto Bundler and management CLI                                                                                                                                   | Reproducible genesis, real PoS safe-mode Bundler CLI/API/browser, split/all restart and existing Preview gates                                                          |
 | P30-T144 | done   | P30-T143                                                      | Replace Preview Alto with pinned Rundler v0.9 support, remove Alto-only genesis helpers and patch                                                                                                                       | Reproducible genesis, safe validation, standard RPC, real PoS submission/rejection/restart in split/all and existing Preview gates                                      |
 | P30-T145 | done   | P30-T143, P30-T14                                             | Verify every Preview genesis contract through the normal local verifier during Compose startup                                                                                                                          | Complete source inventory, bounded failure and restart regressions, real Preview publication for every non-empty allocation                                             |
+| P30-T149 | done   | P20-T29                                                       | ENS in enrich with one current-chain configuration and shared runtime/deployment boundaries                                                                                                                             | Component parity, credential isolation, readiness/shutdown and deployment checks                                                                                        |
+| P30-T150 | done   | P30-T149, P40-T27, P50-T81                                    | Real-contract and production-image current-chain ENS acceptance in all/split layouts                                                                                                                                    | Fresh schema, autonomous discovery/publication, reorg/restart/outage and browser gates                                                                                  |
+| P30-T151 | done   | P30-T150                                                      | Representative Mainnet core-to-publication acceptance and independent reconciliation                                                                                                                                    | Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons                                                                      |
 
 ## Acceptance
+
+### Current-chain ENS rewrite
+
+- [x] P30-T149: ENS in enrich with one current-chain configuration and shared runtime/deployment boundaries. Component parity, credential isolation, readiness/shutdown and deployment checks.
+- [x] P30-T150: Real-contract and production-image current-chain ENS acceptance in all/split layouts. Fresh schema, autonomous discovery/publication, reorg/restart/outage and browser gates.
+- [x] P30-T151: Representative Mainnet core-to-publication acceptance and independent reconciliation. Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons.
+
+Previous ENS checks are historical evidence only. Completion requires the new
+implementation and its own acceptance; directory coverage is reported separately.
+
+### Delivered capability acceptance
 
 - [x] Reproducible real-constructor allocations match Geth block zero and
       authenticated genesis import. Input fingerprints reject stale or tampered
       bundles while preserving existing system and x402 allocations.
-- [x] Safe-mode v0.9 Bundler submission and local .test ENS registration, renewal,
-      transfer/reclaim and record management pass through the CLI, API and browser
+- [x] Safe-mode v0.9 Bundler submission passes through the CLI, API and browser
       in split/all layouts, including failure paths and container recreation.
 
 - [x] Existing Sourcify sources import from an explicit source chain without
@@ -153,10 +168,8 @@ availability does not gate core readiness.
       generation, integration/race, browser, and all/split production parity;
       local evidence does not close live-payment or reference-capacity gates.
 - [x] Hardhat and Foundry verification E2E explicitly disable ENS and do not
-      require or impersonate the ENS Mainnet RPC fixture.
-- [x] ENS resolver configuration, maintenance and metrics belong only to API/all
-      roles. Fixture acceptance retains identical monolith/split semantics and
-      does not imply live Ethereum Mainnet or CCIP gateway availability.
+      require or impersonate the retired separate ENS RPC fixture.
+
 - [x] Diamond detection cross-validates Loupe and immutable functions, checks
       facet code and reports status/completeness/validation independently.
       Ordered add/replace/remove history retains reorg facts; selector-filtered
@@ -185,8 +198,13 @@ availability does not gate core readiness.
 
 ## Current Blockers
 
-No remaining delivery blockers. The following deferred deployment limitation
-remains explicit and is not cleared by CI.
+The current-chain ENS feature and representative-publication milestones are
+complete with [new acceptance evidence](../reviews/ens-current-chain-acceptance.md).
+Full directory coverage remains separately reported deployment progress; P70
+retains its release security, capacity, recovery and other existing gates.
+
+The following pre-existing deferred deployment limitation remains explicit
+and is not cleared by CI.
 
 Preview storage-enforced conditional-write IAM permissions are deferred by
 operator decision until RustFS 1.0.5 is evaluated. The deployed RustFS 1.0.4
@@ -202,6 +220,9 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P60/P70 release blockers remain independent.
 
 ## Evidence
+
+Existing runtime/Preview results below remain evidence for their original
+revisions; local fixtures cannot close the live-source gate.
 
 P30-T144 completed on 2026-10-28. Rundler 0.11.0 replaces Alto and its
 simulation allocations. Local real-PoS Preview acceptance covered genesis,
@@ -395,3 +416,9 @@ inputs, with no synthetic creation evidence. Input generation checks, 15 helper
 regressions, Compose rendering, Preview lint, repository formatting, docs and
 plan checks passed. This is local Preview acceptance, not a production rollout
 or additional remote CI evidence.
+
+P30-T149: shared enrich component/configuration tests and local `make check` passed, including Compose and Helm parity and credential scoping. Production recovery acceptance remains P30-T150.
+
+P30-T150: ENS unit/PostgreSQL race regressions, `make check`, full integration race, fresh-schema, production runtime, Preview contracts and 155 browser tests passed locally. Real contracts cover all/split discovery, migration, reorg, restart and isolated failures; release capacity/security/soak gates remain separate.
+
+P30-T151: the [new report and machine-readable evidence](../reviews/ens-current-chain-acceptance.md) pin the production image/manifest and Mainnet block 26299443. Core stored 766 independently matched logs; seven imported v1/v2/CCIP/primary samples passed background publication, database-only API reads, restart and independent RPC reconciliation. Event-discovered live samples are explicitly zero; full history remains uncovered.

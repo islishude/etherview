@@ -11,9 +11,12 @@ import (
 )
 
 type Querier interface {
-	AcquireENSGenerationLock(ctx context.Context, chainID pgtype.Numeric) error
 	AdjustBillingAccount(ctx context.Context, arg AdjustBillingAccountParams) (AdjustBillingAccountRow, error)
 	AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) (AdminWriteEnqueueRepairStatement1Row, error)
+	AdvanceENSSyncAddressCursor(ctx context.Context, afterAddress []byte, completedCycle int64, sourceID int64) error
+	AdvanceENSSyncCandidateDiscovery(ctx context.Context, sourceID int64, candidateID int64) (int64, error)
+	AdvanceENSSyncCoverage(ctx context.Context, sourceID int64, blockHash []byte, revision int64) (int64, error)
+	AdvanceENSSyncGraphWork(ctx context.Context, afterKey string, complete bool, sourceID int64) error
 	AnalyticsWriteDeferDirty(ctx context.Context, arg AnalyticsWriteDeferDirtyParams) error
 	AnalyticsWriteDeleteDirty(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz, generation int64) (int64, error)
 	AnalyticsWriteDeleteRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz) error
@@ -33,6 +36,7 @@ type Querier interface {
 	AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error
 	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
 	BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error)
+	BindENSSyncJobDependency(ctx context.Context, arg BindENSSyncJobDependencyParams) (int64, error)
 	BrowsingStatus(ctx context.Context, arg BrowsingStatusParams) (BrowsingStatusRow, error)
 	BytecodeDBActiveLookups(ctx context.Context, serviceID []byte) (int64, error)
 	BytecodeDBAddAttempt(ctx context.Context, arg BytecodeDBAddAttemptParams) error
@@ -62,6 +66,7 @@ type Querier interface {
 	BytecodeDBResetCooldowns(ctx context.Context, serviceID []byte) error
 	BytecodeDBRetryUnavailable(ctx context.Context, arg BytecodeDBRetryUnavailableParams) (int64, error)
 	BytecodeDBScanReady(ctx context.Context, serviceID []byte, chainID pgtype.Numeric) (bool, error)
+	CaptureENSHistoryStates(ctx context.Context, arg CaptureENSHistoryStatesParams) error
 	CatalogAddressDelegations(ctx context.Context, arg CatalogAddressDelegationsParams) ([]CatalogAddressDelegationsRow, error)
 	CatalogAddressInternalTransactions(ctx context.Context, arg CatalogAddressInternalTransactionsParams) ([]CatalogAddressInternalTransactionsRow, error)
 	CatalogAddressTokenTransfers(ctx context.Context, arg CatalogAddressTokenTransfersParams) ([]CatalogAddressTokenTransfersRow, error)
@@ -99,8 +104,12 @@ type Querier interface {
 	CatalogTransactionTraceExecution(ctx context.Context, arg CatalogTransactionTraceExecutionParams) ([]CatalogTransactionTraceExecutionRow, error)
 	CatalogTransactionVerifiedAddressSelectors(ctx context.Context, arg CatalogTransactionVerifiedAddressSelectorsParams) ([]CatalogTransactionVerifiedAddressSelectorsRow, error)
 	CatalogValidateCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
+	CheckENSSyncJobCurrent(ctx context.Context, jobID int64) (bool, error)
 	ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error)
+	ClaimENSSyncJob(ctx context.Context, leaseToken pgtype.UUID, leaseSeconds int32, sourceID int64) (EnsSyncJob, error)
 	CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error)
+	CompleteENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
+	ConfirmENSSyncPublication(ctx context.Context, arg ConfirmENSSyncPublicationParams) (int64, error)
 	ConsensusAdvanceDiscovery(ctx context.Context, arg ConsensusAdvanceDiscoveryParams) error
 	ConsensusBindNetwork(ctx context.Context, chainID pgtype.Numeric, identity []byte) (int64, error)
 	ConsensusBlobHealth(ctx context.Context, chainID pgtype.Numeric) (ConsensusBlobHealthRow, error)
@@ -133,13 +142,17 @@ type Querier interface {
 	CountPendingAnalyticsSources(ctx context.Context, chainID pgtype.Numeric, fromTime pgtype.Timestamptz, toTime pgtype.Timestamptz) (string, error)
 	CreateAuthChallenge(ctx context.Context, arg CreateAuthChallengeParams) (AuthChallenge, error)
 	CreateBillingTopupIntent(ctx context.Context, arg CreateBillingTopupIntentParams) (BillingTopupIntent, error)
+	// Background ENS storage (ADR-0058). Source progress is the short transaction
+	// lock shared by projection invalidation, leasing and publication. Never keep
+	// it while contacting a resolver. Public reads use only the read queries.
+	CreateENSSyncSource(ctx context.Context, arg CreateENSSyncSourceParams) (int64, error)
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) error
 	CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error)
 	CreditBillingTopup(ctx context.Context, arg CreditBillingTopupParams) (CreditBillingTopupRow, error)
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredAuthChallenges(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
-	DeleteExpiredENSAddressNameSnapshots(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
-	DeleteExpiredENSResolutionGenerations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
+	DeleteExpiredENSEffectivePublications(ctx context.Context, targetChainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, rowLimit int32) (int64, error)
+	DeleteExpiredENSSyncObservations(ctx context.Context, targetChainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, rowLimit int32) (int64, error)
 	DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
 	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) (int64, error)
@@ -166,6 +179,7 @@ type Querier interface {
 	DerivedVerifyRequestBackfill(ctx context.Context, chainID pgtype.Numeric, creatorAddress []byte, reason string) (DerivedVerifyRequestBackfillRow, error)
 	DerivedVerifyRetryForwardBlock(ctx context.Context, arg DerivedVerifyRetryForwardBlockParams) (int64, error)
 	DerivedVerifyRetryScan(ctx context.Context, arg DerivedVerifyRetryScanParams) (int64, error)
+	DirtyENSSyncGraph(ctx context.Context, sourceID int64) error
 	ERC4337AddCoveredBlock(ctx context.Context, arg ERC4337AddCoveredBlockParams) (bool, error)
 	ERC4337CanonicalTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte) (ERC4337CanonicalTransactionBlockRow, error)
 	ERC4337ClearReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
@@ -185,6 +199,11 @@ type Querier interface {
 	ERC4337SourceBlock(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
 	ERC4337SourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
 	ERC4337ValidateSnapshot(ctx context.Context, arg ERC4337ValidateSnapshotParams) (bool, error)
+	EmitENSHistoryRefresh(ctx context.Context, sourceID int64) error
+	EmitENSInvalidation(ctx context.Context, sourceID string) error
+	EmitENSNamesEvent(ctx context.Context, targetChainID pgtype.Numeric, publication string) error
+	EnqueueENSSyncJob(ctx context.Context, arg EnqueueENSSyncJobParams) (int64, error)
+	EnqueueENSSyncSuccessor(ctx context.Context, previousJobID int64, sourceID int64, candidateID int64) (int64, error)
 	EnrichClaimCandidate(ctx context.Context, arg EnrichClaimCandidateParams) (EnrichClaimCandidateRow, error)
 	EnrichClearABIReplayOutputs(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
 	EnrichInlineAuthenticateCloneCreationStatement1(ctx context.Context, arg EnrichInlineAuthenticateCloneCreationStatement1Params) (EnrichInlineAuthenticateCloneCreationStatement1Row, error)
@@ -313,7 +332,8 @@ type Querier interface {
 	EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (EnrichSelectClaimCandidateRow, error)
 	EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (int64, error)
 	EnsureBillingAccount(ctx context.Context, arg EnsureBillingAccountParams) (EnsureBillingAccountRow, error)
-	EnsureENSNameObservationPublished(ctx context.Context, observationID int64, chainID pgtype.Numeric) error
+	EnsureENSSyncCandidate(ctx context.Context, arg EnsureENSSyncCandidateParams) (EnsureENSSyncCandidateRow, error)
+	EnsureENSSyncDiscoveredCandidate(ctx context.Context, arg EnsureENSSyncDiscoveredCandidateParams) (EnsSyncCandidate, error)
 	EtherscanAccountTransactions(ctx context.Context, arg EtherscanAccountTransactionsParams) ([]EtherscanAccountTransactionsRow, error)
 	EtherscanAccountTransactionsAdvanced(ctx context.Context, arg EtherscanAccountTransactionsAdvancedParams) ([]EtherscanAccountTransactionsAdvancedRow, error)
 	EtherscanBeaconWithdrawals(ctx context.Context, arg EtherscanBeaconWithdrawalsParams) ([]EtherscanBeaconWithdrawalsRow, error)
@@ -351,6 +371,7 @@ type Querier interface {
 	ExpireBillingPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
 	ExpireBillingTopupPayments(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error)
 	ExpireBillingUsageReservations(ctx context.Context, arg ExpireBillingUsageReservationsParams) (int64, error)
+	ExpireENSSyncJobs(ctx context.Context, sourceID int64) (int64, error)
 	ExpireOpenBillingTopupIntents(ctx context.Context, arg ExpireOpenBillingTopupIntentsParams) (int64, error)
 	ExportActivity(ctx context.Context, arg ExportActivityParams) ([][]byte, error)
 	ExportAdmit(ctx context.Context, token pgtype.UUID, userID pgtype.UUID) (int64, error)
@@ -360,6 +381,7 @@ type Querier interface {
 	ExportRelease(ctx context.Context, token pgtype.UUID) error
 	FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error)
 	FailBillingTopupSettlement(ctx context.Context, arg FailBillingTopupSettlementParams) (pgtype.UUID, error)
+	FailENSSyncCollection(ctx context.Context, arg FailENSSyncCollectionParams) (int64, error)
 	FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error)
 	GenesisWriteCompletedRemoteImportStatement1(ctx context.Context, chainID pgtype.Numeric) (GenesisWriteCompletedRemoteImportStatement1Row, error)
 	GenesisWriteImportOnceUsingStatement1(ctx context.Context, hashtext string) error
@@ -394,13 +416,25 @@ type Querier interface {
 	GetCurrentSearchGeneration(ctx context.Context, chainID pgtype.Numeric) (GetCurrentSearchGenerationRow, error)
 	GetCurrentVerifiedProxyBinding(ctx context.Context, chainID pgtype.Numeric, proxyAddress []byte) (GetCurrentVerifiedProxyBindingRow, error)
 	GetDiamondCutHistoryCoverage(ctx context.Context, arg GetDiamondCutHistoryCoverageParams) (GetDiamondCutHistoryCoverageRow, error)
-	GetENSAddressNameSnapshot(ctx context.Context, arg GetENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error)
-	GetENSNameObservation(ctx context.Context, arg GetENSNameObservationParams) (EnsNameObservation, error)
-	GetENSResolutionGeneration(ctx context.Context, arg GetENSResolutionGenerationParams) (EnsResolutionGeneration, error)
+	GetENSEffectivePolicy(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (EnsEffectivePolicy, error)
+	GetENSEffectiveRetentionFloor(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (int64, error)
+	GetENSEffectiveSnapshot(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (int64, error)
+	GetENSSyncAddressCursor(ctx context.Context, sourceID int64) (EnsSyncAddressCursor, error)
+	GetENSSyncCandidateByID(ctx context.Context, sourceID int64, candidateID int64) (EnsSyncCandidate, error)
+	GetENSSyncCoreBlock(ctx context.Context, chainID pgtype.Numeric, genesisHash []byte, number pgtype.Numeric) (GetENSSyncCoreBlockRow, error)
+	GetENSSyncCoreDeploymentCode(ctx context.Context, chainID pgtype.Numeric, address []byte, blockHash []byte) (GetENSSyncCoreDeploymentCodeRow, error)
+	GetENSSyncCoreTip(ctx context.Context, chainID pgtype.Numeric, genesisHash []byte) (GetENSSyncCoreTipRow, error)
+	GetENSSyncGraphWork(ctx context.Context, sourceID int64) (EnsSyncGraphWork, error)
+	GetENSSyncLatestProjection(ctx context.Context, sourceID int64, kind string, key string) (EnsSyncProjection, error)
+	GetENSSyncPreviousProjectionObservation(ctx context.Context, sourceID int64, candidateID int64) (EnsSyncObservation, error)
+	GetENSSyncProgress(ctx context.Context, sourceID int64) (EnsSyncProgress, error)
+	GetENSSyncReplay(ctx context.Context, sourceID int64, batchID string) (EnsSyncReplay, error)
+	GetENSSyncScan(ctx context.Context, sourceID int64, blockHash []byte) (EnsSyncScan, error)
+	GetENSSyncSource(ctx context.Context, sourceID int64) (EnsSyncSource, error)
+	GetENSSyncSourceBlock(ctx context.Context, sourceID int64, hash []byte) (EnsSyncBlock, error)
+	GetENSSyncWorkerJob(ctx context.Context, sourceID int64, jobID int64) (GetENSSyncWorkerJobRow, error)
 	GetFinalizedHeight(ctx context.Context, chainID pgtype.Numeric) (pgtype.Numeric, error)
 	GetFreshAdapterObservation(ctx context.Context, arg GetFreshAdapterObservationParams) (GetFreshAdapterObservationRow, error)
-	GetFreshENSResolutionFailure(ctx context.Context, arg GetFreshENSResolutionFailureParams) (EnsResolutionFailure, error)
-	GetFreshENSResolutionGeneration(ctx context.Context, chainID pgtype.Numeric, policyKey string, nowAt pgtype.Timestamptz) (EnsResolutionGeneration, error)
 	GetGenesisImport(ctx context.Context, chainID pgtype.Numeric) (GetGenesisImportRow, error)
 	GetHomeRuntimeEventID(ctx context.Context, chainID pgtype.Numeric) (int64, error)
 	GetHomeRuntimeStatus(ctx context.Context, chainID pgtype.Numeric) (GetHomeRuntimeStatusRow, error)
@@ -432,11 +466,11 @@ type Querier interface {
 	HolderSourcePrerequisites(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (HolderSourcePrerequisitesRow, error)
 	HolderTokenIdentity(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (HolderTokenIdentityRow, error)
 	HolderTouchedCandidates(ctx context.Context, arg HolderTouchedCandidatesParams) ([]HolderTouchedCandidatesRow, error)
+	InitializeENSSyncProgress(ctx context.Context, sourceID int64) error
 	InsertBillingPayment(ctx context.Context, arg InsertBillingPaymentParams) (BillingPayment, error)
-	InsertENSAddressNameSnapshot(ctx context.Context, arg InsertENSAddressNameSnapshotParams) (EnsAddressNameSnapshot, error)
-	InsertENSNameObservation(ctx context.Context, arg InsertENSNameObservationParams) (EnsNameObservation, error)
-	InsertENSResolutionFailure(ctx context.Context, arg InsertENSResolutionFailureParams) error
-	InsertENSResolutionGeneration(ctx context.Context, arg InsertENSResolutionGenerationParams) (EnsResolutionGeneration, error)
+	InsertENSSyncDiscoveryOrigin(ctx context.Context, arg InsertENSSyncDiscoveryOriginParams) (int64, error)
+	InvalidateENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64, expectedGeneration int64) (int64, error)
+	InvalidateENSSyncSource(ctx context.Context, sourceID int64, expectedRevision int64) (int64, error)
 	ListAddressWithdrawalsAfter(ctx context.Context, arg ListAddressWithdrawalsAfterParams) ([]ListAddressWithdrawalsAfterRow, error)
 	ListAddressWithdrawalsFirst(ctx context.Context, arg ListAddressWithdrawalsFirstParams) ([]ListAddressWithdrawalsFirstRow, error)
 	ListAdminBillingAccounts(ctx context.Context, arg ListAdminBillingAccountsParams) ([]BillingAccount, error)
@@ -449,6 +483,21 @@ type Querier interface {
 	ListBlockTransactions(ctx context.Context, arg ListBlockTransactionsParams) ([]ListBlockTransactionsRow, error)
 	ListCanonicalBlocks(ctx context.Context, chainID pgtype.Numeric, beforeNumber pgtype.Numeric, pageLimit int32) ([][]byte, error)
 	ListDiamondCutHistory(ctx context.Context, arg ListDiamondCutHistoryParams) ([]ListDiamondCutHistoryRow, error)
+	ListENSEffectivePoliciesForSource(ctx context.Context, sourceID int64) ([]EnsEffectivePolicy, error)
+	ListENSHistoryPending(ctx context.Context, sourceID int64, rowLimit int32) ([]ListENSHistoryPendingRow, error)
+	ListENSHistoryStates(ctx context.Context, arg ListENSHistoryStatesParams) ([]ListENSHistoryStatesRow, error)
+	ListENSHistoryTransactionEvents(ctx context.Context, arg ListENSHistoryTransactionEventsParams) ([]ListENSHistoryTransactionEventsRow, error)
+	ListENSHistoryTransactions(ctx context.Context, arg ListENSHistoryTransactionsParams) ([]ListENSHistoryTransactionsRow, error)
+	ListENSSyncCoreLogs(ctx context.Context, arg ListENSSyncCoreLogsParams) ([]ListENSSyncCoreLogsRow, error)
+	ListENSSyncEmitterDeployments(ctx context.Context, sourceID int64, addresses [][]byte) ([]ListENSSyncEmitterDeploymentsRow, error)
+	ListENSSyncJobDependencies(ctx context.Context, sourceID int64, jobID int64) ([]EnsSyncProjection, error)
+	ListENSSyncKnownAddresses(ctx context.Context, rowLimit int32, chainID pgtype.Numeric, afterAddress []byte) ([]ListENSSyncKnownAddressesRow, error)
+	ListENSSyncLatestContractDependencies(ctx context.Context, sourceID int64, deployment []byte, key string) ([]EnsSyncProjection, error)
+	ListENSSyncReplayCandidates(ctx context.Context, sourceID int64, afterCandidate int64, rowLimit int32) ([]ListENSSyncReplayCandidatesRow, error)
+	ListENSSyncRewindBlocks(ctx context.Context, arg ListENSSyncRewindBlocksParams) ([]ListENSSyncRewindBlocksRow, error)
+	ListENSSyncSchedulableCandidates(ctx context.Context, sourceID int64, rowLimit int32) ([]ListENSSyncSchedulableCandidatesRow, error)
+	ListENSSyncV2Parents(ctx context.Context, sourceID int64, registry string, rowLimit int32) ([]EnsSyncProjection, error)
+	ListENSSyncV2Registrations(ctx context.Context, sourceID int64, afterKey string, rowLimit int32) ([]EnsSyncProjection, error)
 	ListGenesisAccounts(ctx context.Context, arg ListGenesisAccountsParams) ([]ListGenesisAccountsRow, error)
 	ListOperatorLabels(ctx context.Context, chainID pgtype.Numeric) ([]ListOperatorLabelsRow, error)
 	ListProxyInitializationHistory(ctx context.Context, arg ListProxyInitializationHistoryParams) ([]ListProxyInitializationHistoryRow, error)
@@ -461,6 +510,8 @@ type Querier interface {
 	ListUserBillingUsage(ctx context.Context, arg ListUserBillingUsageParams) ([]BillingUsageCharge, error)
 	ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error)
 	LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUID) (pgtype.UUID, error)
+	LockENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64) (EnsSyncCandidate, error)
+	LockENSSyncSource(ctx context.Context, sourceID int64) (EnsSyncProgress, error)
 	LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error)
 	MaintenanceLegacyClaimCandidates(ctx context.Context, arg MaintenanceLegacyClaimCandidatesParams) ([]MaintenanceLegacyClaimCandidatesRow, error)
 	MaintenanceLegacyCompleteRequest(ctx context.Context, id int64) (int64, error)
@@ -535,6 +586,7 @@ type Querier interface {
 	NativeTransferValidateSnapshot(ctx context.Context, chainID pgtype.Numeric, snapshotNumber pgtype.Numeric, snapshotHash []byte) (bool, error)
 	OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
+	PublishENSSyncObservation(ctx context.Context, arg PublishENSSyncObservationParams) (int64, error)
 	PushActivity(ctx context.Context, arg PushActivityParams) ([]PushActivityRow, error)
 	PushBoundary(ctx context.Context, chainID pgtype.Numeric) (PushBoundaryRow, error)
 	PushCleanup(ctx context.Context) error
@@ -552,6 +604,15 @@ type Querier interface {
 	PushSession(ctx context.Context, sessionID pgtype.UUID, userID pgtype.UUID, chainID pgtype.Numeric) (pgtype.Timestamptz, error)
 	PushTokenSources(ctx context.Context, arg PushTokenSourcesParams) ([]PushTokenSourcesRow, error)
 	PushValidateDelivery(ctx context.Context, arg PushValidateDeliveryParams) (bool, error)
+	PutENSEffectivePublication(ctx context.Context, arg PutENSEffectivePublicationParams) (int64, error)
+	PutENSHistoryEvent(ctx context.Context, arg PutENSHistoryEventParams) error
+	PutENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
+	PutENSHistorySubject(ctx context.Context, arg PutENSHistorySubjectParams) (int64, error)
+	PutENSSyncBlock(ctx context.Context, arg PutENSSyncBlockParams) (int64, error)
+	PutENSSyncDeployment(ctx context.Context, arg PutENSSyncDeploymentParams) error
+	PutENSSyncEvent(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) (int64, error)
+	PutENSSyncGenesisBaseline(ctx context.Context, arg PutENSSyncGenesisBaselineParams) error
+	PutENSSyncProjection(ctx context.Context, arg PutENSSyncProjectionParams) (int64, error)
 	QueryAddressOriginCoverage(ctx context.Context, minRangeEnd pgtype.Numeric, chainID pgtype.Numeric) (*bool, error)
 	QueryAddressOriginReference(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	QueryBlockByHash(ctx context.Context, chainID pgtype.Numeric, hash []byte) (QueryBlockByHashRow, error)
@@ -573,13 +634,31 @@ type Querier interface {
 	QueryTransactionByHash(ctx context.Context, chainID pgtype.Numeric, txHash []byte) (QueryTransactionByHashRow, error)
 	QueryTransactionSelectorCandidates(ctx context.Context, maxCandidateNumber int64, requests []byte, chainID pgtype.Numeric) ([]QueryTransactionSelectorCandidatesRow, error)
 	QueryValidateTransactionCursor(ctx context.Context, arg QueryValidateTransactionCursorParams) (*bool, error)
+	ReadENSDirectoryFence(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte) (ReadENSDirectoryFenceRow, error)
+	ReadENSEffectiveName(ctx context.Context, arg ReadENSEffectiveNameParams) (ReadENSEffectiveNameRow, error)
+	ReadENSEffectivePublication(ctx context.Context, arg ReadENSEffectivePublicationParams) (EnsEffectivePublication, error)
+	ReadENSEffectiveSnapshot(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) (ReadENSEffectiveSnapshotRow, error)
+	ReadENSHistoryFence(ctx context.Context, sourceID int64, node []byte, snapshotHash []byte) (ReadENSHistoryFenceRow, error)
+	ReadENSHistoryMintLabel(ctx context.Context, arg ReadENSHistoryMintLabelParams) ([]byte, error)
+	ReadENSHistoryScope(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte) (ReadENSHistoryScopeRow, error)
+	ReadENSHistoryState(ctx context.Context, arg ReadENSHistoryStateParams) ([]byte, error)
+	ReadENSKnownName(ctx context.Context, name string, chainID pgtype.Numeric, policyDigest []byte) (bool, error)
+	ReadENSLatestProfileIDs(ctx context.Context, chainID pgtype.Numeric, policyDigest []byte, name string) (ReadENSLatestProfileIDsRow, error)
+	ReadENSNameSourceStatus(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte) ([]ReadENSNameSourceStatusRow, error)
+	ReadENSPendingNameCode(ctx context.Context, arg ReadENSPendingNameCodeParams) (string, error)
+	ReadENSProfilePublications(ctx context.Context, arg ReadENSProfilePublicationsParams) ([]ReadENSProfilePublicationsRow, error)
+	ReadENSSyncCandidate(ctx context.Context, arg ReadENSSyncCandidateParams) (ReadENSSyncCandidateRow, error)
 	ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error)
 	ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error)
 	ReconcileBillingTopupFailed(ctx context.Context, arg ReconcileBillingTopupFailedParams) (pgtype.UUID, error)
 	ReconcileBillingTopupSettled(ctx context.Context, arg ReconcileBillingTopupSettledParams) (ReconcileBillingTopupSettledRow, error)
 	RecordAdapterFailure(ctx context.Context, arg RecordAdapterFailureParams) error
+	RecordENSSyncImport(ctx context.Context, arg RecordENSSyncImportParams) error
+	RecordENSSyncReplay(ctx context.Context, arg RecordENSSyncReplayParams) (int64, error)
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
+	RefreshENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64, expectedGeneration int64) (int64, error)
+	RegisterENSEffectivePolicy(ctx context.Context, arg RegisterENSEffectivePolicyParams) error
 	ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error)
 	RequestsListItems(ctx context.Context, arg RequestsListItemsParams) ([]RequestsListItemsRow, error)
 	RequestsReadSet(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (RequestsReadSetRow, error)
@@ -588,10 +667,16 @@ type Querier interface {
 	RequestsWriteItems(ctx context.Context, arg RequestsWriteItemsParams) ([]int32, error)
 	RequestsWriteSet(ctx context.Context, arg RequestsWriteSetParams) (int64, error)
 	ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error)
+	RetryENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
+	RetryENSSyncJob(ctx context.Context, arg RetryENSSyncJobParams) (int64, error)
 	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) error
 	RevokeAllUserSessions(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) (int64, error)
 	RevokeUserAPIKey(ctx context.Context, revokedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) (ApiKey, error)
 	RevokeUserSessionByDigest(ctx context.Context, revokedAt pgtype.Timestamptz, tokenDigest []byte) (int64, error)
+	RewindENSSyncProgress(ctx context.Context, arg RewindENSSyncProgressParams) (int64, error)
+	SaveENSSyncScan(ctx context.Context, arg SaveENSSyncScanParams) error
+	SetENSSyncCollectionTarget(ctx context.Context, arg SetENSSyncCollectionTargetParams) (int64, error)
+	SetENSSyncTarget(ctx context.Context, healthyUntil pgtype.Timestamptz, sourceID int64, blockHash []byte) (int64, error)
 	StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	StateCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (StateCanonicalTipRow, error)
 	// Parallel set-returning expressions pair equal-length arrays by position.
@@ -673,8 +758,8 @@ type Querier interface {
 	ValidateAddressWithdrawalCursor(ctx context.Context, arg ValidateAddressWithdrawalCursorParams) (*bool, error)
 	ValidateBlockCursor(ctx context.Context, arg ValidateBlockCursorParams) (*bool, error)
 	ValidateBlockTransactionCursor(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, hash []byte) (bool, error)
+	ValidateENSEffectiveSnapshotVersion(ctx context.Context, targetChainID pgtype.Numeric, policyDigest []byte, version int64) (bool, error)
 	ValidateProxyAPISnapshot(ctx context.Context, arg ValidateProxyAPISnapshotParams) (bool, error)
-	ValidateResolvedSearchName(ctx context.Context, arg ValidateResolvedSearchNameParams) (bool, error)
 	ValidateSearchCursor(ctx context.Context, arg ValidateSearchCursorParams) (*bool, error)
 	VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) (int64, error)
 	VerifiedSelectorWritePersistStatement2(ctx context.Context, arg VerifiedSelectorWritePersistStatement2Params) error
@@ -718,6 +803,7 @@ type Querier interface {
 	WatchCount(ctx context.Context, userID pgtype.UUID) (int64, error)
 	WatchCreate(ctx context.Context, arg WatchCreateParams) (AddressWatch, error)
 	WatchDelete(ctx context.Context, iD pgtype.UUID, userID pgtype.UUID) (int64, error)
+	WatchENSSyncJob(ctx context.Context, arg WatchENSSyncJobParams) (int64, error)
 	WatchList(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) ([]AddressWatch, error)
 	WatchLockOwner(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) (pgtype.UUID, error)
 	WatchTip(ctx context.Context, chainID pgtype.Numeric) (WatchTipRow, error)

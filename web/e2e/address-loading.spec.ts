@@ -22,14 +22,14 @@ for (const [tab, endpoint, region] of [
       await route.continue();
     });
     try {
-      await page.goto(`/address/${target}?tab=${tab}`);
+      await page.goto(`/address/${target}?tab=${tab}${endpoint === "nfts" ? "&asset=nfts" : ""}`);
       const panel = page.getByRole("region", { name: region, exact: true });
       await expect(panel.getByRole("status")).toHaveText("Loading indexed data…");
       await expect(panel.locator(".query-loading-spinner")).toBeVisible();
       await expect(panel.locator(".empty-result")).toHaveCount(0);
       response.resolve();
       await expect(panel.locator(".query-loading-spinner")).toHaveCount(0);
-      await expect(panel.getByRole("table")).toBeVisible();
+      await expect(panel.getByRole(tab === "assets" ? "list" : "table")).toBeVisible();
     } finally {
       response.resolve();
     }

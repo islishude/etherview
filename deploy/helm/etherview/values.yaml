@@ -204,7 +204,6 @@ secrets:
   databaseURLKey: database-url
   databaseReadURLKey: database-read-url
   rpcURLsKey: rpc-urls
-  ensRPCURLsKey: ens-rpc-urls
   apiKeyPepperKey: api-key-pepper
   sessionPepperKey: session-pepper
   x402FingerprintPepperKey: x402-fingerprint-pepper
@@ -240,7 +239,6 @@ externalSecret:
   rpcURLsRemoteKey: etherview/rpc-urls
   # Optional dedicated Ethereum Mainnet RPC Secret used only by API/all when
   # ENS is enabled. Leave empty when the explored RPC is exact Mainnet.
-  ensRPCURLsRemoteKey: ""
   apiKeyPepperRemoteKey: etherview/api-key-pepper
   # Required when both externalSecret and config.features.user_auth are
   # enabled. It is otherwise neither fetched nor injected.
@@ -443,14 +441,11 @@ config:
     max_captured_header_bytes: 65536
     operations: {}
   ens:
-    mode: official_first
-    official_gateways:
+    policy_digest: ""
+    manifest: ""
+
+    gateways:
       - https://ccip-v3.ens.xyz
-    custom:
-      registry: ""
-      universal_resolver: ""
-      coin_type: ""
-      gateways: []
     resolution_freshness: 15m
     snapshot_ttl: 30m
     failure_ttl: 30s
@@ -563,3 +558,6 @@ blobArchiveServiceAccounts:
   api: ""
   enrich: ""
   all: ""
+
+# Public, reviewed JSON files mounted only in ENS-owning processes.
+ensManifests: {}

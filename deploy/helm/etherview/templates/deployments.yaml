@@ -86,6 +86,11 @@ spec:
             - name: config
               mountPath: /etc/etherview
               readOnly: true
+            {{- if and $root.Values.ensManifests (or (eq $roleName "all") (eq $roleName "enrich")) }}
+            - name: ens-manifests
+              mountPath: /etc/etherview/ens
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
       containers:
@@ -113,14 +118,6 @@ spec:
               value: /run/etherview-tls/tls.crt
             - name: ETHERVIEW_SERVER_TLS_KEY_FILE
               value: /run/etherview-tls/tls.key
-            {{- end }}
-            {{- if and $root.Values.config.features.ens (eq $root.Values.config.ens.mode "official_first") }}
-            - name: ETHERVIEW_ENS_RPC_URLS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $root.Values.secrets.existingSecret | quote }}
-                  key: {{ $root.Values.secrets.ensRPCURLsKey | quote }}
-                  optional: true
             {{- end }}
             {{- end }}
             - name: ETHERVIEW_RPC_URLS
@@ -322,6 +319,11 @@ spec:
             - name: config
               mountPath: /etc/etherview
               readOnly: true
+            {{- if and $root.Values.ensManifests (or (eq $roleName "all") (eq $roleName "enrich")) }}
+            - name: ens-manifests
+              mountPath: /etc/etherview/ens
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
             {{- if and $root.Values.config.features.verification $apiCapable }}
@@ -343,6 +345,11 @@ spec:
         - name: config
           configMap:
             name: {{ include "etherview.fullname" $root }}-config
+        {{- if and $root.Values.ensManifests (or (eq $roleName "all") (eq $roleName "enrich")) }}
+        - name: ens-manifests
+          configMap:
+            name: {{ include "etherview.fullname" $root }}-ens-manifests
+        {{- end }}
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi

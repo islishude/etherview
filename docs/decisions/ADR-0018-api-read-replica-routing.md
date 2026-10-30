@@ -2,6 +2,12 @@
 
 Status: accepted
 
+[ADR-0058](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+amends the ENS boundary: background workers own name writes, while ENS queries
+and ENS-enabled search remain writer-authoritative read-only transactions for
+canonicality and publication checks. P40-T27 implements this cutover; name
+requests no longer perform upstream resolution or create snapshots in storage.
+
 ## Context
 
 Every Etherview role requires PostgreSQL, but public explorer queries can place
@@ -22,7 +28,8 @@ result.
 Every process keeps the mandatory writer pool. Only a process containing the
 `api` role may create the optional reader pool. `roles=all` therefore creates
 both pools, while split sync, enrichment, trace, verification, metadata, and
-maintenance processes never depend on the reader endpoint.
+maintenance processes never depend on the reader endpoint. The planned ENS
+role follows the same writer-only worker boundary.
 
 The reader is enabled when `database.read_url`,
 `database.read_max_connections`, or `database.read_min_connections` is set. An
@@ -53,9 +60,10 @@ The writer remains authoritative for:
   ordering, and API readiness comparison;
 - API-key authentication and all verification job/artifact reads and writes;
 - verification target resolution and Etherscan verification submission;
-- external name/price observation persistence; when name resolution is
-  configured, search is writer-routed so a request can consume its own
-  observation;
+- external price observation persistence, background ENS publication, and
+  ENS query/search reads under ADR-0058; those name reads use read-only
+  transactions on the writer to reject detached or invalid publications,
+  without request-time name writes or a replica fallback;
 - mempool observation reads/writes, the unified transaction detail lookup while
   mempool collection is enabled, and NFT media selection/revalidation; and
 - every worker, maintenance, admin, repair, and migration operation.

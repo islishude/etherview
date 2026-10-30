@@ -218,9 +218,6 @@ export function useContractProxy(address: string, enabled = true) {
     enabled: enabled && address.length > 0,
     retry: false,
     staleTime: 5_000,
-    // A head event can precede proxy-stage publication. That publication has
-    // no separate browser event, so recover without waiting for another head.
-    refetchInterval: (query) => (query.state.data?.state === "unavailable" ? 500 : false),
   });
 }
 
@@ -233,7 +230,7 @@ export function useContractProxyUpgrades(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["contract-proxy", address, "upgrades", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: ({ signal }) => listContractProxyUpgrades(address, cursor, limit, signal),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -257,7 +254,7 @@ export function useContractProxyInitializations(
       cursor ?? null,
       refreshGeneration,
     ],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: ({ signal }) => listContractProxyInitializations(address, cursor, limit, signal),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -274,7 +271,7 @@ export function useContractDiamondCuts(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["contract-proxy", address, "diamond-cuts", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: ({ signal }) => listContractDiamondCuts(address, cursor, limit, signal),
     enabled: enabled && address.length > 0,
     retry: false,

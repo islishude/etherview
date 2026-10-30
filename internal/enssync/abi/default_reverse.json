@@ -1,0 +1,19 @@
+[
+  {
+    "type": "event",
+    "name": "NameForAddrChanged",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "addr",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "indexed": false
+      }
+    ]
+  }
+]

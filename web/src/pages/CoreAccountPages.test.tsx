@@ -621,7 +621,7 @@ describe("core account and list pages", () => {
     ).toBeVisible();
   });
 
-  it("refreshes the first transaction page when a newly indexed transaction becomes visible", async () => {
+  it("waits for a manual refresh after a newly indexed transaction becomes visible", async () => {
     let transactionRequests = 0;
     ChainEventSource.latest = undefined;
     vi.stubGlobal("EventSource", ChainEventSource as unknown as typeof EventSource);
@@ -675,6 +675,8 @@ describe("core account and list pages", () => {
       ChainEventSource.latest?.emit("head");
       await Promise.resolve();
     });
+    expect(transactionRequests).toBe(1);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Refresh" }));
     expect(await screen.findByText(shorten(transactionHash), {}, { timeout: 3_500 })).toBeVisible();
     expect(transactionRequests).toBeGreaterThanOrEqual(2);
   });

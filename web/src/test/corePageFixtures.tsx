@@ -71,7 +71,7 @@ export function renderExplorer(path: string, children?: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       {children}
       <ThemeProvider>
@@ -83,4 +83,5 @@ export function renderExplorer(path: string, children?: ReactNode) {
       </ThemeProvider>
     </QueryClientProvider>,
   );
+  return { ...view, router };
 }

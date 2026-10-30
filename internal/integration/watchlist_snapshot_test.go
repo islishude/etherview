@@ -23,6 +23,12 @@ import (
 )
 
 func TestWatchlistExportSnapshotDuringReorg(t *testing.T) {
+	for _, kind := range []gen.AddressExportRequestKind{"transaction", "all"} {
+		t.Run(string(kind), func(t *testing.T) { testWatchlistExportSnapshotDuringReorg(t, kind) })
+	}
+}
+
+func testWatchlistExportSnapshotDuringReorg(t *testing.T, kind gen.AddressExportRequestKind) {
 	db := newMigratedPostgres(t)
 	ctx := t.Context()
 	repo, err := store.NewPostgresRepository(db)
@@ -37,11 +43,13 @@ func TestWatchlistExportSnapshotDuringReorg(t *testing.T) {
 	user := uuid.NewString()
 	execFixture(t, ctx, db, `INSERT INTO users(id,chain_id,address,role,status,created_at,updated_at) VALUES($1,1,decode(repeat('77',20),'hex'),'user','active',now(),now())`, user)
 	service, _ := watchlist.New(db, 1)
-	request := gen.AddressExportRequest{Address: common.Address{19: 2}.Hex(), Kind: "transaction", Direction: "both", From: time.Unix(int64(stamp), 0), To: time.Unix(int64(stamp+20), 0)}
+	request := gen.AddressExportRequest{Address: common.Address{19: 2}.Hex(), Kind: kind, Direction: "both", From: time.Unix(int64(stamp), 0), To: time.Unix(int64(stamp+20), 0)}
 	if file, err := service.Export(ctx, user, request); !errors.Is(err, watchlist.ErrUnavailable) || len(file.Bytes) != 0 {
 		t.Fatalf("missing Core coverage returned a file: %v", err)
 	}
 	execFixture(t, ctx, db, `INSERT INTO core_coverage_ranges(chain_id,range_start,range_end) VALUES(1,0,1)`)
+	markTokenStageComplete(t, ctx, db, genesis)
+	markTokenStageComplete(t, ctx, db, original)
 	replacement, _ := testfixture.New(testfixture.Options{Number: 1, ParentHash: genesis.Block.Hash(), Timestamp: stamp + 10, ExtraData: []byte("replacement"), TransactionTypes: []uint8{types.LegacyTxType}})
 	var applied bool
 	observed := &watchSnapshotDatabase{Database: db, test: t, afterSnapshot: func() {
@@ -50,6 +58,7 @@ func TestWatchlistExportSnapshotDuringReorg(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		markTokenStageComplete(t, ctx, db, replacement)
 		applied = true
 	}}
 	snapshotted, _ := watchlist.New(observed, 1)

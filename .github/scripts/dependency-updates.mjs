@@ -47,7 +47,17 @@ export function selectVersions(current, releases, policy) {
 }
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function pinRegex(pin) {
-  if (!pin.template.includes("{{version}}") || !Number.isInteger(pin.count) || pin.count < 1)
+  const json = pin.path.endsWith(".json");
+  if (
+    typeof pin.template !== "string" ||
+    !pin.template.includes("{{version}}") ||
+    (json
+      ? !Array.isArray(pin.jsonPath) ||
+        !pin.jsonPath.length ||
+        pin.jsonPath.some((key) => typeof key !== "string" || !key.length) ||
+        pin.count !== undefined
+      : pin.jsonPath !== undefined || !Number.isInteger(pin.count) || pin.count < 1)
+  )
     throw new Error("invalid pin template");
   let versionSeen = false,
     other = 0;
@@ -62,7 +72,26 @@ function pinRegex(pin) {
       return `(?<version>${number})`;
     })
     .join("");
-  return new RegExp("^" + pattern + "$", "gm");
+  return new RegExp("^" + pattern + "$", json ? "g" : "gm");
+}
+function jsonField(document, pin) {
+  let parent = document;
+  for (const key of pin.jsonPath.slice(0, -1)) {
+    if (
+      !parent ||
+      typeof parent !== "object" ||
+      Array.isArray(parent) ||
+      !Object.hasOwn(parent, key)
+    )
+      throw new Error(`missing JSON field in ${pin.path}: ${JSON.stringify(pin.jsonPath)}`);
+    parent = parent[key];
+  }
+  const key = pin.jsonPath.at(-1);
+  if (!parent || typeof parent !== "object" || Array.isArray(parent) || !Object.hasOwn(parent, key))
+    throw new Error(`missing JSON field in ${pin.path}: ${JSON.stringify(pin.jsonPath)}`);
+  if (typeof parent[key] !== "string")
+    throw new Error(`JSON version field must be a string in ${pin.path}`);
+  return { parent, key };
 }
 function renderPin(pin, version, groups) {
   let other = 0;
@@ -92,6 +121,7 @@ export function readRegistry(root = process.cwd()) {
     )
       throw new Error("invalid dependency registration");
     ids.add(dep.id);
+    for (const pin of dep.pins) pinRegex(pin);
     for (const path of [
       ...dep.pins.map((p) => p.path),
       ...dep.generated,
@@ -106,8 +136,17 @@ export function currentVersion(dep, root = process.cwd()) {
   for (const pin of dep.pins) {
     const path = join(root, pin.path);
     if (!lstatSync(path).isFile()) throw new Error(`${dep.id}: pin is not a regular file`);
-    const matches = [...readFileSync(path, "utf8").matchAll(pinRegex(pin))];
-    if (matches.length !== pin.count)
+    const regex = pinRegex(pin);
+    let text = readFileSync(path, "utf8");
+    if (pin.jsonPath) {
+      const { parent, key } = jsonField(JSON.parse(text), pin);
+      text = parent[key];
+    }
+    const matches = [...text.matchAll(regex)];
+    if (
+      matches.length !== (pin.jsonPath ? 1 : pin.count) ||
+      (pin.jsonPath && matches[0]?.[0] !== text)
+    )
       throw new Error(`${dep.id}: pin position drift in ${pin.path}`);
     for (const match of matches) versions.add(match.groups.version);
   }
@@ -122,6 +161,15 @@ export function replacements(dep, version, root = process.cwd()) {
   const result = new Map();
   for (const pin of dep.pins) {
     const text = result.get(pin.path) ?? readFileSync(join(root, pin.path), "utf8");
+    if (pin.jsonPath) {
+      const document = JSON.parse(text);
+      const { parent, key } = jsonField(document, pin);
+      parent[key] = parent[key].replace(pinRegex(pin), (...args) =>
+        renderPin(pin, version, args.at(-1)),
+      );
+      result.set(pin.path, JSON.stringify(document, null, 2) + "\n");
+      continue;
+    }
     result.set(
       pin.path,
       text.replace(pinRegex(pin), (...args) => renderPin(pin, version, args.at(-1))),
@@ -134,14 +182,14 @@ export function audit(root = process.cwd()) {
   const ownership = new Set();
   const dependabot = readFileSync(join(root, ".github/dependabot.yml"), "utf8");
   for (const dep of registry.dependencies) {
-    currentVersion(dep, root);
     for (const path of dep.reviewFiles ?? [])
       if (!lstatSync(join(root, path)).isFile()) throw new Error("missing review fixture");
     for (const pin of dep.pins) {
-      const key = `${pin.path}:${pin.template}`;
+      const key = JSON.stringify([pin.path, pin.jsonPath ?? pin.template]);
       if (ownership.has(key)) throw new Error("duplicate pin ownership");
       ownership.add(key);
     }
+    currentVersion(dep, root);
     for (const [ecosystem, names] of Object.entries(dep.ignores)) {
       const block =
         dependabot

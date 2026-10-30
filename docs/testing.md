@@ -4,6 +4,67 @@ The Makefile is the command source of truth. Only implemented targets are
 listed as runnable commands here; future gates remain in their owning plan
 until the Makefile target exists.
 
+The accepted [background ENS design](decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+has a persistence foundation in P20-T27. Its `TestENSSync` PostgreSQL regressions
+cover source identity, coverage gaps, immutable facts and publications,
+idempotency, retry exhaustion, lease/generation/dependency fencing, local
+canonical detach/reattach, and read-only unknown-name lookups. Run them through
+`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENSSync'`;
+they also run in the maintained full integration/race suites. Schema changes
+continue to require the production-image `make test-schema-e2e` gate.
+
+P20-T28 adds `TestENSCollector` PostgreSQL race regressions for autonomous
+discovery, ordered versions/deletions/renewal, restart and concurrent cursors,
+history/deployment gaps, core attachment changes and reorg/reattachment. Run the combined suite with
+`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS(Sync|Collector)'`.
+The RPC fixture is local evidence, not live Mainnet acceptance.
+
+P20-T28/P20-T29 and P40-T27 add real pinned v2 lifecycle/projection fixtures,
+background worker/publication and database-only reader tests. Run the combined
+PostgreSQL race suite with
+`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
+The v2 regressions cover unknown subregistry links without source-wide shutdown,
+untrusted-emitter isolation, link repair, and bounded graph cursor progress across
+restarts. Search regressions exercise invalid ENS names through the query reader
+and HTTP handler, preserving typed client errors without database access.
+It includes source/canonical fences, immutable empty snapshots, HTTP-independent
+candidate discovery, catalog withdrawal and bounded idempotent import/replay.
+`make test-runtime-e2e` runs the production image in all/split mode with real
+pinned v1/v2 registration, migration, factory and resolver transactions on the
+same isolated Anvil chain consumed by core sync. `make test-preview-contracts` verifies the shipped `.test`
+genesis, autonomous publication before name HTTP reads and split/all restarts.
+Neither local RPC identity fixtures nor contract deployment establish actual
+Mainnet activation or independent reconciliation. P30-T150/P30-T151 retain
+[separate acceptance evidence](reviews/ens-current-chain-acceptance.md), including
+exact source/image identities, core-to-database/API publication, declared scan
+windows, candidate provenance and independent comparisons. Bounded samples do
+not satisfy full historical coverage; direct resolver success alone does not
+satisfy the publication gate.
+
+`make test-e2e` covers the generated-client ENS contract, existing single SSE
+stream, explicit manual publication replacement, exact address disclosure, expiry
+without requests, bilingual accessibility and mobile layout. Unit tests cover
+multi-chunk atomicity and stale responses. API tests reject ENS calls and writes,
+including enqueue and snapshot inserts, without changing authentication/billing.
+
+P20-T30/P40-T28/P50-T82 extend these gates with exact independent registration
+profiles, canonical known-name search and `/api/v1/names/{name}`. Real-contract
+profile tests cover registrant/controller separation, wrapper expiry, grace,
+renewal, regeneration, migration and re-registration. PostgreSQL tests require
+partial profile publication before forward resolution, read-only detail/search,
+independent invalidation, retained expired names and canonical discovery fences.
+Runtime/Preview exercise the same profile worker and generated detail contract.
+Earlier Mainnet samples do not establish acceptance of the new profile fields.
+
+ENS operation history adds `TestENSHistory` and event-time shared-resolver
+assertions to the same `^TestENS` PostgreSQL race suite. Tests cover grouped
+transactions, separately bounded event pagination, unknown names, partial
+coverage, new-head cursor stability and immediate core-reorg rejection. Runtime
+all/split and Preview contracts assert public history from actual fixture logs.
+`name-history.spec.ts` verifies bilingual light/dark mobile and desktop layouts,
+keyboard expansion, inert record text, lazy event requests and the single SSE
+stream. Fixture coverage remains distinct from complete live history.
+
 ## Restricted automation hosts
 
 Codex and other filesystem-restricted automation should preserve the exact
@@ -61,6 +122,9 @@ linked updates, upstream failures, clean-worktree protection and isolated
 candidate preparation. Publication tests use a temporary local Git remote to
 exercise PR-creation failure recovery and repeat runs without rewriting a
 branch; HTTP and GitHub API results are fixtures, not live publication evidence.
+JSON regressions cover whitespace and property order, multiple registered fields
+in one file, missing or non-string fields, version disagreement, duplicate field
+ownership and rejection of unrelated field changes during publication.
 
 Candidate preparation installs or resolves the selected tool/package where
 applicable, regenerates only its allowed locks, and runs workflow-script and
@@ -188,6 +252,13 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   production and test Go files at 2,500 physical lines, counting comments and
   blank lines (`max: 2500`, `skip-comments: false`, `skip-blank-lines: false`).
   Only this revive rule is enabled; generated files remain excluded.
+  `.golangci.yml` enables tests and all repository custom build tags through
+  `run.build-tags`, so integration, optional-service and E2E sources receive
+  the same analysis. New custom tags must be added in the same change as their
+  sources; platform constraints remain selected by `GOOS`/`GOARCH`.
+  Lint analyzes tagged tests without executing them: a passing lint run does
+  not establish integration or E2E runtime acceptance. The lint-policy fixture
+  below checks integration-tag coverage, not completeness of the tag list.
   `make lint-go` runs both this target and `source-check`.
 - `make test-lint-policy`: run the installed golangci-lint against an isolated
   fixture module with the unchanged repository configuration and pinned pgx.
@@ -241,8 +312,11 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   contract generators and tests. Unused imports and variables fail with
   `eslint(no-unused-vars)`. Both `make lint` and root `pnpm run lint` include this gate.
 - `make web-lint`: run TypeScript project checking, pinned Oxlint 1.85.0, and
-  Oxfmt 0.70.0 format checking. Oxlint checks hand-written `src` TS/TSX for
-  unused code, hook placement/dependencies, and size. Production files/functions
+  Oxfmt 0.70.0 format checking. Type-aware lint uses pinned `oxlint-tsgolint`
+  7.0.2005 and rejects `@deprecated` references through
+  `typescript/no-deprecated`, including aliased imports, types, methods and
+  test code. Oxlint checks hand-written `src` TS/TSX for unused code, hook
+  placement/dependencies, and size. Production files/functions
   are capped at 1,400/400 lines; test files/functions at 2,500/1,000. Blank lines
   are excluded, comments count, and IIFEs are exempt from function length.
   Production classic cyclomatic complexity is capped at 150; test complexity
@@ -255,7 +329,10 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   dependencies, browser reports, and Go files. Formatting uses two spaces,
   double quotes, semicolons, 100 columns, LF, and trailing commas without import,
   Tailwind-class, or package-key sorting. `make web-test` includes executable
-  tooling-policy regressions for limits, exclusions, hooks, and idempotence.
+  tooling-policy regressions for limits, exclusions, hooks, deprecated symbols,
+  and idempotence. Deprecated-symbol fixtures exercise installed React types,
+  aliased imports, DOM methods, and references into ignored generated modules;
+  unrelated non-deprecated declarations with the same name remain valid.
 - `make test`: Go and frontend unit tests.
   Browser ABI regressions include the published Solidity 0.5.3 ERC1820Registry
   ABI and unmodified native Standard JSON ABI output from official solc-js
@@ -285,13 +362,13 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   launched browser with blank pages still requires console/runtime diagnosis.
   CI remains on the ordinary multi-process browser.
   The same gate verifies route-lazy delivery, one durable browser event stream,
-  event-driven home/list refresh, on-demand CodeMirror, and embedded
+  event-driven home/status and manual list refresh, on-demand CodeMirror, and embedded
   precompressed asset behavior without console or CSP failures.
   It also browses the ERC-4337 global list, detail, transaction activity, and
   address activity against the generated client, including a decoded failure
   reason and feature-gated navigation.
   The suite also enables a deterministic generated-client ENS fixture to prove
-  Viem normalization, current official/custom presentation, exact address
+  Viem normalization, name-detail navigation without source classifications, exact address
   disclosure, snapshot reuse, bilingual accessibility, and 390px overflow.
 - `make test-integration`: build the embedded SPA, then run real migrations and
   every integration-tagged Go test. When `INTEGRATION_DATABASE_URL` is empty,
@@ -480,9 +557,9 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   matches, no catalog generation, `go-module`, `etherview_geas_v1`, empty ABI,
   and monolith/six-role publication parity.
   Both Hardhat and Foundry verification overlays explicitly disable ENS on
-  every application role and inject no ENS Mainnet RPC. Their isolated Anvil
+  every application role and construct no ENS workers. Their isolated Anvil
   fixture is verification input, not an ENS source; ENS behavior remains owned
-  by `make test-runtime-e2e` and its exact Mainnet-identity fixture.
+  by `make test-runtime-e2e` and real v1/v2 transactions on the same current-chain Anvil fixture.
 - `make lint`: Go formatting/vet, the repository's golangci-lint v2 policy
   (including `standard`, `modernize`, `unparam`, `depguard`, `forbidigo`, and `revive`) across ordinary tests plus tagged
   integration, Hardhat, Foundry, and runtime E2E source, and TypeScript type
@@ -983,8 +1060,11 @@ activity and CSV acceptance. Controlled receivers are protocol evidence only;
 real browser-provider delivery with the page closed requires separate HTTPS
 browser evidence and must never be inferred from mocks or local receivers.
 
-CSV bounds remain 31 days, 10,000 rows, 16 MiB and 15 seconds, including exact
-uint256 values and continuous Core/Token coverage. Reorg snapshot tests prove
+CSV bounds remain 31 days, 10,000 combined rows, 16 MiB and 15 seconds, including
+exact uint256 values and continuous Core/Token coverage. All-type exports cover
+transactions, ERC-20, ERC-721 and ERC-1155 in one snapshot, with per-row types,
+self-transfer deduplication, direction/time boundaries and combined limits.
+Reorg snapshot tests prove
 that one exported file stays on its original canonical view.
 
 ### Preview gateway regressions
@@ -1182,8 +1262,30 @@ account changes and cleanup across all browser submission variants and CSV.
 For CSV, hold the response pending to verify that the widget refreshes only
 after success or failure; assert the downloaded filename includes the selected
 address, UTC range and activity kind.
-Check the compact address toolbar in both languages/themes at desktop and 390px,
-including keyboard focus, download expansion and accessibility.
+Check the address watch icon immediately after the QR control and the CSV link
+at the bottom right of ordinary transaction history, in both languages/themes
+at desktop and 390px. Cover empty history, keyboard navigation, accessibility,
+and direct loading of the export page. Watch clicks stay on the address page;
+anonymous clicks open a half-shaded modal with Escape/backdrop dismissal, focus
+containment and restoration. Login closes the dialog without watching; a second
+click is required. Watch operations show a loading icon and block repeat clicks
+until the mutation and list refresh finish, then show the confirmed state. Both
+success and failure use the shared top-center Message. Cover add/remove, slow
+responses, failure, account changes and automatic three-second dismissal. The
+export login card uses a short, content-width button aligned with
+its message; login never starts a download. Cover All as the default type and
+the `-all.csv` filename.
+
+Shared operation feedback uses Message across account, wallet, verification,
+contract interaction, billing, copying and download controls. Check stacking,
+deduplication, manual dismissal, hover/focus timer suspension, translated close
+controls, modal top-layer accessibility, teardown and reduced motion. Include
+390px and desktop in both languages/themes. Loading/read failures, field
+validation and durable transaction/payment outcomes remain in their owning
+views; they must not disappear with a transient message.
+Watch reads must fail closed with retry; account changes and logout must cancel
+private operations and clear results. CSV challenges mount only on the signed-in
+export page and are removed on navigation.
 
 Acceptance requires `make check`, `make test-e2e`,
 `make test-integration-race` and `make test-runtime-e2e`. Controlled transport and
@@ -1193,3 +1295,21 @@ widget validation is a separate operator smoke test.
 ## Preview application contracts acceptance
 
 See [Preview application contracts acceptance](../preview/docs/testing.md#preview-application-contracts-acceptance).
+
+## Manual explorer refresh acceptance
+
+P50-T84 restricts passive requests to home/status and verification/payment task
+progress. Test heads, publication bursts, reorgs, initial SSE opening, native
+reconnect and online recovery: ordinary views must retain request counts and
+pagination. In-range publications mark snapshots; out-of-range events do not.
+Manual refresh preserves route, tab, filters and drafts, resets visible pagers
+only, and rejects late cancelled results. Verify failed refresh retry, invalid
+cursor blocking, binding guards, identity-mismatch hiding and ENS expiry without
+requests. New addresses must not renew existing names.
+
+Run focused frontend/browser regressions followed by `make web-test`,
+`make web-lint`, `make test-e2e`, `make generate-check`, `make docs-check` and
+`make plan-check`. Browser acceptance includes both languages and mobile layout.
+Check title alignment, mobile overflow, status indicators, keyboard activation
+and focus/Escape tooltip behavior in `manual-refresh.spec.ts`. These checks
+establish local behavior, not remote CI or live chain acceptance.

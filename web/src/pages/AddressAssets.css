@@ -1,0 +1,190 @@
+.address-assets {
+  min-width: 0;
+}
+
+.address-asset-tabs {
+  display: flex;
+  gap: 1.5rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.address-asset-tab {
+  padding: 0.65rem 0.15rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.address-asset-tab[aria-current="page"] {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.address-asset-content,
+.address-token-identity,
+.address-token-amount {
+  min-width: 0;
+}
+
+.address-asset-snapshot {
+  padding: 0;
+  margin: 0 0 1rem;
+  border: 0;
+  background: transparent;
+  font-size: 0.75rem;
+}
+
+.address-asset-content .cursor-pagination {
+  padding-top: 1rem;
+}
+
+.address-token-holdings {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.address-token-columns,
+.address-token-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.5rem;
+  padding: 1rem 1.25rem;
+}
+
+.address-token-columns {
+  padding-block: 0.7rem;
+  background: var(--surface-raised);
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.address-token-columns > :last-child,
+.address-token-amount {
+  text-align: right;
+}
+
+.address-token-list,
+.address-nft-grid {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.address-token-row + .address-token-row {
+  border-top: 1px solid var(--line);
+}
+
+.address-token-name {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.address-token-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.75rem;
+  margin-top: 0.3rem;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.address-token-meta > span {
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.address-asset-quantity {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.address-token-amount small,
+.address-nft-details small {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+.address-nft-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.address-nft-card {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.address-nft-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.address-nft-card h3 a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.address-nft-contract {
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.address-nft-details {
+  margin-top: 1.25rem;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.address-asset-empty {
+  padding-block: 2.5rem;
+  text-align: center;
+}
+
+@media (max-width: 1023px) {
+  .address-nft-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .address-nft-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .address-token-columns,
+  .address-token-row {
+    gap: 1rem;
+    padding-inline: 1rem;
+  }
+}
+
+.address-token-name:hover,
+.address-nft-card a:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}

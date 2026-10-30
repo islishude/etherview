@@ -1,6 +1,6 @@
 import { ChevronDown, Menu, Monitor, Moon, Sun, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import type { ComponentPropsWithoutRef } from "react";
 
 export function AppFrame({ className, ...props }: ComponentPropsWithoutRef<"div">) {
   return (
@@ -41,25 +41,4 @@ export function ShellIcon({
     monitor: Monitor,
   };
   return <UIIcon icon={icons[name]} />;
-}
-
-export function PageHeading({
-  title,
-  description,
-  mono = false,
-}: {
-  title: string;
-  description?: ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <header className="page-header">
-      <h1>{title}</h1>
-      {description && (
-        <div className={mono ? "page-description mono-wrap" : "page-description"}>
-          {description}
-        </div>
-      )}
-    </header>
-  );
 }

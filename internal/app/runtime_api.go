@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/auth"
@@ -32,7 +33,6 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 	readDB := assembly.readDB
 	logger := assembly.logger
 	registry := assembly.registry
-	businessObserver := assembly.businessObserver
 	telemetry := assembly.telemetry
 	rpcBuild := assembly.rpcBuild
 	pendingRepository := assembly.pendingRepository
@@ -51,7 +51,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			canonicalState state.CanonicalSource
 			nftState       catalog.NFTStateReconciler
 			erc20State     catalog.ERC20StateReconciler
-			nameResolver   query.NameResolver
+			namePolicy     common.Hash
 			addressNames   httpapi.AddressNameReader
 			priceProvider  etherscan.PriceProvider
 		)
@@ -60,12 +60,12 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			// and exact observation writes. It must not inherit replica lag.
 			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
 		}
-		ensService, err := newENSService(ctx, db, cfg, rpcBuild, canonicalState, businessObserver, logger)
+		ensService, err := newENSReader(db, cfg)
 		if err != nil {
 			return err
 		}
 		if ensService != nil {
-			nameResolver = ensService
+			namePolicy = common.HexToHash(cfg.ENS.PolicyDigest)
 			addressNames = ensService
 		}
 		priceProvider, err = newAPIPriceProvider(db, cfg)
@@ -116,7 +116,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 					BackfillComplete:    status.BackfillComplete, Ready: status.Ready,
 				}, exists, err
 			},
-			OptionalStages: completeness, NameResolver: nameResolver,
+			OptionalStages: completeness, NamePolicy: namePolicy,
 			UserOperationRegistry: userOperationRegistry,
 		}
 		reader, err := query.NewPostgresReader(readDB, queryOptions)
@@ -142,7 +142,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			return err
 		}
 		var baseReader httpapi.Reader = reader
-		if readDB != db && nameResolver != nil {
+		if readDB != db && ensService != nil {
 			writerSearchReader, err := query.NewPostgresReader(db, queryOptions)
 			if err != nil {
 				return err

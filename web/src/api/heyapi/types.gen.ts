@@ -55,7 +55,10 @@ export type PushSubscriptionResponse = {
 
 export type AddressExportRequest = {
     address: Address;
-    kind: 'transaction' | 'erc20' | 'nft';
+    /**
+     * all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total.
+     */
+    kind: 'all' | 'transaction' | 'erc20' | 'nft';
     from: string;
     to: string;
     direction: 'in' | 'out' | 'both';
@@ -387,6 +390,24 @@ export type Status = {
     finalized_block?: Quantity;
     lag: Quantity;
     completeness: Completeness;
+    names?: Array<NameSourceStatus>;
+};
+
+export type NameSourceStatus = {
+    state: 'not_indexed' | 'sync_pending' | 'resolution_pending' | 'current' | 'stale' | 'unsupported_source';
+    protocols: Array<'v1' | 'v2'>;
+    /**
+     * Directory coverage from the configured protocol start, independent of exact resolution validity.
+     */
+    coverage: 'not_started' | 'incomplete' | 'complete';
+    coverage_start?: Quantity;
+    target?: Quantity;
+    scanned?: Quantity;
+    last_published_block?: Quantity;
+    pending: Quantity;
+    last_success?: string;
+    valid_until?: string;
+    code?: string;
 };
 
 export type PublicConfig = {
@@ -1278,18 +1299,122 @@ export type TransactionAuthorizations = TransactionSubresourceIdentity & {
     items: Array<Eip7702Authorization>;
 };
 
+export type NameHistoryField = {
+    key: string;
+    /**
+     * ABI scalar type, array type or hash for an indexed dynamic argument.
+     */
+    type: string;
+    /**
+     * Inert event evidence; omitted event values are never inferred from current records.
+     */
+    value: string;
+    truncated: boolean;
+};
+
+export type NameHistoryEvent = {
+    log_index: Quantity;
+    emitter: Address;
+    event_name: string;
+    action: NameHistoryAction;
+    fields: Array<NameHistoryField>;
+};
+
+export type NameHistoryAction = 'registration' | 'reservation' | 'renewal' | 'unregistration' | 'transfer' | 'subname' | 'resolver' | 'ttl' | 'address' | 'name' | 'text' | 'contenthash' | 'abi' | 'dns' | 'pubkey' | 'interface' | 'data' | 'clear' | 'permission' | 'wrap' | 'unwrap' | 'fuses' | 'migration' | 'link' | 'resource';
+
+export type NameHistoryCoverage = {
+    state: 'complete' | 'partial' | 'pending' | 'unavailable';
+    start: Quantity;
+    scanned?: Quantity;
+    target?: Quantity;
+    pending: Quantity;
+};
+
+export type NameHistoryTransaction = {
+    transaction_hash: Hash;
+    block_hash: Hash;
+    block_number: Quantity;
+    timestamp: string;
+    actions: Array<NameHistoryAction>;
+    event_count: Quantity;
+};
+
+export type NameHistory = {
+    name: string;
+    state: 'indexed' | 'not_indexed';
+    coverage: NameHistoryCoverage;
+    /**
+     * Opaque event-page snapshot, empty before any history scan.
+     */
+    snapshot: string;
+    items: Array<NameHistoryTransaction>;
+};
+
+export type NameHistoryEvents = {
+    items: Array<NameHistoryEvent>;
+};
+
+export type NameHistoryResponse = {
+    data: NameHistory;
+    meta: Meta;
+};
+
+export type NameHistoryEventsResponse = {
+    data: NameHistoryEvents;
+    meta: Meta;
+};
+
+export type NameField = {
+    state: 'value' | 'pending' | 'not_applicable' | 'unsupported' | 'multi_account' | 'not_set';
+    /**
+     * Address or unsigned Unix seconds for expiration_time, never a fabricated empty value.
+     */
+    value?: string;
+    model?: 'registry_manager' | 'wrapped_manager' | 'permissioned_registry';
+};
+
+export type NameObservation = {
+    publication: Quantity;
+    observed_block_number: Quantity;
+    observed_block_hash: Hash;
+    valid_until: string;
+};
+
+export type NameDetail = {
+    name: string;
+    state: 'indexed' | 'not_indexed';
+    registration_state: 'pending' | 'unsupported' | 'not_applicable' | 'unregistered' | 'registered' | 'reserved' | 'grace_period' | 'expired';
+    registrant: NameField;
+    controller: NameField;
+    expiration_time: NameField;
+    resolved_address: NameField;
+    profile_observation?: NameObservation;
+    resolution_observation?: NameObservation;
+};
+
+export type NameDetailResponse = {
+    data: NameDetail;
+    meta: Meta;
+};
+
 export type SearchResult = {
-    kind: 'block' | 'transaction' | 'user_operation' | 'address' | 'contract' | 'token' | 'nft' | 'label';
+    kind: 'block' | 'transaction' | 'user_operation' | 'address' | 'contract' | 'token' | 'nft' | 'label' | 'name';
     key: string;
     label: string;
     rank: number;
     canonical?: boolean;
-    name_source?: 'ens' | 'custom_ens';
+    name_details?: NameDetail;
 };
 
 export type PrimaryName = {
     name: string;
-    source: 'ens' | 'custom_ens';
+    publication: Quantity;
+    observed_block_number: Quantity;
+    observed_block_hash: Hash;
+    /**
+     * Hide the name after this deadline even without a server event.
+     */
+    valid_until: string;
 };
 
 export type AddressNameLookup = {
@@ -1302,6 +1427,7 @@ export type AddressNameLookup = {
 export type AddressNamePage = {
     items: Array<AddressNameLookup>;
     snapshot: OpaqueCursor;
+    publication: Quantity;
 };
 
 export type VerifierLanguage = 'solidity' | 'yul' | 'geas' | 'vyper';
@@ -4130,6 +4256,96 @@ export type ListTransactionAuthorizationsResponses = {
 };
 
 export type ListTransactionAuthorizationsResponse = ListTransactionAuthorizationsResponses[keyof ListTransactionAuthorizationsResponses];
+
+export type GetNameData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/names/{name}';
+};
+
+export type GetNameErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetNameError = GetNameErrors[keyof GetNameErrors];
+
+export type GetNameResponses = {
+    /**
+     * Known name with independently valid partial fields, or explicit not_indexed.
+     */
+    200: NameDetailResponse;
+};
+
+export type GetNameResponse = GetNameResponses[keyof GetNameResponses];
+
+export type ListNameHistoryData = {
+    body?: never;
+    path: {
+        name: string;
+    };
+    query?: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+    };
+    url: '/names/{name}/history';
+};
+
+export type ListNameHistoryErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListNameHistoryError = ListNameHistoryErrors[keyof ListNameHistoryErrors];
+
+export type ListNameHistoryResponses = {
+    /**
+     * Canonical ENS event history at a frozen snapshot with explicit coverage.
+     */
+    200: NameHistoryResponse;
+};
+
+export type ListNameHistoryResponse = ListNameHistoryResponses[keyof ListNameHistoryResponses];
+
+export type ListNameHistoryEventsData = {
+    body?: never;
+    path: {
+        name: string;
+        transactionHash: Hash;
+    };
+    query: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+        block_hash: Hash;
+        snapshot: OpaqueCursor;
+    };
+    url: '/names/{name}/history/{transactionHash}/events';
+};
+
+export type ListNameHistoryEventsErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListNameHistoryEventsError = ListNameHistoryEventsErrors[keyof ListNameHistoryEventsErrors];
+
+export type ListNameHistoryEventsResponses = {
+    /**
+     * Canonical ENS event history at a frozen snapshot with explicit coverage.
+     */
+    200: NameHistoryEventsResponse;
+};
+
+export type ListNameHistoryEventsResponse = ListNameHistoryEventsResponses[keyof ListNameHistoryEventsResponses];
 
 export type ListAddressNamesData = {
     body?: never;

@@ -7,7 +7,8 @@ in cascade order:
    and navigation.
 2. `explorer.css` — import-only manifest for the explorer modules listed below.
 3. `wallet.css` — contract workspace, wallet controls, actions, and notices.
-4. `account.css` — account, API key, administration, and billing pages.
+4. `account.css` — account, API key, administration, and shared billing primitives.
+   `pages/PersonalBilling.css` loads with the account route and owns personal billing layout.
 5. `analytics.css` — shared form controls and chart pages.
 6. `verification.css` — verification, proxy history, and ABI forms.
 7. `responsive.css` — footer/network-picker additions, animations, and shared
@@ -32,7 +33,8 @@ values. Preserve the import order unless the intended cascade change is tested.
 `explorer.css` imports these modules in order:
 
 1. `explorer/shared.css` — page layout, panels, status badges, and notices.
-2. `explorer/home.css` — home metrics and recent activity.
+2. `explorer/home.css` — shared panel headings, consensus metrics and recent activity.
+   `pages/HomePage.css` loads home summary and ENS participant layout with the route.
 3. `explorer/tables.css` — tables and list notes.
 4. `explorer/chain.css` — coverage and reorg context.
 5. `explorer/pending.css` — pending snapshots, fees, and pagination.
@@ -112,8 +114,11 @@ link activation close it. Keep wallet connection and SIWE account identity
 separate, preserve capability-gated links, and never add initial imports of
 route-only dependencies for shell decoration.
 
-Shared page titles use `PageHeading` from `DesignPrimitives`; domain pages retain
-their own identifiers and summary content. The account, contract and transaction
+Shared page titles use `components/PageHeading`; domain pages retain
+their own identifiers and summary content. Manual refresh occupies the heading action
+slot; its route-loaded styles live in `api/browsingRefresh.css`. Keep stale status
+compact, preserve its accessible description on mobile, and expose the hint on
+keyboard focus with Escape dismissal. The account, contract and transaction
 tab primitives share the underline rules in `explorer/entities.css`. Selected tabs must
 retain visible text and keyboard focus rather than relying on a filled surface.
 Use `numeric` for right-aligned quantities without rounding source strings.
@@ -129,3 +134,12 @@ report. Inspect these artifacts after structural or token changes. The account
 and Watchlist browser flows also save authenticated account, billing-admin and
 browser notification settings. `e2e/navigation.spec.ts` covers keyboard order, Escape, focus
 restoration, mobile disclosure and capability-gated entries.
+
+`components/Message` owns transient operation feedback. Messages stack at the
+viewport top, use semantic theme colors and Lucide status icons, dismiss after
+three seconds, and pause while hovered or focused. They never take initial focus;
+manual close returns focus to the previous control. Native modal dialogs own
+their message stack so feedback remains in the accessible top layer. Identical
+concurrent messages coalesce, and caller teardown removes feedback and timers.
+Keep read/loading states, field validation and durable transaction/payment
+outcomes in their owning views.

@@ -261,6 +261,7 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
     const addresses = (url.searchParams.get("addresses") ?? "").split(",").filter(Boolean);
     await fulfillAPIEnvelope(route, {
       snapshot: snapshot ?? "ens-browser-snapshot",
+      publication: "1",
       items: addresses.map((value) =>
         value.toLowerCase() === address.toLowerCase()
           ? {
@@ -268,7 +269,8 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
               state: "resolved",
               primary_name: {
                 name: "alice-with-an-intentionally-long-name.custom",
-                source: "custom_ens",
+                publication: "1",
+                valid_until: new Date(Date.now() + 60000).toISOString(),
               },
             }
           : { address: value, state: "not_found" },
@@ -285,7 +287,11 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
     .first();
   await expect(primary).toBeVisible();
   await expect(primary).toHaveAttribute("title", "alice-with-an-intentionally-long-name.custom");
-  await expect(page.getByText("Custom ENS", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Custom ENS", { exact: true })).toHaveCount(0);
+  await expect(primary.locator("..")).toHaveAttribute(
+    "href",
+    "/name/alice-with-an-intentionally-long-name.custom",
+  );
   await expect(page.getByTitle(address).first()).toBeVisible();
 
   expect(snapshots).toContain("<initial>");
@@ -479,7 +485,7 @@ test("Solidity builtin failure renders concise error text without an ABI table",
   await expect(page.getByText("Revert data", { exact: true })).toHaveCount(0);
 });
 
-test("mempool details poll from pending through replacement to inclusion with accessible status icons", async ({
+test("mempool details manually refresh from pending through replacement to inclusion with accessible status icons", async ({
   page,
 }) => {
   test.setTimeout(30_000);
@@ -592,6 +598,7 @@ test("mempool details poll from pending through replacement to inclusion with ac
   await assertA11yAndNoOverflow(page, "pending transaction detail in English light mode at 320px");
 
   phase = "replaced";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Transaction replaced" })).toBeVisible({
     timeout: 3_500,
   });
@@ -609,6 +616,7 @@ test("mempool details poll from pending through replacement to inclusion with ac
   await assertA11yAndNoOverflow(page, "replaced transaction detail in Chinese dark mode at 320px");
 
   phase = "included";
+  await page.getByRole("button", { name: /^(Refresh|刷新)$/ }).click();
   const successStatus = page.locator('[data-status="success"]').first();
   await expect(successStatus).toBeVisible({ timeout: 3_500 });
   await expect(successStatus.locator("svg.lucide-circle-check")).toHaveAttribute(
@@ -1362,7 +1370,11 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await page.goto(`/address/${address}?tab=assets`);
   await expect(page.getByRole("heading", { name: "ERC-20 holdings", level: 2 })).toBeVisible();
-  await expect(page.getByText("123.45 EXT", { exact: true })).toBeVisible();
+  await expect(page.getByText("123.45", { exact: true })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Asset types" })
+    .getByRole("link", { name: "NFT", exact: true })
+    .click();
   const nftBalances = page.getByRole("region", { name: "Canonical NFT balances" });
   await expect(
     nftBalances.getByRole("heading", { name: "Canonical NFT balances", level: 2 }),
@@ -1935,6 +1947,7 @@ test("Solady legacy CWIA displays verified packed arguments and gates writes on 
     const response = await fetch("/__e2e/home/head", { method: "POST" });
     if (!response.ok) throw new Error("failed to publish E2E head event");
   });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByRole("button", { name: "View proxy details" })).toBeVisible();
   await page.getByRole("button", { name: "View proxy details" }).click();
   await expect(page.getByText("Verified Solidity AST unavailable", { exact: true })).toBeVisible();
@@ -2771,8 +2784,10 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
 
   await activateInView(accountSections.getByRole("link", { name: "Billing", exact: true }));
 
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("combobox", { name: "Record type" }).selectOption("payments");
   const personalHistory = page.locator(".billing-history-section");
-  await expect(personalHistory.getByRole("heading", { name: "Payment history" })).toBeVisible();
+  await expect(personalHistory.getByRole("heading", { name: "History" })).toBeVisible();
   await expect(personalHistory.getByText(billingAmount, { exact: true })).toBeVisible();
   await expect(personalHistory).not.toContainText(billingHiddenUserID);
   await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);

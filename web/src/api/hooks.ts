@@ -33,28 +33,13 @@ import type {
 
 const liveRefetchInterval = 2_000;
 
-export function useChainStatus() {
-  return useQuery({
-    queryKey: ["status"],
-    meta: statusQueryMeta,
-    queryFn: async ({ signal }) => {
-      const response = requireEnvelope(await sdk.getStatus({ client: apiClient, signal }));
-      return {
-        ...response.data,
-        coverage_start: response.meta.coverage_start,
-        coverage_end: response.meta.coverage_end,
-      };
-    },
-    retry: false,
-    staleTime: liveRefetchInterval,
-  });
-}
+export { useChainStatus } from "./chainStatus";
 
 export function useBlocks(page: CursorRequest = firstPage, limit = 12) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["blocks", limit, cursor ?? null, refreshGeneration],
-    meta: statusQueryMeta,
+    meta: { ...statusQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<BlockSummary>> => {
       const response = requireEnvelope(
         await sdk.listBlocks({ client: apiClient, signal, query: { limit, cursor } }),
@@ -73,6 +58,7 @@ export function useBlocks(page: CursorRequest = firstPage, limit = 12) {
 export function useGenesisAccounts(page: CursorRequest = firstPage, limit = 25) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
+    meta: { chainEvents: [], pagination: page.identity },
     queryKey: ["genesis-accounts", limit, cursor ?? null, refreshGeneration],
     queryFn: async ({ signal }): Promise<CursorPage<GenesisAccount>> => {
       const response = requireEnvelope(
@@ -93,7 +79,7 @@ export function useTransactions(page: CursorRequest = firstPage, limit = 12) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transactions", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
         await sdk.listTransactions({ client: apiClient, signal, query: { limit, cursor } }),
@@ -113,7 +99,7 @@ export function useUserOperations(page: CursorRequest = firstPage, limit = 25) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["user-operations", limit, cursor ?? null, refreshGeneration],
-    meta: userOperationQueryMeta,
+    meta: { ...userOperationQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await sdk.listUserOperations({ client: apiClient, signal, query: { limit, cursor } }),
@@ -146,7 +132,7 @@ export function useTransactionUserOperations(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transaction", hash, "user-operations", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await sdk.listTransactionUserOperations({
@@ -172,7 +158,7 @@ export function useAddressUserOperations(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "user-operations", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<UserOperationSummary>> => {
       const response = requireEnvelope(
         await sdk.listAddressUserOperations({
@@ -198,7 +184,7 @@ export function usePendingTransactions(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["pending-transactions", cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<PendingSnapshot> => {
       const response = requireEnvelope(
         await sdk.listPendingTransactions({ client: apiClient, signal, query: { limit, cursor } }),
@@ -234,7 +220,7 @@ export function useBlockTransactions(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["block", identifier, "transactions", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listBlockTransactions({
@@ -265,14 +251,6 @@ export function useTransaction(hash: string, enabled = true) {
     enabled: enabled && hash.length > 0,
     retry: false,
     staleTime: liveRefetchInterval,
-    refetchInterval: (query) => {
-      const detail = query.state.data;
-      if (!detail || (detail.kind !== "pending" && detail.kind !== "replaced")) return false;
-      const expiresAt = Date.parse(detail.transaction.expires_at);
-      if (!Number.isFinite(expiresAt)) return false;
-      const remaining = expiresAt - Date.now();
-      return remaining > 0 ? Math.min(liveRefetchInterval, remaining) : false;
-    },
   });
 }
 
@@ -325,7 +303,7 @@ export function useTransactionAuthorizations(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transaction", hash, "authorizations", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listTransactionAuthorizations({
@@ -351,7 +329,7 @@ export function useTransactionTokenTransfers(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transaction", hash, "token-transfers", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listTransactionTokenTransfers({
@@ -377,7 +355,7 @@ export function useTransactionInternalTransactions(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transaction", hash, "internal-transactions", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listTransactionInternalTransactions({
@@ -399,7 +377,7 @@ export function useTransactionLogs(hash: string, page: CursorRequest = firstPage
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transaction", hash, "logs", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listTransactionLogs({
@@ -425,7 +403,7 @@ export function useTransactionStateChanges(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["transaction", hash, "state-changes", cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listTransactionStateChanges({
@@ -446,7 +424,7 @@ export function useTransactionStateChanges(
 export function useAddress(address: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address],
-    meta: chainQueryMeta,
+    meta: { chainEvents: ["head", "reorg", "names"] },
     queryFn: async ({ signal }) =>
       requireEnvelope(await sdk.getAddress({ client: apiClient, signal, path: { address } })).data,
     enabled: enabled && address.length > 0,
@@ -464,7 +442,7 @@ export function useAddressTransactions(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "transactions", cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<TransactionSummary>> => {
       const response = requireEnvelope(
         await sdk.listAddressTransactions({
@@ -495,7 +473,7 @@ export function useAddressWithdrawals(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "withdrawals", cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<AddressWithdrawal>> => {
       const response = requireEnvelope(
         await sdk.listAddressWithdrawals({
@@ -525,7 +503,10 @@ export function useAddressInternalTransactions(
 ) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: {
+      ...statusQueryMeta,
+      pagination: page.identity,
+    },
     queryKey: [
       "address",
       address,
@@ -570,6 +551,7 @@ export function useAddressERC20Transfers(
     limit,
     refreshGeneration,
     enabled,
+    page.identity,
   );
 }
 
@@ -588,6 +570,7 @@ export function useAddressNFTTransfers(
     limit,
     refreshGeneration,
     enabled,
+    page.identity,
   );
 }
 
@@ -599,10 +582,11 @@ function useAddressTokenActivity(
   limit: number,
   refreshGeneration: number,
   enabled: boolean,
+  pagination?: string,
 ) {
   return useQuery({
     queryKey: ["address", address, kind, cursor ?? null, limit, refreshGeneration],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: { ...statusQueryMeta, pagination },
     queryFn: async ({ signal }): Promise<CursorPage<AddressTokenTransfer>> => {
       const response = requireEnvelope(
         path === "/addresses/{address}/erc20-transfers"
@@ -635,7 +619,10 @@ export function useTokens(page: CursorRequest = firstPage, limit = 25) {
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["tokens", limit, cursor ?? null, refreshGeneration],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: {
+      ...statusQueryMeta,
+      pagination: page.identity,
+    },
     queryFn: async ({ signal }): Promise<CursorPage<TokenContract>> => {
       const response = requireEnvelope(
         await sdk.listTokens({ client: apiClient, signal, query: { limit, cursor } }),
@@ -654,7 +641,7 @@ export function useTokens(page: CursorRequest = firstPage, limit = 25) {
 export function useToken(address: string, enabled = true) {
   return useQuery({
     queryKey: ["token", address],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: { ...statusQueryMeta },
     queryFn: async ({ signal }) =>
       requireEnvelope(await sdk.getToken({ client: apiClient, signal, path: { address } })).data,
     enabled: enabled && address.length > 0,
@@ -672,7 +659,10 @@ export function useTokenTransfers(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["token", address, "transfers", limit, cursor ?? null, refreshGeneration],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: {
+      ...statusQueryMeta,
+      pagination: page.identity,
+    },
     queryFn: async ({ signal }): Promise<CursorPage<TokenEvent>> => {
       const response = requireEnvelope(
         await sdk.listTokenTransfers({
@@ -703,7 +693,7 @@ export function useTokenHolders(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["token", address, "holders", limit, cursor ?? null, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }): Promise<TokenHolderPage> => {
       const response = requireEnvelope(
         await sdk.listTokenHolders({
@@ -734,7 +724,10 @@ export function useAddressNFTBalances(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "nfts", cursor ?? null, limit, refreshGeneration],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: {
+      ...statusQueryMeta,
+      pagination: page.identity,
+    },
     queryFn: async ({ signal }): Promise<CursorPage<NFTBalance>> => {
       const response = requireEnvelope(
         await sdk.listAddressNftBalances({
@@ -765,7 +758,10 @@ export function useAddressERC20Balances(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "erc20-balances", cursor ?? null, limit, refreshGeneration],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: {
+      ...statusQueryMeta,
+      pagination: page.identity,
+    },
     queryFn: async ({ signal }): Promise<CursorPage<ERC20Balance>> => {
       const response = requireEnvelope(
         await sdk.listAddressErc20Balances({
@@ -823,7 +819,7 @@ export function useSearchResults(query: string, page: CursorRequest = firstPage,
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["search", query, cursor ?? null, limit, refreshGeneration],
-    meta: chainQueryMeta,
+    meta: { chainEvents: ["head", "reorg", "names"], pagination: page.identity },
     queryFn: async ({ signal }): Promise<CursorPage<SearchResult>> => {
       const response = requireEnvelope(
         await sdk.search({ client: apiClient, signal, query: { q: query, cursor, limit } }),

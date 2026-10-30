@@ -1293,13 +1293,13 @@ func (q *Queries) QuerySearchHash(ctx context.Context, arg QuerySearchHashParams
 
 const querySearchText = `-- name: QuerySearchText :many
 WITH visible_documents AS (
-    SELECT document.id, document.chain_id, document.source_kind, document.source_identity, document.logical_identity, document.valid_from_generation, document.valid_to_generation, document.result_kind, document.result_key, document.result_label, document.exact_terms, document.partial_terms, document.block_number, document.block_hash, document.target_address, document.code_hash, document.valid_from_block, document.valid_to_block, document.source_canonical, document.recorded_at, document.verification_match_type, document.verification_request_digest, document.verification_job_id, document.name_observation_id, document.name_source
+    SELECT document.id, document.chain_id, document.source_kind, document.source_identity, document.logical_identity, document.valid_from_generation, document.valid_to_generation, document.result_kind, document.result_key, document.result_label, document.exact_terms, document.partial_terms, document.block_number, document.block_hash, document.target_address, document.code_hash, document.valid_from_block, document.valid_to_block, document.source_canonical, document.recorded_at, document.verification_match_type, document.verification_request_digest, document.verification_job_id, document.name_source_id, document.name_profile_publication_id, document.name_publication_id
     FROM search_catalog_documents AS document
     WHERE document.chain_id = $6::numeric
       AND document.valid_from_generation <= $7
       AND (document.valid_to_generation IS NULL OR document.valid_to_generation > $7)
 ), candidates(
-    kind, key, label, rank, canonical, name_source,
+    kind, key, label, rank, canonical, name_publication_id, name_profile_publication_id,
     verification_match_type, verification_valid_from_block,
     verification_request_digest, verification_job_id,
     verification_proxy_artifact
@@ -1318,7 +1318,8 @@ WITH visible_documents AS (
                  WHEN $8::text = ANY(document.exact_terms) THEN 94 ELSE 64 END
            END::bigint AS rank,
            CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
-           document.name_source,
+           document.name_publication_id,
+           document.name_profile_publication_id,
            document.verification_match_type,
            document.valid_from_block AS verification_valid_from_block,
            document.verification_request_digest,
@@ -1354,11 +1355,7 @@ WITH visible_documents AS (
      AND proxy_artifact.verification_job_id = document.verification_job_id
      AND proxy_artifact.request_digest = document.verification_request_digest
     WHERE document.source_kind <> 'code'
-      AND (
-          document.source_kind <> 'name'
-          OR $10::bigint = 0
-          OR document.name_observation_id = $10::bigint
-      )
+      AND (document.source_kind<>'name' OR (ens_name_known(document.name_source_id,document.logical_identity) AND EXISTS(SELECT 1 FROM ens_sync_sources s JOIN ens_effective_policies p ON p.source_id=s.id WHERE s.id=document.name_source_id AND p.policy_digest=$10::bytea)))
       AND ($8::text = ANY(document.exact_terms) OR EXISTS (
           SELECT 1 FROM unnest(document.partial_terms) AS term
           WHERE strpos(term, $8::text) > 0
@@ -1409,10 +1406,10 @@ WITH visible_documents AS (
       )
 )
 SELECT result.kind, result.key, result.label, result.rank,
-       COALESCE(result.canonical,FALSE)::boolean AS canonical, result.name_source,
+       COALESCE(result.canonical,FALSE)::boolean AS canonical, result.name_publication_id, result.name_profile_publication_id,
        (result.canonical IS NOT NULL)::boolean AS canonical_known
 FROM (
-    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_source
+    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_publication_id, name_profile_publication_id
     FROM candidates
     ORDER BY kind, key, rank DESC,
              verification_proxy_artifact DESC,
@@ -1440,17 +1437,18 @@ type QuerySearchTextParams struct {
 	ValidFromGeneration int64          `db:"valid_from_generation" json:"valid_from_generation"`
 	SearchTerm          string         `db:"search_term" json:"search_term"`
 	MaxBlockNumber      pgtype.Numeric `db:"max_block_number" json:"max_block_number"`
-	NameObservationID   int64          `db:"name_observation_id" json:"name_observation_id"`
+	NamePolicy          []byte         `db:"name_policy" json:"name_policy"`
 }
 
 type QuerySearchTextRow struct {
-	Kind           *string `db:"kind" json:"kind"`
-	Key            string  `db:"key" json:"key"`
-	Label          *string `db:"label" json:"label"`
-	Rank           int64   `db:"rank" json:"rank"`
-	Canonical      bool    `db:"canonical" json:"canonical"`
-	NameSource     *string `db:"name_source" json:"name_source"`
-	CanonicalKnown bool    `db:"canonical_known" json:"canonical_known"`
+	Kind                     *string `db:"kind" json:"kind"`
+	Key                      string  `db:"key" json:"key"`
+	Label                    *string `db:"label" json:"label"`
+	Rank                     int64   `db:"rank" json:"rank"`
+	Canonical                bool    `db:"canonical" json:"canonical"`
+	NamePublicationID        *int64  `db:"name_publication_id" json:"name_publication_id"`
+	NameProfilePublicationID *int64  `db:"name_profile_publication_id" json:"name_profile_publication_id"`
+	CanonicalKnown           bool    `db:"canonical_known" json:"canonical_known"`
 }
 
 func (q *Queries) QuerySearchText(ctx context.Context, arg QuerySearchTextParams) ([]QuerySearchTextRow, error) {
@@ -1464,7 +1462,7 @@ func (q *Queries) QuerySearchText(ctx context.Context, arg QuerySearchTextParams
 		arg.ValidFromGeneration,
 		arg.SearchTerm,
 		arg.MaxBlockNumber,
-		arg.NameObservationID,
+		arg.NamePolicy,
 	)
 	if err != nil {
 		return nil, err
@@ -1479,7 +1477,8 @@ func (q *Queries) QuerySearchText(ctx context.Context, arg QuerySearchTextParams
 			&i.Label,
 			&i.Rank,
 			&i.Canonical,
-			&i.NameSource,
+			&i.NamePublicationID,
+			&i.NameProfilePublicationID,
 			&i.CanonicalKnown,
 		); err != nil {
 			return nil, err

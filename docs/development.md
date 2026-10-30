@@ -89,6 +89,10 @@ Dependabot exclusions. Versions stay in their existing owning files; the
 registry matches them rather than maintaining a second current-version value.
 Missing positions, conflicting versions and duplicate ownership fail the gate.
 Add new Makefile `*_VERSION` settings to the registry in the same change.
+JSON pins use a `jsonPath` array of object keys and a template for the string
+value only; whitespace, property order and surrounding commas are not pins.
+Updates serialize JSON with two-space indentation and a final newline, preserving
+unregistered field values. Non-JSON pins retain exact text templates and counts.
 
 - `make dependency-check` queries upstream versions without modifying files.
   `DEP=govulncheck` restricts discovery. Output distinguishes available automatic
@@ -198,6 +202,28 @@ dependencies, review and update the corresponding texts alongside their locks.
 Run `make license-check`; image builds additionally compare the actual Linux
 builder Node and Debian notices against the checked-in inventory.
 
+## Go lint and build tags
+
+When adding or changing a custom Go build tag, update `run.build-tags` in
+`.golangci.yml` in the same change. Include integration, optional-service and
+E2E tags, including every tag required by a combined build constraint. Audit
+the repository's `//go:build` directives when updating this list; tagged tests
+must remain covered by ordinary lint runs. OS and architecture constraints
+such as `windows` and `!windows` are selected by the Go target platform, not
+enabled together as custom tags.
+
+Apply the configured Go lint rules to test helpers as well as production code.
+For simple counted loops, use `for range n`, or `for i := range n` when the
+index is needed, as required by `modernize`. When `unparam` identifies a helper
+argument that always receives the same value, remove that argument, keep the
+fixed value in the helper and update all callers, including tagged tests.
+Preserve parameterization where callers actually require different values.
+Do not suppress diagnostics or drop build tags to make lint pass.
+
+After changing build-tag coverage or repairing lint findings, run
+`make lint-go` and resolve the findings before reporting success. See the
+[testing guide](testing.md#common-gates) for the gate's scope.
+
 ## Formatting and frontend tooling
 
 Use `make format` to format repository JavaScript, YAML, Markdown, and the
@@ -233,7 +259,11 @@ After installation, `pnpm run lint`, `pnpm run format`, and `pnpm run format:che
 provide the JavaScript/frontend gates directly. Use
 `pnpm --dir web run format` for frontend-only edits.
 `make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
-same pnpm scripts used by CI. Keep generated API types under the API generator;
+same pnpm scripts used by CI. The Web Oxlint configuration enables type-aware
+`typescript/no-deprecated` checks using the pinned root `oxlint-tsgolint`
+dependency. Replace references to declarations marked `@deprecated`, including
+types, methods and test assertions, with their supported equivalents. Keep
+generated API types under the API generator;
 do not format them manually. `api/openapi-ts.config.ts` generates the Hey API
 Fetch SDK, domain types and bundled runtime under `web/src/api/heyapi/` from the
 API workspace. After changing `api/openapi.yaml`, run `make web-generate` for

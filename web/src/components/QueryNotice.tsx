@@ -31,6 +31,13 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
       "capability_unavailable",
     ].includes(error.code.toLowerCase())
   ) {
+    if (detailString(error.details, "capability") === "name") {
+      return (
+        <p className="context-note" role="status">
+          {t("state.namePending")}
+        </p>
+      );
+    }
     const state =
       detailString(error.details, "state") ??
       (error.code.toLowerCase() === "capability_unavailable" ? "unavailable" : "pending");

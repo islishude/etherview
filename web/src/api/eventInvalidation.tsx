@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { notifyNames } from "@/ens/nameEvents";
 import { sameOriginAPIPath } from "./client";
 import { observeEvent, type ChainEventType, type ChainQueryMeta } from "./chainEvents";
-import { resetBrowsingPagination } from "./pagination";
+import { isBrowsingQuery, markBrowsingQuery } from "./browsingState";
 
-const eventTypes: readonly ChainEventType[] = ["head", "reorg", "status"];
+const eventTypes: readonly ChainEventType[] = ["head", "reorg", "status", "names"];
 
 export function shouldInvalidateFromChainEvent(
   eventType: ChainEventType,
@@ -23,52 +24,47 @@ export function ChainEventInvalidation() {
     let backoff = 1_000;
     let disposed = false;
     let scheduled: ReturnType<typeof setTimeout> | undefined;
-    let refreshing = Promise.resolve();
+    let opened = false;
     const pending = new Set<ChainEventType>();
     const pendingPublications = new Set<string>();
+    let withdrawNames = false;
     const flush = () => {
       scheduled = undefined;
       if (disposed) return;
       const types = [...pending];
+      if (types.includes("names") || types.includes("reorg"))
+        notifyNames(
+          queryClient,
+          withdrawNames || types.includes("reorg") ? "invalidate" : "refresh",
+        );
+      const namesInvalidated = withdrawNames;
+      withdrawNames = false;
       pending.clear();
       const publications = [...pendingPublications];
       pendingPublications.clear();
-      refreshing = refreshing.then(async () => {
-        if (disposed) return;
-        const matches = (meta?: ChainQueryMeta) =>
-          types.some((type) => shouldInvalidateFromChainEvent(type, meta));
-        await queryClient.cancelQueries({ predicate: (query) => matches(query.meta) });
-        if (disposed) return;
-        const publicationAffects = (data: unknown) => {
-          const bounds = browsingBounds(data);
-          return publications.some((number) =>
-            bounds ? BigInt(number) >= bounds.from && BigInt(number) <= bounds.to : true,
-          );
-        };
-        const affectedPage = queryClient
-          .getQueryCache()
-          .getAll()
-          .some(
-            (query) =>
-              query.getObserversCount() > 0 &&
-              query.meta?.clearOnStatus === true &&
-              browsingBounds(query.state.data) !== undefined &&
-              publicationAffects(query.state.data),
-          );
-        if (affectedPage || types.includes("reorg")) {
-          resetBrowsingPagination(queryClient);
-        }
-        const reset = (meta: ChainQueryMeta | undefined, data: unknown) =>
-          (types.includes("reorg") && meta?.clearOnReorg === true) ||
-          (meta?.clearOnStatus === true && publicationAffects(data));
-        void Promise.all([
-          queryClient.resetQueries({
-            predicate: (query) => matches(query.meta) && reset(query.meta, query.state.data),
-          }),
-          queryClient.invalidateQueries({
-            predicate: (query) => matches(query.meta) && !reset(query.meta, query.state.data),
-          }),
-        ]);
+      for (const query of queryClient.getQueryCache().getAll()) {
+        if (!isBrowsingQuery(query)) continue;
+        const bounds = browsingBounds(query.state.data);
+        const affected =
+          (types.includes("reorg") && query.meta?.chainEvents?.includes("reorg")) ||
+          (types.includes("names") && query.meta?.chainEvents?.includes("names")) ||
+          (query.meta?.chainEvents?.includes("status") &&
+            publications.some(
+              (number) => !bounds || (BigInt(number) >= bounds.from && BigInt(number) <= bounds.to),
+            ));
+        if (!affected) continue;
+        // Cancellation fences late results; invalidation only marks the snapshot.
+        // Do not reset the query: empty active queries can start loading again.
+        markBrowsingQuery(
+          query,
+          (types.includes("reorg") && query.meta?.chainEvents?.includes("reorg")) ||
+            (types.includes("names") && namesInvalidated),
+        );
+      }
+      void queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.meta?.refreshPolicy === "live" &&
+          types.some((type) => shouldInvalidateFromChainEvent(type, query.meta)),
       });
     };
     const schedule = (types: readonly ChainEventType[]) => {
@@ -89,6 +85,29 @@ export function ChainEventInvalidation() {
         current.addEventListener(type, (event) => {
           if (disposed || current !== source) return;
           observeEvent(queryClient, (event as MessageEvent).lastEventId ?? "");
+          if (type === "names") {
+            try {
+              const payload: unknown = JSON.parse((event as MessageEvent).data);
+              // Recognized publications preserve still-valid observations.
+              // Unknown or malformed events withdraw them without rereading.
+              if (
+                typeof payload !== "object" ||
+                payload === null ||
+                ("invalidated" in payload && payload.invalidated !== false) ||
+                !(
+                  ("publication" in payload && decimalBlock(payload.publication)) ||
+                  ("directory" in payload && decimalBlock(payload.directory)) ||
+                  ("history" in payload &&
+                    payload.history === true &&
+                    "invalidated" in payload &&
+                    payload.invalidated === false)
+                )
+              )
+                withdrawNames = true;
+            } catch {
+              withdrawNames = true;
+            }
+          }
           if (type === "status") {
             try {
               const payload: unknown = JSON.parse((event as MessageEvent).data);
@@ -102,7 +121,7 @@ export function ChainEventInvalidation() {
               )
                 pendingPublications.add(payload.block_number);
             } catch {
-              // Other status payloads still invalidate queries normally.
+              // Other status payloads refresh only allowlisted live queries.
             }
           }
           backoff = 1_000;
@@ -110,13 +129,22 @@ export function ChainEventInvalidation() {
         });
       }
       current.onopen = () => {
-        if (!disposed && current === source) schedule(eventTypes);
+        if (!disposed && current === source) {
+          if (opened) {
+            withdrawNames = true;
+            schedule(eventTypes);
+          } else schedule(["head", "status"]);
+          opened = true;
+        }
       };
       current.onerror = () => {
         if (disposed || current !== source || current.readyState !== EventSource.CLOSED) return;
         current.close();
         source = undefined;
-        schedule(eventTypes);
+        if (opened) {
+          withdrawNames = true;
+          schedule(eventTypes);
+        }
         reconnect = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 30_000);
       };

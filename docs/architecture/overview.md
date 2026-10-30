@@ -6,6 +6,13 @@ Etherview is a modular monolith packaged as one Go binary. Components are
 selected by roles and are instantiated identically whether all roles share one
 process or run in separate deployments.
 
+[ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+defines ENS background workers under enrich in this shared component graph. P20-T27 through
+P20-T29 supply persistence, discovery, projections and publication; P30-T149
+supplies the shared runtime and operations. P40-T27 reads writer publications
+without ENS network calls or writes; P50-T81 owns proactive Web display.
+P30-T150/P30-T151 retain separate local and live acceptance gates.
+
 The feature-aware production component manifest is executable architecture:
 startup compares it with the exact deduplicated keys registered by the runtime.
 The parity suite also proves that `roles=all` is the union of the split-role
@@ -52,7 +59,7 @@ home snapshot state live in transport-independent `internal/publicquery`.
 provenance/confidence, exact verified calldata, proxy/Diamond vocabulary, and
 durable stage/replay/enqueue identities live in `internal/abicontract`,
 `internal/abicalldata`, `internal/proxycontract`, and
-`internal/stagecontract`. Worker implementations may alias those contracts,
+`internal/stagecontract`, and `internal/enscontract`. Worker implementations may alias those contracts,
 but readers and producers import the neutral owner. `make golangci-lint`
 enforces these import directions, native database API restrictions, and a
 uniform 2,500-physical-line limit for hand-written production and test Go files.
@@ -622,6 +629,64 @@ identity tables themselves requires a PostgreSQL/global-index design that can
 still enforce the current hash uniqueness and foreign-key contracts; storage
 size alone is not sufficient justification to weaken those invariants.
 
+## Background ENS persistence foundation
+
+The current-chain indexer under `internal/enssync` consumes core canonical
+blocks, log identities and coverage. `ens_sync_block_refs` and
+`ens_sync_event_refs` retain references and attachment evidence; their read
+views do not store a second copy of headers, raw logs or canonical truth.
+Protocol projections, discovery origins, independent cursors, retry budgets,
+leases and observations remain PostgreSQL-owned. A reviewed manifest binds the
+current chain/genesis, v1/v2 revisions, deployments, implementations and coin type.
+
+The bounded collector authenticates factories and proxies before replaying
+same-transaction initialization logs. Implementations are never instances.
+Parent-to-child links determine shared registry paths; parent hints do not.
+Registry token/resource lifecycle, reserved names, migration/WrapperRegistry,
+record bundles, links, defaults and reverse mirroring remain separate facts.
+Depth, cycles, fanout, hostile input and batch work are bounded.
+
+Workers close database snapshots before exact RPC/CCIP calls. Core canonical
+attachment, configuration, generation, lease and known invalidation fences are
+rechecked on publication. Exact observations can publish before history catches
+up; event-only reuse additionally requires complete relevant projections. Old
+events cannot invalidate newer exact reads. Relevant later core logs and reorgs
+withdraw results independently of the scan cursor. Finite validity, half-period
+refresh and no renewal on failure bound unobserved changes.
+
+`enrich` and `all` construct the same workers using the current-chain RPC pool.
+Source publication, immutable catalog version and `names` outbox event commit
+atomically. API reads are database-only and retain exact snapshot identity.
+One configured source retains manifest/policy and deployment identity without
+official/custom classification. Unknown is distinct from not found. Independent
+profile jobs publish current registration rights, management semantics and protocol
+expiry without requiring a successful forward address. Canonical discovery owns
+name directory membership, so expired and unresolved names remain searchable.
+Name detail and search compose immutable profile and resolution references in
+one read-only snapshot; their validity windows are independent. Names SSE and
+local expiry withdraw stale fields without manufacturing a new negative.
+Coverage transitions emit `status` with `reason: names_progress`; they do not
+withdraw valid names. Publication/directory events mark snapshots for manual
+refresh. Explicit invalidation, reorg and reconnect withdraw names without
+rereading; local expiry still applies. Explicit refresh replaces requested
+batches atomically and failed reads never extend observation validity.
+
+Name history references core logs and captures event-position protocol state
+under the collector's canonical/source fence. Node identities and event-time v2
+registry paths or record links select relevant operations. Resolver permission
+resources describe setter arguments, not record IDs, and are not expanded to
+names. Historical text values are inert, bounded event evidence. Unknown
+preimages do not hide directly matching namehash events. Unlinked record writes
+are not retrospectively attributed after a link.
+
+History reads use writer read-only snapshots, group by block/transaction and
+page expanded logs separately. Their opaque cursors freeze a canonical block,
+source revision and name-association watermark. Newer blocks preserve a page;
+reorgs or late associations reject the old traversal. History remains available
+when current registration/resolution observations expire. The compact name page
+uses the existing stream; `names` with `history=true, invalidated=false` requests
+a manual-refresh notice without withdrawing current profile fields.
+
 ## Public Boundaries
 
 - Native HTTP API lives under `/api/v1`; Etherscan compatibility lives at
@@ -684,26 +749,20 @@ size alone is not sufficient justification to weaken those invariants.
   authoritative source exists. Its optional details contain only controlled
   `capability`, `state`, and `code` identifiers; an empty successful list means
   the capability was available and observed no matching objects.
-- Price adapters retain their bounded HTTPS observation contract. ENS is a
-  separate explicitly enabled API capability governed by ADR-0041. One
-  `official_first` resolution generation pins an exact Ethereum Mainnet finalized block and,
-  when configured, one exact local canonical custom-ENS block plus sticky RPC
-  endpoint identities. `custom_only` pins only the local source and requires
-  no Mainnet connection. Go input uses `adraffy/go-ens-normalize`; the SPA uses
-  Viem `normalize`. Primary-name display additionally requires reverse and
-  matching forward resolution for the explored chain's coin type.
-- Official ENS no-record may fall through to the configured current-chain
-  custom Universal Resolver. RPC, CCIP, normalization, malformed-result, and
-  forward-mismatch failures never change namespaces. Gateway-aware Universal
-  Resolver calls use only configured HTTPS batch gateways through the shared
-  SSRF-safe transport and never persist or log RPC URLs.
-- Immutable forward/primary/no-record observations publish into the temporal
-  search catalog. Dotted search cursors bind the exact accepted observation;
-  address-name pages bind a retained generation snapshot so later batches use
-  the same source blocks. Official observations need no local block, while a
-  custom observation is visible only while its exact local block is canonical.
-  External calls remain outside PostgreSQL snapshots and ENS failure never
-  blocks core ingestion or ordinary projections.
+- Price adapters retain their bounded HTTPS observation contract. ENS workers
+  consume current-chain core facts under enrich and publish independently valid
+  exact observations. The one configured source has no fallback namespace.
+  Sticky exact-hash RPC and reverse/forward agreement remain mandatory;
+  external calls occur outside PostgreSQL snapshots.
+- API detail, batch and search paths read the writer using read-only transactions
+  and neutral contracts. They construct no ENS clients and write no candidates,
+  jobs, observations or snapshots. Opaque tokens reference retained effective
+  publications, including immutable empty snapshots; dependencies, canonicality,
+  known invalidations and observation freshness are checked independently of retention.
+- Durable `names` events share the existing SSE stream. Visible address batches
+  replace atomically at one publication; old responses cannot restore stale
+  labels. Local validity timers hide expired names without a network request.
+  Source coverage and resolution status remain separate from core readiness.
 - The maintenance role owns a PostgreSQL-only search-catalog housekeeper in
   the same production component graph used by `roles=all` and split processes.
   It runs immediately and on a configured interval, uses a chain-scoped
@@ -1028,8 +1087,10 @@ Only Caddy holds its wildcard private key. Metadata trusts the public CA and
 explicitly permits its private IPFS host; API media policy remains strict.
 Preview separately allowlists the exact IPFS HTTPS origin for confirmed image
 navigation; production defaults to no navigation exceptions.
-Node CORS uses an exact configurable allowlist without credentials. The SPA
-continues using the generated same-origin client and injected wallet boundary.
+The local Geth host accepts arbitrary Origins for JSON-RPC/WSS and returns
+wildcard CORS without credentials, allowing browser-extension wallets. Beacon
+and Bundler retain the exact configurable Origin allowlist. The SPA continues
+using the generated same-origin client and injected wallet boundary.
 Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
 The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
@@ -1209,6 +1270,10 @@ It stores compressed completed ranges and per-block monotonic revisions. All
 reads still join the authoritative published-stage view. Snapshot-range changes
 invalidate list cursors, including replay and same-hash reattachment; newer
 blocks above the snapshot do not. Publication changes emit existing `status`
-events so the single browser SSE connection clears revoked cached results and
-refreshes these queries. Search, exports and Etherscan retain their strict
+events so the single browser SSE connection marks affected snapshots and
+blocks stale cursors without requests or page resets. A page refresh button
+updates the overview and visible tab and restarts only its visible pagers.
+Only home and chain status refresh from events; verification and payment jobs
+retain terminal polling. Navigation can load stale queries; focus and network
+recovery do not. Search, exports and Etherscan retain their strict
 snapshot and coverage contracts.

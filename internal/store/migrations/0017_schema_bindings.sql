@@ -245,10 +245,14 @@ BEGIN
         current_schema(), current_schema());
     EXECUTE format('ALTER FUNCTION %I.proxy_interaction_coverage_contains(target_chain_id numeric, target_start_block numeric, target_start_hash bytea, target_end_block numeric, target_end_hash bytea) SET search_path = %I, pg_catalog',
         current_schema(), current_schema());
+    EXECUTE format('ALTER FUNCTION %I.ens_sync_publication_current(bigint) SET search_path = %I, pg_catalog', current_schema(), current_schema());
+    EXECUTE format('ALTER FUNCTION %I.ens_effective_publication_current(bigint) SET search_path = %I, pg_catalog', current_schema(), current_schema());
+    EXECUTE format('ALTER FUNCTION %I.record_ens_effective_search_document() SET search_path = %I, pg_catalog', current_schema(), current_schema());
+    EXECUTE format('ALTER FUNCTION %I.notify_ens_source_change() SET search_path = %I, pg_catalog', current_schema(), current_schema());
+    EXECUTE format('ALTER FUNCTION %I.prune_ens_event_window() SET search_path = %I, pg_catalog', current_schema(), current_schema());
     EXECUTE format('ALTER FUNCTION %I.prune_search_catalog(requested_chain_id numeric, requested_retention_generations bigint) SET search_path = %I, pg_catalog',
         current_schema(), current_schema());
-    EXECUTE format('ALTER FUNCTION %I.record_ens_name_search_document() SET search_path = %I, pg_catalog',
-        current_schema(), current_schema());
+
     EXECUTE format('ALTER FUNCTION %I.record_search_catalog_document() SET search_path = %I, pg_catalog',
         current_schema(), current_schema());
     EXECUTE format('ALTER FUNCTION %I.record_verified_contract_search_catalog_document() SET search_path = %I, pg_catalog',

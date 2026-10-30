@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	testUniversalResolver = common.HexToAddress(OfficialUniversalResolverAddress)
+	testUniversalResolver = common.HexToAddress(MainnetUniversalResolverAddress)
 	testForwardResolver   = common.HexToAddress("0x1111111111111111111111111111111111111111")
 	testReverseResolver   = common.HexToAddress("0x2222222222222222222222222222222222222222")
 	testResolvedAddress   = common.HexToAddress("0x3333333333333333333333333333333333333333")
@@ -96,7 +96,7 @@ func testResolver(t *testing.T, gateway GatewayRequester) *Resolver {
 
 func testProfile() Profile {
 	return Profile{
-		Source: SourceOfficial, UniversalResolver: testUniversalResolver,
+		Registry: common.HexToAddress("0x1234"), UniversalResolver: testUniversalResolver,
 		CoinType: big.NewInt(60), Gateways: []string{"https://ccip.example"},
 		Block: BlockRef{Number: 12, Hash: testBlockHash},
 	}

@@ -54,7 +54,7 @@ SELECT EXISTS(SELECT 1 FROM core_coverage_ranges AS coverage, boundary WHERE cov
 SELECT source.activity FROM watch_activity_sources AS source
 WHERE source.chain_id=sqlc.arg('chain_id')::numeric AND source.block_number<=sqlc.arg('tip')::numeric
 AND source.block_timestamp>=sqlc.arg('from_timestamp')::numeric AND source.block_timestamp<sqlc.arg('to_timestamp')::numeric
-AND (source.source_kind=sqlc.arg('kind')::text OR (sqlc.arg('kind')='nft' AND source.source_kind IN ('erc721','erc1155')))
+AND ((sqlc.arg('kind')::text='all' AND source.source_kind IN ('transaction','erc20','erc721','erc1155')) OR source.source_kind=sqlc.arg('kind') OR (sqlc.arg('kind')='nft' AND source.source_kind IN ('erc721','erc1155')))
 AND ((sqlc.arg('direction')::text IN ('in','both') AND source.to_address=sqlc.arg('address')::text)
  OR (sqlc.arg('direction') IN ('out','both') AND source.from_address=sqlc.arg('address')))
 ORDER BY source.block_number,source.tx_index,source.source_key LIMIT 10001;

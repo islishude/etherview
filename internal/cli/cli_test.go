@@ -710,3 +710,21 @@ func TestOfflineCommandsDoNotLoadPushSecrets(t *testing.T) {
 		}
 	}
 }
+
+func TestENSOperationsDispatchWithoutRPCConfiguration(t *testing.T) {
+	t.Setenv("ETHERVIEW_DATABASE_URL", "postgres://localhost/etherview")
+	unsetCLIEnvironment(t, "ETHERVIEW_RPC_URLS_FILE")
+	unsetCLIEnvironment(t, "ETHERVIEW_RPC_URLS")
+	for _, action := range []string{"import", "replay"} {
+		backend := &fakeBackend{}
+		var stderr bytes.Buffer
+		program := Program{Backend: backend, Stdout: &bytes.Buffer{}, Stderr: &stderr}
+		args := []string{"ens", action, "--source-id", "1", "--batch-id", "explicit-page"}
+		if code := program.Run(t.Context(), args); code != 0 {
+			t.Fatal(code, stderr.String())
+		}
+		if backend.repairKind != "ens" || !slices.Equal(backend.repairArgs, args[1:]) {
+			t.Fatal(backend.repairArgs)
+		}
+	}
+}

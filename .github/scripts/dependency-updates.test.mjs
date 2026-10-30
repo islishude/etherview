@@ -49,6 +49,7 @@ function fixture(dir, commands = []) {
     pins: [
       { path: "Makefile", template: "EXAMPLE_VERSION ?= v{{version}}", count: 1 },
       { path: "linked.txt", template: "example {{version}} / {{version}}", count: 1 },
+      { path: "package.json", jsonPath: ["devDependencies", "example"], template: "{{version}}" },
     ],
     commands,
     generated: ["lock.json"],
@@ -67,6 +68,17 @@ function fixture(dir, commands = []) {
     "EXAMPLE_VERSION ?= v1.2.3\n.PHONY: test-workflow-scripts docs-check\ntest-workflow-scripts docs-check:\n\t@true\n",
   );
   writeFileSync(join(dir, "linked.txt"), "example 1.2.3 / 1.2.3\n");
+  writeFileSync(
+    join(dir, "package.json"),
+    JSON.stringify(
+      {
+        scripts: { test: "echo approved" },
+        devDependencies: { example: "1.2.3", unrelated: "1.2.3" },
+      },
+      null,
+      2,
+    ) + "\n",
+  );
   writeFileSync(join(dir, "lock.json"), "{}\n");
   git(["init", "-q"], dir);
   git(["add", "."], dir);
@@ -160,6 +172,75 @@ test("all automatic entries update every registered linked occurrence", () =>
       assert.equal(currentVersion(dep, dir), version, dep.id);
       audit(dir);
     }
+  }));
+test("JSON pins ignore formatting and field order and update only registered fields", () =>
+  sandbox((dir) => {
+    const dep = fixture(dir);
+    dep.pins.push({
+      path: "package.json",
+      jsonPath: ["packageManager"],
+      template: "example@{{version}}",
+    });
+    for (const document of [
+      {
+        devDependencies: { example: "1.2.3", unrelated: "1.2.3" },
+        packageManager: "example@1.2.3",
+      },
+      {
+        packageManager: "example@1.2.3",
+        devDependencies: { unrelated: "1.2.3", example: "1.2.3" },
+      },
+    ]) {
+      for (const indent of [undefined, 2, "\t"]) {
+        writeFileSync(join(dir, "package.json"), JSON.stringify(document, null, indent));
+        assert.equal(currentVersion(dep, dir), "1.2.3");
+        const changes = replacements(dep, "1.2.4", dir);
+        assert.deepEqual(JSON.parse(changes.get("package.json")), {
+          ...document,
+          packageManager: "example@1.2.4",
+          devDependencies: { ...document.devDependencies, example: "1.2.4" },
+        });
+        assert.match(changes.get("Makefile"), /EXAMPLE_VERSION \?= v1\.2\.4/);
+        assert.equal(changes.get("linked.txt"), "example 1.2.4 / 1.2.4\n");
+      }
+    }
+  }));
+test("JSON pins reject missing fields, wrong types, malformed JSON and inconsistent versions", () =>
+  sandbox((dir) => {
+    const dep = fixture(dir);
+    for (const [document, error] of [
+      [{}, /missing JSON field/],
+      [{ devDependencies: {} }, /missing JSON field/],
+      [{ devDependencies: null }, /missing JSON field/],
+      [{ devDependencies: { example: null } }, /must be a string/],
+      [{ devDependencies: { example: 123 } }, /must be a string/],
+      [{ devDependencies: { example: "^1.2.3" } }, /position drift/],
+      [{ devDependencies: { example: "1.2.3\n" } }, /position drift/],
+      [{ devDependencies: { example: "1.2.4" } }, /disagree/],
+    ]) {
+      writeFileSync(join(dir, "package.json"), JSON.stringify(document));
+      assert.throws(() => currentVersion(dep, dir), error);
+      assert.throws(() => replacements(dep, "1.2.5", dir), error);
+    }
+    writeFileSync(join(dir, "package.json"), "{");
+    assert.throws(() => currentVersion(dep, dir), SyntaxError);
+  }));
+test("JSON pin paths are validated and ownership follows the field rather than its template", () =>
+  sandbox((dir) => {
+    const dep = fixture(dir);
+    const registryFile = join(dir, ".github/dependency-registry.json");
+    const pin = dep.pins.at(-1);
+    const save = () =>
+      writeFileSync(registryFile, JSON.stringify({ schema: 1, dependencies: [dep] }));
+    for (const jsonPath of [undefined, [], "devDependencies.example", [""], [1]]) {
+      dep.pins[2] = { ...pin, jsonPath };
+      save();
+      assert.throws(() => readRegistry(dir), /invalid pin template/);
+    }
+    dep.pins[2] = pin;
+    const duplicate = { ...dep, id: "duplicate", pins: [{ ...pin, template: "v{{version}}" }] };
+    writeFileSync(registryFile, JSON.stringify({ schema: 1, dependencies: [dep, duplicate] }));
+    assert.throws(() => audit(dir), /duplicate pin ownership/);
   }));
 test("missing pins, duplicate owners, uncovered Makefile versions and Dependabot ownership fail", () =>
   sandbox((dir) => {
@@ -336,8 +417,11 @@ test("publication rejects source changes beyond the registered version replaceme
     const dep = fixture(checkout);
     prepare(dep, "1.2.4", checkout, artifact);
     run("git", ["apply", "-"], checkout, { input: readFileSync(join(artifact, "update.patch")) });
-    const makefile = join(checkout, "Makefile");
-    writeFileSync(makefile, readFileSync(makefile, "utf8").replace("@true", "@echo unapproved"));
+    const packageFile = join(checkout, "package.json");
+    writeFileSync(
+      packageFile,
+      readFileSync(packageFile, "utf8").replace("echo approved", "echo unapproved"),
+    );
     const patch = git(["diff", "--binary"], checkout) + "\n";
     const report = JSON.parse(readFileSync(join(artifact, "report.json")));
     report.patch_sha256 = digest(patch);

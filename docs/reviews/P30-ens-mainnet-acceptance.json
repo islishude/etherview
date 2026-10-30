@@ -1,0 +1,2152 @@
+{
+  "schema_version": 1,
+  "task": "P30-T148",
+  "status": "in_progress",
+  "date": "2026-10-29",
+  "read_only": true,
+  "scope": "Real Mainnet deployment/activation and bounded collection acceptance in a local disposable PostgreSQL 18 environment. Full historical coverage and database publication reconciliation remain incomplete.",
+  "image": "sha256:8ac3d10c15d3358f3bd26551ccc323188eab42ed0473bc834ee34e0dd6619001",
+  "platform": "linux/arm64",
+  "source_revisions": {
+    "ens-contracts": "9b034936a42f462fc04bc0a929a419ede5e18d59",
+    "ens-contracts-v2": "4f47cbcc11462fb413196e6b5c0f8090247a6c08"
+  },
+  "endpoints": {
+    "primary": "user-supplied archive RPC; URL deliberately omitted",
+    "independent": "https://ethereum-rpc.publicnode.com",
+    "distinct_hosts": true
+  },
+  "preflight": {
+    "acceptance": "incomplete",
+    "activation": [
+      {
+        "endpoint": "supplied",
+        "proxy_implementation": {
+          "raw": "0x000000000000000000000000cffd2ae680cd110d28739a70922636b5937b022b",
+          "status": "passed",
+          "values": [
+            "0xcffd2ae680cd110d28739a70922636b5937b022b"
+          ]
+        },
+        "registrar_owner": {
+          "raw": "0x000000000000000000000000fe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+          "status": "passed",
+          "values": [
+            "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7"
+          ]
+        },
+        "registrar_registry": {
+          "raw": "0x000000000000000000000000f60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "status": "passed",
+          "values": [
+            "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2"
+          ]
+        },
+        "root_eth_subregistry": {
+          "raw": "0x000000000000000000000000f60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "status": "passed",
+          "values": [
+            "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2"
+          ]
+        },
+        "v2_is_ensv2": {
+          "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "passed",
+          "values": [
+            true
+          ]
+        },
+        "v2_root_registry": {
+          "raw": "0x0000000000000000000000002553c09be6447beffdb86fa622ad41fb8f77a91e",
+          "status": "passed",
+          "values": [
+            "0x2553c09be6447beffdb86fa622ad41fb8f77a91e"
+          ]
+        }
+      },
+      {
+        "endpoint": "independent_publicnode",
+        "proxy_implementation": {
+          "raw": "0x000000000000000000000000cffd2ae680cd110d28739a70922636b5937b022b",
+          "status": "passed",
+          "values": [
+            "0xcffd2ae680cd110d28739a70922636b5937b022b"
+          ]
+        },
+        "registrar_owner": {
+          "raw": "0x000000000000000000000000fe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+          "status": "passed",
+          "values": [
+            "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7"
+          ]
+        },
+        "registrar_registry": {
+          "raw": "0x000000000000000000000000f60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "status": "passed",
+          "values": [
+            "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2"
+          ]
+        },
+        "root_eth_subregistry": {
+          "raw": "0x000000000000000000000000f60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "status": "passed",
+          "values": [
+            "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2"
+          ]
+        },
+        "v2_is_ensv2": {
+          "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "passed",
+          "values": [
+            true
+          ]
+        },
+        "v2_root_registry": {
+          "raw": "0x0000000000000000000000002553c09be6447beffdb86fa622ad41fb8f77a91e",
+          "status": "passed",
+          "values": [
+            "0x2553c09be6447beffdb86fa622ad41fb8f77a91e"
+          ]
+        }
+      }
+    ],
+    "anchor": {
+      "hash": "0x409c195c73590ef2c622ca5dffa4e944b804e63bc1bd1718c3594450d4df5e24",
+      "number": "26297715",
+      "timestamp": "2026-10-29T10:11:35Z"
+    },
+    "artifact_revision": "4f47cbcc11462fb413196e6b5c0f8090247a6c08",
+    "deployments": [
+      {
+        "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+        "artifact_sha256": "07eec2e63606202f793b735b34dd05bac605f7c082fb2f91a8bf8ca0dd65c76b",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "RootRegistry",
+        "deployment": {
+          "BlockHash": "0x08f238e69864a97de9ef1ef6b4a75199bec521cd305425883191240193cba595",
+          "BlockNumber": "0x18f883e"
+        },
+        "transaction": "0xf12729f064bb948db72cfc90319cc5bc6ff43cb486ad264eb64a4adfc08a2618"
+      },
+      {
+        "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+        "artifact_sha256": "a02e8cd8faca6fe3787f640589892ef150562f07a725cc92780ec9dff4330c66",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "ETHRegistry",
+        "deployment": {
+          "BlockHash": "0x27b454becad8b99f418a1d6355daa0dcba74a687cc54a98f44779e9ec314338a",
+          "BlockNumber": "0x18e5715"
+        },
+        "transaction": "0xf69d06286b2688b64fcafa572f862487a5cb5a4607fd60a925c5727b93d1a6a7"
+      },
+      {
+        "address": "0x804bf0d289c8353a0bafdaaf9069ab14c92b2099",
+        "artifact_sha256": "435e3c709e6664074cdbee06490ae1a1052c62c2adfdb23b82b0506d96558fc6",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x13e87cd4503f2dfa907f4a95180c66e2062ee06e23bd0c41e225d4c6bc568f4f",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x13e87cd4503f2dfa907f4a95180c66e2062ee06e23bd0c41e225d4c6bc568f4f",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x13e87cd4503f2dfa907f4a95180c66e2062ee06e23bd0c41e225d4c6bc568f4f",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "UniversalResolverV1",
+        "deployment": {
+          "BlockHash": "0x9aca9a43c6f112ba310b10fde640a9400eabff4164ce163fbffd930f422f6a33",
+          "BlockNumber": "0x190078b"
+        },
+        "transaction": "0x9f6e857ddc7ad7c5c19b643662e1f59078850642cb0d198fd4480af43f7a159b"
+      },
+      {
+        "address": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+        "artifact_sha256": "f6128862b45f258cb2c6b826cd6f2791cd21d1059b414e7ddd147e348086f6e7",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "UniversalResolverV2",
+        "deployment": {
+          "BlockHash": "0xa94d4799b66e8fe3c84e92fccfc8d46e285f666601c11c1037070ba548ad0790",
+          "BlockNumber": "0x190078a"
+        },
+        "transaction": "0xb915466b66b0abf0932358dd5c12dff1f05b38fb4aa2343730f5a987c2db2743"
+      },
+      {
+        "address": "0x77510ba162dfea3d8989e3f0928a691b345730d2",
+        "artifact_sha256": "1d3e9f126014878d0a0520fae2e3015a8c3b7b0c546ccd56eaca58ba9ef6c6e4",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xc251b434fe75ce3ca024e85883aafd7c1d0b8e382d747b537c5930018b144a91",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xc251b434fe75ce3ca024e85883aafd7c1d0b8e382d747b537c5930018b144a91",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xc251b434fe75ce3ca024e85883aafd7c1d0b8e382d747b537c5930018b144a91",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "VerifiableFactory",
+        "deployment": {
+          "BlockHash": "0x00fc218f25afcd179aeda3c24aa1cfc9ea3c4219cc76bb9c51f017fe3818bac9",
+          "BlockNumber": "0x18e55d3"
+        },
+        "transaction": "0xba22f1c09a7ac6f81af43670e22be51d6f3b5ef164888c7ffa865c4836df19bf"
+      },
+      {
+        "address": "0xfaa23592aca10a6d8875b18ea86954e8eb6d8d72",
+        "artifact_sha256": "d906823ddf2b53278c6d51e47cb9e88e39317690e6233ae95081ff9a333cc4c1",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xb5b939d5a80a1d00351e4e0faa3529b8ee25dfcf436d64f781d415ccc8a3b7a9",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xb5b939d5a80a1d00351e4e0faa3529b8ee25dfcf436d64f781d415ccc8a3b7a9",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xb5b939d5a80a1d00351e4e0faa3529b8ee25dfcf436d64f781d415ccc8a3b7a9",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "UserRegistryImpl",
+        "deployment": {
+          "BlockHash": "0x6b32bb7066ee170885f3083b28b7cd3f47f7d6a06d55a49dabf2577fbab0e487",
+          "BlockNumber": "0x190f511"
+        },
+        "transaction": "0x0f9090bea31c67a57fed489e4225f4a52f410e4e701c88b6e45945de2e315cde"
+      },
+      {
+        "address": "0x565b0f456a04ac9b48758190e90030623cff57c5",
+        "artifact_sha256": "101a668cd4c04fdaf76c8e80adc2d813659b3c76034a4675cb0d3392d958fb0d",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x25df12e14187ae568dca1861b918e01b6e24a671dea6089a6dbbe60c5d3ef640",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x25df12e14187ae568dca1861b918e01b6e24a671dea6089a6dbbe60c5d3ef640",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x25df12e14187ae568dca1861b918e01b6e24a671dea6089a6dbbe60c5d3ef640",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "PermissionedResolverImpl",
+        "deployment": {
+          "BlockHash": "0x8264c47fce20de6d84e218ed2c06803cc15cd60c6b9333357404c728c83f5b9e",
+          "BlockNumber": "0x18e571f"
+        },
+        "transaction": "0x490e4e23abd28a3c7b7fb2b959389c9d0e8a682be56590ed50332b1f38f3321d"
+      },
+      {
+        "address": "0xe86a4ef4d7a210aaa1d6a9594fc7add7cd2cf888",
+        "artifact_sha256": "0357782cfa23e7aca846004665eca7f22687105490029a401dd0ac6e9aab35f5",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xcd66e7975d6ab54d9681c96520e44f312418bcba1773039aab8b92c65d4f7d3d",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xcd66e7975d6ab54d9681c96520e44f312418bcba1773039aab8b92c65d4f7d3d",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xcd66e7975d6ab54d9681c96520e44f312418bcba1773039aab8b92c65d4f7d3d",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "WrapperRegistryImpl",
+        "deployment": {
+          "BlockHash": "0x03997b229cade838f1ccc97170c11c9d4c73374d4936979cef7018431f994e49",
+          "BlockNumber": "0x190f512"
+        },
+        "transaction": "0xcf7974e8118ed315f9570e2792a5cba8857028edfb5051ea74a777d5ea0e76bb"
+      },
+      {
+        "address": "0xd6d8369e55c94ae8afa714e6cf7ab5be54d5cc81",
+        "artifact_sha256": "4b902ef1696529917e9b17b7619d619450398cf688fec420159ae893f15700ca",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x48986eb4c6aad9469e9eb2e8b016a03c32bcdf129333a1ff9e44b83710b3893a",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x48986eb4c6aad9469e9eb2e8b016a03c32bcdf129333a1ff9e44b83710b3893a",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x48986eb4c6aad9469e9eb2e8b016a03c32bcdf129333a1ff9e44b83710b3893a",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "ETHRegistrar",
+        "deployment": {
+          "BlockHash": "0xe0c89409673bbd9f6939e7bd72db52093a34dfce37b34fb0c60c883f285111c1",
+          "BlockNumber": "0x18f893f"
+        },
+        "transaction": "0x6846fb243bb5148fdc629730aeee178aa80db80971e81490844020f04cd52a83"
+      },
+      {
+        "address": "0x56c447f308f463a01121c41e72b0e7e7557fcb68",
+        "artifact_sha256": "d36fa00bbb45f914c4fc8599bae986efc681d171ccc6c2fce4a73c53694d99a1",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x15b939946a5d819f59ea02031fa480b2a8f3b4aa50a2f4d6319b6d7d20038118",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x15b939946a5d819f59ea02031fa480b2a8f3b4aa50a2f4d6319b6d7d20038118",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x15b939946a5d819f59ea02031fa480b2a8f3b4aa50a2f4d6319b6d7d20038118",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "ETHRenewerV1",
+        "deployment": {
+          "BlockHash": "0x50f318623e69f8ae48796ad698e873ded879d49518dc2553817dccd3cbc0b7d3",
+          "BlockNumber": "0x18f8941"
+        },
+        "transaction": "0xb1dc2d8b0653065a1a6a18adf51b0227121c7cf6a3f02b780d9b7d49aa7373e8"
+      },
+      {
+        "address": "0xf0ccfbf6dba1e01ccb833ced6d551a8f000e9721",
+        "artifact_sha256": "74cc1fdb8a96e648f479d5a4d56f74c101451d5ed4fa88a49923c291b96b9287",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x8e888257ca0e1dbec3593451ee93d1851ab8cde05a6cf337a74712217bbe8232",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x8e888257ca0e1dbec3593451ee93d1851ab8cde05a6cf337a74712217bbe8232",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x8e888257ca0e1dbec3593451ee93d1851ab8cde05a6cf337a74712217bbe8232",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "BatchRegistrar",
+        "deployment": {
+          "BlockHash": "0x0dccf09258715ded21d8820edaa600b1d2e22c7e3cd427fccb9127f7a2ae27d4",
+          "BlockNumber": "0x18e5738"
+        },
+        "transaction": "0x637140f113e7af418d582abf7a22345da89932666fd7daf47780a1857e00dc7a"
+      },
+      {
+        "address": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+        "artifact_sha256": "545ffad9202efc9c5803fb1f0887d4f500d626446137db19ef40ed35f11d0b62",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xa94f1d887d14585b0f121c5404ed30702d38d242a8d2f19f7000d6a3e3eb3f65",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xa94f1d887d14585b0f121c5404ed30702d38d242a8d2f19f7000d6a3e3eb3f65",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0xa94f1d887d14585b0f121c5404ed30702d38d242a8d2f19f7000d6a3e3eb3f65",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "UnlockedMigrationController",
+        "deployment": {
+          "BlockHash": "0xd1553a2cf0f1f89deacfe940d051bf44848da77472c059e369109f71176190fb",
+          "BlockNumber": "0x18e572a"
+        },
+        "transaction": "0x848cdc91407e1b908b827c7230f7208ca614b36d17507c5dc696650eeb17d9c5"
+      },
+      {
+        "address": "0x3071ad643ce4ed8b3d67b289845b45db82b068a4",
+        "artifact_sha256": "0300db18c0bf3b35136df2d3b90cd1c0f50598eb2e28c55c387a3bb2949161ac",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x6fc8962aaa5ed9bb07906c758a615c5fa538362f87ce034c634499231e94b48d",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x6fc8962aaa5ed9bb07906c758a615c5fa538362f87ce034c634499231e94b48d",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x6fc8962aaa5ed9bb07906c758a615c5fa538362f87ce034c634499231e94b48d",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "ENSV2Resolver",
+        "deployment": {
+          "BlockHash": "0x8a5dabd2e407feee9a75945e3530b2d152dcea99222d9f57929eb028233a07e5",
+          "BlockNumber": "0x1900765"
+        },
+        "transaction": "0x3bf690698a1e790e177c9a60399a40b6a04316646c54e1123bca77cb6344ed01"
+      },
+      {
+        "address": "0x66f9f566ff2f26309c1bd9134388478a801da3e1",
+        "artifact_sha256": "3689f91b1b426c2cc014af91b9ebd7daf62b931df45758548caffb542e11a4ec",
+        "checks": [
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x2dbdf4cd030ed70fe9bc81dcf29f618d6e1c08438c45c4fb9e2e5a6c040bd99f",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x2dbdf4cd030ed70fe9bc81dcf29f618d6e1c08438c45c4fb9e2e5a6c040bd99f",
+            "historical_status": "passed",
+            "unchanged_code": true
+          },
+          {
+            "artifact_runtime_matches": true,
+            "current_code_hash": "0x2dbdf4cd030ed70fe9bc81dcf29f618d6e1c08438c45c4fb9e2e5a6c040bd99f",
+            "current_status": "passed",
+            "deployment_hash_matches": true,
+            "deployment_header_status": "passed",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "historical_status": "rpc_error_4444",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "PublicResolverV2",
+        "deployment": {
+          "BlockHash": "0x5af3d97d52e0fc989c22801c4c18642bce8c33d5af9024f5284fe9dfe4437e41",
+          "BlockNumber": "0x1900783"
+        },
+        "transaction": "0xca818392833e22cc12ca8039af7c4bcdfad0eba72f9176f17a2dc68f4079705e"
+      }
+    ],
+    "distinct_endpoint_hosts": true,
+    "finished_at": "2026-10-29T10:30:21Z",
+    "identities": [
+      {
+        "endpoint": "supplied",
+        "finalized": {
+          "Number": 26297715,
+          "Hash": "0x409c195c73590ef2c622ca5dffa4e944b804e63bc1bd1718c3594450d4df5e24"
+        },
+        "status": "passed"
+      },
+      {
+        "endpoint": "independent_publicnode",
+        "finalized": {
+          "Number": 26297715,
+          "Hash": "0x409c195c73590ef2c622ca5dffa4e944b804e63bc1bd1718c3594450d4df5e24"
+        },
+        "status": "passed"
+      }
+    ],
+    "independent_anchor": {
+      "matches": true,
+      "status": "passed"
+    },
+    "read_only": true,
+    "recent_logs": [
+      {
+        "endpoint": "supplied",
+        "from": "26297460",
+        "log_count": 1607,
+        "log_digest": "0x695fb4078ee018ceda601f51e94f8a7ebd0b39a222624cfc00ba6e5e52f5122b",
+        "status": "passed",
+        "to": "26297715"
+      },
+      {
+        "endpoint": "independent_publicnode",
+        "from": "26297460",
+        "log_count": 1607,
+        "log_digest": "0x695fb4078ee018ceda601f51e94f8a7ebd0b39a222624cfc00ba6e5e52f5122b",
+        "status": "passed",
+        "to": "26297715"
+      }
+    ],
+    "samples": [
+      {
+        "checks": [
+          {
+            "endpoint": "supplied",
+            "forward": {
+              "Outcome": "resolved",
+              "Name": "vitalik.eth",
+              "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "forward_status": "passed",
+            "reverse": {
+              "Outcome": "resolved",
+              "Name": "vitalik.eth",
+              "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+              "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "reverse_status": "passed",
+            "v2_owner": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                "0x0000000000000000000000000000000000000000"
+              ]
+            },
+            "v2_status": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "status": "passed",
+              "values": [
+                1
+              ]
+            }
+          },
+          {
+            "endpoint": "independent_publicnode",
+            "forward": {
+              "Outcome": "resolved",
+              "Name": "vitalik.eth",
+              "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "forward_status": "passed",
+            "reverse": {
+              "Outcome": "resolved",
+              "Name": "vitalik.eth",
+              "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+              "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "reverse_status": "passed",
+            "v2_owner": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                "0x0000000000000000000000000000000000000000"
+              ]
+            },
+            "v2_status": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "status": "passed",
+              "values": [
+                1
+              ]
+            }
+          }
+        ],
+        "name": "vitalik.eth"
+      },
+      {
+        "checks": [
+          {
+            "endpoint": "supplied",
+            "forward": {
+              "Outcome": "resolved",
+              "Name": "nick.eth",
+              "Address": "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              "Resolver": "0xf4f1007ea430848f2fad60e405a54fc100fec341"
+            },
+            "forward_status": "passed",
+            "reverse": {
+              "Outcome": "resolved",
+              "Name": "nick.eth",
+              "Address": "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              "Resolver": "0xf4f1007ea430848f2fad60e405a54fc100fec341",
+              "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "reverse_status": "passed",
+            "v2_owner": {
+              "raw": "0x000000000000000000000000b8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              "status": "passed",
+              "values": [
+                "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5"
+              ]
+            },
+            "v2_status": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "status": "passed",
+              "values": [
+                2
+              ]
+            }
+          },
+          {
+            "endpoint": "independent_publicnode",
+            "forward": {
+              "Outcome": "resolved",
+              "Name": "nick.eth",
+              "Address": "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              "Resolver": "0xf4f1007ea430848f2fad60e405a54fc100fec341"
+            },
+            "forward_status": "passed",
+            "reverse": {
+              "Outcome": "resolved",
+              "Name": "nick.eth",
+              "Address": "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              "Resolver": "0xf4f1007ea430848f2fad60e405a54fc100fec341",
+              "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "reverse_status": "passed",
+            "v2_owner": {
+              "raw": "0x000000000000000000000000b8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+              "status": "passed",
+              "values": [
+                "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5"
+              ]
+            },
+            "v2_status": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "status": "passed",
+              "values": [
+                2
+              ]
+            }
+          }
+        ],
+        "name": "nick.eth"
+      },
+      {
+        "checks": [
+          {
+            "endpoint": "supplied",
+            "forward": {
+              "Outcome": "resolved",
+              "Name": "ens.eth",
+              "Address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "forward_status": "passed",
+            "reverse": {
+              "Outcome": "resolved",
+              "Name": "wallet.ensdao.eth",
+              "Address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+              "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "reverse_status": "passed",
+            "v2_owner": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                "0x0000000000000000000000000000000000000000"
+              ]
+            },
+            "v2_status": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "status": "passed",
+              "values": [
+                1
+              ]
+            }
+          },
+          {
+            "endpoint": "independent_publicnode",
+            "forward": {
+              "Outcome": "resolved",
+              "Name": "ens.eth",
+              "Address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "forward_status": "passed",
+            "reverse": {
+              "Outcome": "resolved",
+              "Name": "wallet.ensdao.eth",
+              "Address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+              "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+              "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+            },
+            "reverse_status": "passed",
+            "v2_owner": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                "0x0000000000000000000000000000000000000000"
+              ]
+            },
+            "v2_status": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+              "status": "passed",
+              "values": [
+                1
+              ]
+            }
+          }
+        ],
+        "name": "ens.eth"
+      }
+    ],
+    "started_at": "2026-10-29T10:29:58Z",
+    "task": "P30-T148"
+  },
+  "activation_and_v1": {
+    "anchor": {
+      "Hash": "0x409c195c73590ef2c622ca5dffa4e944b804e63bc1bd1718c3594450d4df5e24",
+      "Number": "26297715"
+    },
+    "entrypoint_chain": [
+      {
+        "artifact_runtime_matches": true,
+        "endpoint": "supplied",
+        "managed_code_hash": "0x9e9a5896c68cb6803d2833a9d0805e6c212227ac5f9aeab6aab738a967ef121c",
+        "managed_code_status": "passed",
+        "managed_implementation": {
+          "raw": "0x00000000000000000000000006fdd07f007adac667177b46ab2eb9a75132cfd5",
+          "status": "passed",
+          "values": [
+            "0x06fdd07f007adac667177b46ab2eb9a75132cfd5"
+          ]
+        },
+        "public_entrypoint_is_v2": {
+          "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "passed",
+          "values": [
+            true
+          ]
+        },
+        "public_entrypoint_root": {
+          "raw": "0x0000000000000000000000002553c09be6447beffdb86fa622ad41fb8f77a91e",
+          "status": "passed",
+          "values": [
+            "0x2553c09be6447beffdb86fa622ad41fb8f77a91e"
+          ]
+        }
+      },
+      {
+        "artifact_runtime_matches": true,
+        "endpoint": "independent_publicnode",
+        "managed_code_hash": "0x9e9a5896c68cb6803d2833a9d0805e6c212227ac5f9aeab6aab738a967ef121c",
+        "managed_code_status": "passed",
+        "managed_implementation": {
+          "raw": "0x00000000000000000000000006fdd07f007adac667177b46ab2eb9a75132cfd5",
+          "status": "passed",
+          "values": [
+            "0x06fdd07f007adac667177b46ab2eb9a75132cfd5"
+          ]
+        },
+        "public_entrypoint_is_v2": {
+          "raw": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "status": "passed",
+          "values": [
+            true
+          ]
+        },
+        "public_entrypoint_root": {
+          "raw": "0x0000000000000000000000002553c09be6447beffdb86fa622ad41fb8f77a91e",
+          "status": "passed",
+          "values": [
+            "0x2553c09be6447beffdb86fa622ad41fb8f77a91e"
+          ]
+        }
+      }
+    ],
+    "finished_at": "2026-10-29T10:41:30Z",
+    "read_only": true,
+    "real_v2_registrations": [
+      {
+        "block": "26297467",
+        "block_hash": "0x96fc290d9a7ae7163600e9373a186ebef0cbe7a7215f8d8d86590fd30286e7d1",
+        "log_index": 401,
+        "transaction": "0x3cd07a1be33c6807561a328ebc3dca3612216e6fb3cf6dd8ff13465140e70ccd",
+        "values": {
+          "expiry": 1821546957,
+          "label": "caimpl",
+          "labelHash": [
+            207,
+            56,
+            0,
+            190,
+            109,
+            103,
+            191,
+            226,
+            146,
+            237,
+            155,
+            153,
+            7,
+            122,
+            202,
+            47,
+            150,
+            201,
+            117,
+            44,
+            192,
+            175,
+            135,
+            25,
+            98,
+            119,
+            37,
+            45,
+            69,
+            240,
+            145,
+            193
+          ],
+          "owner": "0xdc3a6d69972462d20280c26c4a22eaefc10a4566",
+          "sender": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+          "tokenId": 93727708226275318555974194766033457969846089237079293942299048016511116509184
+        }
+      },
+      {
+        "block": "26297476",
+        "block_hash": "0xbbebdf60a1701646af407a40a3f34d35028d9848913a83bb2b284d80d9c79faf",
+        "log_index": 50,
+        "transaction": "0xea2870547c421a25a647c9210d15d072e8b897acf063dbaddbb1efa58cb45360",
+        "values": {
+          "expiry": 1799227307,
+          "label": "dataspace",
+          "labelHash": [
+            2,
+            104,
+            246,
+            144,
+            255,
+            64,
+            247,
+            61,
+            166,
+            203,
+            186,
+            73,
+            222,
+            97,
+            66,
+            221,
+            170,
+            132,
+            119,
+            18,
+            9,
+            145,
+            2,
+            158,
+            145,
+            44,
+            18,
+            10,
+            69,
+            203,
+            154,
+            206
+          ],
+          "owner": "0x30a86a5b68e29ef151046937fc9bb435d4bb1679",
+          "sender": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+          "tokenId": 1090079530618475044496331768814776904081229424836696388065603268597013020672
+        }
+      },
+      {
+        "block": "26297477",
+        "block_hash": "0x7d961ec5b796ac422dd257d7bb9ae449ef07746124ff50a47f636d67e4ddfec0",
+        "log_index": 309,
+        "transaction": "0xfe9c8016e5b73161053e120ae4b120b705edf550f426a70bc221258fef7d976f",
+        "values": {
+          "expiry": 1824823427,
+          "label": "moni97",
+          "labelHash": [
+            190,
+            67,
+            55,
+            148,
+            69,
+            67,
+            186,
+            85,
+            56,
+            240,
+            169,
+            91,
+            77,
+            202,
+            164,
+            7,
+            152,
+            253,
+            23,
+            143,
+            220,
+            150,
+            152,
+            132,
+            235,
+            255,
+            35,
+            61,
+            146,
+            139,
+            70,
+            233
+          ],
+          "owner": "0x54122ee0aa1b379791c56b251d345ac8a6e80089",
+          "sender": "0xd6d8369e55c94ae8afa714e6cf7ab5be54d5cc81",
+          "tokenId": 86058203577576355512208292455973968200831092407484802481195226556640561987584
+        }
+      },
+      {
+        "block": "26297479",
+        "block_hash": "0x1928a17074f8057211aefd253083c11d73069e489b16412835ad94b9d0cd7aac",
+        "log_index": 122,
+        "transaction": "0x85c5cae9f9b906a87642abffff15e7211542c8613ef9b9e22dc1c9f3048d3e61",
+        "values": {
+          "expiry": 1857374975,
+          "label": "evmaverick",
+          "labelHash": [
+            95,
+            32,
+            39,
+            219,
+            237,
+            41,
+            73,
+            21,
+            135,
+            105,
+            136,
+            176,
+            63,
+            54,
+            62,
+            190,
+            253,
+            6,
+            230,
+            78,
+            65,
+            214,
+            5,
+            117,
+            139,
+            25,
+            88,
+            129,
+            163,
+            8,
+            52,
+            24
+          ],
+          "owner": "0x91d45727af500f64f8c081f38c1f1cd5fc96d358",
+          "sender": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+          "tokenId": 43026534818795057120767547195878978095054325620993860554130771367486849810432
+        }
+      },
+      {
+        "block": "26297488",
+        "block_hash": "0x4e76111b5df98f512a6ba0fec0cc5bd187a0c20d1abb8d8d76bb6e4ed9911b96",
+        "log_index": 131,
+        "transaction": "0x38e638c278ca0c0f3d4c8511605db365e4624f291c6c51383812889ff74e47e1",
+        "values": {
+          "expiry": 1799227439,
+          "label": "standardmodel",
+          "labelHash": [
+            151,
+            195,
+            181,
+            124,
+            14,
+            231,
+            218,
+            179,
+            66,
+            122,
+            40,
+            17,
+            221,
+            107,
+            139,
+            169,
+            216,
+            91,
+            84,
+            146,
+            201,
+            58,
+            246,
+            101,
+            239,
+            163,
+            149,
+            53,
+            184,
+            77,
+            17,
+            167
+          ],
+          "owner": "0x30a86a5b68e29ef151046937fc9bb435d4bb1679",
+          "sender": "0xab821ca676cf2e0790fa273526a165cfa86aeb64",
+          "tokenId": 68645027874396916816635526349225157369195176400239760832563070450253112016896
+        }
+      }
+    ],
+    "v1": [
+      {
+        "address": "0x00000000000c2e074ec69a0dfb2997ba6c7d2e1e",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0xd6bfd5d6f1384a1f6ea57b8a8412de5552f138d42021cf7c4941e33206f529e4",
+            "current_status": "passed",
+            "endpoint": "supplied",
+            "eth_resolver": {
+              "raw": "0x0000000000000000000000003071ad643ce4ed8b3d67b289845b45db82b068a4",
+              "status": "passed",
+              "values": [
+                "0x3071ad643ce4ed8b3d67b289845b45db82b068a4"
+              ]
+            }
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0xd6bfd5d6f1384a1f6ea57b8a8412de5552f138d42021cf7c4941e33206f529e4",
+            "current_status": "passed",
+            "endpoint": "independent_publicnode",
+            "eth_resolver": {
+              "raw": "0x0000000000000000000000003071ad643ce4ed8b3d67b289845b45db82b068a4",
+              "status": "passed",
+              "values": [
+                "0x3071ad643ce4ed8b3d67b289845b45db82b068a4"
+              ]
+            }
+          }
+        ],
+        "contract": "ENSRegistry",
+        "deployment_receipt_available": false
+      },
+      {
+        "address": "0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0x15557327bea19f454db3ec207da1a440b6d9318af56e52e2a3eba440d4b62e0a",
+            "current_status": "passed",
+            "endpoint": "supplied",
+            "latest_controller_enabled": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                false
+              ]
+            },
+            "owner": {
+              "raw": "0x00000000000000000000000056c447f308f463a01121c41e72b0e7e7557fcb68",
+              "status": "passed",
+              "values": [
+                "0x56c447f308f463a01121c41e72b0e7e7557fcb68"
+              ]
+            },
+            "wrapper_controller_enabled": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                false
+              ]
+            }
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0x15557327bea19f454db3ec207da1a440b6d9318af56e52e2a3eba440d4b62e0a",
+            "current_status": "passed",
+            "endpoint": "independent_publicnode",
+            "latest_controller_enabled": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                false
+              ]
+            },
+            "owner": {
+              "raw": "0x00000000000000000000000056c447f308f463a01121c41e72b0e7e7557fcb68",
+              "status": "passed",
+              "values": [
+                "0x56c447f308f463a01121c41e72b0e7e7557fcb68"
+              ]
+            },
+            "wrapper_controller_enabled": {
+              "raw": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "status": "passed",
+              "values": [
+                false
+              ]
+            }
+          }
+        ],
+        "contract": "BaseRegistrarImplementation",
+        "deployment_receipt_available": false
+      },
+      {
+        "address": "0x59e16fccd424cc24e280be16e11bcd56fb0ce547",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d",
+            "current_status": "passed",
+            "deployment_state_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d",
+            "unchanged_code": true
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d",
+            "current_status": "passed",
+            "deployment_state_status": "rpc_error_4444",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "ETHRegistrarController",
+        "deployment_receipt_available": true
+      },
+      {
+        "address": "0xa58e81fe9b61b5c3fe2afd33cf304c454abfc7cb",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0x1773ca75e39aca7b32d32fea5e495d2b73da79a92a59f289978a6d935346d187",
+            "current_status": "passed",
+            "deployment_state_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x1773ca75e39aca7b32d32fea5e495d2b73da79a92a59f289978a6d935346d187",
+            "unchanged_code": true
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0x1773ca75e39aca7b32d32fea5e495d2b73da79a92a59f289978a6d935346d187",
+            "current_status": "passed",
+            "deployment_state_status": "rpc_error_4444",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "ReverseRegistrar",
+        "deployment_receipt_available": true
+      },
+      {
+        "address": "0x283f227c4bd38ece252c4ae7ece650b0e913f1f9",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0xa4a48e9075735d1fb6b129422b58ae17af671351ef382107c9386138b4dfd68c",
+            "current_status": "passed",
+            "deployment_state_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xa4a48e9075735d1fb6b129422b58ae17af671351ef382107c9386138b4dfd68c",
+            "unchanged_code": true
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0xa4a48e9075735d1fb6b129422b58ae17af671351ef382107c9386138b4dfd68c",
+            "current_status": "passed",
+            "deployment_state_status": "rpc_error_4444",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "DefaultReverseRegistrar",
+        "deployment_receipt_available": true
+      },
+      {
+        "address": "0xd4416b13d2b3a9abae7acd5d6c2bbdbe25686401",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0xb2d3098f0579718d88a04ee65d3c6827a76823316ceed387945ad993fc6dbb6c",
+            "current_status": "passed",
+            "deployment_state_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0xb2d3098f0579718d88a04ee65d3c6827a76823316ceed387945ad993fc6dbb6c",
+            "unchanged_code": true
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0xb2d3098f0579718d88a04ee65d3c6827a76823316ceed387945ad993fc6dbb6c",
+            "current_status": "passed",
+            "deployment_state_status": "rpc_error_4444",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "NameWrapper",
+        "deployment_receipt_available": true
+      },
+      {
+        "address": "0xf29100983e058b709f3d539b0c765937b804ac15",
+        "checks": [
+          {
+            "code_present": true,
+            "current_code_hash": "0x186d03e26f6e0224269c8f7f13a6334d625f1b83812db2045ac7de4f292e9336",
+            "current_status": "passed",
+            "deployment_state_status": "passed",
+            "endpoint": "supplied",
+            "historical_code_hash": "0x186d03e26f6e0224269c8f7f13a6334d625f1b83812db2045ac7de4f292e9336",
+            "unchanged_code": true
+          },
+          {
+            "code_present": true,
+            "current_code_hash": "0x186d03e26f6e0224269c8f7f13a6334d625f1b83812db2045ac7de4f292e9336",
+            "current_status": "passed",
+            "deployment_state_status": "rpc_error_4444",
+            "endpoint": "independent_publicnode",
+            "historical_code_hash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
+            "unchanged_code": false
+          }
+        ],
+        "contract": "PublicResolver",
+        "deployment_receipt_available": true
+      }
+    ],
+    "v1_historical_resolution": {
+      "block": {
+        "Hash": "0xe7f9bf3e98a74120aa4f4bea7cfebb81f0328536ae2e95ca8a226ebe70be6de2",
+        "Number": "0x18e4120"
+      },
+      "checks": [
+        {
+          "endpoint": "supplied",
+          "forward": {
+            "Outcome": "resolved",
+            "Name": "vitalik.eth",
+            "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+            "Resolver": "0x231b0ee14048e9dccd1d247744d114a4eb5e8e63"
+          },
+          "forward_status": "passed",
+          "header_matches": true,
+          "header_status": "passed"
+        },
+        {
+          "endpoint": "independent_publicnode",
+          "forward": {
+            "Outcome": "",
+            "Name": "",
+            "Address": "0x0000000000000000000000000000000000000000",
+            "Resolver": "0x0000000000000000000000000000000000000000"
+          },
+          "forward_status": "transport_or_decode_error",
+          "header_matches": true,
+          "header_status": "passed"
+        }
+      ]
+    }
+  },
+  "probe_manifests": {
+    "collector-manifest.json": {
+      "registry": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+      "universal_resolver": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+      "target_chain_id": "1",
+      "source_chain_id": "1",
+      "genesis": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+      "namespace": "ens",
+      "policy": "0xe8b3cea9dd9350a23856c00f7ddec8dce14fbeafc5e7de9a595c4cb131a1ba09",
+      "start": 26105299,
+      "start_hash": "0x00fc218f25afcd179aeda3c24aa1cfc9ea3c4219cc76bb9c51f017fe3818bac9",
+      "parent_name": "eth",
+      "coin_type": "60",
+      "deployments": [
+        {
+          "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+          "profile": "v2_registry",
+          "number": 26183742,
+          "hash": "0x08f238e69864a97de9ef1ef6b4a75199bec521cd305425883191240193cba595",
+          "code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+          "implementation": "0x0000000000000000000000000000000000000000",
+          "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "profile": "v2_registry",
+          "number": 26105621,
+          "hash": "0x27b454becad8b99f418a1d6355daa0dcba74a687cc54a98f44779e9ec314338a",
+          "code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+          "implementation": "0x0000000000000000000000000000000000000000",
+          "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "address": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+          "profile": "universal",
+          "number": 26216330,
+          "hash": "0xa94d4799b66e8fe3c84e92fccfc8d46e285f666601c11c1037070ba548ad0790",
+          "code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+          "implementation": "0x0000000000000000000000000000000000000000",
+          "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "address": "0x77510ba162dfea3d8989e3f0928a691b345730d2",
+          "profile": "v2_factory",
+          "number": 26105299,
+          "hash": "0x00fc218f25afcd179aeda3c24aa1cfc9ea3c4219cc76bb9c51f017fe3818bac9",
+          "code_hash": "0xc251b434fe75ce3ca024e85883aafd7c1d0b8e382d747b537c5930018b144a91",
+          "implementation": "0x0000000000000000000000000000000000000000",
+          "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "roots": [
+        {
+          "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+          "name": ""
+        }
+      ]
+    },
+    "v1-manifest.json": {
+      "registry": "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e",
+      "universal_resolver": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+      "target_chain_id": "1",
+      "source_chain_id": "1",
+      "genesis": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+      "namespace": "ens",
+      "policy": "0xa26d2386f0279c803a0588bb8f83cb0a76e436a90d0cbf5a0846354c4dad125a",
+      "start": 22764821,
+      "start_hash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+      "parent_name": "eth",
+      "coin_type": "60",
+      "deployments": [
+        {
+          "address": "0x59E16fcCd424Cc24e280Be16E11Bcd56fb0CE547",
+          "profile": "controller",
+          "number": 22764821,
+          "hash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+          "code_hash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d"
+        },
+        {
+          "address": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+          "profile": "universal",
+          "number": 26216330,
+          "hash": "0xa94d4799b66e8fe3c84e92fccfc8d46e285f666601c11c1037070ba548ad0790",
+          "code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+          "implementation": "0x0000000000000000000000000000000000000000",
+          "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "roots": []
+    }
+  },
+  "runtime_configuration": {
+    "roles": "ens",
+    "request_timeout": "8s",
+    "max_response_bytes": 8388608,
+    "collector_default_max_blocks": 8,
+    "collector_default_round_timeout": "1m"
+  },
+  "runtime_coverage": [
+    {
+      "start": "26105299",
+      "state": "active",
+      "target": "26297971",
+      "scanned": "26105666",
+      "source_id": 1,
+      "start_hash": "0x00fc218f25afcd179aeda3c24aa1cfc9ea3c4219cc76bb9c51f017fe3818bac9",
+      "event_count": 9,
+      "target_hash": "0xca175264dc91e2c977460b5fe4d91174a59f7551b212afff445bc47c43694785",
+      "failure_code": null,
+      "scanned_hash": "0x95a88af7de80baf5360777b34c91a88051b564f1e97a2a17b6c179dee27e4255",
+      "policy_digest": "0xe8b3cea9dd9350a23856c00f7ddec8dce14fbeafc5e7de9a595c4cb131a1ba09",
+      "candidate_count": 0,
+      "manifest_digest": "0xceb7a1a45c1b79dcb359752b5f4c9b9a1b0aed82b8ff307c2c83b770f0730ff8",
+      "contiguous_block_count": 368,
+      "parent_gaps": 0,
+      "finalized_coverage_complete": false,
+      "scan_sha256": "c38bb73076c91c49d8236e1ffde9831b6f7d2d0c8b08ec470723be241a9942e2"
+    },
+    {
+      "start": "22764821",
+      "state": "active",
+      "target": "26297971",
+      "scanned": "22765412",
+      "source_id": 38,
+      "start_hash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+      "event_count": 2,
+      "target_hash": "0xca175264dc91e2c977460b5fe4d91174a59f7551b212afff445bc47c43694785",
+      "failure_code": null,
+      "scanned_hash": "0xc292e7ac35309a4b9da16ed1c031741b57ce94646cac13b07d013663ad75b9bf",
+      "policy_digest": "0xa26d2386f0279c803a0588bb8f83cb0a76e436a90d0cbf5a0846354c4dad125a",
+      "candidate_count": 0,
+      "manifest_digest": "0x52ab5cec6c056326cc15856f126a8292569b144a83babd4f22f82cbfb8c89534",
+      "contiguous_block_count": 592,
+      "parent_gaps": 0,
+      "finalized_coverage_complete": false,
+      "scan_sha256": "93f9fa7b8ae69f427fae2e4072f431bcc2fc897e3425565feb4d3ab56528cece"
+    }
+  ],
+  "runtime_independent_reconciliation": [
+    {
+      "manifest": "collector-manifest.json",
+      "source": {
+        "state": "active",
+        "target": "26297939",
+        "scanned": "26105594",
+        "source_id": 1
+      },
+      "from": "26105299",
+      "to": "26105314",
+      "block_count": 16,
+      "parent_gaps": 0,
+      "independent_header_matches": [
+        {
+          "number": "26105299",
+          "hash": "0x00fc218f25afcd179aeda3c24aa1cfc9ea3c4219cc76bb9c51f017fe3818bac9",
+          "matched": true
+        },
+        {
+          "number": "26105300",
+          "hash": "0xfaf43dc2e0339283746eb8d15c5eaa0b81dc556f51ad184b38fe5aae3ca342c4",
+          "matched": true
+        },
+        {
+          "number": "26105301",
+          "hash": "0xfc9d3242b810d52441b9adc6912e7f959fb6ca59cf42f39a711b35906036ad10",
+          "matched": true
+        },
+        {
+          "number": "26105302",
+          "hash": "0x569a748688d344926d66746941b883bdf1d2b10c8606996f70b1627784ad83b9",
+          "matched": true
+        },
+        {
+          "number": "26105303",
+          "hash": "0xf09851b7569be9deca61e67501a8b6a14c1cf9569856aa27104f4093a5fa0452",
+          "matched": true
+        },
+        {
+          "number": "26105304",
+          "hash": "0x814bb876c351884969a0e403d7947989d2ef4617b03bb96b2b4f9bc5627f13a5",
+          "matched": true
+        },
+        {
+          "number": "26105305",
+          "hash": "0x4ada6b2abc7f1236e3f3202aca50830827adff5a926f79b3bd6e4f8ce5d4e6db",
+          "matched": true
+        },
+        {
+          "number": "26105306",
+          "hash": "0x9ae98fe3abdb3345995fc9843f5340de817af4e9bd4736df182c53bd4e180ba4",
+          "matched": true
+        },
+        {
+          "number": "26105307",
+          "hash": "0xb841ae954ed576c6089713072900c82bbee1a06e727338871c0fb4d47cad2ceb",
+          "matched": true
+        },
+        {
+          "number": "26105308",
+          "hash": "0xc44514e09eb891b00ed479dc256ba882e89628c9e32492f0ed8dafb3686cc14c",
+          "matched": true
+        },
+        {
+          "number": "26105309",
+          "hash": "0x3b09da208ef98d1665e132c573149b227e1e8115d8d439f7790ddb7fd640519e",
+          "matched": true
+        },
+        {
+          "number": "26105310",
+          "hash": "0xef920f46c4e78a78d65be8e3e590a75ddc13cf2e241d165d42febbb479b4addc",
+          "matched": true
+        },
+        {
+          "number": "26105311",
+          "hash": "0xa17ff20c0079098e9fc925a169adbec6d6d13ba04ed0d1f57c2415a09d941301",
+          "matched": true
+        },
+        {
+          "number": "26105312",
+          "hash": "0x1076e282efa8abc70053afcb38dd4f8e30ff5127a6937ea9cac6be2f08fcc557",
+          "matched": true
+        },
+        {
+          "number": "26105313",
+          "hash": "0x74a2ca334cc17f5bd1d765bc6a7914ccc8bcf26eabd776298f69ac762f98813e",
+          "matched": true
+        },
+        {
+          "number": "26105314",
+          "hash": "0xe9c8919aa266f14b91cdd97e98db34e5fa76f1ce3380e2aadfab86564205685a",
+          "matched": true
+        }
+      ],
+      "stored_log_count": 0,
+      "independent_log_count": 0,
+      "stored_log_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "independent_log_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "matched_logs": [],
+      "complete_to_sample_target": true,
+      "complete_to_live_finalized": false
+    },
+    {
+      "manifest": "v1-manifest.json",
+      "source": {
+        "state": "active",
+        "target": "26297939",
+        "scanned": "22765300",
+        "source_id": 38
+      },
+      "from": "22764821",
+      "to": "22764836",
+      "block_count": 16,
+      "parent_gaps": 0,
+      "independent_header_matches": [
+        {
+          "number": "22764821",
+          "hash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+          "matched": true
+        },
+        {
+          "number": "22764822",
+          "hash": "0xcb142cfa8b3d2c8943364212f4127d834c50c640e3954a5e4ab10cc7f42e4712",
+          "matched": true
+        },
+        {
+          "number": "22764823",
+          "hash": "0x9cfc64fc985ebc5b8f955308da07ed2770463f6d260a0448bd51edab4b2e3d7e",
+          "matched": true
+        },
+        {
+          "number": "22764824",
+          "hash": "0x6583a4f1f1ac472303d2a37fef0c76027da7e830814b901f25eb28b95931bb93",
+          "matched": true
+        },
+        {
+          "number": "22764825",
+          "hash": "0x397fdef948edc163fb0ab293de062778497eef3d9e503d0d05f050296e7e1f18",
+          "matched": true
+        },
+        {
+          "number": "22764826",
+          "hash": "0x04ee1eefb684040ec88d08132de7b86d1bc159b072834d11650fae9c13ffe789",
+          "matched": true
+        },
+        {
+          "number": "22764827",
+          "hash": "0x688a7521d5133d31fbbcdfa4b9d2a47e73f3c0721d6158c2f47fd94948895d4d",
+          "matched": true
+        },
+        {
+          "number": "22764828",
+          "hash": "0xdad37d8da67c90d7eb3a2248aefdd6a3d94e2543cc5408f1afabf5b0b1a850c4",
+          "matched": true
+        },
+        {
+          "number": "22764829",
+          "hash": "0x7cb9505536443d62d169f382245b3e62707fbfa2da3b7a64384b0fba073d91b6",
+          "matched": true
+        },
+        {
+          "number": "22764830",
+          "hash": "0x1b01690f76899fca0d7b8a4eaa97283d4d651fab1898229650d2d457369c499a",
+          "matched": true
+        },
+        {
+          "number": "22764831",
+          "hash": "0x33000e379825f892a22469d7b494461b2787ca9fa910e4e876deb830b380f956",
+          "matched": true
+        },
+        {
+          "number": "22764832",
+          "hash": "0x18dd63bd47163bf0c1fc1be7ccea70a9cc0b3c1d9f3c0f8f54958077374d8b12",
+          "matched": true
+        },
+        {
+          "number": "22764833",
+          "hash": "0xb627d7b68fe5fa5cb9895d2236171be9f3346507a2355583b1749e16e9e15f82",
+          "matched": true
+        },
+        {
+          "number": "22764834",
+          "hash": "0xc5af03791145ae2f68379e1099ebaf16b5924e823e7f8629a714cf8b4d65bcb4",
+          "matched": true
+        },
+        {
+          "number": "22764835",
+          "hash": "0x6bf9f1051e189f7ab54a5893bf2312c3fa5166957a4df4b271214bd0a9429a82",
+          "matched": true
+        },
+        {
+          "number": "22764836",
+          "hash": "0x4548eab484664b2bff51ceacf5a55a04b22f62c2e9d06ef1824af230984400bc",
+          "matched": true
+        }
+      ],
+      "stored_log_count": 2,
+      "independent_log_count": 2,
+      "stored_log_sha256": "45d8efd1b5023a0959fe08575561a69b32fe2bf9753fb1e46cc0c5cd023a9212",
+      "independent_log_sha256": "45d8efd1b5023a0959fe08575561a69b32fe2bf9753fb1e46cc0c5cd023a9212",
+      "matched_logs": [
+        {
+          "blockHash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+          "blockNumber": "22764821",
+          "transactionHash": "0xd11b2868fe9ac278f473439f32c67d0c1935aefc0143301179b7c2457b01afe9",
+          "transactionIndex": 32,
+          "logIndex": 187,
+          "address": "0x59e16fccd424cc24e280be16e11bcd56fb0ce547",
+          "topics": [
+            "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x00000000000000000000000069420f05a11f617b4b74ffe2e04b2d300dfa556f"
+          ],
+          "data": "0x"
+        },
+        {
+          "blockHash": "0x6583a4f1f1ac472303d2a37fef0c76027da7e830814b901f25eb28b95931bb93",
+          "blockNumber": "22764824",
+          "transactionHash": "0xffe3ced8002d110cc4aadc47a0e2e31cdbffc41aa54cb0b41f445eb10d07d92b",
+          "transactionIndex": 130,
+          "logIndex": 417,
+          "address": "0x59e16fccd424cc24e280be16e11bcd56fb0ce547",
+          "topics": [
+            "0x8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0",
+            "0x00000000000000000000000069420f05a11f617b4b74ffe2e04b2d300dfa556f",
+            "0x000000000000000000000000fe89cc7abb2c4183683ab71653c4cdc9b02d44b7"
+          ],
+          "data": "0x"
+        }
+      ],
+      "complete_to_sample_target": true,
+      "complete_to_live_finalized": false
+    },
+    {
+      "manifest": "collector-manifest.json",
+      "source": {
+        "state": "active",
+        "target": "26297971",
+        "scanned": "26105666",
+        "source_id": 1
+      },
+      "from": "26105621",
+      "to": "26105636",
+      "block_count": 16,
+      "parent_gaps": 0,
+      "independent_header_matches": [
+        {
+          "number": "26105621",
+          "hash": "0x27b454becad8b99f418a1d6355daa0dcba74a687cc54a98f44779e9ec314338a",
+          "matched": true
+        },
+        {
+          "number": "26105622",
+          "hash": "0x66bb13f6176c8d2c84f4c795a0e497b1d2e75d8842131de6667c65ed3d830e3d",
+          "matched": true
+        },
+        {
+          "number": "26105623",
+          "hash": "0x73a594f53a36af31de78e870154d1872a7a82b895727d87d04d54ab78703ae88",
+          "matched": true
+        },
+        {
+          "number": "26105624",
+          "hash": "0x0bc2ea37fa0796dce1778d31820991190938748d59cb9322d6c3b55b9e401bcf",
+          "matched": true
+        },
+        {
+          "number": "26105625",
+          "hash": "0x1dd866921705d87ec786739be2ed98f86157a3f514a33e357cd577f7edd1f9d0",
+          "matched": true
+        },
+        {
+          "number": "26105626",
+          "hash": "0x4f0ecd3e171728d52425a3cc2c10b15f09a87fee8402e75a16aa8b6ed85dd7d1",
+          "matched": true
+        },
+        {
+          "number": "26105627",
+          "hash": "0xb608ee3536f0bce7016f037fa06e569fc2c3b170d8e57cc1975977cfb01387d2",
+          "matched": true
+        },
+        {
+          "number": "26105628",
+          "hash": "0x6e98d9143b73861e19219ef454c95c7fe5aff80fb32bce86478e43b5c0c1b99d",
+          "matched": true
+        },
+        {
+          "number": "26105629",
+          "hash": "0x01719cd5ca37be184e23bef485515a11bb5829470f8895a969ca58e005088a7d",
+          "matched": true
+        },
+        {
+          "number": "26105630",
+          "hash": "0xc8e259906247529348a8f262f695726a57acbfb976c93bfb07f45cbf2086a2d1",
+          "matched": true
+        },
+        {
+          "number": "26105631",
+          "hash": "0x8264c47fce20de6d84e218ed2c06803cc15cd60c6b9333357404c728c83f5b9e",
+          "matched": true
+        },
+        {
+          "number": "26105632",
+          "hash": "0x0e3b095201438c87d47714967ae336cdceafccebcba04b822bc87f36fb1dad0d",
+          "matched": true
+        },
+        {
+          "number": "26105633",
+          "hash": "0x4052572b3a6c48ba256430f480d16f30c786d8d670272ffdfbf9fa09d6366e77",
+          "matched": true
+        },
+        {
+          "number": "26105634",
+          "hash": "0x966e89c8939e0a16f0e873fc1eb63f1c710f578cdecc9d6af03c508d8f362bf4",
+          "matched": true
+        },
+        {
+          "number": "26105635",
+          "hash": "0x879a2d873a7612f6f347747bcc8f1a1a381d84380779551ef5e1dd0e34a97c0a",
+          "matched": true
+        },
+        {
+          "number": "26105636",
+          "hash": "0x17f6cb6fc03cfecdca1af5ba888abb3ec620b1b4a3a12566581bc3ad0a866165",
+          "matched": true
+        }
+      ],
+      "stored_log_count": 5,
+      "independent_log_count": 5,
+      "stored_log_sha256": "266ce97d02b237a23aadcd922ebba646d9b317d3360c80dddc1de43f34b0df51",
+      "independent_log_sha256": "266ce97d02b237a23aadcd922ebba646d9b317d3360c80dddc1de43f34b0df51",
+      "matched_logs": [
+        {
+          "blockHash": "0x27b454becad8b99f418a1d6355daa0dcba74a687cc54a98f44779e9ec314338a",
+          "blockNumber": "26105621",
+          "transactionHash": "0xf69d06286b2688b64fcafa572f862487a5cb5a4607fd60a925c5727b93d1a6a7",
+          "transactionIndex": 196,
+          "logIndex": 523,
+          "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "topics": [
+            "0xce2f8c55f0f6fbc489417a09291281b739419d412c063df417ab075e6f052687"
+          ],
+          "data": "0x"
+        },
+        {
+          "blockHash": "0x27b454becad8b99f418a1d6355daa0dcba74a687cc54a98f44779e9ec314338a",
+          "blockNumber": "26105621",
+          "transactionHash": "0xf69d06286b2688b64fcafa572f862487a5cb5a4607fd60a925c5727b93d1a6a7",
+          "transactionIndex": 196,
+          "logIndex": 524,
+          "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "topics": [
+            "0x0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x00000000000000000000000085a73f63309128d53928ee891e6e11e2b4695c20"
+          ],
+          "data": "0x00000000000000000000000000000000000000000000000000000000000000000100000000000000000000100001011101000000000000000000001000000100"
+        },
+        {
+          "blockHash": "0x73a594f53a36af31de78e870154d1872a7a82b895727d87d04d54ab78703ae88",
+          "blockNumber": "26105623",
+          "transactionHash": "0xe51ea042eda4ec13994cdbf19914b4f1b4049d4672a04113c510705fa4a85a07",
+          "transactionIndex": 117,
+          "logIndex": 401,
+          "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "topics": [
+            "0xe49f02c945e0ee4a8d961a371289bd054aa21d9ca1b73250ffd4880eb708cff4",
+            "0x00000000000000000000000051bbc58b3dae7d45b14fba8cf31b7c8f7904a750",
+            "0x00000000000000000000000085a73f63309128d53928ee891e6e11e2b4695c20"
+          ],
+          "data": "0x000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000036574680000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "blockHash": "0x0bc2ea37fa0796dce1778d31820991190938748d59cb9322d6c3b55b9e401bcf",
+          "blockNumber": "26105624",
+          "transactionHash": "0xf284a3e98368101824527101814ac4592e6edae6dd76da0d2b3c269a6995069c",
+          "transactionIndex": 259,
+          "logIndex": 685,
+          "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "topics": [
+            "0xdf7e6d8d00864b80de2e2154ae6ccd74c37a89c700f024bda1d74d03406aafd5",
+            "0x00000000000000000000000085a73f63309128d53928ee891e6e11e2b4695c20"
+          ],
+          "data": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000082cac0d801b9a392a4ff217d5e68145801e90a410000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "blockHash": "0x6e98d9143b73861e19219ef454c95c7fe5aff80fb32bce86478e43b5c0c1b99d",
+          "blockNumber": "26105628",
+          "transactionHash": "0xc82a9376c654c083fc9efd17329f10dd44b236de49fca91897048ac7c0fff749",
+          "transactionIndex": 317,
+          "logIndex": 736,
+          "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+          "topics": [
+            "0x0d35bf721a39b614de00ca5038e1deb0cb0c69a278645e83405a7226cf80ba3c",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x000000000000000000000000fe89cc7abb2c4183683ab71653c4cdc9b02d44b7"
+          ],
+          "data": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000001000000000"
+        }
+      ],
+      "complete_to_sample_target": true,
+      "complete_to_live_finalized": false
+    }
+  ],
+  "restart": {
+    "status": "passed",
+    "before": [
+      {
+        "code": null,
+        "state": "active",
+        "events": 0,
+        "source": 1,
+        "target": "26297939",
+        "scanned": "26105602",
+        "candidates": 0
+      },
+      {
+        "code": null,
+        "state": "active",
+        "events": 2,
+        "source": 38,
+        "target": "26297939",
+        "scanned": "22765292",
+        "candidates": 0
+      }
+    ],
+    "after": [
+      {
+        "code": null,
+        "state": "active",
+        "events": 5,
+        "source": 1,
+        "target": "26297971",
+        "scanned": "26105634",
+        "candidates": 0
+      },
+      {
+        "code": null,
+        "state": "active",
+        "events": 2,
+        "source": 38,
+        "target": "26297971",
+        "scanned": "22765356",
+        "candidates": 0
+      }
+    ],
+    "assertions": [
+      "same source identities",
+      "strictly advancing committed cursors",
+      "active state without failure code",
+      "contiguous retained scan history"
+    ]
+  },
+  "interrupted_round": {
+    "committed_blocks": 16,
+    "finalized_coverage_complete": false,
+    "finished_at": "2026-10-29T10:46:55Z",
+    "interrupted_resume": "passed",
+    "parent_gaps": 0,
+    "scope": "bounded initial fixed-v2-deployment collection; not full historical deployment or finalized coverage",
+    "start": "26105299",
+    "started_at": "2026-10-29T10:46:22Z",
+    "steps": [
+      {
+        "canceled": false,
+        "elapsed_ms": 13337,
+        "progress": {
+          "source_id": 1,
+          "revision": 1,
+          "projection_revision": 5,
+          "target_number": 26297811,
+          "target_hash": "GiOjnz+4uB0Y5Mp4SWs8SWPlGnDvBI0Gh9EMpcIuA50=",
+          "scanned_number": 26105306,
+          "scanned_hash": "mumP46vbM0WZX8mEP1NA3oF69Om9RzbfGCxTvU4YC6Q=",
+          "healthy_until": "2026-10-29T19:01:35.86756+08:00",
+          "state": "active",
+          "failure_code": null
+        },
+        "scanned_count": 8,
+        "source_id": 1,
+        "status": "passed",
+        "step": 0
+      },
+      {
+        "canceled": true,
+        "elapsed_ms": 3000,
+        "progress": {
+          "source_id": 1,
+          "revision": 1,
+          "projection_revision": 5,
+          "target_number": 26297811,
+          "target_hash": "GiOjnz+4uB0Y5Mp4SWs8SWPlGnDvBI0Gh9EMpcIuA50=",
+          "scanned_number": 26105306,
+          "scanned_hash": "mumP46vbM0WZX8mEP1NA3oF69Om9RzbfGCxTvU4YC6Q=",
+          "healthy_until": "2026-10-29T19:01:35.86756+08:00",
+          "state": "active",
+          "failure_code": null
+        },
+        "scanned_count": 0,
+        "source_id": 1,
+        "status": "ens_rpc_unavailable",
+        "step": 1
+      },
+      {
+        "canceled": false,
+        "elapsed_ms": 16412,
+        "progress": {
+          "source_id": 1,
+          "revision": 1,
+          "projection_revision": 5,
+          "target_number": 26297811,
+          "target_hash": "GiOjnz+4uB0Y5Mp4SWs8SWPlGnDvBI0Gh9EMpcIuA50=",
+          "scanned_number": 26105314,
+          "scanned_hash": "6ciRmqJm8UuRzdl+mNs05fp28c4zgOKq36uGVkIFaFo=",
+          "healthy_until": "2026-10-29T19:01:55.29291+08:00",
+          "state": "active",
+          "failure_code": null
+        },
+        "scanned_count": 8,
+        "source_id": 1,
+        "status": "passed",
+        "step": 2
+      }
+    ],
+    "task": "P30-T148"
+  },
+  "prior_round_budget_failure": {
+    "finished_at": "2026-10-29T10:40:30Z",
+    "scope": "bounded initial fixed-v2-deployment collection; not full historical deployment or finalized coverage",
+    "start": "26105299",
+    "started_at": "2026-10-29T10:40:22Z",
+    "steps": [
+      {
+        "canceled": false,
+        "elapsed_ms": 8001,
+        "scanned_count": 0,
+        "source_id": 1,
+        "status": "ens_rpc_unavailable",
+        "step": 0
+      }
+    ],
+    "task": "P30-T148"
+  },
+  "ccip": {
+    "public_dns_result": {
+      "anchor": {
+        "Hash": "0x409c195c73590ef2c622ca5dffa4e944b804e63bc1bd1718c3594450d4df5e24",
+        "Number": "26297715"
+      },
+      "checks": [
+        {
+          "diagnostic": null,
+          "endpoint": "supplied",
+          "gateway_requests": 1,
+          "name": "test.offchaindemo.eth",
+          "result": {
+            "Outcome": "resolved",
+            "Name": "test.offchaindemo.eth",
+            "Address": "0x779981590e7ccc0cfae8040ce7151324747cdb97",
+            "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+          },
+          "status": "passed"
+        },
+        {
+          "diagnostic": null,
+          "endpoint": "independent_publicnode",
+          "gateway_requests": 1,
+          "name": "test.offchaindemo.eth",
+          "result": {
+            "Outcome": "resolved",
+            "Name": "test.offchaindemo.eth",
+            "Address": "0x779981590e7ccc0cfae8040ce7151324747cdb97",
+            "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+          },
+          "status": "passed"
+        }
+      ],
+      "finished_at": "2026-10-29T11:17:24Z"
+    },
+    "gateway": "https://ccip-v3.ens.xyz",
+    "dns_answers": [
+      "104.21.82.76",
+      "172.67.198.91"
+    ],
+    "dns_verifiers": [
+      "https://cloudflare-dns.com/dns-query?name=ccip-v3.ens.xyz&type=A",
+      "https://dns.google/resolve?name=ccip-v3.ens.xyz&type=A"
+    ],
+    "default_host_dns_result": "Special-use 198.18.0.0/15 answer rejected by production network policy. Test-only Resolver injected independently agreed public A records; TLS, DNS/IP allow rules, redirects and response caps were unchanged. No runtime DNS configuration change shipped."
+  },
+  "checks": {
+    "collector_postgresql_race": "passed",
+    "live_collector_interruption_recovery": "passed",
+    "make_check": "passed",
+    "production_runtime_monolith_and_distributed": "passed"
+  },
+  "remaining_acceptance": [
+    "Complete reviewed v1/v2 source manifests including required roots, controllers, factories and dynamic implementation identities; probe manifests intentionally cover selected fixed contracts only.",
+    "Contiguous history through a pinned finalized target, or a separately designed and verified complete baseline; never move the cursor to bypass unscanned history.",
+    "Reconcile actual database-published names, reverse/forward agreement and completeness against the independent RPC at the same finalized identity."
+  ],
+  "limitations": [
+    "No full historical source catch-up or public-name publication acceptance is claimed.",
+    "Independent RPC rejected deployment-height eth_getCode with code 4444; exact historical state checks used the primary archive RPC. Independent current code, block identities, sampled logs and current resolutions matched.",
+    "Default host DNS cannot reach the CCIP gateway through the production network policy; successful CCIP evidence used a test-only public DNS resolver.",
+    "This is local ARM64 testing, not remote CI, production deployment or sustained capacity evidence."
+  ]
+}

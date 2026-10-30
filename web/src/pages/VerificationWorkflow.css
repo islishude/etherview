@@ -140,6 +140,9 @@
   display: grid;
   gap: 1rem;
 }
+.verification-provider-picker + .verification-workspace {
+  margin-block-start: 1.5rem;
+}
 .verification-actions {
   display: flex;
   flex-wrap: wrap;
@@ -265,6 +268,16 @@
   font-size: 0.75rem;
 }
 @media (max-width: 640px) {
+  .verification-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .verification-actions button {
+    min-width: 0;
+    justify-content: center;
+    padding-inline: 0.5rem;
+  }
   .verification-provider-options,
   .sourcify-uploads {
     grid-template-columns: 1fr;

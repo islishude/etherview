@@ -938,10 +938,16 @@ describe("core value and address pages", () => {
     expect(screen.queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Assets" }));
-    expect(await screen.findByText(/No positive NFT balances were observed/)).toBeVisible();
     expect(await screen.findByText("Asset Token")).toBeVisible();
     expect(screen.queryByRole("columnheader", { name: "Finality" })).not.toBeInTheDocument();
-    expect(screen.getByText("123.45 AST")).toBeVisible();
+    expect(screen.getByText("123.45")).toBeVisible();
+    expect(requestedPaths).not.toContain(`/api/v1/addresses/${address}/nfts`);
+    await user.click(
+      within(screen.getByRole("navigation", { name: "Asset types" })).getByRole("link", {
+        name: "NFT",
+      }),
+    );
+    expect(await screen.findByText(/No positive NFT balances were observed/)).toBeVisible();
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/nfts`);
     expect(requestedPaths).toContain(`/api/v1/addresses/${address}/erc20-balances`);
   });

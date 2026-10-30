@@ -64,7 +64,7 @@ export function TransactionLogCard({ log, locale }: { log: TransactionLog; local
       <div className="transaction-log-address">
         <span className="transaction-log-label">{t("detail.address")}</span>
         <CopyableField value={log.address}>
-          <AddressIdentity address={log.address} compact={false} />
+          <AddressIdentity nameOnly address={log.address} compact={false} />
         </CopyableField>
       </div>
 
@@ -188,7 +188,7 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
                 <div>
                   <dt>{t("detail.sourceAddress")}</dt>
                   <dd>
-                    <AddressIdentity address={source.address} compact={false} copy />
+                    <AddressIdentity nameOnly address={source.address} compact={false} copy />
                   </dd>
                 </div>
               )}
@@ -222,14 +222,19 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
             <div>
               <dt>{t("detail.emitterAddress")}</dt>
               <dd>
-                <AddressIdentity address={log.address} compact={false} copy />
+                <AddressIdentity nameOnly address={log.address} compact={false} copy />
               </dd>
             </div>
             {attribution.execution_address && (
               <div>
                 <dt>{t("detail.executionAddress")}</dt>
                 <dd>
-                  <AddressIdentity address={attribution.execution_address} compact={false} copy />
+                  <AddressIdentity
+                    nameOnly
+                    address={attribution.execution_address}
+                    compact={false}
+                    copy
+                  />
                 </dd>
               </div>
             )}

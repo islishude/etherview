@@ -169,11 +169,11 @@ export function MempoolTransactionOverview({
             </TransactionDetailRow>
           ) : null}
           <TransactionDetailRow label={t("table.from")}>
-            <AddressIdentity address={transaction.from} activity compact={false} copy />
+            <AddressIdentity nameOnly address={transaction.from} activity compact={false} copy />
           </TransactionDetailRow>
           <TransactionDetailRow label={t("table.to")}>
             {transaction.to ? (
-              <AddressIdentity address={transaction.to} activity compact={false} copy />
+              <AddressIdentity nameOnly address={transaction.to} activity compact={false} copy />
             ) : (
               t("common.contractCreation")
             )}
@@ -423,14 +423,19 @@ export function TransactionOverviewPanel({
             )}
           </TransactionDetailRow>
           <TransactionDetailRow label={t("table.from")}>
-            <AddressIdentity address={transaction.data.from} compact={false} copy />
+            <AddressIdentity nameOnly address={transaction.data.from} compact={false} copy />
           </TransactionDetailRow>
           <TransactionDetailRow label={t("table.to")}>
             {transaction.data.to ? (
-              <AddressIdentity address={transaction.data.to} compact={false} copy />
+              <AddressIdentity nameOnly address={transaction.data.to} compact={false} copy />
             ) : transaction.data.contract_address ? (
               <span className="transaction-inline-values">
-                <AddressIdentity address={transaction.data.contract_address} compact={false} copy />
+                <AddressIdentity
+                  nameOnly
+                  address={transaction.data.contract_address}
+                  compact={false}
+                  copy
+                />
                 <span className="transaction-creation-label">{t("common.contractCreation")}</span>
               </span>
             ) : (
@@ -548,7 +553,7 @@ export function TransactionActionCard({
           {transaction.to ? (
             <>
               {" "}
-              · <AddressIdentity address={transaction.to} />
+              · <AddressIdentity nameOnly address={transaction.to} />
             </>
           ) : null}
           {tokenCount > 0 ? (

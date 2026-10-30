@@ -176,15 +176,14 @@ describe("P50 capability pages", () => {
       return apiError("not_found", 404);
     });
     vi.stubGlobal("fetch", fetcher);
-    renderExplorer(`/address/${owner}?tab=assets`);
+    renderExplorer(`/address/${owner}?tab=assets&asset=nfts`);
 
     expect(await screen.findByRole("heading", { name: "Canonical NFT balances" })).toBeVisible();
-    expect(await screen.findByText(tokenID)).toBeVisible();
-    expect(screen.getByText(tokenID).closest("a")).toHaveAttribute(
-      "href",
-      `/nft/${address}/${tokenID}`,
-    );
-    expect(screen.getByText(balance)).toBeVisible();
+    expect(await screen.findByTitle(tokenID)).toBeVisible();
+    expect(screen.getByTitle(tokenID)).toHaveAttribute("href", `/nft/${address}/${tokenID}`);
+    expect(
+      screen.getByText(`Quantity: ${new Intl.NumberFormat("en").format(BigInt(balance))}`),
+    ).toBeVisible();
     expect(screen.getByText("Exact RPC observation")).toBeVisible();
     expect(screen.getByText("Exact state reconciled against canonical block 999.")).toBeVisible();
     expect(screen.getByRole("link", { name: "0x121212…121212" })).toHaveAttribute(
@@ -503,7 +502,7 @@ describe("P50 capability pages", () => {
         return apiError("not_found", 404);
       }),
     );
-    renderExplorer(`/address/${owner}?tab=assets`);
+    renderExplorer(`/address/${owner}?tab=assets&asset=nfts`);
 
     expect(await screen.findByText("This data is currently unavailable.")).toBeVisible();
     expect(screen.queryByText("stage_unavailable")).not.toBeInTheDocument();
@@ -880,6 +879,40 @@ describe("P50 capability pages", () => {
       fetcher.mock.calls.some(([input]) => String(input).includes("/stats/charts/transactions")),
     ).toBe(false);
   });
+
+  it.each([
+    { enabled: true, coverage: "incomplete", visible: true },
+    { enabled: true, coverage: "complete", visible: false },
+    { enabled: true, coverage: undefined, visible: false },
+    { enabled: false, coverage: "incomplete", visible: false },
+  ])(
+    "shows name history status only when applicable: %j",
+    async ({ enabled, coverage, visible }) => {
+      const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+        const path = String(input);
+        if (path === "/api/v1/config") return configResponse({ ens: enabled });
+        if (path === "/api/v1/status") {
+          const body = await statusResponse("520", "500").json();
+          body.data.names = coverage ? [{ state: "sync_pending", coverage }] : [];
+          return Response.json(body);
+        }
+        return apiError("not_found", 404);
+      });
+      vi.stubGlobal("fetch", fetcher);
+      renderExplorer("/status");
+      await screen.findByRole("heading", { name: "Configured optional features" });
+      const notice = "Name history syncing; verified names available.";
+      if (visible) expect(await screen.findByText(notice)).toBeVisible();
+      else expect(screen.queryByText(notice)).not.toBeInTheDocument();
+      expect(
+        fetcher.mock.calls.filter(([input]) => String(input) === "/api/v1/status"),
+      ).toHaveLength(1);
+      await userEvent.setup().click(screen.getByRole("button", { name: "切换到中文" }));
+      const translated = "名称历史同步中，已验证名称可用。";
+      if (visible) expect(await screen.findByText(translated)).toBeVisible();
+      else expect(screen.queryByText(translated)).not.toBeInTheDocument();
+    },
+  );
 
   it("localizes sync facts separately from configured feature availability", async () => {
     vi.stubGlobal(

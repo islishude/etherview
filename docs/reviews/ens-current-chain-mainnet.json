@@ -1,0 +1,543 @@
+{
+  "schema_version": 1,
+  "acceptance": "representative_core_to_publication",
+  "full_history_coverage": false,
+  "checked_at": "2026-10-29T16:03:25Z",
+  "chain_id": "1",
+  "genesis": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+  "image": {
+    "id": "sha256:0ea856f949645f05d92708193bf2a2b9cadb1ce4b27baa4e9fa327221df29dec",
+    "os": "linux",
+    "architecture": "arm64"
+  },
+  "source_revision_base": "c37aca9c8685d7f98f64c3a82fcf9bc0d28a8110",
+  "contract_revisions": {
+    "v1": "9b034936a42f462fc04bc0a929a419ede5e18d59",
+    "v2": "4f47cbcc11462fb413196e6b5c0f8090247a6c08"
+  },
+  "manifest": {
+    "registry": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+    "universal_resolver": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+    "target_chain_id": "1",
+    "source_chain_id": "1",
+    "genesis": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+    "namespace": "ens",
+    "policy": "0xc91d1dfa880684f94e7d32485c9480189fd19ba07116db2d488b1115f5080d0c",
+    "start": 22764821,
+    "start_hash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+    "parent_name": "eth",
+    "coin_type": "60",
+    "deployments": [
+      {
+        "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+        "profile": "v2_registry",
+        "number": 26183742,
+        "hash": "0x08f238e69864a97de9ef1ef6b4a75199bec521cd305425883191240193cba595",
+        "code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+        "implementation": "0x0000000000000000000000000000000000000000",
+        "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+        "profile": "v2_registry",
+        "number": 26105621,
+        "hash": "0x27b454becad8b99f418a1d6355daa0dcba74a687cc54a98f44779e9ec314338a",
+        "code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+        "implementation": "0x0000000000000000000000000000000000000000",
+        "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "address": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+        "profile": "universal",
+        "number": 26216330,
+        "hash": "0xa94d4799b66e8fe3c84e92fccfc8d46e285f666601c11c1037070ba548ad0790",
+        "code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+        "implementation": "0x0000000000000000000000000000000000000000",
+        "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "address": "0x77510ba162dfea3d8989e3f0928a691b345730d2",
+        "profile": "v2_factory",
+        "number": 26105299,
+        "hash": "0x00fc218f25afcd179aeda3c24aa1cfc9ea3c4219cc76bb9c51f017fe3818bac9",
+        "code_hash": "0xc251b434fe75ce3ca024e85883aafd7c1d0b8e382d747b537c5930018b144a91",
+        "implementation": "0x0000000000000000000000000000000000000000",
+        "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      {
+        "address": "0x59e16fccd424cc24e280be16e11bcd56fb0ce547",
+        "profile": "controller",
+        "number": 22764821,
+        "hash": "0xd8a4aac92b509daf65e40b73d93ecfff13a08f3dbe71b0eaf152e02f765dc5b6",
+        "code_hash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d",
+        "implementation": "0x0000000000000000000000000000000000000000",
+        "implementation_code_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "roots": [
+      {
+        "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+        "name": ""
+      }
+    ]
+  },
+  "manifest_file_sha256": "067d572774c20fe6ba7bc059b4a2543f27f6fdab75f6dc12258dea76f63d7f8b",
+  "manifest_identity": "0x70b1d5e339011a85deaf8085e403341b50455c34edb51636000389c65c4ae9a2",
+  "core": [
+    {
+      "hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "header_match": true,
+      "log_count": 766,
+      "logs_match": true,
+      "logs_sha256": "69bc00a5624001b86ab3426cb9f6aa01f065572af7ac7b92b2107694f129b6c0",
+      "number": "26299443"
+    }
+  ],
+  "publications": [
+    {
+      "key": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "name": "vitalik.eth",
+      "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "outcome": "resolved",
+      "resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+      "coin_type": "60",
+      "direction": "primary",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:06.956748+00:00",
+      "valid_until": "2026-10-29T16:29:06.956748+00:00",
+      "observation_id": "104",
+      "publication_id": "104",
+      "reverse_resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    },
+    {
+      "key": "caimpl.eth",
+      "name": "caimpl.eth",
+      "address": "0xdc3a6d69972462d20280c26c4a22eaefc10a4566",
+      "outcome": "resolved",
+      "resolver": "0xfd64a44740bd09f524ddc0f873342f981fbacaad",
+      "coin_type": "60",
+      "direction": "forward",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:06.302278+00:00",
+      "valid_until": "2026-10-29T16:29:06.302278+00:00",
+      "observation_id": "101",
+      "publication_id": "101",
+      "reverse_resolver": null,
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    },
+    {
+      "key": "dataspace.eth",
+      "name": "dataspace.eth",
+      "address": "0x30a86a5b68e29ef151046937fc9bb435d4bb1679",
+      "outcome": "resolved",
+      "resolver": "0xd7bb641b98b859866934bb2a434ef72aeae7eadf",
+      "coin_type": "60",
+      "direction": "forward",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:06.840763+00:00",
+      "valid_until": "2026-10-29T16:29:06.840763+00:00",
+      "observation_id": "102",
+      "publication_id": "102",
+      "reverse_resolver": null,
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    },
+    {
+      "key": "ens.eth",
+      "name": "ens.eth",
+      "address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+      "outcome": "resolved",
+      "resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+      "coin_type": "60",
+      "direction": "forward",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:07.717477+00:00",
+      "valid_until": "2026-10-29T16:29:07.717477+00:00",
+      "observation_id": "105",
+      "publication_id": "105",
+      "reverse_resolver": null,
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    },
+    {
+      "key": "nick.eth",
+      "name": "nick.eth",
+      "address": "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+      "outcome": "resolved",
+      "resolver": "0xf4f1007ea430848f2fad60e405a54fc100fec341",
+      "coin_type": "60",
+      "direction": "forward",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:08.41371+00:00",
+      "valid_until": "2026-10-29T16:29:08.41371+00:00",
+      "observation_id": "106",
+      "publication_id": "106",
+      "reverse_resolver": null,
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    },
+    {
+      "key": "test.offchaindemo.eth",
+      "name": "test.offchaindemo.eth",
+      "address": "0x779981590e7ccc0cfae8040ce7151324747cdb97",
+      "outcome": "resolved",
+      "resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+      "coin_type": "60",
+      "direction": "forward",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:10.650966+00:00",
+      "valid_until": "2026-10-29T16:29:10.650966+00:00",
+      "observation_id": "112",
+      "publication_id": "112",
+      "reverse_resolver": null,
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    },
+    {
+      "key": "vitalik.eth",
+      "name": "vitalik.eth",
+      "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "outcome": "resolved",
+      "resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+      "coin_type": "60",
+      "direction": "forward",
+      "provenance": [
+        {
+          "kind": "import",
+          "identity": "current-chain-live-20261029"
+        },
+        {
+          "kind": "reverse_result",
+          "identity": "107"
+        }
+      ],
+      "observed_at": "2026-10-29T15:59:10.196282+00:00",
+      "valid_until": "2026-10-29T16:29:10.196282+00:00",
+      "observation_id": "110",
+      "publication_id": "110",
+      "reverse_resolver": null,
+      "observed_block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+      "observed_block_number": "26299443"
+    }
+  ],
+  "api_checks": [
+    {
+      "key": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "endpoint": "address-names",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    },
+    {
+      "key": "caimpl.eth",
+      "endpoint": "search",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    },
+    {
+      "key": "dataspace.eth",
+      "endpoint": "search",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    },
+    {
+      "key": "ens.eth",
+      "endpoint": "search",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    },
+    {
+      "key": "nick.eth",
+      "endpoint": "search",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    },
+    {
+      "key": "test.offchaindemo.eth",
+      "endpoint": "search",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    },
+    {
+      "key": "vitalik.eth",
+      "endpoint": "search",
+      "matched_publication": true,
+      "observed_identity_and_expiry_match": true
+    }
+  ],
+  "unknown_address": {
+    "address": "0x000000000000000000000000000000000001AaAA",
+    "code": "not_indexed",
+    "state": "unavailable"
+  },
+  "database_only_reads": {
+    "enrich_stopped": true,
+    "api_rpc_secret": false,
+    "before": {
+      "jobs": 436,
+      "candidates": 436,
+      "observations": 112,
+      "publications": 112
+    },
+    "after": {
+      "jobs": 436,
+      "candidates": 436,
+      "observations": 112,
+      "publications": 112
+    },
+    "unchanged": true
+  },
+  "independent": {
+    "checked_at": "2026-10-29T16:03:25Z",
+    "code_identities": [
+      {
+        "address": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+        "code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+        "matched": true
+      },
+      {
+        "address": "0xf60aba43e1f7f3dab1186ff03b561401c9df85e2",
+        "code_hash": "0xe2873b2a7becb1c9f1d017027d5b528ea4e797e609acaa7a4194694e718a0273",
+        "matched": true
+      },
+      {
+        "address": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+        "code_hash": "0x8670a22db547198d3c37dd7def401d10c3b765b28d3a7be6a4f5dfee86900b26",
+        "matched": true
+      },
+      {
+        "address": "0x77510ba162dfea3d8989e3f0928a691b345730d2",
+        "code_hash": "0xc251b434fe75ce3ca024e85883aafd7c1d0b8e382d747b537c5930018b144a91",
+        "matched": true
+      },
+      {
+        "address": "0x59e16fccd424cc24e280be16e11bcd56fb0ce547",
+        "code_hash": "0x64051f251ade7a7b7def7b199339ab1e6d44c28fabd824fe6523a658a0b9c93d",
+        "matched": true
+      }
+    ],
+    "core": [
+      {
+        "hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "header_match": true,
+        "log_count": 766,
+        "logs_match": true,
+        "logs_sha256": "69bc00a5624001b86ab3426cb9f6aa01f065572af7ac7b92b2107694f129b6c0",
+        "number": "26299443"
+      }
+    ],
+    "independent_rpc": "https://ethereum-rpc.publicnode.com",
+    "matched": true,
+    "publications": [
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 0,
+        "direction": "primary",
+        "key": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "vitalik.eth",
+          "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+          "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398",
+          "ReverseResolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+        }
+      },
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 0,
+        "direction": "forward",
+        "key": "caimpl.eth",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "caimpl.eth",
+          "Address": "0xdc3a6d69972462d20280c26c4a22eaefc10a4566",
+          "Resolver": "0xfd64a44740bd09f524ddc0f873342f981fbacaad"
+        }
+      },
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 0,
+        "direction": "forward",
+        "key": "dataspace.eth",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "dataspace.eth",
+          "Address": "0x30a86a5b68e29ef151046937fc9bb435d4bb1679",
+          "Resolver": "0xd7bb641b98b859866934bb2a434ef72aeae7eadf"
+        }
+      },
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 0,
+        "direction": "forward",
+        "key": "ens.eth",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "ens.eth",
+          "Address": "0xfe89cc7abb2c4183683ab71653c4cdc9b02d44b7",
+          "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+        }
+      },
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 0,
+        "direction": "forward",
+        "key": "nick.eth",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "nick.eth",
+          "Address": "0xb8c2c29ee19d8307cb7255e1cd9cbde883a267d5",
+          "Resolver": "0xf4f1007ea430848f2fad60e405a54fc100fec341"
+        }
+      },
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 1,
+        "direction": "forward",
+        "key": "test.offchaindemo.eth",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "test.offchaindemo.eth",
+          "Address": "0x779981590e7ccc0cfae8040ce7151324747cdb97",
+          "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+        }
+      },
+      {
+        "block_hash": "0x7f6690481dbaed5e43b99deb7ee931f2ecbd52adb9abe2876f30a2e0cf0ab3bf",
+        "block_number": "26299443",
+        "ccip_requests": 0,
+        "direction": "forward",
+        "key": "vitalik.eth",
+        "matched": true,
+        "result": {
+          "Outcome": "resolved",
+          "Name": "vitalik.eth",
+          "Address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+          "Resolver": "0x394d8eb4a4fdf599384deab25f31d111d755c398"
+        }
+      }
+    ],
+    "routes": {
+      "active_implementation": "0x06fdd07f007adac667177b46ab2eb9a75132cfd5",
+      "active_root": "0x2553c09be6447beffdb86fa622ad41fb8f77a91e",
+      "managed_proxy": "0xcffd2ae680cd110d28739a70922636b5937b022b",
+      "public_universal_resolver": "0xeeeeeeee14d718c2b47d9923deab1335e144eeee",
+      "v1_vitalik_address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+      "v1_vitalik_resolver": "0x231b0ee14048e9dccd1d247744d114a4eb5e8e63",
+      "v2_dataspace_resolver": "0xd7bb641b98b859866934bb2a434ef72aeae7eadf"
+    },
+    "distinct_provider_from_supplied_rpc": true
+  },
+  "coverage": {
+    "code": "coverage_gap",
+    "coverage": "not_started",
+    "coverage_start": "22764821",
+    "last_published_block": "26299443",
+    "last_success": "2026-10-29T15:59:10.650966Z",
+    "pending": "324",
+    "protocols": [],
+    "source": "ens",
+    "state": "sync_pending",
+    "target": "26299443",
+    "valid_until": "2026-10-29T16:29:04.273573Z"
+  },
+  "candidate_origins": [
+    {
+      "kind": "reverse_result",
+      "count": "1"
+    },
+    {
+      "kind": "import",
+      "count": "7"
+    },
+    {
+      "kind": "indexed_address",
+      "count": "429"
+    }
+  ],
+  "event_discovered_names_in_sample": 0,
+  "operator_imported_samples": 7,
+  "deployment": {
+    "roles": [
+      "sync",
+      "enrich",
+      "api"
+    ],
+    "same_current_chain_rpc_pool": true,
+    "ens_workers": 4,
+    "api_has_rpc_credentials": false,
+    "sync_stopped_after_bounded_core_capture": true,
+    "enrich_stopped_before_api_read_capture": true,
+    "gateway_public_dns": {
+      "hostname": "ccip-v3.ens.xyz",
+      "addresses": [
+        "172.67.198.91",
+        "104.21.82.76"
+      ],
+      "private_network_override": false
+    }
+  },
+  "limitations": [
+    "One canonical Mainnet block and seven imported samples are representative acceptance, not exhaustive chain or protocol enumeration.",
+    "ENS historical collection was not started because core history before the bounded sample is absent; operator imports do not close that gap.",
+    "No event-discovered name is claimed in this live sample; local real-contract tests independently exercise discovery.",
+    "The manifest pins the reviewed entrypoints used by this sample; it is not an exhaustive Mainnet deployment inventory.",
+    "This local image acceptance does not establish remote CI, release security review, production capacity or recovery-soak completion."
+  ],
+  "restart": {
+    "api_restarted": true,
+    "enrich_restarted": true,
+    "same_manifest_and_image": true,
+    "all_seven_publications_still_current": true,
+    "retained_snapshot_reused_after_restart": true
+  },
+  "runtime_cleanup": {
+    "temporary_services_removed": true,
+    "temporary_rpc_secret_removed": true,
+    "supplied_rpc_file_unchanged": true
+  }
+}

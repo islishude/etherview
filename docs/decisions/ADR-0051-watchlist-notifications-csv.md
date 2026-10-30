@@ -60,8 +60,11 @@ Browser support and OS delivery remain external capabilities. CSV retains the ex
 
 CSV is a documented exception to ADR-0003's successful JSON envelope: the
 spec-first authenticated POST returns text/csv on success and the ordinary JSON
-error envelope on failure. It accepts one address, one activity kind, UTC
-[from,to) and direction. A writer repeatable-read snapshot pins the exact
+error envelope on failure. It accepts one address, an activity kind or `all`, UTC
+[from,to) and direction. `all` combines transaction, ERC-20, ERC-721 and
+ERC-1155 activity in one file with the existing per-row kind and shared ordering.
+It requires both Core and Token coverage; all limits apply to the combined file.
+A writer repeatable-read snapshot pins the exact
 canonical tip, checks continuous Core coverage and applicable Token publication,
 and reads at most 10,001 records. The exported view is explicitly as of that tip.
 No RPC or HTTP writes occur while the snapshot is open. Files use UTF-8, fixed
@@ -95,7 +98,18 @@ and precedes export admission and the writer snapshot. Invalid challenges
 return JSON 403 `turnstile_invalid`; upstream failures return JSON 503
 `turnstile_unavailable`, before any CSV headers or bytes. The bounded transport,
 secret isolation and non-persistence rules are shared with ADR-0024. Watch
-operations are unaffected. The address toolbar opens the existing export form;
-a challenge is mounted only while that authenticated form is open.
+operations are unaffected. The address header provides an icon-only watch toggle,
+with a loading icon while reading its initial state or submitting a change.
+After the operation and cache refresh finish, it displays the confirmed watched
+or unwatched icon. Successful and failed writes use the shared top-center Message
+feedback, with a status icon, automatic three-second dismissal and a close control.
+Failed writes retain the previous watch state. Anonymous clicks open a modal SIWE login dialog over the address
+page. Successful login closes the dialog without submitting a watch; another
+explicit click is required. Reads fail closed with retry, and account/address
+changes cancel private actions and clear results. The transaction history footer
+links to `/address/$address/export`, which handles login in place with a compact
+login card and requires an explicit download after login. The export form defaults
+to `all`, the last seven days, and both directions. A challenge is mounted only
+while the authenticated export form is displayed.
 Submitting consumes the token immediately; the widget refreshes after the CSV
 request finishes, on either success or failure, before another download.

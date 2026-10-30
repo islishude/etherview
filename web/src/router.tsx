@@ -12,6 +12,7 @@ import { lazyRouteComponent } from "@/lazyRouteComponent";
 import { AppShell } from "@/components/AppShell";
 import { isChartMetric, type ChartSearch } from "@/pages/chartRoute";
 
+const NamePage = lazyRouteComponent(() => import("@/pages/NamePage"), "NamePage");
 const BlobPage = lazyRouteComponent(() => import("@/pages/BlobPage"), "BlobPage");
 const HomePage = lazyRouteComponent(() => import("@/pages/HomePage"), "HomePage");
 const BlocksPage = lazyRouteComponent(() => import("@/pages/pages"), "BlocksPage");
@@ -33,6 +34,10 @@ const UserOperationsPage = lazyRouteComponent(
 const UserOperationDetailPage = lazyRouteComponent(
   () => import("@/pages/UserOperationPages"),
   "UserOperationDetailPage",
+);
+const AddressExportPage = lazyRouteComponent(
+  () => import("@/pages/AddressActionPages"),
+  "AddressExportPage",
 );
 const AccountPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AccountPage");
 const AdminUsersPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AdminUsersPage");
@@ -140,12 +145,22 @@ const transactionRoute = createRoute({
   },
   component: TransactionRoutePage,
 });
+const nameRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/name/$name",
+  component: NameRoutePage,
+});
 const addressRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/address/$address",
-  validateSearch: (search: Record<string, unknown>): { tab?: string } => {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: string; asset?: "tokens" | "nfts" } => {
     const tab = typeof search.tab === "string" ? search.tab : "transactions";
     if (tab === "transactions") return {};
+    if (tab === "assets") {
+      return { tab, asset: search.asset === "nfts" ? "nfts" : "tokens" };
+    }
     return [
       "native-transfers",
       "internal-transactions",
@@ -160,6 +175,11 @@ const addressRoute = createRoute({
       : {};
   },
   component: AddressRoutePage,
+});
+const addressExportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/address/$address/export",
+  component: AddressExportRoutePage,
 });
 const tokensRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -274,6 +294,8 @@ const routeTree = rootRoute.addChildren([
   userOperationsRoute,
   userOperationRoute,
   addressRoute,
+  addressExportRoute,
+  nameRoute,
   tokensRoute,
   tokenRoute,
   nftRoute,
@@ -314,8 +336,15 @@ function UserOperationRoutePage() {
 
 function AddressRoutePage() {
   const { address } = addressRoute.useParams();
-  const { tab } = addressRoute.useSearch();
-  return <EntityPage kind="address" identifier={address} addressTab={tab ?? "transactions"} />;
+  const { tab, asset } = addressRoute.useSearch();
+  return (
+    <EntityPage
+      kind="address"
+      identifier={address}
+      addressTab={tab ?? "transactions"}
+      addressAsset={asset}
+    />
+  );
 }
 
 function TokenRoutePage() {
@@ -379,4 +408,15 @@ declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router;
   }
+}
+
+function NameRoutePage() {
+  const { name } = nameRoute.useParams();
+  return <NamePage name={name} />;
+}
+
+function AddressExportRoutePage() {
+  const { address } = addressExportRoute.useParams();
+  if (!isAddress(address)) return <NotFoundPage />;
+  return <AddressExportPage address={getAddress(address)} />;
 }

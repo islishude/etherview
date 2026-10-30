@@ -1,7 +1,9 @@
+import { Message } from "@/components/Message";
+import { useBrowsingInvalidated } from "@/api/browsingHooks";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type SubmitEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -142,6 +144,7 @@ function AbiFunctionCard({
   index: number;
   onBindingChanged?: () => void;
 }) {
+  const invalidSnapshot = useBrowsingInvalidated();
   const { t } = useTranslation();
   const wallet = useWallet();
   const publicConfig = usePublicConfig();
@@ -168,6 +171,7 @@ function AbiFunctionCard({
     message: string;
     context: string;
     sticky?: boolean;
+    inline?: boolean;
   }>();
   const expectedChainID = publicConfig.data?.chain_id;
   const context = interactionContext(target, expectedChainID, wallet.active);
@@ -232,9 +236,9 @@ function AbiFunctionCard({
     }
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending) return;
+    if (pending || invalidSnapshot) return;
     setResult(undefined);
     setError(undefined);
     let encoded: EncodedFunctionCall;
@@ -244,6 +248,7 @@ function AbiFunctionCard({
     } catch (cause) {
       setError({
         context,
+        inline: true,
         message:
           cause instanceof AbiFormError
             ? t("contracts.functions.invalidInput", { path: cause.path })
@@ -375,6 +380,7 @@ function AbiFunctionCard({
       setCalldataCopied(false);
       setError({
         context,
+        inline: cause instanceof AbiFormError,
         message:
           cause instanceof AbiFormError
             ? t("contracts.functions.invalidInput", { path: cause.path })
@@ -465,7 +471,7 @@ function AbiFunctionCard({
           >
             <button
               className={highRisk ? "button danger" : "button primary"}
-              disabled={!ready || pending}
+              disabled={!ready || pending || invalidSnapshot}
               type="submit"
             >
               {pending
@@ -492,9 +498,13 @@ function AbiFunctionCard({
         </div>
       </form>
       {visibleError ? (
-        <p className="form-error" role="alert">
-          {visibleError.message}
-        </p>
+        visibleError.sticky || visibleError.inline ? (
+          <p className="form-error" role="alert">
+            {visibleError.message}
+          </p>
+        ) : (
+          <Message type="error">{visibleError.message}</Message>
+        )
       ) : null}
       {visibleResult?.kind === "write" ? (
         <output className="call-result" role="status">

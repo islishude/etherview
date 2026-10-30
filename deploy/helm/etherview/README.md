@@ -126,7 +126,6 @@ Additional keys in `secrets.existingSecret` are selected through these values:
 
 | Value                                                                                 | Default Secret key                                                                    | Application roles and enablement                                              |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `ensRPCURLsKey`                                                                       | `ens-rpc-urls`                                                                        | `all`/`api`, when ENS uses `official_first`                                   |
 | `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when `config.turnstile.enabled` is true                          |
 | `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                     |
 | `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`enrich`, when consensus is enabled                        |
@@ -256,12 +255,12 @@ traffic needs a distinct upstream or per-process rate policy.
 ## Reference HA and capacity profile
 
 `values-reference-capacity.yaml` is a P60 starting profile for the core/API
-route mix. It enables redundant API, sync, enrichment, and maintenance roles,
+route mix. It enables redundant API, sync, enrichment, ENS and maintenance roles,
 two HPAs, one `PodDisruptionBudget` per selected role, and a component-scoped
 hard hostname-spread constraint with at least two eligible domains. Optional
 trace and metadata roles plus public verification remain
 disabled so their external capability budgets can be measured separately. The
-profile's maximum 18 Pods
+profile's maximum 20 Pods
 and 12-connection writer pool cap require up to 216 application PostgreSQL
 connections at steady state. Its maximum 8 API Pods add 96 connections when a
 same-sized reader pool is enabled, for 312 total. `maxSurge: 0` prevents a configured rollout
@@ -394,7 +393,10 @@ suite checks role, HPA, and disruption-budget topology, migration/schema gates,
 feature-off and API-only Secret references, x402 CIDR NetworkPolicy rendering,
 release-scoped x402 alerts, and invalid-value rejection.
 
-`config.ens.mode` defaults to `official_first`. For a chain-local namespace, set
-`custom_only`, configure `config.ens.custom.registry` and `universal_resolver`,
-and use the chain's state RPC. This mode does not inject `ETHERVIEW_ENS_RPC_URLS`;
-`official_gateways` and custom `gateways` may be empty.
+ENS uses `config.ens.manifest`, one current-chain configuration and
+`config.ens.gateways`. Supply its public JSON through `ensManifests`, mounted
+under `/etc/etherview/ens` in `all`/`enrich`. Configure the matching
+`config.ens.policy_digest` in API and enrich. There is no ENS service or separate
+RPC Secret: bounded ENS workers reuse enrich's current-chain RPC pool.
+See the [ENS runbook](../../../docs/operations.md#ens-primary-names) for imports,
+replay, coverage and identity recovery.

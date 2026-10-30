@@ -1,3 +1,7 @@
+import { useBrowsingInvalidated } from "@/api/browsingHooks";
+import NameCoverageNotice from "@/ens/NameCoverageNotice";
+import { expirationText } from "@/ens/nameDetails";
+import { useNameFreshness } from "@/ens/useNameFreshness";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { ArrowRight, CircleAlert, History } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -23,7 +27,8 @@ import {
   shorten,
 } from "@/components/format";
 import { AddressIdentity } from "@/ens/AddressIdentity";
-import { PageHeading } from "@/components/DesignPrimitives";
+import { BrowsingRefreshControl } from "@/components/BrowsingRefreshControl";
+import { PageHeading } from "@/components/PageHeading";
 import { QueryNotice } from "@/components/QueryNotice";
 import { TransactionMethodCell } from "./AddressPage";
 import { IncludedTransactionStatus } from "./TransactionPage";
@@ -272,11 +277,11 @@ export function TransactionsPage() {
                     <IncludedTransactionStatus transaction={transaction} />
                   </td>
                   <td>
-                    <AddressIdentity address={transaction.from} />
+                    <AddressIdentity nameOnly address={transaction.from} />
                   </td>
                   <td>
                     {transaction.to ? (
-                      <AddressIdentity address={transaction.to} />
+                      <AddressIdentity nameOnly address={transaction.to} />
                     ) : (
                       t("common.contractCreation")
                     )}
@@ -412,13 +417,14 @@ export function CursorPagination({
   onPrevious: () => void;
   page: number;
 }) {
+  const invalid = useBrowsingInvalidated();
   const { i18n, t } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <nav className="cursor-pagination" aria-busy={busy} aria-label={label}>
       <button
         className="button secondary"
-        disabled={!hasPrevious || busy}
+        disabled={!hasPrevious || busy || invalid}
         onClick={onPrevious}
         type="button"
       >
@@ -427,7 +433,7 @@ export function CursorPagination({
       <span aria-live="polite">{t("pagination.page", { page: formatInteger(page, locale) })}</span>
       <button
         className="button secondary"
-        disabled={!hasNext || busy}
+        disabled={!hasNext || busy || invalid}
         onClick={onNext}
         type="button"
       >
@@ -702,6 +708,8 @@ export function verificationLanguageLabel(value: string, t: Translate): string {
 
 export function searchKindLabel(value: SearchResult["kind"], t: Translate): string {
   switch (value) {
+    case "name":
+      return t("names.name");
     case "block":
       return t("searchKind.block");
     case "transaction":
@@ -735,6 +743,10 @@ export function StatusPage() {
       <QueryNotice
         loading={status.isPending || publicConfig.isPending}
         error={status.error ?? publicConfig.error}
+      />
+      <NameCoverageNotice
+        enabled={publicConfig.data?.features.ens === true}
+        names={status.data?.names}
       />
       {status.data && (
         <div className="status-layout">
@@ -839,6 +851,13 @@ export function SearchPage({ query }: { query: string }) {
   const normalizedQuery = query.trim();
   const pager = useCursorHistory(`search:${normalizedQuery}`);
   const search = useSearchResults(normalizedQuery, pager.request, SEARCH_PAGE_SIZE);
+  const names = useNameFreshness(search.data?.items, [
+    "search",
+    normalizedQuery,
+    pager.request.cursor ?? null,
+    SEARCH_PAGE_SIZE,
+    pager.request.refreshGeneration,
+  ]);
   return (
     <Page title={t("page.search")} description={query} mono>
       {normalizedQuery.length === 0 && <p className="context-note">{t("search.prompt")}</p>}
@@ -847,15 +866,24 @@ export function SearchPage({ query }: { query: string }) {
         error={search.error}
         onReset={pager.reset}
       />
-      {search.data && search.data.items.length === 0 && (
+      {names.withdrawn && (
+        <p className="context-note" role="status">
+          {t("state.nameExpired")}{" "}
+          <button type="button" onClick={pager.reset}>
+            {t("actions.restartPagination")}
+          </button>
+        </p>
+      )}
+      {!search.error && search.data && search.data.items.length === 0 && (
         <p className="empty-result" role="status">
           {t("state.noResults")}
         </p>
       )}
       <div className="search-results">
-        {search.data?.items.map((result) => (
-          <SearchResultLink key={`${result.kind}:${result.key}`} result={result} />
-        ))}
+        {!search.error &&
+          names.items?.map((result) => (
+            <SearchResultLink key={`${result.kind}:${result.key}`} result={result} />
+          ))}
       </div>
       {search.data && (
         <CursorPagination
@@ -873,7 +901,7 @@ export function SearchPage({ query }: { query: string }) {
 }
 
 function SearchResultLink({ result }: { result: SearchResult }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const content = (
     <>
       <span className="result-kind">{searchKindLabel(result.kind, t)}</span>
@@ -881,9 +909,6 @@ function SearchResultLink({ result }: { result: SearchResult }) {
         <strong>
           <bdi>{result.label}</bdi>
         </strong>
-        {result.name_source === "custom_ens" ? (
-          <small className="custom-ens-badge">Custom ENS</small>
-        ) : null}
         <small>{result.key}</small>
       </span>
       <span className="search-result-tail">
@@ -897,6 +922,29 @@ function SearchResultLink({ result }: { result: SearchResult }) {
     </>
   );
 
+  if (result.kind === "name")
+    return (
+      <div className="search-result search-name-result">
+        <Link to="/name/$name" params={{ name: result.key }}>
+          {content}
+        </Link>
+        {result.name_details && (
+          <div className="search-name-summary">
+            <span>{t(`names.${result.name_details.registration_state}`)}</span>
+            {result.name_details.expiration_time.state === "value" && (
+              <small>
+                {t("names.expiration")}:{" "}
+                {expirationText(result.name_details.expiration_time.value, i18n.language)}
+              </small>
+            )}
+            {result.name_details.resolved_address.state === "value" &&
+              result.name_details.resolved_address.value && (
+                <AddressIdentity address={result.name_details.resolved_address.value} copy />
+              )}
+          </div>
+        )}
+      </div>
+    );
   switch (result.kind) {
     case "block":
       return (
@@ -1188,7 +1236,12 @@ export function Page({
 }) {
   return (
     <div className="page-stack inner-page">
-      <PageHeading title={title} description={description} mono={mono} />
+      <PageHeading
+        actions={<BrowsingRefreshControl />}
+        title={title}
+        description={description}
+        mono={mono}
+      />
       {children}
     </div>
   );

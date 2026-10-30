@@ -11,51 +11,55 @@ export function AddressIdentity({
   address,
   activity = false,
   compact = true,
+  nameOnly = false,
   copy = false,
   contract = false,
   link = true,
   suffix,
+  actions,
 }: {
   address: string;
   activity?: boolean;
   compact?: boolean;
+  nameOnly?: boolean;
   copy?: boolean;
   contract?: boolean;
   link?: boolean;
   suffix?: ReactNode;
+  actions?: ReactNode;
 }) {
   const primary = usePrimaryName(address);
   const { t } = useTranslation();
   const system = address.toLowerCase() === "0xfffffffffffffffffffffffffffffffffffffffe";
   const content = (
     <span
-      className={`address-identity${primary ? " has-primary-name" : ""}${compact ? " is-compact" : ""}`}
+      className={`address-identity${primary && !nameOnly ? " has-primary-name" : ""}${compact ? " is-compact" : ""}`}
     >
-      {primary ? (
-        <span className="address-primary-name-row">
-          <bdi className="address-primary-name" title={primary.name}>
-            {primary.name}
-          </bdi>
-          {primary.source === "custom_ens" ? (
-            <small className="custom-ens-badge">Custom ENS</small>
-          ) : null}
-        </span>
-      ) : null}
-      <code className="address-identity-value" title={address}>
-        {compact ? shortenAddress(address) : address}
-      </code>
+      {primary && nameOnly ? (
+        <bdi className="address-name-link" title={primary.name}>
+          {primary.name}
+        </bdi>
+      ) : (
+        <code className="address-identity-value" title={address}>
+          {compact ? shortenAddress(address) : address}
+        </code>
+      )}
       {suffix}
     </span>
   );
   const linked = link ? (
     <Link
-      aria-label={[
-        primary?.name,
-        system ? t("detail.systemAddress") : undefined,
-        primary || !compact ? address : shortenAddress(address),
-      ]
-        .filter(Boolean)
-        .join(", ")}
+      aria-label={
+        primary && nameOnly
+          ? primary.name
+          : [
+              primary?.name,
+              system ? t("detail.systemAddress") : undefined,
+              primary || !compact ? address : shortenAddress(address),
+            ]
+              .filter(Boolean)
+              .join(", ")
+      }
       hash={contract ? "code" : undefined}
       params={{ address }}
       search={contract ? {} : activity ? { tab: "transactions" } : {}}
@@ -74,7 +78,31 @@ export function AddressIdentity({
   ) : (
     linked
   );
-  return copy ? <CopyableField value={address}>{identity}</CopyableField> : identity;
+  const addressContent = copy ? (
+    <CopyableField value={address}>{identity}</CopyableField>
+  ) : (
+    identity
+  );
+  const addressRow = actions ? (
+    <span className="address-identity-address-row">
+      {addressContent}
+      {actions}
+    </span>
+  ) : (
+    addressContent
+  );
+  return primary && !nameOnly ? (
+    <span className="address-identity has-primary-name">
+      <Link className="address-primary-name-row" to="/name/$name" params={{ name: primary.name }}>
+        <bdi className="address-primary-name" title={primary.name}>
+          {primary.name}
+        </bdi>
+      </Link>
+      {addressRow}
+    </span>
+  ) : (
+    addressRow
+  );
 }
 
 export function shortenAddress(value: string): string {

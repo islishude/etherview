@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { CircleCheck, CircleDot } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useRef, useState } from "react";
@@ -153,7 +154,7 @@ export function WalletMenu() {
             </div>
           )}
           {wallet.connecting && <p role="status">{t("actions.connecting")}</p>}
-          {errorMessage && <p className="form-error">{errorMessage}</p>}
+
           <AddNetworkControl menuOpen={open} />
           {auth.enabled && (
             <section className="wallet-auth-section" aria-labelledby="wallet-auth-title">
@@ -201,21 +202,12 @@ export function WalletMenu() {
                   </Link>
                 </>
               )}
-              {authErrorMessage && <p className="form-error">{authErrorMessage}</p>}
             </section>
           )}
         </div>
       </details>
-      {errorMessage && (
-        <span className="sr-only" role="alert">
-          {errorMessage}
-        </span>
-      )}
-      {authErrorMessage && (
-        <span className="sr-only" role="alert">
-          {authErrorMessage}
-        </span>
-      )}
+      {errorMessage && <Message type="error">{errorMessage}</Message>}
+      {authErrorMessage && <Message type="error">{authErrorMessage}</Message>}
     </>
   );
 }

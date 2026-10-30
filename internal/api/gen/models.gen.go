@@ -83,6 +83,7 @@ func (e AddressExportRequestDirection) Valid() bool {
 
 // Defines values for AddressExportRequestKind.
 const (
+	AddressExportRequestKindAll         AddressExportRequestKind = "all"
 	AddressExportRequestKindErc20       AddressExportRequestKind = "erc20"
 	AddressExportRequestKindNft         AddressExportRequestKind = "nft"
 	AddressExportRequestKindTransaction AddressExportRequestKind = "transaction"
@@ -91,6 +92,8 @@ const (
 // Valid indicates whether the value is a known member of the AddressExportRequestKind enum.
 func (e AddressExportRequestKind) Valid() bool {
 	switch e {
+	case AddressExportRequestKindAll:
+		return true
 	case AddressExportRequestKindErc20:
 		return true
 	case AddressExportRequestKindNft:
@@ -197,19 +200,19 @@ func (e AddressSummaryType) Valid() bool {
 
 // Defines values for AddressTokenTransferKind.
 const (
-	Burn     AddressTokenTransferKind = "burn"
-	Mint     AddressTokenTransferKind = "mint"
-	Transfer AddressTokenTransferKind = "transfer"
+	AddressTokenTransferKindBurn     AddressTokenTransferKind = "burn"
+	AddressTokenTransferKindMint     AddressTokenTransferKind = "mint"
+	AddressTokenTransferKindTransfer AddressTokenTransferKind = "transfer"
 )
 
 // Valid indicates whether the value is a known member of the AddressTokenTransferKind enum.
 func (e AddressTokenTransferKind) Valid() bool {
 	switch e {
-	case Burn:
+	case AddressTokenTransferKindBurn:
 		return true
-	case Mint:
+	case AddressTokenTransferKindMint:
 		return true
-	case Transfer:
+	case AddressTokenTransferKindTransfer:
 		return true
 	default:
 		return false
@@ -764,16 +767,16 @@ func (e BuilderExitRequestRequestType) Valid() bool {
 
 // Defines values for CWIAImmutableArgFieldRole.
 const (
-	Length CWIAImmutableArgFieldRole = "length"
-	Value  CWIAImmutableArgFieldRole = "value"
+	CWIAImmutableArgFieldRoleLength CWIAImmutableArgFieldRole = "length"
+	CWIAImmutableArgFieldRoleValue  CWIAImmutableArgFieldRole = "value"
 )
 
 // Valid indicates whether the value is a known member of the CWIAImmutableArgFieldRole enum.
 func (e CWIAImmutableArgFieldRole) Valid() bool {
 	switch e {
-	case Length:
+	case CWIAImmutableArgFieldRoleLength:
 		return true
-	case Value:
+	case CWIAImmutableArgFieldRoleValue:
 		return true
 	default:
 		return false
@@ -1713,6 +1716,309 @@ func (e NFTMetadataState) Valid() bool {
 	}
 }
 
+// Defines values for NameDetailRegistrationState.
+const (
+	NameDetailRegistrationStateExpired       NameDetailRegistrationState = "expired"
+	NameDetailRegistrationStateGracePeriod   NameDetailRegistrationState = "grace_period"
+	NameDetailRegistrationStateNotApplicable NameDetailRegistrationState = "not_applicable"
+	NameDetailRegistrationStatePending       NameDetailRegistrationState = "pending"
+	NameDetailRegistrationStateRegistered    NameDetailRegistrationState = "registered"
+	NameDetailRegistrationStateReserved      NameDetailRegistrationState = "reserved"
+	NameDetailRegistrationStateUnregistered  NameDetailRegistrationState = "unregistered"
+	NameDetailRegistrationStateUnsupported   NameDetailRegistrationState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the NameDetailRegistrationState enum.
+func (e NameDetailRegistrationState) Valid() bool {
+	switch e {
+	case NameDetailRegistrationStateExpired:
+		return true
+	case NameDetailRegistrationStateGracePeriod:
+		return true
+	case NameDetailRegistrationStateNotApplicable:
+		return true
+	case NameDetailRegistrationStatePending:
+		return true
+	case NameDetailRegistrationStateRegistered:
+		return true
+	case NameDetailRegistrationStateReserved:
+		return true
+	case NameDetailRegistrationStateUnregistered:
+		return true
+	case NameDetailRegistrationStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameDetailState.
+const (
+	NameDetailStateIndexed    NameDetailState = "indexed"
+	NameDetailStateNotIndexed NameDetailState = "not_indexed"
+)
+
+// Valid indicates whether the value is a known member of the NameDetailState enum.
+func (e NameDetailState) Valid() bool {
+	switch e {
+	case NameDetailStateIndexed:
+		return true
+	case NameDetailStateNotIndexed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameFieldModel.
+const (
+	PermissionedRegistry NameFieldModel = "permissioned_registry"
+	RegistryManager      NameFieldModel = "registry_manager"
+	WrappedManager       NameFieldModel = "wrapped_manager"
+)
+
+// Valid indicates whether the value is a known member of the NameFieldModel enum.
+func (e NameFieldModel) Valid() bool {
+	switch e {
+	case PermissionedRegistry:
+		return true
+	case RegistryManager:
+		return true
+	case WrappedManager:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameFieldState.
+const (
+	NameFieldStateMultiAccount  NameFieldState = "multi_account"
+	NameFieldStateNotApplicable NameFieldState = "not_applicable"
+	NameFieldStateNotSet        NameFieldState = "not_set"
+	NameFieldStatePending       NameFieldState = "pending"
+	NameFieldStateUnsupported   NameFieldState = "unsupported"
+	NameFieldStateValue         NameFieldState = "value"
+)
+
+// Valid indicates whether the value is a known member of the NameFieldState enum.
+func (e NameFieldState) Valid() bool {
+	switch e {
+	case NameFieldStateMultiAccount:
+		return true
+	case NameFieldStateNotApplicable:
+		return true
+	case NameFieldStateNotSet:
+		return true
+	case NameFieldStatePending:
+		return true
+	case NameFieldStateUnsupported:
+		return true
+	case NameFieldStateValue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameHistoryState.
+const (
+	NameHistoryStateIndexed    NameHistoryState = "indexed"
+	NameHistoryStateNotIndexed NameHistoryState = "not_indexed"
+)
+
+// Valid indicates whether the value is a known member of the NameHistoryState enum.
+func (e NameHistoryState) Valid() bool {
+	switch e {
+	case NameHistoryStateIndexed:
+		return true
+	case NameHistoryStateNotIndexed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameHistoryAction.
+const (
+	NameHistoryActionAbi            NameHistoryAction = "abi"
+	NameHistoryActionAddress        NameHistoryAction = "address"
+	NameHistoryActionClear          NameHistoryAction = "clear"
+	NameHistoryActionContenthash    NameHistoryAction = "contenthash"
+	NameHistoryActionData           NameHistoryAction = "data"
+	NameHistoryActionDns            NameHistoryAction = "dns"
+	NameHistoryActionFuses          NameHistoryAction = "fuses"
+	NameHistoryActionInterface      NameHistoryAction = "interface"
+	NameHistoryActionLink           NameHistoryAction = "link"
+	NameHistoryActionMigration      NameHistoryAction = "migration"
+	NameHistoryActionName           NameHistoryAction = "name"
+	NameHistoryActionPermission     NameHistoryAction = "permission"
+	NameHistoryActionPubkey         NameHistoryAction = "pubkey"
+	NameHistoryActionRegistration   NameHistoryAction = "registration"
+	NameHistoryActionRenewal        NameHistoryAction = "renewal"
+	NameHistoryActionReservation    NameHistoryAction = "reservation"
+	NameHistoryActionResolver       NameHistoryAction = "resolver"
+	NameHistoryActionResource       NameHistoryAction = "resource"
+	NameHistoryActionSubname        NameHistoryAction = "subname"
+	NameHistoryActionText           NameHistoryAction = "text"
+	NameHistoryActionTransfer       NameHistoryAction = "transfer"
+	NameHistoryActionTtl            NameHistoryAction = "ttl"
+	NameHistoryActionUnregistration NameHistoryAction = "unregistration"
+	NameHistoryActionUnwrap         NameHistoryAction = "unwrap"
+	NameHistoryActionWrap           NameHistoryAction = "wrap"
+)
+
+// Valid indicates whether the value is a known member of the NameHistoryAction enum.
+func (e NameHistoryAction) Valid() bool {
+	switch e {
+	case NameHistoryActionAbi:
+		return true
+	case NameHistoryActionAddress:
+		return true
+	case NameHistoryActionClear:
+		return true
+	case NameHistoryActionContenthash:
+		return true
+	case NameHistoryActionData:
+		return true
+	case NameHistoryActionDns:
+		return true
+	case NameHistoryActionFuses:
+		return true
+	case NameHistoryActionInterface:
+		return true
+	case NameHistoryActionLink:
+		return true
+	case NameHistoryActionMigration:
+		return true
+	case NameHistoryActionName:
+		return true
+	case NameHistoryActionPermission:
+		return true
+	case NameHistoryActionPubkey:
+		return true
+	case NameHistoryActionRegistration:
+		return true
+	case NameHistoryActionRenewal:
+		return true
+	case NameHistoryActionReservation:
+		return true
+	case NameHistoryActionResolver:
+		return true
+	case NameHistoryActionResource:
+		return true
+	case NameHistoryActionSubname:
+		return true
+	case NameHistoryActionText:
+		return true
+	case NameHistoryActionTransfer:
+		return true
+	case NameHistoryActionTtl:
+		return true
+	case NameHistoryActionUnregistration:
+		return true
+	case NameHistoryActionUnwrap:
+		return true
+	case NameHistoryActionWrap:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameHistoryCoverageState.
+const (
+	NameHistoryCoverageStateComplete    NameHistoryCoverageState = "complete"
+	NameHistoryCoverageStatePartial     NameHistoryCoverageState = "partial"
+	NameHistoryCoverageStatePending     NameHistoryCoverageState = "pending"
+	NameHistoryCoverageStateUnavailable NameHistoryCoverageState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the NameHistoryCoverageState enum.
+func (e NameHistoryCoverageState) Valid() bool {
+	switch e {
+	case NameHistoryCoverageStateComplete:
+		return true
+	case NameHistoryCoverageStatePartial:
+		return true
+	case NameHistoryCoverageStatePending:
+		return true
+	case NameHistoryCoverageStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameSourceStatusCoverage.
+const (
+	NameSourceStatusCoverageComplete   NameSourceStatusCoverage = "complete"
+	NameSourceStatusCoverageIncomplete NameSourceStatusCoverage = "incomplete"
+	NameSourceStatusCoverageNotStarted NameSourceStatusCoverage = "not_started"
+)
+
+// Valid indicates whether the value is a known member of the NameSourceStatusCoverage enum.
+func (e NameSourceStatusCoverage) Valid() bool {
+	switch e {
+	case NameSourceStatusCoverageComplete:
+		return true
+	case NameSourceStatusCoverageIncomplete:
+		return true
+	case NameSourceStatusCoverageNotStarted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameSourceStatusProtocols.
+const (
+	V1 NameSourceStatusProtocols = "v1"
+	V2 NameSourceStatusProtocols = "v2"
+)
+
+// Valid indicates whether the value is a known member of the NameSourceStatusProtocols enum.
+func (e NameSourceStatusProtocols) Valid() bool {
+	switch e {
+	case V1:
+		return true
+	case V2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NameSourceStatusState.
+const (
+	NameSourceStatusStateCurrent           NameSourceStatusState = "current"
+	NameSourceStatusStateNotIndexed        NameSourceStatusState = "not_indexed"
+	NameSourceStatusStateResolutionPending NameSourceStatusState = "resolution_pending"
+	NameSourceStatusStateStale             NameSourceStatusState = "stale"
+	NameSourceStatusStateSyncPending       NameSourceStatusState = "sync_pending"
+	NameSourceStatusStateUnsupportedSource NameSourceStatusState = "unsupported_source"
+)
+
+// Valid indicates whether the value is a known member of the NameSourceStatusState enum.
+func (e NameSourceStatusState) Valid() bool {
+	switch e {
+	case NameSourceStatusStateCurrent:
+		return true
+	case NameSourceStatusStateNotIndexed:
+		return true
+	case NameSourceStatusStateResolutionPending:
+		return true
+	case NameSourceStatusStateStale:
+		return true
+	case NameSourceStatusStateSyncPending:
+		return true
+	case NameSourceStatusStateUnsupportedSource:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PendingTransactionDetailKind.
 const (
 	PendingTransactionDetailKindPending PendingTransactionDetailKind = "pending"
@@ -1722,24 +2028,6 @@ const (
 func (e PendingTransactionDetailKind) Valid() bool {
 	switch e {
 	case PendingTransactionDetailKindPending:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PrimaryNameSource.
-const (
-	PrimaryNameSourceCustomEns PrimaryNameSource = "custom_ens"
-	PrimaryNameSourceEns       PrimaryNameSource = "ens"
-)
-
-// Valid indicates whether the value is a known member of the PrimaryNameSource enum.
-func (e PrimaryNameSource) Valid() bool {
-	switch e {
-	case PrimaryNameSourceCustomEns:
-		return true
-	case PrimaryNameSourceEns:
 		return true
 	default:
 		return false
@@ -2322,6 +2610,7 @@ const (
 	SearchResultKindBlock         SearchResultKind = "block"
 	SearchResultKindContract      SearchResultKind = "contract"
 	SearchResultKindLabel         SearchResultKind = "label"
+	SearchResultKindName          SearchResultKind = "name"
 	SearchResultKindNft           SearchResultKind = "nft"
 	SearchResultKindToken         SearchResultKind = "token"
 	SearchResultKindTransaction   SearchResultKind = "transaction"
@@ -2339,6 +2628,8 @@ func (e SearchResultKind) Valid() bool {
 		return true
 	case SearchResultKindLabel:
 		return true
+	case SearchResultKindName:
+		return true
 	case SearchResultKindNft:
 		return true
 	case SearchResultKindToken:
@@ -2346,24 +2637,6 @@ func (e SearchResultKind) Valid() bool {
 	case SearchResultKindTransaction:
 		return true
 	case SearchResultKindUserOperation:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for SearchResultNameSource.
-const (
-	SearchResultNameSourceCustomEns SearchResultNameSource = "custom_ens"
-	SearchResultNameSourceEns       SearchResultNameSource = "ens"
-)
-
-// Valid indicates whether the value is a known member of the SearchResultNameSource enum.
-func (e SearchResultNameSource) Valid() bool {
-	switch e {
-	case SearchResultNameSourceCustomEns:
-		return true
-	case SearchResultNameSourceEns:
 		return true
 	default:
 		return false
@@ -3711,14 +3984,16 @@ type AddressExportRequest struct {
 	Address   Address                       `json:"address"`
 	Direction AddressExportRequestDirection `json:"direction"`
 	From      time.Time                     `json:"from"`
-	Kind      AddressExportRequestKind      `json:"kind"`
-	To        time.Time                     `json:"to"`
+
+	// Kind all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total.
+	Kind AddressExportRequestKind `json:"kind"`
+	To   time.Time                `json:"to"`
 }
 
 // AddressExportRequestDirection defines model for AddressExportRequest.Direction.
 type AddressExportRequestDirection string
 
-// AddressExportRequestKind defines model for AddressExportRequest.Kind.
+// AddressExportRequestKind all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total.
 type AddressExportRequestKind string
 
 // AddressInternalTransaction defines model for AddressInternalTransaction.
@@ -3782,6 +4057,9 @@ type AddressNameLookupState string
 // AddressNamePage defines model for AddressNamePage.
 type AddressNamePage struct {
 	Items []AddressNameLookup `json:"items"`
+
+	// Publication A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Publication Quantity `json:"publication"`
 
 	// Snapshot A bounded server-issued traversal token that clients must not decode or construct.
 	Snapshot OpaqueCursor `json:"snapshot"`
@@ -5617,6 +5895,191 @@ type NFTOwnershipResponse struct {
 	Meta Meta         `json:"meta"`
 }
 
+// NameDetail defines model for NameDetail.
+type NameDetail struct {
+	Controller            NameField                   `json:"controller"`
+	ExpirationTime        NameField                   `json:"expiration_time"`
+	Name                  string                      `json:"name"`
+	ProfileObservation    *NameObservation            `json:"profile_observation,omitempty"`
+	Registrant            NameField                   `json:"registrant"`
+	RegistrationState     NameDetailRegistrationState `json:"registration_state"`
+	ResolutionObservation *NameObservation            `json:"resolution_observation,omitempty"`
+	ResolvedAddress       NameField                   `json:"resolved_address"`
+	State                 NameDetailState             `json:"state"`
+}
+
+// NameDetailRegistrationState defines model for NameDetail.RegistrationState.
+type NameDetailRegistrationState string
+
+// NameDetailState defines model for NameDetail.State.
+type NameDetailState string
+
+// NameDetailResponse defines model for NameDetailResponse.
+type NameDetailResponse struct {
+	Data NameDetail `json:"data"`
+	Meta Meta       `json:"meta"`
+}
+
+// NameField defines model for NameField.
+type NameField struct {
+	Model *NameFieldModel `json:"model,omitempty"`
+	State NameFieldState  `json:"state"`
+
+	// Value Address or unsigned Unix seconds for expiration_time, never a fabricated empty value.
+	Value *string `json:"value,omitempty"`
+}
+
+// NameFieldModel defines model for NameField.Model.
+type NameFieldModel string
+
+// NameFieldState defines model for NameField.State.
+type NameFieldState string
+
+// NameHistory defines model for NameHistory.
+type NameHistory struct {
+	Coverage NameHistoryCoverage      `json:"coverage"`
+	Items    []NameHistoryTransaction `json:"items"`
+	Name     string                   `json:"name"`
+
+	// Snapshot Opaque event-page snapshot, empty before any history scan.
+	Snapshot string           `json:"snapshot"`
+	State    NameHistoryState `json:"state"`
+}
+
+// NameHistoryState defines model for NameHistory.State.
+type NameHistoryState string
+
+// NameHistoryAction defines model for NameHistoryAction.
+type NameHistoryAction string
+
+// NameHistoryCoverage defines model for NameHistoryCoverage.
+type NameHistoryCoverage struct {
+	// Pending A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Pending Quantity `json:"pending"`
+
+	// Scanned A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Scanned *Quantity `json:"scanned,omitempty"`
+
+	// Start A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Start Quantity                 `json:"start"`
+	State NameHistoryCoverageState `json:"state"`
+
+	// Target A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Target *Quantity `json:"target,omitempty"`
+}
+
+// NameHistoryCoverageState defines model for NameHistoryCoverage.State.
+type NameHistoryCoverageState string
+
+// NameHistoryEvent defines model for NameHistoryEvent.
+type NameHistoryEvent struct {
+	Action NameHistoryAction `json:"action"`
+
+	// Emitter A 20-byte address; responses use the EIP-55 checksum form.
+	Emitter   Address            `json:"emitter"`
+	EventName string             `json:"event_name"`
+	Fields    []NameHistoryField `json:"fields"`
+
+	// LogIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LogIndex Quantity `json:"log_index"`
+}
+
+// NameHistoryEvents defines model for NameHistoryEvents.
+type NameHistoryEvents struct {
+	Items []NameHistoryEvent `json:"items"`
+}
+
+// NameHistoryEventsResponse defines model for NameHistoryEventsResponse.
+type NameHistoryEventsResponse struct {
+	Data NameHistoryEvents `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// NameHistoryField defines model for NameHistoryField.
+type NameHistoryField struct {
+	Key       string `json:"key"`
+	Truncated bool   `json:"truncated"`
+
+	// Type ABI scalar type, array type or hash for an indexed dynamic argument.
+	Type string `json:"type"`
+
+	// Value Inert event evidence; omitted event values are never inferred from current records.
+	Value string `json:"value"`
+}
+
+// NameHistoryResponse defines model for NameHistoryResponse.
+type NameHistoryResponse struct {
+	Data NameHistory `json:"data"`
+	Meta Meta        `json:"meta"`
+}
+
+// NameHistoryTransaction defines model for NameHistoryTransaction.
+type NameHistoryTransaction struct {
+	Actions []NameHistoryAction `json:"actions"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity `json:"block_number"`
+
+	// EventCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	EventCount Quantity  `json:"event_count"`
+	Timestamp  time.Time `json:"timestamp"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+}
+
+// NameObservation defines model for NameObservation.
+type NameObservation struct {
+	// ObservedBlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	ObservedBlockHash Hash `json:"observed_block_hash"`
+
+	// ObservedBlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ObservedBlockNumber Quantity `json:"observed_block_number"`
+
+	// Publication A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Publication Quantity  `json:"publication"`
+	ValidUntil  time.Time `json:"valid_until"`
+}
+
+// NameSourceStatus defines model for NameSourceStatus.
+type NameSourceStatus struct {
+	Code *string `json:"code,omitempty"`
+
+	// Coverage Directory coverage from the configured protocol start, independent of exact resolution validity.
+	Coverage NameSourceStatusCoverage `json:"coverage"`
+
+	// CoverageStart A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CoverageStart *Quantity `json:"coverage_start,omitempty"`
+
+	// LastPublishedBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	LastPublishedBlock *Quantity  `json:"last_published_block,omitempty"`
+	LastSuccess        *time.Time `json:"last_success,omitempty"`
+
+	// Pending A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Pending   Quantity                    `json:"pending"`
+	Protocols []NameSourceStatusProtocols `json:"protocols"`
+
+	// Scanned A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Scanned *Quantity             `json:"scanned,omitempty"`
+	State   NameSourceStatusState `json:"state"`
+
+	// Target A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Target     *Quantity  `json:"target,omitempty"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+}
+
+// NameSourceStatusCoverage Directory coverage from the configured protocol start, independent of exact resolution validity.
+type NameSourceStatusCoverage string
+
+// NameSourceStatusProtocols defines model for NameSourceStatus.Protocols.
+type NameSourceStatusProtocols string
+
+// NameSourceStatusState defines model for NameSourceStatus.State.
+type NameSourceStatusState string
+
 // NativeTransfer defines model for NativeTransfer.
 type NativeTransfer struct {
 	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
@@ -5736,12 +6199,20 @@ type PendingTransactionListResponse struct {
 
 // PrimaryName defines model for PrimaryName.
 type PrimaryName struct {
-	Name   string            `json:"name"`
-	Source PrimaryNameSource `json:"source"`
-}
+	Name string `json:"name"`
 
-// PrimaryNameSource defines model for PrimaryName.Source.
-type PrimaryNameSource string
+	// ObservedBlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	ObservedBlockHash Hash `json:"observed_block_hash"`
+
+	// ObservedBlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ObservedBlockNumber Quantity `json:"observed_block_number"`
+
+	// Publication A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Publication Quantity `json:"publication"`
+
+	// ValidUntil Hide the name after this deadline even without a server event.
+	ValidUntil time.Time `json:"valid_until"`
+}
 
 // ProxyArtifactKind defines model for ProxyArtifactKind.
 type ProxyArtifactKind string
@@ -6158,19 +6629,16 @@ type SearchResponse struct {
 
 // SearchResult defines model for SearchResult.
 type SearchResult struct {
-	Canonical  *bool                   `json:"canonical,omitempty"`
-	Key        string                  `json:"key"`
-	Kind       SearchResultKind        `json:"kind"`
-	Label      string                  `json:"label"`
-	NameSource *SearchResultNameSource `json:"name_source,omitempty"`
-	Rank       int                     `json:"rank"`
+	Canonical   *bool            `json:"canonical,omitempty"`
+	Key         string           `json:"key"`
+	Kind        SearchResultKind `json:"kind"`
+	Label       string           `json:"label"`
+	NameDetails *NameDetail      `json:"name_details,omitempty"`
+	Rank        int              `json:"rank"`
 }
 
 // SearchResultKind defines model for SearchResult.Kind.
 type SearchResultKind string
-
-// SearchResultNameSource defines model for SearchResult.NameSource.
-type SearchResultNameSource string
 
 // SessionRevocation defines model for SessionRevocation.
 type SessionRevocation struct {
@@ -6257,7 +6725,8 @@ type Status struct {
 	Lag Quantity `json:"lag"`
 
 	// LatestBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	LatestBlock Quantity `json:"latest_block"`
+	LatestBlock Quantity            `json:"latest_block"`
+	Names       *[]NameSourceStatus `json:"names,omitempty"`
 
 	// SafeBlock A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	SafeBlock *Quantity `json:"safe_block,omitempty"`
@@ -7967,6 +8436,20 @@ type ListGenesisAccountsParams struct {
 type GetHomeSnapshotParams struct {
 	// MinEventId Minimum durable event version; waits at most two seconds for the local snapshot.
 	MinEventId *RuntimeEventID `form:"min_event_id,omitempty" json:"min_event_id,omitempty"`
+}
+
+// ListNameHistoryParams defines parameters for ListNameHistory.
+type ListNameHistoryParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListNameHistoryEventsParams defines parameters for ListNameHistoryEvents.
+type ListNameHistoryEventsParams struct {
+	Cursor    *Cursor      `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit     *int         `form:"limit,omitempty" json:"limit,omitempty"`
+	BlockHash Hash         `form:"block_hash" json:"block_hash"`
+	Snapshot  OpaqueCursor `form:"snapshot" json:"snapshot"`
 }
 
 // ListPendingTransactionsParams defines parameters for ListPendingTransactions.

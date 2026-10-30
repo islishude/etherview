@@ -115,6 +115,7 @@ func (h *harness) captureUserOperationFixture(ctx context.Context) {
 	if userOperationReceipt.Status != "0x1" || len(userOperationReceipt.Logs) != 2 {
 		h.t.Fatalf("runtime UserOperation receipt = %#v", userOperationReceipt)
 	}
+	h.fixture.userOperationEventIndex = int(userOperationReceipt.Logs[1].LogIndex)
 	for index, log := range userOperationReceipt.Logs {
 		if len(log.Topics) < 2 || !common.IsHexHash(log.Topics[1]) {
 			h.t.Fatalf("runtime UserOperation log %d = %#v", index, log)
@@ -195,7 +196,7 @@ func (h *harness) assertUserOperation(ctx context.Context) {
 	if len(list.Data) != 1 || !strings.EqualFold(string(list.Data[0].Hash), h.fixture.userOperationHash) ||
 		!strings.EqualFold(string(list.Data[0].TransactionHash), h.fixture.userOperationTxHash) ||
 		!strings.EqualFold(string(list.Data[0].EntryPoint), h.fixture.entryPoint) ||
-		list.Data[0].EntryPointVersion != gen.N09 || list.Data[0].Success || list.Data[0].EventLogIndex != 1 {
+		list.Data[0].EntryPointVersion != gen.N09 || list.Data[0].Success || list.Data[0].EventLogIndex != h.fixture.userOperationEventIndex {
 		h.t.Fatalf("runtime UserOperation list = %#v", list.Data)
 	}
 	var detail gen.UserOperationResponse

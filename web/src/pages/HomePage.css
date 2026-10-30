@@ -1,0 +1,64 @@
+.home-indexing-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-indexing-summary > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.home-indexing-summary dt {
+  flex-shrink: 0;
+}
+
+.home-indexing-summary dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.transaction-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding-block: 0.75rem;
+}
+.transaction-participants {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto minmax(0, max-content);
+  justify-content: start;
+  align-items: start;
+  gap: 0.5rem;
+  max-width: 22rem;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.transaction-participants > .ui-icon {
+  margin-top: 0.125rem;
+}
+.transaction-participant,
+.transaction-participant .address-identity {
+  min-width: 0;
+}
+.transaction-participant .address-identity {
+  grid-template-columns: minmax(0, 1fr);
+}
+.transaction-participant a {
+  display: block;
+  font-size: inherit;
+  font-weight: 500;
+}
+.transaction-participant .address-identity-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

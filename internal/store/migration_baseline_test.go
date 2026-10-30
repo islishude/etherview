@@ -61,7 +61,7 @@ func TestBaselineGuardRejectsScatteredDefinitions(t *testing.T) {
 // named UNIQUE equivalent to the primary key. Seven sequence ownership statements need
 // both sequence and table. Function bindings must capture the migration schema.
 const baselineAllowedAlters = `
-ALTER TABLE search_catalog_documents ADD CONSTRAINT search_catalog_documents_name_source_check CHECK ((((source_kind = 'name'::text) AND (name_observation_id IS NOT NULL) AND (name_source = ANY (ARRAY['ens'::text, 'custom_ens'::text]))) OR ((source_kind <> 'name'::text) AND (name_observation_id IS NULL) AND (name_source IS NULL)))) NOT VALID;
+ALTER TABLE search_catalog_documents ADD CONSTRAINT search_catalog_documents_name_identity_check CHECK ((source_kind='name' AND name_source_id IS NOT NULL) OR (source_kind<>'name' AND name_source_id IS NULL AND name_publication_id IS NULL AND name_profile_publication_id IS NULL)) NOT VALID;
 ALTER TABLE ONLY verified_contracts ADD CONSTRAINT verified_contracts_selector_identity_unique UNIQUE (chain_id, address, code_hash, valid_from_block, verification_job_id);
 ALTER TABLE ONLY billing_topup_intents ADD CONSTRAINT billing_topup_intents_active_payment_fk FOREIGN KEY (active_payment_id) REFERENCES billing_payments(id);
 ALTER SEQUENCE beacon_observation_generations_id_seq OWNED BY beacon_observation_generations.id;
@@ -96,8 +96,12 @@ ALTER FUNCTION %I.native_transfer_job_coverage() SET search_path = %I, pg_catalo
 ALTER FUNCTION %I.native_transfer_outbox_coverage() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.native_transfer_result_coverage() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.proxy_interaction_coverage_contains(target_chain_id numeric, target_start_block numeric, target_start_hash bytea, target_end_block numeric, target_end_hash bytea) SET search_path = %I, pg_catalog', current_schema(), current_schema());
+ALTER FUNCTION %I.ens_sync_publication_current(bigint) SET search_path = %I, pg_catalog', current_schema(), current_schema());
+ALTER FUNCTION %I.ens_effective_publication_current(bigint) SET search_path = %I, pg_catalog', current_schema(), current_schema());
+ALTER FUNCTION %I.record_ens_effective_search_document() SET search_path = %I, pg_catalog', current_schema(), current_schema());
+ALTER FUNCTION %I.notify_ens_source_change() SET search_path = %I, pg_catalog', current_schema(), current_schema());
+ALTER FUNCTION %I.prune_ens_event_window() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.prune_search_catalog(requested_chain_id numeric, requested_retention_generations bigint) SET search_path = %I, pg_catalog', current_schema(), current_schema());
-ALTER FUNCTION %I.record_ens_name_search_document() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.record_search_catalog_document() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.record_verified_contract_search_catalog_document() SET search_path = %I, pg_catalog', current_schema(), current_schema());
 ALTER FUNCTION %I.refresh_native_transfer_coverage(p_chain numeric, p_number numeric) SET search_path = %I, pg_catalog', current_schema(), current_schema());

@@ -925,3 +925,20 @@ td.billing-quantity {
     justify-content: center;
   }
 }
+
+/* Linked account identities retain their full address on narrow screens. */
+.account-address {
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+.account-address code {
+  color: var(--brand-strong);
+}
+
+.account-address:hover {
+  text-decoration: underline;
+}

@@ -498,6 +498,9 @@ func userOperationPage(
 	cursor userOperationCursor,
 	limit int,
 ) (publicquery.UserOperationPage, error) {
+	if items == nil {
+		items = []gen.UserOperationSummary{}
+	}
 	page := publicquery.UserOperationPage{CoverageStart: cursor.IndexStart, CoverageEnd: cursor.SnapshotNumber, Browsing: cursor.Browsing}
 	if len(items) > limit {
 		items, boundaries = items[:limit], boundaries[:limit]
@@ -522,6 +525,9 @@ func transactionUserOperationPage(
 	cursor userOperationCursor,
 	limit int,
 ) (publicquery.UserOperationPage, error) {
+	if items == nil {
+		items = []gen.UserOperationSummary{}
+	}
 	page := publicquery.UserOperationPage{CoverageStart: cursor.IndexStart, CoverageEnd: cursor.SnapshotNumber, Browsing: cursor.Browsing}
 	if len(items) > limit {
 		items, boundaries = items[:limit], boundaries[:limit]

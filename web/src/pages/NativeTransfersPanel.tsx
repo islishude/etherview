@@ -29,7 +29,10 @@ export function NativeTransfersPanel({
       pager.request.cursor,
       pager.request.refreshGeneration,
     ],
-    meta: { ...statusQueryMeta, clearOnReorg: true, clearOnStatus: true },
+    meta: {
+      ...statusQueryMeta,
+      pagination: pager.request.identity,
+    },
     retry: false,
     queryFn: async ({ signal }) => {
       const query = { cursor: pager.request.cursor, limit: CORE_PAGE_SIZE };
@@ -55,7 +58,6 @@ export function NativeTransfersPanel({
   return (
     <section className="panel transaction-tab-panel" aria-label={t("nativeTransfer.title")}>
       <h2>{t("nativeTransfer.title")}</h2>
-      <p className="context-note">{t("nativeTransfer.source")}</p>
       <BrowsingScope status={transfers.data?.meta.browsing}>
         <QueryNotice loading={transfers.isPending} error={transfers.error} onReset={pager.reset} />
         {transfers.data && !transfers.error ? (
@@ -106,10 +108,16 @@ export function NativeTransfersPanel({
                               </Link>
                             </td>
                             <td>
-                              <AddressIdentity address={item.from} />
+                              <AddressIdentity
+                                nameOnly={kind === "transaction"}
+                                address={item.from}
+                              />
                             </td>
                             <td>
-                              <AddressIdentity address={item.to} />
+                              <AddressIdentity
+                                nameOnly={kind === "transaction"}
+                                address={item.to}
+                              />
                             </td>
                             <td>
                               <code>{formatInteger(item.amount, locale)}</code>

@@ -597,3 +597,23 @@ func TestRelayDoesNotLogCredentialBearingDatabaseError(t *testing.T) {
 		t.Fatal("runtime event relay did not stop")
 	}
 }
+
+func TestNamesPublicationReplaysOnExistingStream(t *testing.T) {
+	broker := NewBroker(3)
+	event, err := broker.Publish("names", map[string]string{"publication": "9007199254740993"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	channel, err := broker.Subscribe(t.Context(), "0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-channel:
+		if got.Type != "names" || got.ID != event.ID || !strings.Contains(string(got.Data), `"publication":"9007199254740993"`) {
+			t.Fatal(got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("missing names replay")
+	}
+}

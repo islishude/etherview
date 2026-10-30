@@ -1,9 +1,10 @@
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import "./AddressQRCode.css";
+import { AddressAssets, type AddressAssetTab } from "./AddressAssets";
 import { UIIcon } from "@/components/UIIcon";
 import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
-import { AddressAccountActions } from "@/components/AddressAccountActions";
+import { AddressExportLink, AddressWatchButton } from "@/components/AddressAccountActions";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -13,10 +14,8 @@ import { isAddress } from "viem";
 
 import { usePublicConfig } from "@/api/publicConfig";
 import {
-  useAddressERC20Balances,
   useAddressERC20Transfers,
   useAddressInternalTransactions,
-  useAddressNFTBalances,
   useAddressNFTTransfers,
   useAddressTransactions,
   useAddressWithdrawals,
@@ -33,8 +32,6 @@ import type {
   AddressSummary,
   AddressTokenTransfer,
   AddressWithdrawal,
-  ERC20Balance,
-  NFTBalance,
   TransactionSummary,
 } from "@/api/types";
 import {
@@ -45,6 +42,7 @@ import {
   shorten,
 } from "@/components/format";
 import { CopyableField } from "@/components/CopyButton";
+import { usePrimaryName } from "@/ens/AddressNamesProvider";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
 import { UserOperationTable } from "@/components/UserOperationTable";
@@ -56,7 +54,6 @@ import {
   FinalityBadge,
   NFTTokenIDLink,
   Page,
-  confidenceLabel,
   formatTokenEventAmount,
   isNFTStandard,
   tokenStandardLabel,
@@ -75,7 +72,15 @@ type AddressTab =
   | "delegation"
   | "contract";
 
-export function AddressDetailPage({ address, tab }: { address: string; tab: string }) {
+export function AddressDetailPage({
+  address,
+  tab,
+  asset = "tokens",
+}: {
+  address: string;
+  tab: string;
+  asset?: AddressAssetTab;
+}) {
   const { i18n, t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
@@ -87,8 +92,6 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   const withdrawalPager = useCursorHistory(`address-withdrawals:${address}`);
   const erc20Pager = useBrowsingCursorHistory(`address-erc20-transfers:${address}`);
   const nftTransferPager = useBrowsingCursorHistory(`address-nft-transfers:${address}`);
-  const erc20BalancePager = useBrowsingCursorHistory(`address-erc20-balances:${address}`);
-  const nftPager = useBrowsingCursorHistory(`address-nfts:${address}`);
   const userOperationPager = useBrowsingCursorHistory(`address-user-operations:${address}`);
   const account = useAddress(address);
   const publicConfig = usePublicConfig();
@@ -136,18 +139,6 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
     activeTab === "nft-transfers" && isAddress(address),
     CORE_PAGE_SIZE,
   );
-  const nfts = useAddressNFTBalances(
-    address,
-    nftPager.request,
-    activeTab === "assets" && isAddress(address),
-    CORE_PAGE_SIZE,
-  );
-  const erc20Balances = useAddressERC20Balances(
-    address,
-    erc20BalancePager.request,
-    activeTab === "assets" && isAddress(address),
-    CORE_PAGE_SIZE,
-  );
   const userOperations = useAddressUserOperations(
     address,
     userOperationPager.request,
@@ -186,7 +177,6 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
   return (
     <Page title={title} description={<AddressHeader address={displayAddress} />} mono>
       <QueryNotice loading={account.isPending} error={account.error} />
-      {account.data && <AddressAccountActions address={address} />}
       {account.data && (
         <>
           <DetailList label={t("detail.addressSummary")}>
@@ -351,42 +341,7 @@ export function AddressDetailPage({ address, tab }: { address: string; tab: stri
           />
         </BrowsingScope>
       )}
-      {activeTab === "assets" && (
-        <div className="address-assets">
-          <BrowsingScope status={erc20Balances.data?.meta.browsing}>
-            <AddressERC20Balances
-              balances={erc20Balances.error ? undefined : erc20Balances.data?.items}
-              busy={erc20Balances.isFetching}
-              coverageEnd={erc20Balances.data?.meta.coverage_end}
-              error={erc20Balances.error}
-              hasNext={Boolean(erc20Balances.data?.next_cursor)}
-              loading={erc20Balances.isPending}
-              locale={locale}
-              onNext={() => erc20BalancePager.next(erc20Balances.data?.next_cursor)}
-              onPrevious={erc20BalancePager.previous}
-              onReset={erc20BalancePager.reset}
-              page={erc20BalancePager.page}
-              hasPrevious={erc20BalancePager.hasPrevious}
-            />
-          </BrowsingScope>
-          <BrowsingScope status={nfts.data?.meta.browsing}>
-            <AddressNFTBalances
-              balances={nfts.error ? undefined : nfts.data?.items}
-              busy={nfts.isFetching}
-              coverageEnd={nfts.data?.meta.coverage_end}
-              error={nfts.error}
-              hasNext={Boolean(nfts.data?.next_cursor)}
-              loading={nfts.isPending}
-              locale={locale}
-              onNext={() => nftPager.next(nfts.data?.next_cursor)}
-              onPrevious={nftPager.previous}
-              onReset={nftPager.reset}
-              page={nftPager.page}
-              hasPrevious={nftPager.hasPrevious}
-            />
-          </BrowsingScope>
-        </div>
-      )}
+      {activeTab === "assets" && <AddressAssets address={address} asset={asset} />}
       {activeTab === "native-transfers" && (
         <NativeTransfersPanel kind="address" identity={address} />
       )}
@@ -457,19 +412,29 @@ function AddressHeader({ address }: { address: string }) {
   return (
     <>
       <span className="address-header-actions">
-        <AddressIdentity address={address} compact={false} copy link={false} />
-        {isAddress(address) ? (
-          <button
-            aria-label={t("actions.showQRCode")}
-            aria-haspopup="dialog"
-            className="address-qr-button"
-            onClick={() => setOpen(true)}
-            ref={openButtonRef}
-            type="button"
-          >
-            <UIIcon icon={QrCode} size={16} />
-          </button>
-        ) : null}
+        <AddressIdentity
+          address={address}
+          compact={false}
+          copy
+          link={false}
+          actions={
+            isAddress(address) ? (
+              <>
+                <button
+                  aria-label={t("actions.showQRCode")}
+                  aria-haspopup="dialog"
+                  className="address-qr-button"
+                  onClick={() => setOpen(true)}
+                  ref={openButtonRef}
+                  type="button"
+                >
+                  <UIIcon icon={QrCode} size={16} />
+                </button>
+                <AddressWatchButton address={address} />
+              </>
+            ) : null
+          }
+        />
       </span>
       {open && isAddress(address) ? (
         <div
@@ -704,6 +669,7 @@ function AddressTransactions({
       onReset={onReset}
       page={page}
       title={t("addressTab.transactions")}
+      footer={<AddressExportLink address={address} />}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -732,11 +698,12 @@ function AddressTransactions({
                 <td>
                   <TransactionStatusBadge showFinality={false} transaction={transaction} />
                 </td>
-                <AddressCell address={transaction.from} currentAddress={address} />
+                <AddressCell nameOnly address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
                 />
                 <AddressCell
+                  nameOnly
                   address={destination}
                   created={!transaction.to && Boolean(destination)}
                   currentAddress={address}
@@ -815,7 +782,7 @@ function AddressInternalTransactions({
                     {transaction.reverted ? <small>{t("activity.reverted")}</small> : null}
                   </span>
                 </td>
-                <AddressCell address={transaction.from} currentAddress={address} />
+                <AddressCell nameOnly address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
                 />
@@ -1010,6 +977,7 @@ function AddressActivitySection({
   busy,
   children,
   empty,
+  footer,
   error,
   hasNext,
   hasPrevious,
@@ -1021,6 +989,7 @@ function AddressActivitySection({
   title,
 }: Omit<AddressActivityProps, "address" | "locale"> & {
   children: React.ReactNode;
+  footer?: React.ReactNode;
   empty: boolean;
   title: string;
 }) {
@@ -1045,6 +1014,7 @@ function AddressActivitySection({
           page={page}
         />
       ) : null}
+      {footer}
     </section>
   );
 }
@@ -1159,12 +1129,15 @@ function AddressCell({
   address,
   created,
   currentAddress,
+  nameOnly = false,
 }: {
   address?: string;
   created?: boolean;
   currentAddress: string;
+  nameOnly?: boolean;
 }) {
   const { t } = useTranslation();
+  const primary = usePrimaryName(nameOnly ? (address ?? "") : "");
   if (!address) return <td>—</td>;
   return (
     <td>
@@ -1173,7 +1146,8 @@ function AddressCell({
           address={address}
           activity
           copy
-          link={!sameAddress(address, currentAddress)}
+          nameOnly={nameOnly}
+          link={Boolean(nameOnly && primary) || !sameAddress(address, currentAddress)}
         />
         {created ? <small>{t("activity.created")}</small> : null}
       </span>
@@ -1206,199 +1180,4 @@ function addressDirection(
   const incoming = destination?.toLowerCase() === subject;
   if (outgoing && incoming) return "self";
   return outgoing ? "out" : "in";
-}
-
-function AddressERC20Balances({
-  balances,
-  busy,
-  coverageEnd,
-  error,
-  hasNext,
-  hasPrevious,
-  loading,
-  locale,
-  onNext,
-  onPrevious,
-  onReset,
-  page,
-}: {
-  balances?: ERC20Balance[];
-  busy: boolean;
-  coverageEnd?: string;
-  error: unknown;
-  hasNext: boolean;
-  hasPrevious: boolean;
-  loading: boolean;
-  locale: string;
-  onNext: () => void;
-  onPrevious: () => void;
-  onReset: () => void;
-  page: number;
-}) {
-  const { t } = useTranslation();
-  return (
-    <section className="detail-section" aria-labelledby="erc20-balances-title">
-      <h2 id="erc20-balances-title">{t("detail.erc20Balances")}</h2>
-      {coverageEnd ? (
-        <p className="context-note" role="note">
-          {t("detail.assetSnapshot", { block: formatInteger(coverageEnd, locale) })}
-        </p>
-      ) : null}
-      <QueryNotice loading={loading} error={error} onReset={onReset} />
-      {balances && balances.length === 0 ? (
-        <p className="empty-result" role="status">
-          <BrowsingEmpty>{t("state.noERC20Balances")}</BrowsingEmpty>
-        </p>
-      ) : null}
-      {balances && balances.length > 0 ? (
-        <div className="table-scroll" tabIndex={0} aria-label={t("detail.erc20Balances")}>
-          <table>
-            <caption className="sr-only">{t("detail.erc20BalanceDescription")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.token")}</th>
-                <th className="numeric">{t("detail.balance")}</th>
-                <th>{t("table.confidence")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {balances.map((balance) => {
-                const amount =
-                  balance.decimals === undefined
-                    ? formatInteger(balance.balance, locale)
-                    : formatNativeAmount(balance.balance, locale, balance.decimals);
-                const tokenLabel = balance.symbol ?? balance.token_address;
-                return (
-                  <tr key={balance.token_address}>
-                    <td>
-                      <span className="table-primary">
-                        <Link to="/token/$address" params={{ address: balance.token_address }}>
-                          {balance.name ?? tokenLabel}
-                        </Link>
-                        <small>
-                          <code>{balance.symbol ?? shorten(balance.token_address)}</code>
-                        </small>
-                      </span>
-                    </td>
-                    <td>
-                      <code>
-                        {amount}
-                        {balance.symbol ? ` ${balance.symbol}` : ""}
-                      </code>
-                    </td>
-                    <td>
-                      <span className="result-kind">{confidenceLabel(balance.confidence, t)}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      {balances ? (
-        <CursorPagination
-          busy={busy}
-          hasNext={hasNext}
-          hasPrevious={hasPrevious}
-          label={t("pagination.erc20Balances")}
-          onNext={onNext}
-          onPrevious={onPrevious}
-          page={page}
-        />
-      ) : null}
-    </section>
-  );
-}
-
-function AddressNFTBalances({
-  balances,
-  busy,
-  coverageEnd,
-  error,
-  hasNext,
-  hasPrevious,
-  loading,
-  locale,
-  onNext,
-  onPrevious,
-  onReset,
-  page,
-}: {
-  balances?: NFTBalance[];
-  busy: boolean;
-  coverageEnd?: string;
-  error: unknown;
-  hasNext: boolean;
-  hasPrevious: boolean;
-  loading: boolean;
-  locale: string;
-  onNext: () => void;
-  onPrevious: () => void;
-  onReset: () => void;
-  page: number;
-}) {
-  const { t } = useTranslation();
-  return (
-    <section className="detail-section" aria-labelledby="nft-balances-title">
-      <h2 id="nft-balances-title">{t("detail.nftBalances")}</h2>
-      {coverageEnd && (
-        <p className="context-note" role="note">
-          {t("detail.nftSnapshot", { block: formatInteger(coverageEnd, locale) })}
-        </p>
-      )}
-      <QueryNotice loading={loading} error={error} onReset={onReset} />
-      {balances && balances.length === 0 && (
-        <p className="empty-result" role="status">
-          <BrowsingEmpty>{t("state.noNFTBalances")}</BrowsingEmpty>
-        </p>
-      )}
-      {balances && balances.length > 0 && (
-        <div className="table-scroll" tabIndex={0} aria-label={t("detail.nftBalances")}>
-          <table>
-            <caption className="sr-only">{t("detail.nftBalanceDescription")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.token")}</th>
-                <th>{t("detail.tokenID")}</th>
-                <th className="numeric">{t("detail.balance")}</th>
-                <th>{t("table.confidence")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {balances.map((balance) => (
-                <tr key={`${balance.token_address}:${balance.token_id}`}>
-                  <td>
-                    <Link to="/token/$address" params={{ address: balance.token_address }}>
-                      <code>{shorten(balance.token_address)}</code>
-                    </Link>
-                  </td>
-                  <td>
-                    <NFTTokenIDLink address={balance.token_address} tokenID={balance.token_id} />
-                  </td>
-                  <td>
-                    <code>{balance.balance}</code>
-                  </td>
-                  <td>
-                    <span className="result-kind">{confidenceLabel(balance.confidence, t)}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {balances && (
-        <CursorPagination
-          busy={busy}
-          hasNext={hasNext}
-          hasPrevious={hasPrevious}
-          label={t("pagination.nfts")}
-          onNext={onNext}
-          onPrevious={onPrevious}
-          page={page}
-        />
-      )}
-    </section>
-  );
 }

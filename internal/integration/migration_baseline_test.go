@@ -201,7 +201,7 @@ func TestBaselinePreservesExceptionalConstraintCatalog(t *testing.T) {
 	// a UNIQUE declaration equivalent to the PRIMARY KEY. Keep both objects.
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_constraint
 WHERE conrelid = 'search_catalog_documents'::regclass
-AND conname = 'search_catalog_documents_name_source_check'
+AND conname = 'search_catalog_documents_name_identity_check'
 AND contype = 'c' AND NOT convalidated`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM pg_constraint original
 JOIN pg_constraint duplicate ON duplicate.conrelid = original.conrelid

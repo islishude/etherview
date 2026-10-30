@@ -47,9 +47,14 @@ try {
   }
   await new Promise((resolve) => setTimeout(resolve, 4000));
   await page.goto(`https://app.etherview.localhost/address/${report.nameOwner}`);
-  await expect(page.getByText(report.name, { exact: true }).first()).toBeVisible({
-    timeout: 30000,
-  });
+  // New publications and invalidations no longer trigger background name reads.
+  // Exercise the same explicit refresh a user needs after a snapshot expires.
+  await expect(async () => {
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByRole("link", { name: report.name, exact: true }).first()).toBeVisible({
+      timeout: 2000,
+    });
+  }).toPass({ timeout: 30000, intervals: [1000, 2000, 4000] });
   assert.deepEqual(errors, []);
   await page.screenshot({ path: `${artifacts}/contracts-${report.phase}.png`, fullPage: true });
 } finally {

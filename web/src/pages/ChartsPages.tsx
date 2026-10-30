@@ -1,8 +1,9 @@
 import { Activity, ArrowDown, ArrowRight, ArrowUp, CircleDot } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
-import { PageHeading } from "@/components/DesignPrimitives";
-import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { BrowsingRefreshControl } from "@/components/BrowsingRefreshControl";
+import { PageHeading } from "@/components/PageHeading";
+import { type SubmitEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -191,7 +192,7 @@ export function ChartMetricPage({
   const choosePreset = (preset: Exclude<ChartPreset, "custom">) => {
     updateSearch({ range: preset, interval: search.interval });
   };
-  const submitCustom = (event: FormEvent<HTMLFormElement>) => {
+  const submitCustom = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const from = utcDateStart(fromDate);
     const to = utcDateEnd(toDate);
@@ -487,7 +488,7 @@ function ChartsPageFrame({
 }) {
   return (
     <div className="page-stack inner-page charts-page">
-      <PageHeading title={title} description={description} />
+      <PageHeading actions={<BrowsingRefreshControl />} title={title} description={description} />
       {children}
     </div>
   );

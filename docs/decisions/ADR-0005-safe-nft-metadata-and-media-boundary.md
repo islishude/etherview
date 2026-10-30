@@ -147,11 +147,16 @@ user-confirmed external links. Other local origins remain `unsafe` without a
 navigation URL; the API media proxy retains its strict network policy. The
 allowlist covers only the initial destination, not subsequent browser redirects.
 
-Node routes support Geth JSON-RPC/WSS and Beacon `/eth/` REST/SSE. The gateway
-owns the explicit space-separated Origin allowlist, strips upstream CORS and
-Origin after checking browser requests, permits requests without Origin, rejects
-null/unlisted origins and does not enable credentialed cross-origin requests.
-It never proxies Engine or validator APIs and does not expand the SPA CSP.
+Node routes support Geth JSON-RPC/WSS, Beacon `/eth/` REST/SSE and Bundler
+JSON-RPC. The local Geth host accepts every Origin, including browser extensions,
+`null` and requests without Origin, with `Access-Control-Allow-Origin: *` and
+local OPTIONS responses. This permits wallet RPC access without configuring
+extension origins. Beacon and Bundler retain the explicit space-separated Origin
+allowlist: requests without Origin are accepted, while null/unlisted origins
+are rejected. `PREVIEW_NODE_ALLOWED_ORIGINS` does not restrict Geth. The gateway
+strips upstream CORS and Origin on Geth and Beacon proxy requests and does not
+enable credentialed cross-origin requests. It never proxies Engine or validator
+APIs and does not expand the SPA CSP.
 
 Only the loopback HTTPS host port is published. A container-loopback health
 listener checks gateway serving, independently of upstream availability. Core

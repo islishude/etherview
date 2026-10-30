@@ -1,11 +1,15 @@
 {
   "$schema": "../node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "react"],
+  "options": {
+    "typeAware": true
+  },
   "categories": {
     "correctness": "off"
   },
   "ignorePatterns": ["src/api/heyapi/**"],
   "rules": {
+    "typescript/no-deprecated": "error",
     "no-unused-vars": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",

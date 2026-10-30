@@ -2,7 +2,6 @@ import { ArrowRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
-import { useIdentityRecovery } from "@/api/identityRecovery";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -157,30 +156,10 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     calldata.data === undefined ||
     transaction.data === undefined ||
     transactionCalldataIdentityMatches(transaction.data, calldata.data);
-  const calldataIdentityRetryKey =
-    !calldataIdentityCurrent && transaction.data && calldata.data
-      ? transactionCalldataRetryKey(transaction.data, calldata.data)
-      : undefined;
-  const calldataIdentityRetryPending = useIdentityRecovery(
-    calldataIdentityRetryKey,
-    calldataEnabled,
-    transaction.refetch,
-    calldata.refetch,
-  );
   const failureIdentityCurrent =
     failure.data === undefined ||
     transaction.data === undefined ||
     transactionFailureIdentityMatches(transaction.data, failure.data);
-  const failureIdentityRetryKey =
-    !failureIdentityCurrent && transaction.data && failure.data
-      ? transactionFailureRetryKey(transaction.data, failure.data)
-      : undefined;
-  const failureIdentityRetryPending = useIdentityRecovery(
-    failureIdentityRetryKey,
-    failureEnabled,
-    transaction.refetch,
-    failure.refetch,
-  );
   const transactionActionEvidence = resolveTransactionActionEvidence(
     Boolean(transaction.data?.to),
     calldata.isPending,
@@ -188,7 +167,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
     calldata.error,
     calldata.data,
     calldataIdentityCurrent,
-    calldataIdentityRetryPending,
+    false,
   );
   const logIdentityCurrent = matchingBlockIdentity(
     transaction.data?.block_hash,
@@ -205,32 +184,6 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   const authorizationIdentityCurrent = matchingBlockIdentity(
     transaction.data?.block_hash,
     authorizations.data?.block_hash,
-  );
-  useBlockResourceRecovery(
-    "token-transfers",
-    transaction,
-    tokenTransfers,
-    included && (activeTab === "overview" || activeTab === "token-transfers"),
-  );
-  useBlockResourceRecovery(
-    "internal-transactions",
-    transaction,
-    internalTransactions,
-    included && activeTab === "internal-transactions",
-  );
-  useBlockResourceRecovery("logs", transaction, logs, included && activeTab === "logs");
-  useBlockResourceRecovery("trace", transaction, trace, included && activeTab === "trace");
-  useBlockResourceRecovery(
-    "authorizations",
-    transaction,
-    authorizations,
-    included && activeTab === "authorizations",
-  );
-  useBlockResourceRecovery(
-    "state-changes",
-    transaction,
-    stateChanges,
-    included && activeTab === "state-changes",
   );
   const stateGroups = useMemo(() => {
     const groups = new Map<string, NonNullable<typeof stateChanges.data>["items"]>();
@@ -325,7 +278,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
               transaction={{ data: transaction.data }}
               failure={failure}
               failureIdentityCurrent={failureIdentityCurrent}
-              failureIdentityRetryPending={failureIdentityRetryPending}
+              failureIdentityRetryPending={false}
               calldata={calldata}
               calldataIdentityCurrent={calldataIdentityCurrent}
               locale={locale}
@@ -443,7 +396,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
                 stateGroups.map(([address, changes]) => (
                   <article className="transaction-state-account" key={address}>
                     <header>
-                      <AddressIdentity address={address} compact={false} />
+                      <AddressIdentity nameOnly address={address} compact={false} />
                     </header>
                     <dl>
                       {changes.map((change) => (
@@ -481,11 +434,6 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   );
 }
 
-type RefetchableBlockResource = {
-  data?: { hash?: string; block_hash?: string };
-  refetch: () => Promise<unknown>;
-};
-
 function useMempoolDetailExpiry(observedExpiry: number): boolean {
   const [expired, setExpired] = useState(false);
   useEffect(() => {
@@ -507,21 +455,6 @@ function useMempoolDetailExpiry(observedExpiry: number): boolean {
   return expired || (Number.isFinite(observedExpiry) && observedExpiry <= Date.now());
 }
 
-function useBlockResourceRecovery(
-  kind: string,
-  transaction: RefetchableBlockResource,
-  resource: RefetchableBlockResource,
-  enabled: boolean,
-): void {
-  const overviewHash = transaction.data?.block_hash;
-  const resourceHash = resource.data?.block_hash;
-  const mismatch =
-    overviewHash && resourceHash && overviewHash !== resourceHash
-      ? `${kind}:${transaction.data?.hash}:${overviewHash}:${resourceHash}`
-      : undefined;
-  useIdentityRecovery(mismatch, enabled, transaction.refetch, resource.refetch);
-}
-
 function transactionCalldataIdentityMatches(
   transaction: TransactionSummary,
   resource: TransactionCalldataResource,
@@ -539,30 +472,6 @@ function transactionCalldataIdentityMatches(
   );
 }
 
-function transactionCalldataRetryKey(
-  transaction: TransactionSummary,
-  resource: TransactionCalldataResource,
-): string | undefined {
-  if (!transaction.to || !transaction.block_hash) return undefined;
-  return [
-    "calldata",
-    transaction.hash,
-    resource.transaction_hash,
-    transaction.block_hash,
-    resource.block_hash,
-    transaction.block_number,
-    resource.block_number,
-    String(transaction.transaction_index),
-    resource.transaction_index,
-    transaction.input,
-    resource.input,
-    transaction.to,
-    resource.execution.context_address,
-  ]
-    .join(":")
-    .toLowerCase();
-}
-
 function transactionFailureIdentityMatches(
   transaction: TransactionSummary,
   resource: TransactionFailureResource,
@@ -575,24 +484,4 @@ function transactionFailureIdentityMatches(
     resource.block_number === transaction.block_number &&
     resource.transaction_index === String(transaction.transaction_index)
   );
-}
-
-function transactionFailureRetryKey(
-  transaction: TransactionSummary,
-  resource: TransactionFailureResource,
-): string | undefined {
-  if (!transaction.block_hash) return undefined;
-  return [
-    "failure",
-    transaction.hash,
-    resource.transaction_hash,
-    transaction.block_hash,
-    resource.block_hash,
-    transaction.block_number,
-    resource.block_number,
-    String(transaction.transaction_index),
-    resource.transaction_index,
-  ]
-    .join(":")
-    .toLowerCase();
 }

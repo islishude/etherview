@@ -69,7 +69,7 @@ describe("generated OpenAPI client boundary", () => {
     const client = createExplorerClient(fetcher);
 
     const result = await sdk.getTransactionTrace({ client: client, path: { hash } });
-    expect(() => requireEnvelope(result)).toThrowError(
+    expect(() => requireEnvelope(result)).toThrow(
       expect.objectContaining<Partial<ApiError>>({
         status: 503,
         code: "TRACE_UNAVAILABLE",
@@ -136,7 +136,7 @@ describe("generated OpenAPI client boundary", () => {
     );
 
     const result = await sdk.listBlocks({ client: client });
-    expect(() => requireEnvelope(result)).toThrowError(
+    expect(() => requireEnvelope(result)).toThrow(
       expect.objectContaining<Partial<ApiError>>({ code: "INVALID_RESPONSE" }),
     );
   });
@@ -147,7 +147,7 @@ describe("generated OpenAPI client boundary", () => {
     );
 
     const result = await sdk.listBlocks({ client: client });
-    expect(() => requireEnvelope(result)).toThrowError(
+    expect(() => requireEnvelope(result)).toThrow(
       expect.objectContaining<Partial<ApiError>>({ code: "INVALID_RESPONSE" }),
     );
   });
@@ -162,7 +162,7 @@ describe("generated OpenAPI client boundary", () => {
     );
 
     const result = await sdk.listBlocks({ client: client });
-    expect(() => requireEnvelope(result)).toThrowError(
+    expect(() => requireEnvelope(result)).toThrow(
       expect.objectContaining<Partial<ApiError>>({
         code: "HTTP_ERROR",
         requestId: undefined,
@@ -260,7 +260,7 @@ describe("Hey API compatibility", () => {
       async () => new Response("private proxy failure", { status: 502 }),
     );
     const result = await sdk.getStatus({ client });
-    expect(() => requireEnvelope(result)).toThrowError(
+    expect(() => requireEnvelope(result)).toThrow(
       expect.objectContaining({
         status: 502,
         code: "HTTP_ERROR",

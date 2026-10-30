@@ -1,30 +1,21 @@
 import { SelectControl } from "@/components/SelectControl";
-import { type FormEvent, useEffect, useState } from "react";
+import { type SubmitEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import {
-  createBillingTopupIntent,
-  getBillingConfig,
-  getBillingTopupIntent,
-  getCurrentBillingAccount,
   getAdminBillingSummary,
   listAdminBillingPayments,
-  listCurrentBillingTopupIntents,
-  listCurrentUserBillingPayments,
   type AdminBillingFilters,
   type BillingPayment,
   type BillingPaymentState,
-  type BillingTransferMethod,
 } from "@/api/billing";
 import { usePublicConfig } from "@/api/publicConfig";
 import { useAuth } from "@/auth/AuthProvider";
 import { formatTimestamp } from "@/components/format";
-import { useWallet } from "@/wallet/WalletProvider";
 import { Page } from "./pages";
 
-const PERSONAL_PAGE_SIZE = 10;
 const ADMIN_PAGE_SIZE = 25;
 const MAX_SUMMARY_RANGE_MILLISECONDS = 31 * 24 * 60 * 60 * 1_000;
 const NETWORK_PATTERN = /^eip155:[1-9][0-9]*$/u;
@@ -91,321 +82,6 @@ const EMPTY_FILTER_FORM: BillingFilterForm = Object.freeze({
   toTime: "",
 });
 
-export function PersonalBillingHistory() {
-  const { i18n, t } = useTranslation();
-  const auth = useAuth();
-  const publicConfig = usePublicConfig();
-  const [cursors, setCursors] = useState([""]);
-  const cursor = cursors.at(-1) || undefined;
-  const userID = auth.session.authenticated ? auth.session.user?.id : undefined;
-  const locale = i18n.resolvedLanguage ?? "en";
-  const billingEnabled = publicConfig.data?.features.api_billing === true;
-  const payments = useQuery({
-    queryKey: ["current-user-billing-payments", userID ?? null, cursor ?? null],
-    queryFn: () => listCurrentUserBillingPayments(PERSONAL_PAGE_SIZE, cursor),
-    enabled: Boolean(auth.enabled && billingEnabled && userID),
-    retry: false,
-    staleTime: 0,
-  });
-
-  useEffect(() => {
-    void userID;
-    setCursors([""]);
-  }, [userID]);
-
-  if (!billingEnabled || !userID) return null;
-
-  return (
-    <>
-      <PrepaidBillingPanel />
-      <section className="panel billing-history-section" aria-labelledby="personal-billing-title">
-        <div className="panel-heading billing-section-heading">
-          <div>
-            <span className="eyebrow">{t("billing.personal.eyebrow")}</span>
-            <h2 id="personal-billing-title">{t("billing.personal.title")}</h2>
-            <p>{t("billing.personal.description")}</p>
-            <p className="billing-boundary-note">{t("billing.personal.sessionBoundary")}</p>
-          </div>
-          <button
-            className="button secondary"
-            disabled={payments.isFetching}
-            onClick={() => void payments.refetch()}
-            type="button"
-          >
-            {t("billing.actions.refresh")}
-          </button>
-        </div>
-
-        {payments.isPending && (
-          <p className="query-notice" role="status">
-            {t("billing.personal.loading")}
-          </p>
-        )}
-        {payments.error && (
-          <BillingLoadError
-            detail={t("billing.personal.loadFailedDetail")}
-            onRetry={() => void payments.refetch()}
-            title={t("billing.personal.loadFailed")}
-          />
-        )}
-        {payments.data?.data.length === 0 && (
-          <p className="empty-result billing-empty" role="status">
-            {t("billing.personal.empty")}
-          </p>
-        )}
-        {payments.data && payments.data.data.length > 0 && (
-          <PaymentLedgerTable
-            locale={locale}
-            payments={payments.data.data}
-            showAttribution={false}
-            tableDescription={t("billing.personal.tableDescription")}
-            tableLabel={t("billing.personal.tableLabel")}
-          />
-        )}
-        {payments.data && (
-          <BillingPagination
-            busy={payments.isFetching}
-            cursors={cursors}
-            label={t("billing.personal.pagination")}
-            nextCursor={payments.data.meta.next_cursor}
-            onChange={setCursors}
-          />
-        )}
-      </section>
-    </>
-  );
-}
-
-function PrepaidBillingPanel() {
-  const { t } = useTranslation();
-  const auth = useAuth();
-  const wallet = useWallet();
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<BillingTransferMethod>("eip3009");
-  const [submitting, setSubmitting] = useState(false);
-  const [notice, setNotice] = useState<string>();
-  const [error, setError] = useState<string>();
-  const [pendingIntentID, setPendingIntentID] = useState<string>();
-  const userID = auth.session.authenticated ? auth.session.user?.id : undefined;
-  const config = useQuery({
-    queryKey: ["billing-config"],
-    queryFn: getBillingConfig,
-    enabled: Boolean(userID),
-    retry: false,
-  });
-  const account = useQuery({
-    queryKey: ["billing-account", userID ?? null],
-    queryFn: getCurrentBillingAccount,
-    enabled: Boolean(userID),
-    retry: false,
-  });
-  const topups = useQuery({
-    queryKey: ["billing-topups", userID ?? null],
-    queryFn: () => listCurrentBillingTopupIntents(10),
-    enabled: Boolean(userID),
-    retry: false,
-  });
-  const pendingIntent = useQuery({
-    queryKey: ["billing-topup-intent", pendingIntentID ?? null],
-    queryFn: () => getBillingTopupIntent(pendingIntentID!),
-    enabled: Boolean(userID && pendingIntentID),
-    retry: false,
-    refetchInterval: pendingIntentID ? 3_000 : false,
-  });
-
-  useEffect(() => {
-    const methods = config.data?.asset_transfer_methods;
-    if (methods && methods.length > 0 && !methods.includes(method)) {
-      setMethod(methods[0] ?? "eip3009");
-    }
-  }, [config.data?.asset_transfer_methods, method]);
-
-  useEffect(() => {
-    if (pendingIntentID) return;
-    const recoverable = topups.data?.data.find(
-      (intent) => intent.state === "processing" || intent.state === "settling",
-    );
-    if (recoverable) setPendingIntentID(recoverable.id);
-  }, [pendingIntentID, topups.data?.data]);
-
-  useEffect(() => {
-    const intent = pendingIntent.data;
-    if (!intent || !pendingIntentID) return;
-    if (intent.state === "credited") {
-      setNotice(t("billing.topup.credited", { amount: intent.amount_atomic }));
-      setPendingIntentID(undefined);
-      void account.refetch();
-      void topups.refetch();
-    } else if (intent.state === "failed" || intent.state === "expired") {
-      setError(t("billing.topup.failed"));
-      setPendingIntentID(undefined);
-      void topups.refetch();
-    }
-  }, [account, pendingIntent.data, pendingIntentID, t, topups]);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(undefined);
-    setNotice(undefined);
-    if (
-      !auth.session.authenticated ||
-      !auth.session.csrf_token ||
-      !wallet.active ||
-      !wallet.signBillingTypedData ||
-      !wallet.waitForBillingTransaction ||
-      !config.data
-    ) {
-      setError(t("billing.topup.walletRequired"));
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const { payBillingTopup } = await import("@/billing/topup");
-      const csrfToken = auth.session.csrf_token;
-      const signBillingTypedData = wallet.signBillingTypedData;
-      const waitForBillingTransaction = wallet.waitForBillingTransaction;
-      const intent = await createBillingTopupIntent(amount, csrfToken);
-      const receipt = await payBillingTopup({
-        config: config.data,
-        intent,
-        method,
-        csrfToken,
-        wallet: {
-          active: wallet.active,
-          readContract: wallet.readContract,
-          sendTransaction: wallet.sendTransaction,
-          signBillingTypedData,
-          waitForBillingTransaction,
-        },
-      });
-      setNotice(t("billing.topup.credited", { amount: receipt.intent.amount_atomic }));
-      setAmount("");
-      await account.refetch();
-      await topups.refetch();
-    } catch (cause) {
-      if (isTopupPendingError(cause)) {
-        setNotice(t("billing.topup.pending"));
-        setPendingIntentID(cause.intentID);
-        await topups.refetch();
-      } else {
-        setError(t("billing.topup.failed"));
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <section className="panel billing-account-section" aria-labelledby="billing-account-title">
-      <div className="panel-heading billing-section-heading">
-        <div>
-          <span className="eyebrow">{t("billing.topup.eyebrow")}</span>
-          <h2 id="billing-account-title">{t("billing.topup.title")}</h2>
-          <p>{t("billing.topup.description")}</p>
-        </div>
-      </div>
-      {account.data && (
-        <dl className="billing-summary-grid">
-          <div>
-            <dt>{t("billing.topup.available")}</dt>
-            <dd>
-              <code>{account.data.available_atomic}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("billing.topup.reserved")}</dt>
-            <dd>
-              <code>{account.data.reserved_atomic}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>{t("billing.topup.spent")}</dt>
-            <dd>
-              <code>{account.data.total_debit_atomic}</code>
-            </dd>
-          </div>
-        </dl>
-      )}
-      {config.data?.x402_topups_enabled && (
-        <form className="billing-topup-form" onSubmit={(event) => void submit(event)}>
-          <label className="field-control">
-            <span>{t("billing.topup.amount")}</span>
-            <input
-              inputMode="numeric"
-              min={config.data.minimum_topup_amount_atomic}
-              max={config.data.maximum_topup_amount_atomic}
-              onChange={(event) => setAmount(event.target.value)}
-              pattern="[1-9][0-9]*"
-              required
-              value={amount}
-            />
-          </label>
-          <label className="field-control">
-            <span>{t("billing.topup.method")}</span>
-            <SelectControl
-              onChange={(event) => setMethod(event.target.value as BillingTransferMethod)}
-              value={method}
-            >
-              {config.data.asset_transfer_methods.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </SelectControl>
-          </label>
-          <p className="billing-boundary-note">
-            {t("billing.topup.confirmation", {
-              recipient: config.data.recipient ?? "—",
-              asset: config.data.asset ?? "—",
-            })}
-          </p>
-          <button className="button primary" disabled={submitting || !amount} type="submit">
-            {submitting ? t("billing.topup.processing") : t("billing.topup.submit")}
-          </button>
-        </form>
-      )}
-      {notice && (
-        <p className="form-success" role="status">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      {pendingIntent.data?.transaction_hash && (
-        <p className="billing-boundary-note">
-          {t("billing.topup.pendingTransaction", {
-            hash: pendingIntent.data.transaction_hash,
-          })}
-        </p>
-      )}
-      {topups.data && topups.data.data.length > 0 && (
-        <div className="billing-topup-history">
-          <h3>{t("billing.topup.history")}</h3>
-          <ul className="plain-list">
-            {topups.data.data.map((intent) => (
-              <li key={intent.id}>
-                <code>{intent.amount_atomic}</code> · {intent.state}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function isTopupPendingError(value: unknown): value is Error & { intentID: string } {
-  return (
-    value instanceof Error &&
-    value.name === "TopupPendingError" &&
-    "intentID" in value &&
-    typeof value.intentID === "string"
-  );
-}
-
 export function AdminBillingPage() {
   const { i18n, t } = useTranslation();
   const auth = useAuth();
@@ -445,7 +121,7 @@ export function AdminBillingPage() {
     }
   }, [isAdmin]);
 
-  const applyFilters = (event: FormEvent<HTMLFormElement>) => {
+  const applyFilters = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsed = parseBillingFilters(draft);
     if (!parsed.valid) {
@@ -606,7 +282,7 @@ function BillingFilterPanel({
   error?: string;
   onChange: (value: BillingFilterForm) => void;
   onClear: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -893,7 +569,7 @@ function PaymentState({
   );
 }
 
-function BillingPagination({
+export function BillingPagination({
   busy,
   cursors,
   label,
@@ -932,7 +608,7 @@ function BillingPagination({
   );
 }
 
-function BillingLoadError({
+export function BillingLoadError({
   detail,
   onRetry,
   title,

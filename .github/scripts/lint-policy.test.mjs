@@ -31,18 +31,28 @@ test("real golangci-lint enforces database, package and file-length rules with t
       "go.mod",
       `${readFileSync(join(root, "go.mod"), "utf8")}\nrequire github.com/lib/pq v0.0.0\nreplace github.com/lib/pq => ./pq\n`,
     );
-    for (const name of ["httpapi", "enrich", "query", "state", "testpgx"]) {
+    for (const name of [
+      "httpapi",
+      "enrich",
+      "enssync",
+      "ens",
+      "ethrpc",
+      "query",
+      "state",
+      "testpgx",
+    ]) {
       write(`internal/${name}/stub.go`, `package ${name}\n`);
     }
 
     const boundaries = {
-      query: ["httpapi", "enrich"],
+      query: ["httpapi", "enrich", "enssync"],
       state: ["httpapi"],
-      publicquery: ["httpapi", "enrich", "query", "state"],
-      abicalldata: ["enrich"],
-      abicontract: ["enrich"],
-      proxycontract: ["enrich"],
-      stagecontract: ["enrich"],
+      publicquery: ["httpapi", "enrich", "enssync", "query", "state"],
+      abicalldata: ["enrich", "enssync"],
+      abicontract: ["enrich", "enssync"],
+      proxycontract: ["enrich", "enssync"],
+      stagecontract: ["enrich", "enssync"],
+      enscontract: ["enrich", "enssync", "ens", "ethrpc", "db", "httpapi"],
     };
     for (const [owner, forbidden] of Object.entries(boundaries)) {
       for (const dependency of forbidden) {

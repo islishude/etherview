@@ -559,34 +559,107 @@ PostgreSQL remains authoritative.
 
 ## ENS primary names
 
-ENS is disabled by default. Enable `features.ens` only for API-capable roles.
-When the explored RPC is not exact Ethereum Mainnet, supply the dedicated L1
-endpoint set through `ETHERVIEW_ENS_RPC_URLS` or its `_FILE` form; Helm exposes
-the optional `secrets.ensRPCURLsKey` only to `api` and `all`. RPC URLs remain
-Secret-only and are never accepted from the ConfigMap-backed `ens` section.
+ENS is disabled by default. Under
+[ADR-0058](decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md),
+`enrich` and `all` run identical bounded ENS workers. `api` reads writer-owned
+publications without constructing ENS network clients or enqueueing work.
+Enable `features.ens` and set `ens.policy_digest` consistently. Mount one public,
+reviewed current-chain manifest using `ETHERVIEW_ENS_MANIFEST_DIR` (Compose) or
+`ensManifests` (Helm), and set `ens.manifest` to its container path. The
+[manifest directory](../deploy/ens-manifests/README.md) describes its fields.
+The source and target chain must both equal the deployment's current chain.
+The manifest binds genesis, protocol profiles, exact deployment block hashes,
+code/implementation identities, coin type, registry and Universal Resolver.
+Source IDs and manifest/policy digests preserve provenance. There is no official/custom
+classification or fallback policy. Registration profiles have independent bounded
+jobs and freshness; an unresolved or expired name can remain in the directory.
+GET `/api/v1/names/{name}` never imports or resolves a name.
 
-The default official gateway is `https://ccip-v3.ens.xyz`. A custom Registry
-and modern Universal Resolver may be configured under `ens.custom`; both are
-on the explored chain and are used only after official no-record. Custom names
-are visibly marked and never replace an exact copy, QR, or link address. An ENS
-outage degrades only names; inspect `etherview_ens_resolutions_total` and the
-bounded `capability_unavailable` code without retrying writes or changing core
-readiness.
+Collection reads core canonical blocks, logs and coverage from PostgreSQL. It
+never fills core gaps over a separate RPC. Restore missing history through the
+core sync/backfill procedures. Its independent cursor advances in bounded
+batches and checks attachment timestamps on restart and reorg. Exact state
+resolution uses the current-chain RPC pool, one sticky endpoint and block hash,
+outside database transactions. The pool and its credentials follow the existing
+current-chain role boundaries; there is no dedicated ENS RPC secret or service.
+`ens.max_concurrency` bounds resolution lanes independently of other enrich
+workers. Collection has an eight-block batch and one-minute round budget;
+`ens.request_timeout` bounds each resolution. Configure `ens.gateways` for
+reviewed CCIP origins; public-address, redirect and response-size limits remain
+mandatory. Restart enrich/all when changing its manifest or gateway settings.
+
+Exact verified results may publish while historical coverage is incomplete.
+Directory coverage never proves resolution validity, and a successful resolver
+call never proves directory completeness. Historical projections cannot replace
+later observations. Relevant later core logs, canonical detachment, explicit
+replay and expiry withdraw results; failed refreshes never extend their lifetime.
+Primary names require normalized reverse/forward agreement for the same coin type.
+Indexed ownership, name registration and forward aliases are distinct facts.
+
+`/api/v1/status` reports a single source with `coverage`, `coverage_start`,
+`target`, `scanned`, resolution `pending`, `last_success` and
+`last_published_block`. The last publication is not a coverage watermark.
+Names and search results carry their observation block and expiration.
+Public integers are decimal strings. Unknown candidates return `not_indexed`;
+only exact negative observations return `not_found`. Durable `names` events
+share `/api/v1/events`. Snapshot retention never extends observation validity.
+Historical reports, including the [old Mainnet report](reviews/P30-ens-mainnet-acceptance.md),
+are not acceptance evidence for this architecture. P30-T151 requires the new
+core-to-publication path; full-history gaps remain explicit operator state.
+
+Explicit recovery commands use only the writer database and the configured
+policy. Import files contain one name or address per line (at most 1 MiB and
+1,000 candidates); the same batch ID/content is idempotent, changed content is
+rejected. Replay returns `through_candidate_id` for the next bounded page and
+records a reason. Replay batch IDs are idempotent per source and reject changed
+arguments; use a new ID for each subsequent page. Neither command performs resolution inline.
+
+```sh
+etherview ens import --config /etc/etherview/config.yaml --source-id 1 --batch-id reviewed-001 --file /work/candidates.txt
+etherview ens replay --config /etc/etherview/config.yaml --source-id 1 --batch-id replay-page-001 --after-candidate-id 0 --limit 100 --reason operator-reviewed-retry
+```
+
+For exhausted work, fix endpoint/gateway/deployment evidence first, then replay
+only the affected bounded range. Worker restarts retain retry budgets and leases;
+source cursor resumption and canonical reattachment are automatic. An accepted
+finalized-block conflict halts that source: preserve the database and manifest,
+independently reconcile its exact hashes, and provision a separately reviewed
+source/policy only after resolving the conflict. Replay cannot clear integrity
+halts or invent coverage. P30-T150 owns production/local acceptance; P30-T151
+real Mainnet acceptance is separate and is not implied by fixture checks.
+
+Name operation history reports its declared start, scanned block, current core
+target and pending event associations independently of profile freshness. The
+name page keeps canonical records visible while coverage is partial. History
+covers reviewed event ABIs, not arbitrary offchain changes or account-wide
+permissions. Earlier writes to an unlinked shared record are not operations on
+names linked later. An event omitting a value cannot be repaired by reading the
+current resolver value.
+
+Historical association repair runs under the existing collector bounds, with at
+most eight attempts separated by 30 seconds. Exhausted or unprovable associations
+remain explicit pending coverage; restarts do not reset them. Preserve original
+log and block identities when diagnosing missing association evidence. Changes
+to reviewed ABI manifests follow the fresh-database policy; there is no startup
+backfill for an old schema or manifest. Local history tests do not establish
+Mainnet completeness.
 
 ## Capacity, HA, and failover
 
 `deploy/config.reference-capacity.yaml` and the Helm
 `values-reference-capacity.yaml` are a reproducible starting profile for the
 core explorer read mix. They are not a release result. The Helm profile runs
-redundant API, sync, enrichment, and maintenance roles, retains at least one
+redundant API, sync, enrichment and maintenance roles, retains at least one
 replica during voluntary disruption, and uses a component-scoped hard hostname
 spread with at least two eligible domains. A placement that cannot satisfy
 that failure-domain boundary remains Pending instead of silently collapsing
 onto one node. Its configured steady-state/HPA maximum is 18 non-terminating
 application Pods. Trace,
-verification, metadata, Sourcify, pricing, and ENS remain separate optional
+verification, metadata, Sourcify and pricing remain separate optional
 capability profiles because their RPC, compiler, and external-service costs
-must be measured independently. Its rolling strategy sets `maxSurge: 0` and
+must be measured independently. ENS shares enrich Pods with a separate bounded worker pool; measure its current-chain
+RPC and database budgets alongside the final workload.
+Its rolling strategy sets `maxSurge: 0` and
 `maxUnavailable: 1`, preventing an intentional surge while the per-role
 disruption budgets retain one available replica.
 

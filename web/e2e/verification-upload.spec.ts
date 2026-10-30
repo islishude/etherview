@@ -3,6 +3,59 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 for (const language of ["en", "zh"] as const) {
+  for (const width of [390, 768, 1440]) {
+    test(`Geas form layout in ${language} at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await installVerificationSession(page);
+      await page.route("**/api/v1/verifier/compilers?**", (route) =>
+        route.fulfill({
+          json: {
+            data: { language: "geas", versions: ["0.3.3"] },
+            meta: { request_id: "geas-layout", chain_id: "1" },
+          },
+        }),
+      );
+      await page.goto("/verify");
+      if (language === "zh")
+        await page.getByRole("button", { name: "切换到中文", exact: true }).click();
+      await page.locator("#verification-language").selectOption("geas");
+      const name = page.locator("#verification-contract-name");
+      const runtime = page.locator("#verification-runtime-entrypoint");
+      const upload = page.locator(".verification-form .verification-upload");
+      const grid = page.locator(".verification-form .form-grid");
+      const assertLayout = async () => {
+        const nameBox = (await name.boundingBox())!;
+        const runtimeBox = (await runtime.boundingBox())!;
+        const uploadBox = (await upload.boundingBox())!;
+        const gridBox = (await grid.boundingBox())!;
+        expect(Math.abs(nameBox.height - runtimeBox.height)).toBeLessThanOrEqual(1);
+        expect(nameBox.height).toBeLessThan(60);
+        expect(Math.abs(nameBox.width - runtimeBox.width)).toBeLessThanOrEqual(1);
+        expect(uploadBox.y).toBeGreaterThan(nameBox.y + nameBox.height);
+        expect(Math.abs(uploadBox.x - gridBox.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(uploadBox.width - gridBox.width)).toBeLessThanOrEqual(1);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+      };
+      await expect(name).toBeVisible();
+      await assertLayout();
+      await page.locator("#verification-input").setInputFiles({
+        name: "main.eas",
+        mimeType: "text/plain",
+        buffer: Buffer.from("stop"),
+      });
+      await expect(page.locator(".verification-upload-list")).toContainText("main.eas");
+      await assertLayout();
+      await page.screenshot({
+        path: testInfo.outputPath(`geas-layout-${language}-${width}.png`),
+        fullPage: true,
+      });
+    });
+  }
+}
+
+for (const language of ["en", "zh"] as const) {
   test(`local verification file uploads in ${language} at 390px`, async ({ page }, testInfo) => {
     const address = `0x${"12".repeat(20)}`;
     const posts: unknown[] = [];
@@ -48,7 +101,9 @@ for (const language of ["en", "zh"] as const) {
       mimeType: "application/json",
       buffer: Buffer.from("{}"),
     });
-    await expect(page.getByRole("alert")).toContainText(zh ? "小写后缀" : "lowercase extensions");
+    await expect(page.locator(".verification-form").getByRole("alert")).toContainText(
+      zh ? "小写后缀" : "lowercase extensions",
+    );
     await submit.click();
     expect(posts).toHaveLength(0);
     const standard = {
@@ -68,6 +123,7 @@ for (const language of ["en", "zh"] as const) {
     });
     await submit.click();
     await expect.poll(() => posts.length).toBe(1);
+    await expect(page.locator(".message-error").getByRole("alert")).toBeVisible();
     expect(posts[0]).toEqual({
       address,
       compiler_version: "0.8.30",
@@ -89,7 +145,7 @@ for (const language of ["en", "zh"] as const) {
     });
     const path = page.getByLabel(zh ? "源码路径：A.sol" : "Source path: A.sol", { exact: true });
     await path.fill("src/A.exe");
-    await expect(page.getByRole("alert")).toContainText("src/A.exe");
+    await expect(page.locator(".verification-form").getByRole("alert")).toContainText("src/A.exe");
     await submit.click();
     expect(posts).toHaveLength(1);
     await path.fill("src/A.sol");

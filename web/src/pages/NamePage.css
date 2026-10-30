@@ -1,0 +1,241 @@
+.name-page {
+  max-width: 1100px;
+  margin-inline: auto;
+  gap: 28px;
+}
+.name-heading {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  padding-block: 8px;
+}
+.name-eyebrow {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+.name-title-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  min-width: 0;
+}
+.name-title-row h1 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -0.035em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.name-status {
+  display: inline-flex;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: var(--surface-strong);
+  color: var(--text-soft);
+}
+.name-status-registered {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.name-status-expired,
+.name-status-grace_period {
+  color: var(--warning);
+}
+.name-overview {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: 24px;
+}
+.name-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 32px;
+  margin: 0;
+}
+.name-facts > div {
+  min-width: 0;
+}
+.name-facts dt {
+  color: var(--text-soft);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.name-facts dd {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.name-facts .copyable-field {
+  max-width: 100%;
+}
+.name-data-details {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 14px;
+  font-size: 13px;
+}
+.name-data-details summary {
+  cursor: pointer;
+  color: var(--text-soft);
+  width: fit-content;
+}
+.name-data-details p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.name-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.name-section-heading h2 {
+  font-size: 19px;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.name-history-list {
+  border-top: 1px solid var(--line);
+}
+.name-history-row {
+  border-bottom: 1px solid var(--line);
+}
+.name-history-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 0;
+}
+.name-history-toggle {
+  display: flex;
+  align-items: center;
+  text-align: start;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+}
+.name-history-toggle > span {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.name-history-action {
+  font-size: 14px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.name-history-toggle time,
+.name-history-transaction {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.name-history-chevron {
+  flex-shrink: 0;
+  transition: transform 150ms;
+  color: var(--text-soft);
+}
+.name-history-row.is-open .name-history-chevron {
+  transform: rotate(180deg);
+}
+.name-history-transaction {
+  display: grid;
+  gap: 7px;
+  text-align: end;
+  flex-shrink: 0;
+}
+.name-history-events {
+  padding: 4px 20px 20px 32px;
+}
+.name-history-event {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-top: 12px;
+  background: var(--surface);
+}
+.name-event-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.name-event-heading h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.name-history-event dl {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  font-size: 12px;
+}
+.name-history-event dl > div {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+}
+.name-history-event dt {
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+.name-history-event dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.name-event-value {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.name-history-empty {
+  padding: 28px 0;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+@media (max-width: 640px) {
+  .name-page {
+    gap: 24px;
+  }
+  .name-overview {
+    padding: 20px 16px;
+  }
+  .name-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .name-history-summary {
+    gap: 8px;
+    align-items: start;
+  }
+  .name-history-events {
+    padding: 0 0 16px;
+  }
+  .name-history-event dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .name-history-toggle {
+    padding-left: 0;
+    gap: 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .name-history-chevron {
+    transition: none;
+  }
+}

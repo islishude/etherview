@@ -1,0 +1,31 @@
+[
+  {
+    "type": "event",
+    "name": "ReverseClaimed",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "addr",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "node",
+        "type": "bytes32",
+        "indexed": true
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "DefaultResolverChanged",
+    "anonymous": false,
+    "inputs": [
+      {
+        "name": "resolver",
+        "type": "address",
+        "indexed": true
+      }
+    ]
+  }
+]

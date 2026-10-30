@@ -39,7 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("settles simultaneous calldata and failure identity retries independently", async () => {
+it("keeps simultaneous calldata and failure mismatches closed without automatic requests", async () => {
   const reads = { calldata: 0, failure: 0 };
   vi.stubGlobal(
     "fetch",
@@ -83,13 +83,13 @@ it("settles simultaneous calldata and failure identity retries independently", a
     }),
   );
   renderExplorer(`/tx/${transactionHash}`);
-  await waitFor(() => expect(reads).toEqual({ calldata: 2, failure: 2 }));
+  await waitFor(() => expect(reads).toEqual({ calldata: 1, failure: 1 }));
   expect(await screen.findByText("Transaction action unavailable", { exact: true })).toBeVisible();
   await userEvent.setup().click(screen.getByText("More details"));
   expect(screen.getByRole("textbox", { name: "Raw calldata (Hex)" })).toHaveValue(
     transaction.input,
   );
-  expect(reads).toEqual({ calldata: 2, failure: 2 });
+  expect(reads).toEqual({ calldata: 1, failure: 1 });
 });
 
 it.each(["/blocks/12", "/block/12"])(

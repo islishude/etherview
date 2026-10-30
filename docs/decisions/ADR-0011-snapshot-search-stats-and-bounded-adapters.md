@@ -2,9 +2,12 @@
 
 Status: accepted
 
-The external-name-specific decisions below are superseded by
-[ADR-0041](ADR-0041-snapshot-stable-ens-primary-names.md). Search catalog,
-price-adapter, statistics, and maintenance decisions remain active.
+The external-name-specific decisions below were first replaced by
+[ADR-0041](ADR-0041-snapshot-stable-ens-primary-names.md) and are now superseded by
+[ADR-0058](ADR-0058-background-ens-synchronization-and-database-only-reads.md).
+Name synchronization and publication run in a background role and name queries
+are database-only; linked plans retain local and live acceptance boundaries. Request-time name fetch/write provisions below are historical.
+Search catalog, price-adapter, statistics, and maintenance decisions remain active.
 
 ## Context
 

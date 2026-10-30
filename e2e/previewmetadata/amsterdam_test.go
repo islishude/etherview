@@ -79,6 +79,7 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
       ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "false"
       SSL_CERT_FILE: /run/ipfs-ca/rootCA.pem
     volumes:
+      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
       - ` + filepath.Join(h.root, ".local", "preview-tls", "rootCA.pem") + `:/run/ipfs-ca/rootCA.pem:ro
 `
 	if err := os.WriteFile(override, []byte(config), 0600); err != nil {

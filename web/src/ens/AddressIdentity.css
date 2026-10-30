@@ -39,17 +39,6 @@
   white-space: nowrap;
 }
 
-.custom-ens-badge {
-  flex: none;
-  padding: 0.08rem 0.28rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text-soft);
-  font-size: 0.58rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
 .address-system-identity {
   display: inline-flex;
   align-items: flex-end;
@@ -132,4 +121,22 @@
 
 @position-try --system-tooltip-right {
   position-area: top span-right;
+}
+
+.address-identity-address-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.address-name-link {
+  display: block;
+  max-width: 14rem;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
 }

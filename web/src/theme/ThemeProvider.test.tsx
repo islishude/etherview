@@ -109,16 +109,7 @@ describe("ThemeProvider", () => {
   });
 
   it("uses the system preference only when no stored choice exists", () => {
-    vi.spyOn(window, "matchMedia").mockReturnValue({
-      matches: true,
-      media: "(prefers-color-scheme: dark)",
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    });
+    mockSystemTheme(true);
 
     expect(resolveInitialTheme()).toBe("dark");
     window.localStorage.setItem("etherview.theme", "light");
@@ -134,11 +125,12 @@ function mockSystemTheme(dark: boolean) {
     onchange: null,
     addEventListener: vi.fn(events.addEventListener.bind(events)),
     removeEventListener: vi.fn(events.removeEventListener.bind(events)),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
     dispatchEvent: events.dispatchEvent.bind(events),
-  } satisfies MediaQueryList;
-  vi.spyOn(window, "matchMedia").mockReturnValue(media);
+  } satisfies Pick<MediaQueryList, "matches" | "media" | "onchange" | keyof EventTarget>;
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => media),
+  );
   return {
     media,
     change(matches: boolean) {

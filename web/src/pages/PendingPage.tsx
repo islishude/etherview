@@ -50,10 +50,9 @@ export function PendingPage() {
     const delay = Math.min(Math.max(0, expiry - Date.now()), maximumDelay);
     const timer = window.setTimeout(() => {
       setExpiredSnapshot(true);
-      reset();
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [pending.data, reset]);
+  }, [pending.data]);
 
   const resetPagination = () => {
     setExpiredSnapshot(false);
@@ -116,7 +115,7 @@ export function PendingPage() {
           <nav className="pending-pagination" aria-label={t("pending.pagination")}>
             <button
               className="button secondary"
-              disabled={!pager.hasPrevious}
+              disabled={pager.invalid || !pager.hasPrevious}
               onClick={pager.previous}
               type="button"
             >
@@ -127,7 +126,7 @@ export function PendingPage() {
             </span>
             <button
               className="button secondary"
-              disabled={!snapshot.meta.next_cursor}
+              disabled={pager.invalid || !snapshot.meta.next_cursor}
               onClick={() => pager.next(snapshot.meta.next_cursor)}
               type="button"
             >

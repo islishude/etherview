@@ -174,7 +174,7 @@ describe("EIP-6963 wallet boundary", () => {
           native_currency: { name: "Test", symbol: "TST", decimals: 18 },
           rpc_urls: [rpcURL],
         }),
-      ).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
+      ).toThrow(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
     }
     for (const field of ["block_explorer_urls", "icon_urls"] as const) {
       expect(() =>
@@ -185,7 +185,7 @@ describe("EIP-6963 wallet boundary", () => {
           rpc_urls: ["https://rpc.example"],
           [field]: ["http://localhost:8080"],
         }),
-      ).toThrowError(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
+      ).toThrow(new WalletBoundaryError("CHAIN_UNAVAILABLE"));
     }
   });
 
@@ -215,15 +215,15 @@ describe("EIP-6963 wallet boundary", () => {
   });
 
   it("fails closed when the configured chain is unavailable, malformed, or mismatched", () => {
-    expect(() => assertWalletChain("0x1", undefined)).toThrowError(
+    expect(() => assertWalletChain("0x1", undefined)).toThrow(
       expect.objectContaining<Partial<WalletBoundaryError>>({ code: "CHAIN_UNAVAILABLE" }),
     );
-    expect(() => assertWalletChain("1", "1")).toThrowError(
+    expect(() => assertWalletChain("1", "1")).toThrow(
       expect.objectContaining<Partial<WalletBoundaryError>>({
         code: "INVALID_PROVIDER_RESPONSE",
       }),
     );
-    expect(() => assertWalletChain("0xa", "1")).toThrowError(
+    expect(() => assertWalletChain("0xa", "1")).toThrow(
       expect.objectContaining<Partial<WalletBoundaryError>>({ code: "CHAIN_MISMATCH" }),
     );
   });

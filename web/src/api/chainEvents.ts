@@ -1,10 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 
-export type ChainEventType = "head" | "reorg" | "status";
+export type ChainEventType = "head" | "reorg" | "status" | "names";
 export interface ChainQueryMeta extends Record<string, unknown> {
+  refreshPolicy?: "live" | "manual";
+  pagination?: string;
   chainEvents?: readonly ChainEventType[];
-  clearOnReorg?: boolean;
-  clearOnStatus?: boolean;
 }
 
 declare module "@tanstack/react-query" {
@@ -17,8 +17,6 @@ export const chainQueryMeta: ChainQueryMeta = { chainEvents: ["head", "reorg"] }
 export const statusQueryMeta: ChainQueryMeta = { chainEvents: ["head", "reorg", "status"] };
 export const userOperationQueryMeta: ChainQueryMeta = {
   ...statusQueryMeta,
-  clearOnReorg: true,
-  clearOnStatus: true,
 };
 const observedEvents = new WeakMap<QueryClient, string>();
 

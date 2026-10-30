@@ -144,6 +144,10 @@ services:
     extends:
       file: preview/compose/app.yaml
       service: enrich
+    volumes:
+      - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
+      - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
+      - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/ens.json:/etc/etherview/ens/current.json:ro
 
   trace:
     <<: *etherview-paths

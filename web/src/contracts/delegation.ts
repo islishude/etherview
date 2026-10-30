@@ -1,3 +1,4 @@
+import { chainQueryMeta } from "@/api/chainEvents";
 import * as sdk from "../api/heyapi/sdk.gen";
 import { firstPage, type CursorRequest } from "@/api/pagination";
 import { useQuery } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ export async function getAddressDelegation(
 export function useAddressDelegation(address: string, enabled = true) {
   return useQuery({
     queryKey: ["address", address, "delegation"],
+    meta: chainQueryMeta,
     queryFn: ({ signal }) => getAddressDelegation(address, signal),
     enabled: enabled && address.length > 0,
     retry: false,
@@ -36,6 +38,7 @@ export function useAddressDelegationHistory(
   const { cursor, refreshGeneration } = page;
   return useQuery({
     queryKey: ["address", address, "delegations", cursor ?? null, limit, refreshGeneration],
+    meta: { ...chainQueryMeta, pagination: page.identity },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(
         await sdk.listAddressDelegations({

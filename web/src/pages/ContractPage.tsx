@@ -370,7 +370,7 @@ export function ContractPage({ address }: { address: string }) {
                       <>
                         <QueryNotice
                           compact
-                          loading={proxy.isPending || proxy.data?.state === "unavailable"}
+                          loading={proxy.isPending}
                           error={isUnverifiedArtifactError(proxy.error) ? undefined : proxy.error}
                         />
                         {showProxySummary && proxyDetail ? (

@@ -74,21 +74,17 @@ func (cleaner *PostgresCatalogCleaner) Sweep(
 			return err
 		}
 		expiredBefore := pgtype.Timestamptz{Time: now.UTC(), Valid: true}
-		deletedSnapshots, err := queries.DeleteExpiredENSAddressNameSnapshots(
-			ctx, uint64MaintenanceNumeric(chainID), expiredBefore, int32(deleteBatch),
-		)
+		effectiveDeleted, err := queries.DeleteExpiredENSEffectivePublications(ctx, uint64MaintenanceNumeric(chainID), expiredBefore, int32(deleteBatch))
 		if err != nil {
 			return err
 		}
-		deletedGenerations, err := queries.DeleteExpiredENSResolutionGenerations(
-			ctx, uint64MaintenanceNumeric(chainID), expiredBefore, int32(deleteBatch),
-		)
+		observationsDeleted, err := queries.DeleteExpiredENSSyncObservations(ctx, uint64MaintenanceNumeric(chainID), expiredBefore, int32(deleteBatch))
 		if err != nil {
 			return err
 		}
 		result = CatalogCleanupResult{
 			Ran: true, MinGeneration: minimum, Deleted: deleted,
-			ENSDeleted: deletedSnapshots + deletedGenerations,
+			ENSDeleted: effectiveDeleted + observationsDeleted,
 		}
 		return nil
 	})

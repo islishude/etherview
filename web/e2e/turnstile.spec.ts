@@ -70,7 +70,7 @@ for (const language of ["en", "zh"] as const) {
     expect(response?.headers()["content-security-policy"]).toContain(
       "frame-src https://challenges.cloudflare.com",
     );
-    const toolbar = page.locator(".address-actions-toolbar");
+    const toolbar = page.locator(".address-header-actions");
     await expect(toolbar).toBeVisible();
     expect(scripts).toBe(0);
     for (const theme of ["light", "dark"]) {
@@ -94,20 +94,20 @@ for (const language of ["en", "zh"] as const) {
         expect(
           (
             await new AxeBuilder({ page })
-              .include(".address-actions")
+              .include(".address-header-actions")
               .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
               .analyze()
           ).violations,
         ).toEqual([]);
       }
     }
-    const exportButton = page.getByRole("button", {
+    const exportButton = page.getByRole("link", {
       name: zh ? "导出 CSV" : "Export CSV",
       exact: true,
     });
     await exportButton.focus();
     await page.keyboard.press("Enter");
-    await expect(exportButton).toHaveAttribute("aria-expanded", "true");
+    await expect(page).toHaveURL(new RegExp(`/address/${address}/export$`));
     const download = page.getByRole("button", {
       name: zh ? "下载 CSV" : "Download CSV",
       exact: true,
@@ -154,12 +154,12 @@ for (const language of ["en", "zh"] as const) {
     releaseExport!();
     const end = await page.locator('input[type="datetime-local"]').nth(1).inputValue();
     expect((await file).suggestedFilename()).toBe(
-      `${address}-${original.replaceAll(":", "-")}-00Z-${end.replaceAll(":", "-")}-00Z-transaction.csv`,
+      `${address}-${original.replaceAll(":", "-")}-00Z-${end.replaceAll(":", "-")}-00Z-all.csv`,
     );
     await expect(challengeButton).not.toHaveAttribute("data-widget-id", secondWidget!);
     expect(tokens).toHaveLength(2);
     expect(tokens[0]).not.toBe(tokens[1]);
-    await exportButton.click();
+    await page.getByRole("link", { name: zh ? "返回地址页" : "Back to address" }).click();
     await expect(page.getByRole("button", { name: "Pass test challenge" })).toHaveCount(0);
   });
 }

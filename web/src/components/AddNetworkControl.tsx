@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -108,15 +109,17 @@ export function AddNetworkControl({ menuOpen }: AddNetworkControlProps) {
           ))}
         </div>
       ) : null}
-      <span className={`add-network-status ${status}`} role="status" aria-live="polite">
-        {status === "pending"
-          ? t("wallet.addNetworkPending", { chain: chainName })
-          : status === "success"
-            ? t("wallet.addNetworkSuccess", { chain: chainName })
-            : status === "error" && error
-              ? t(walletErrorTranslationKey(error))
-              : null}
-      </span>
+      {status === "pending" && (
+        <span className="add-network-status pending" role="status">
+          {t("wallet.addNetworkPending", { chain: chainName })}
+        </span>
+      )}
+      {status === "success" && (
+        <Message type="success">{t("wallet.addNetworkSuccess", { chain: chainName })}</Message>
+      )}
+      {status === "error" && error && (
+        <Message type="error">{t(walletErrorTranslationKey(error))}</Message>
+      )}
     </section>
   );
 }

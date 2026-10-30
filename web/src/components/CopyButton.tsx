@@ -1,24 +1,12 @@
+import { Message } from "./Message";
 import { Check, Copy } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export async function copyTextToClipboard(value: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  textarea.setAttribute("readonly", "");
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  document.body.removeChild(textarea);
-  if (!copied) throw new Error("fallback copy failed");
+  if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
+  await navigator.clipboard.writeText(value);
 }
 
 export function CopyButton({
@@ -31,6 +19,7 @@ export function CopyButton({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [copyRevision, setCopyRevision] = useState(0);
+  const [message, setMessage] = useState<"success" | "error">();
 
   useEffect(() => {
     if (!copied) return;
@@ -41,25 +30,36 @@ export function CopyButton({
   const copy = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    setMessage(undefined);
     try {
       await copyTextToClipboard(value);
       setCopied(true);
+      setMessage("success");
       setCopyRevision((revision) => revision + 1);
     } catch {
       setCopied(false);
+      setMessage("error");
+      setCopyRevision((revision) => revision + 1);
     }
   };
 
   return (
-    <button
-      aria-label={copied ? t("common.copied") : t("common.copy")}
-      className={`${className}${copied ? " copied" : ""}`}
-      onClick={copy}
-      title={copied ? t("common.copied") : t("common.copy")}
-      type="button"
-    >
-      <UIIcon icon={copied ? Check : Copy} />
-    </button>
+    <>
+      {message && (
+        <Message key={copyRevision} type={message}>
+          {t(message === "success" ? "common.copied" : "common.copyFailed")}
+        </Message>
+      )}
+      <button
+        aria-label={copied ? t("common.copied") : t("common.copy")}
+        className={`${className}${copied ? " copied" : ""}`}
+        onClick={copy}
+        title={copied ? t("common.copied") : t("common.copy")}
+        type="button"
+      >
+        <UIIcon icon={copied ? Check : Copy} />
+      </button>
+    </>
   );
 }
 

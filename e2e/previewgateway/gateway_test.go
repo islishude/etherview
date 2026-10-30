@@ -64,7 +64,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 		t.Fatal(err)
 	}
 	args := []string{"run", "-d", "--add-host", "host.docker.internal:host-gateway", "-p", "127.0.0.1::443", "-v", root + "/preview/Caddyfile:/etc/caddy/Caddyfile:ro", "-v", cert + ":/run/preview-tls/gateway.crt:ro", "-v", key + ":/run/preview-tls/gateway.key:ro", "-e", "PREVIEW_NODE_ALLOWED_ORIGINS=" + origins}
-	for _, name := range []string{"APP", "IPFS", "GETH", "GETH_WS", "BEACON"} {
+	for _, name := range []string{"APP", "IPFS", "GETH", "GETH_WS", "BEACON", "BUNDLER"} {
 		upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			g.calls.Add(1)
 			if r.URL.Query().Get("disconnect") == "1" {
@@ -100,11 +100,14 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 			w.Header().Set("X-Upstream", name)
 			w.Header().Set("X-URI", r.RequestURI)
 			w.Header().Set("X-Host", r.Host)
-			if r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" {
+			if name != "BUNDLER" && (r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "") {
 				t.Error("spoofed forwarding header")
 			}
 			if name == "GETH" || name == "BEACON" {
-				w.Header().Set("Access-Control-Allow-Origin", "*")
+				if r.Header.Get("Origin") != "" {
+					t.Error("node Origin forwarded upstream")
+				}
+				w.Header().Set("Access-Control-Allow-Origin", "https://upstream.invalid")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 			if strings.Contains(r.URL.Path, "headers-stall") {
@@ -147,7 +150,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 			}
 			if strings.Contains(r.URL.Path, "flood") {
 				block := make([]byte, 64<<10)
-				for i := 0; i < 16384; i++ {
+				for range 16384 {
 					if _, writeErr := w.Write(block); writeErr != nil {
 						select {
 						case g.canceled <- struct{}{}:
@@ -214,6 +217,10 @@ func (g *gateway) request(method, host, path, origin, body string) (*http.Respon
 	}
 	if origin != "" {
 		req.Header.Set("Origin", origin)
+	}
+	if method == http.MethodOptions {
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		req.Header.Set("Access-Control-Request-Headers", "content-type")
 	}
 	req.Header.Set("Forwarded", "secret")
 	req.Header.Set("X-Forwarded-For", "spoof")
@@ -290,25 +297,42 @@ func TestRoutesAndBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, origin := range []string{"https://app.etherview.localhost", "http://localhost:5173", "http://127.0.0.1:5173", "https://evil.invalid", "null"} {
-		for _, method := range []string{"POST", "OPTIONS"} {
-			resp, _ := g.request(method, "geth", "/", origin, "{}")
-			allowed := origin != "null" && origin != "https://evil.invalid"
-			if !allowed {
-				if resp.StatusCode != 403 {
-					t.Fatalf("origin %s accepted", origin)
+	for _, host := range []string{"geth", "beacon", "bundler"} {
+		path := "/"
+		if host == "beacon" {
+			path = "/eth/v1/beacon/pool/attestations"
+		}
+		for _, origin := range []string{"", "https://app.etherview.localhost", "http://localhost:5173", "http://127.0.0.1:5173", "https://evil.invalid", "chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn", "moz-extension://preview-wallet", "null"} {
+			for _, method := range []string{"POST", "OPTIONS"} {
+				before := g.calls.Load()
+				resp, _ := g.request(method, host, path, origin, "{}")
+				allowed := host == "geth" || origin == "" || origin == "https://app.etherview.localhost" || origin == "http://localhost:5173" || origin == "http://127.0.0.1:5173"
+				want := 200
+				if !allowed {
+					want = 403
+				} else if method == "OPTIONS" {
+					want = 204
 				}
-				continue
-			}
-			want := 200
-			if method == "OPTIONS" {
-				want = 204
-			}
-			if resp.StatusCode != want {
-				t.Fatalf("CORS status %d", resp.StatusCode)
-			}
-			if resp.Header.Get("Access-Control-Allow-Origin") != origin || resp.Header.Get("Access-Control-Allow-Credentials") != "" {
-				t.Fatalf("CORS headers: %v", resp.Header)
+				if resp.StatusCode != want {
+					t.Fatalf("%s %s origin %q: status %d want %d", host, method, origin, resp.StatusCode, want)
+				}
+				if (!allowed || method == "OPTIONS") && g.calls.Load() != before {
+					t.Fatal("rejected request or preflight reached upstream")
+				}
+				wantOrigin := ""
+				if host == "geth" {
+					wantOrigin = "*"
+				} else if allowed {
+					wantOrigin = origin
+				}
+				if resp.Header.Get("Access-Control-Allow-Origin") != wantOrigin || resp.Header.Get("Access-Control-Allow-Credentials") != "" {
+					t.Fatalf("%s CORS headers: %v", host, resp.Header)
+				}
+				if allowed && (origin != "" || host == "geth") {
+					if resp.Header.Get("Access-Control-Allow-Methods") != "GET, POST, OPTIONS" || resp.Header.Get("Access-Control-Allow-Headers") != "Content-Type, Accept, Eth-Consensus-Version" {
+						t.Fatalf("%s preflight policy: %v", host, resp.Header)
+					}
+				}
 			}
 		}
 	}
@@ -394,23 +418,14 @@ func TestStreamingAndDeadlines(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer func() { _ = conn.Close() }()
-		rejected, response, err := dialer.Dial("wss://geth.etherview.localhost/", http.Header{"Origin": []string{"https://evil.invalid"}})
-		if rejected != nil {
-			_ = rejected.Close()
-		}
-		if response != nil {
-			_ = response.Body.Close()
-		}
-		if err == nil {
-			t.Fatal("untrusted WS Origin accepted")
-		}
+
 		resp, err := g.client.Get("https://beacon.etherview.localhost/eth/v1/events/idle-stream")
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() { _ = resp.Body.Close() }()
 		reader := bufio.NewReader(resp.Body)
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			line, readErr := reader.ReadString('\n')
 			if readErr != nil {
 				t.Fatal(readErr)
@@ -506,15 +521,52 @@ func TestStalledDownstream(t *testing.T) {
 
 func TestOriginOverride(t *testing.T) {
 	g := startWithOrigins(t, "https://custom.example null")
-	for _, origin := range []string{"https://app.etherview.localhost", "http://localhost:5173", "https://custom.example", "null"} {
-		response, _ := g.request("POST", "geth", "/", origin, "{}")
-		want := 403
-		if origin == "https://custom.example" {
-			want = 200
+	for _, host := range []string{"geth", "beacon", "bundler"} {
+		path := "/"
+		if host == "beacon" {
+			path = "/eth/v1/beacon/pool/attestations"
 		}
-		if response.StatusCode != want {
-			t.Fatalf("origin override %s: %d", origin, response.StatusCode)
+		for _, origin := range []string{"", "https://app.etherview.localhost", "http://localhost:5173", "https://custom.example", "null"} {
+			response, _ := g.request("POST", host, path, origin, "{}")
+			want := 403
+			if host == "geth" || origin == "" || origin == "https://custom.example" {
+				want = 200
+			}
+			if response.StatusCode != want {
+				t.Fatalf("%s origin override %q: %d", host, origin, response.StatusCode)
+			}
 		}
+	}
+}
+
+func TestGethWebSocketOrigins(t *testing.T) {
+	g := startWithOrigins(t, "https://custom.example")
+	dialer := websocket.Dialer{TLSClientConfig: &tls.Config{RootCAs: g.roots}, NetDialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, g.binding)
+	}}
+	for _, origin := range []string{"", "https://app.etherview.localhost", "https://evil.invalid", "chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn", "moz-extension://preview-wallet", "null"} {
+		t.Run(origin, func(t *testing.T) {
+			headers := http.Header{}
+			if origin != "" {
+				headers.Set("Origin", origin)
+			}
+			conn, response, err := dialer.Dial("wss://geth.etherview.localhost/", headers)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = conn.Close() }()
+			if response.Header.Get("Access-Control-Allow-Origin") != "*" || response.Header.Get("Access-Control-Allow-Credentials") != "" {
+				t.Fatalf("WSS CORS headers: %v", response.Header)
+			}
+			if err = conn.WriteMessage(websocket.TextMessage, []byte("wallet")); err != nil {
+				t.Fatal(err)
+			}
+			_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+			_, data, err := conn.ReadMessage()
+			if err != nil || string(data) != "wallet" {
+				t.Fatalf("websocket echo %q: %v", data, err)
+			}
+		})
 	}
 }
 

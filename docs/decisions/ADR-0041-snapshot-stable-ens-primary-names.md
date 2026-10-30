@@ -1,6 +1,11 @@
 # ADR-0041: Snapshot-stable ENS Primary Names
 
-Status: accepted
+Status: superseded
+
+Superseded by [ADR-0058](ADR-0058-background-ens-synchronization-and-database-only-reads.md).
+The historical decision below describes the retired request-time resolver. ADR-0058 is the accepted replacement architecture; its linked plans
+track implementation and acceptance. This document is retained for historical
+references, not as authority for new ENS work.
 
 ## Context
 

@@ -55,6 +55,13 @@ export default defineConfig({
           includeDependenciesRecursively: true,
           groups: [
             {
+              // Keep ENS normalization and its shared tables in a separate compression unit.
+              name: "ens-normalize",
+              test: /node_modules[\\/](?:@adraffy[\\/]ens-normalize|viem[\\/]_esm[\\/]utils[\\/]ens[\\/]normalize\.js)/,
+              priority: 60,
+              includeDependenciesRecursively: false,
+            },
+            {
               name: "react-vendor",
               test: /node_modules[\\/](?:react|react-dom|scheduler)(?:[\\/]|$)/,
               priority: 50,

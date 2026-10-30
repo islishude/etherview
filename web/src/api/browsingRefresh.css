@@ -1,0 +1,126 @@
+.page-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.page-title-row h1 {
+  min-width: 0;
+}
+
+.browsing-refresh {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+.browsing-refresh-button {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms,
+    border-color 150ms;
+}
+.browsing-refresh-button:hover:not(:disabled),
+.browsing-refresh-button:focus-visible {
+  background: var(--surface-strong);
+  color: var(--text);
+  border-color: var(--text-soft);
+}
+.browsing-refresh-button:focus-visible {
+  outline: 2px solid var(--text-soft);
+  outline-offset: 3px;
+}
+.browsing-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.browsing-refresh-button[aria-busy="true"] svg {
+  animation: browsing-refresh-spin 1s linear infinite;
+}
+.browsing-refresh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.browsing-refresh-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--warning);
+}
+.browsing-refresh-hint {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 3rem));
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 10%);
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.browsing-refresh:hover .browsing-refresh-hint,
+.browsing-refresh:focus-within .browsing-refresh-hint {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.browsing-refresh[data-hint-dismissed] .browsing-refresh-hint {
+  opacity: 0;
+  visibility: hidden;
+}
+.browsing-refresh-hint::before {
+  content: "";
+  position: absolute;
+  inset: -0.5rem 0 100%;
+}
+@keyframes browsing-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browsing-refresh-button[aria-busy="true"] svg {
+    animation: none;
+  }
+}
+@media (max-width: 480px) {
+  .browsing-refresh-status {
+    font-size: 0;
+    gap: 0;
+  }
+  .browsing-refresh {
+    gap: 0;
+  }
+  .browsing-refresh-dot {
+    position: absolute;
+    top: 0.125rem;
+    right: 0.125rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    box-shadow: 0 0 0 2px var(--surface);
+  }
+}

@@ -347,11 +347,6 @@
   margin-top: 1rem;
 }
 
-.address-assets {
-  display: grid;
-  gap: 1.25rem;
-}
-
 .detail-item dd {
   min-width: 0;
   margin: 0;

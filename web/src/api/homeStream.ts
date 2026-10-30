@@ -34,7 +34,7 @@ export function useHomeSnapshot(): HomeStreamState {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["home"],
-    meta: statusQueryMeta,
+    meta: { ...statusQueryMeta, refreshPolicy: "live" },
     queryFn: async ({ signal }) => {
       const envelope = requireEnvelope(
         await sdk.getHomeSnapshot({

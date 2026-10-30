@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/islishude/etherview/internal/api/gen"
 )
 
 type contractScenarioReport struct {
@@ -106,16 +108,36 @@ func TestPreviewContracts(t *testing.T) {
 	if _, err := h.project.Run(ctx, "stop", "bundler"); err != nil {
 		t.Fatal(err)
 	}
-	response, err := h.http.Get(h.apiURL + "/health/ready")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if closeErr := response.Body.Close(); closeErr != nil {
-		t.Fatal(closeErr)
-	}
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("core readiness depends on Bundler: %d", response.StatusCode)
-	}
+	// The real PoS chain keeps producing blocks after Bundler shutdown. A probe
+	// can observe core catch-up (503), so require readiness within the existing
+	// bounded wait while the Bundler stays stopped, rather than at one instant.
+	waitFor(t, ctx, "core readiness without Bundler", func() (bool, string, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/health/ready", nil)
+		if err != nil {
+			return false, "", err
+		}
+		response, err := h.http.Do(request)
+		if err != nil {
+			return false, "", err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, 4096))
+		closeErr := response.Body.Close()
+		detail := fmt.Sprintf("HTTP %d: %s", response.StatusCode, body)
+		if readErr != nil {
+			return false, detail, readErr
+		}
+		if closeErr != nil {
+			return false, detail, closeErr
+		}
+		switch response.StatusCode {
+		case http.StatusOK:
+			return true, detail, nil
+		case http.StatusServiceUnavailable:
+			return false, detail, nil
+		default:
+			return false, detail, fmt.Errorf("unexpected readiness status %d", response.StatusCode)
+		}
+	})
 }
 
 func (h *harness) contractsAllRoles(ctx context.Context) {
@@ -125,6 +147,8 @@ func (h *harness) contractsAllRoles(ctx context.Context) {
 	override := filepath.Join(h.artifacts, "contracts-all.yaml")
 	config := `services:
   api:
+    volumes:
+      - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
       ETHERVIEW_ROLES: all
@@ -141,6 +165,12 @@ func (h *harness) contractsAllRoles(ctx context.Context) {
 }
 
 func (h *harness) assertContractAPI(ctx context.Context, report contractScenarioReport) {
+	// Registration must reach a verified publication before the first name HTTP lookup.
+	waitFor(h.t, ctx, "autonomous ENS publication", func() (bool, string, error) {
+		var count int
+		err := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_effective_publications WHERE target_chain_id=48815 AND direction='forward' AND name=$1 AND ens_effective_publication_current(id)`, report.Name).Scan(&count)
+		return count > 0, fmt.Sprint(count), err
+	})
 	for _, operation := range []struct {
 		hash, transaction string
 		success           bool
@@ -168,8 +198,7 @@ func (h *harness) assertContractAPI(ctx context.Context, report contractScenario
 				Items []struct {
 					State   string `json:"state"`
 					Primary *struct {
-						Name   string `json:"name"`
-						Source string `json:"source"`
+						Name string `json:"name"`
 					} `json:"primary_name"`
 				} `json:"items"`
 			}
@@ -179,27 +208,46 @@ func (h *harness) assertContractAPI(ctx context.Context, report contractScenario
 			return false, fmt.Sprint(err), nil
 		}
 		item := result.Data.Items[0]
-		return item.State == "resolved" && item.Primary != nil && item.Primary.Name == report.Name && item.Primary.Source == "custom_ens", fmt.Sprintf("%+v", item), nil
+		return item.State == "resolved" && item.Primary != nil && item.Primary.Name == report.Name, fmt.Sprintf("%+v", item), nil
 	})
 	waitFor(h.t, ctx, "local forward name search", func() (bool, string, error) {
 		var result struct {
 			Data []struct {
-				Key    string `json:"key"`
-				Label  string `json:"label"`
-				Source string `json:"name_source"`
+				Key   string `json:"key"`
+				Label string `json:"label"`
 			} `json:"data"`
 		}
 		err := h.getJSON(ctx, h.apiURL+"/api/v1/search?q="+report.Name, &result)
 		for _, item := range result.Data {
-			if strings.EqualFold(item.Key, report.NameOwner) && item.Label == report.Name && item.Source == "custom_ens" {
-				return true, "custom name published", nil
+			if item.Key == report.Name && item.Label == report.Name {
+				return true, "name directory published", nil
 			}
 		}
 		return false, fmt.Sprintf("%+v %v", result, err), nil
 	})
-	var total, official int
-	if err := h.db.QueryRow(ctx, "SELECT count(*),count(official_endpoint) FROM ens_resolution_generations WHERE chain_id=48815").Scan(&total, &official); err != nil || total == 0 || official != 0 {
-		h.t.Fatalf("ENS source generations total=%d official=%d: %v", total, official, err)
+	waitFor(h.t, ctx, "name registration profile", func() (bool, string, error) {
+		var response struct {
+			Data struct {
+				Registrant struct {
+					State string
+					Value string
+				}
+				ProfileObservation any `json:"profile_observation"`
+			}
+		}
+		err := h.getJSON(ctx, h.apiURL+"/api/v1/names/"+report.Name, &response)
+		return err == nil && response.Data.ProfileObservation != nil && response.Data.Registrant.State == "value" && strings.EqualFold(response.Data.Registrant.Value, report.NameOwner), fmt.Sprintf("%+v %v", response.Data, err), nil
+	})
+
+	waitFor(h.t, ctx, "name operation history", func() (bool, string, error) {
+		var history gen.NameHistoryResponse
+		err := h.getJSON(ctx, h.apiURL+"/api/v1/names/"+report.Name+"/history", &history)
+		return err == nil && len(history.Data.Items) > 0 && history.Data.Snapshot != "", fmt.Sprintf("%+v %v", history.Data, err), nil
+	})
+
+	var total, sources int
+	if err := h.db.QueryRow(ctx, "SELECT count(*),count(DISTINCT s.id) FROM ens_sync_observations o JOIN ens_sync_sources s ON s.id=o.source_id WHERE s.target_chain_id=48815").Scan(&total, &sources); err != nil || total == 0 || sources != 1 {
+		h.t.Fatalf("ENS background observations total=%d sources=%d: %v", total, sources, err)
 	}
 }
 

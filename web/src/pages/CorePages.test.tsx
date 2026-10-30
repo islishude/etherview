@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,7 +51,11 @@ describe("core explorer pages", () => {
       }),
     );
 
-    renderExplorer("/blocks");
+    const { router } = renderExplorer("/blocks");
+    // Wait for the cold lazy route before timing the block-data assertion.
+    await act(async () => {
+      await router.load();
+    });
 
     expect(await screen.findByRole("link", { name: "12" })).toHaveAttribute(
       "href",
@@ -362,7 +366,7 @@ describe("core explorer pages", () => {
     expect(screen.queryByText("delegated_eoa", { exact: true })).not.toBeInTheDocument();
   });
 
-  it("polls a basic mempool detail through pending, replaced, and included states", async () => {
+  it("manually refreshes a mempool detail through pending, replaced, and included states", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-13T00:00:00Z"));
     const predecessorHash = `0x${"99".repeat(32)}`;
@@ -449,6 +453,11 @@ describe("core explorer pages", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
     });
+    expect(detailRequests).toBeLessThan(3);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^(Refresh|刷新)$/ }));
+      await vi.advanceTimersByTimeAsync(1);
+    });
     expect(screen.getByRole("heading", { name: "Transaction replaced" })).toBeVisible();
     expect(screen.getByRole("link", { name: replacementHash })).toHaveAttribute(
       "href",
@@ -468,6 +477,11 @@ describe("core explorer pages", () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(detailRequests).toBeLessThan(3);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^(Refresh|刷新)$/ }));
+      await vi.advanceTimersByTimeAsync(1);
     });
     expect(screen.getByRole("tablist", { name: "交易详情分区" })).toBeVisible();
     expect(
@@ -580,6 +594,8 @@ describe("transaction navigation and calldata", () => {
 
     renderExplorer(`/tx/${transactionHash}?tab=logs`);
 
+    await waitFor(() => expect(logFetches).toBe(1));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Refresh" }));
     expect(await screen.findByText("This transaction emitted no logs.")).toBeVisible();
     expect(logFetches).toBe(2);
     expect(requested).toContain(`/api/v1/transactions/${transactionHash}/logs`);

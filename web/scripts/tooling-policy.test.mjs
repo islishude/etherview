@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -14,6 +22,21 @@ function fixture(t, files) {
   for (const config of [".oxlintrc.json", ".oxfmtrc.json"]) {
     copyFileSync(join(web, config), join(root, config));
   }
+  writeFileSync(
+    join(root, "tsconfig.json"),
+    JSON.stringify({
+      compilerOptions: {
+        target: "ES2022",
+        module: "ESNext",
+        moduleResolution: "Bundler",
+        jsx: "react-jsx",
+        strict: true,
+        noEmit: true,
+        types: [],
+      },
+      include: ["src"],
+    }),
+  );
   for (const [name, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, name)), { recursive: true });
     writeFileSync(join(root, name), content);
@@ -27,6 +50,10 @@ function run(root, tool, args) {
     [join(web, "..", "node_modules", tool, "bin", tool), ...args],
     {
       cwd: root,
+      env: {
+        ...process.env,
+        PATH: `${join(web, "..", "node_modules", ".bin")}${delimiter}${process.env.PATH ?? ""}`,
+      },
       encoding: "utf8",
       timeout: 20_000,
     },
@@ -62,6 +89,49 @@ test("lint rejects unused imports/variables and both hook violations", (t) => {
   for (const rule of ["no-unused-vars", "rules-of-hooks", "exhaustive-deps"]) rejects(result, rule);
   assert.match(result.output, /missing/);
   assert.match(result.output, /unused/);
+});
+
+test("lint rejects deprecated React types, including aliased imports and test references", (t) => {
+  const root = fixture(t, {
+    "src/example.ts":
+      'import type { FormEvent as LegacyEvent } from "react";\nexport type Event = LegacyEvent<HTMLFormElement>;\n',
+    "src/example.test.ts":
+      'import type { FormEventHandler } from "react";\nexport type Handler = FormEventHandler<HTMLFormElement>;\n',
+  });
+  symlinkSync(join(web, "node_modules"), join(root, "node_modules"), "dir");
+  const result = lint(root);
+  rejects(result, "no-deprecated");
+  for (const name of ["LegacyEvent", "FormEventHandler"])
+    assert.ok(result.output.includes(name), result.output);
+  writeFileSync(
+    join(root, "src/example.ts"),
+    'import type { SubmitEvent } from "react";\nexport type Event = SubmitEvent<HTMLFormElement>;\n',
+  );
+  writeFileSync(
+    join(root, "src/example.test.ts"),
+    'import type { SubmitEventHandler } from "react";\nexport type Handler = SubmitEventHandler<HTMLFormElement>;\n',
+  );
+  const valid = lint(root);
+  assert.equal(valid.status, 0, valid.output);
+});
+
+test("lint resolves deprecated functions and members while allowing unrelated names", (t) => {
+  const root = fixture(t, {
+    "src/api/heyapi/legacy.ts":
+      "/** @deprecated Use current instead. */\nexport function oldAPI() {}\nexport const client = {\n/** @deprecated Use current instead. */\noldMethod() {}\n};\noldAPI();\n",
+    "src/example.ts":
+      'import { oldAPI as run, client } from "./api/heyapi/legacy";\nrun();\nclient.oldMethod();\ndocument.execCommand("copy");\n',
+  });
+  const result = lint(root);
+  rejects(result, "no-deprecated");
+  for (const name of ["run", "oldMethod", "execCommand"])
+    assert.ok(result.output.includes(name), result.output);
+  writeFileSync(
+    join(root, "src/example.ts"),
+    "const client = { oldMethod() {} };\nclient.oldMethod();\nexport async function copy(value: string) { await navigator.clipboard.writeText(value); }\n",
+  );
+  const valid = lint(root);
+  assert.equal(valid.status, 0, valid.output);
 });
 
 test("classic complexity accepts 150 paths, rejects 151, and excludes tests", (t) => {

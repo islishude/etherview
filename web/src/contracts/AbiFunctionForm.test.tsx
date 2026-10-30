@@ -845,7 +845,7 @@ describe("AbiFunctionExplorer", () => {
 
     await user.click(card.getByRole("button", { name: "Read contract" }));
 
-    expect(await card.findByRole("alert")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "The latest proxy stage is temporarily unavailable",
     );
     expect(onBindingChanged).not.toHaveBeenCalled();
@@ -873,7 +873,7 @@ describe("AbiFunctionExplorer", () => {
     await user.type(card.getByLabelText(/^data/u), "0x");
     await user.click(card.getByRole("button", { name: "Send transaction" }));
 
-    expect(await card.findByRole("alert")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "The verified proxy binding or target changed",
     );
     expect(onBindingChanged).toHaveBeenCalledOnce();
@@ -922,7 +922,7 @@ describe("AbiFunctionExplorer", () => {
     await user.type(card.getByLabelText(/^data/u), "0x");
     await user.click(card.getByRole("button", { name: "Send transaction" }));
 
-    const alert = await card.findByRole("alert");
+    const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/wallet request was rejected/iu);
     expect(alert).toHaveTextContent(/wallet also reported revert data/iu);
     expect(alert).toHaveTextContent(`Unauthorized(address): ${ACCOUNT}`);

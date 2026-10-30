@@ -3,7 +3,7 @@ package ens
 
 import (
 	"context"
-	"errors"
+	"github.com/islishude/etherview/internal/enscontract"
 	"math/big"
 	"strings"
 	"unicode/utf8"
@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var ErrInvalidName = errors.New("invalid ENS name")
+var ErrInvalidName = enscontract.ErrInvalidName
 
 // Normalizer keeps resolution code injectable in tests while delegating the
 // actual rules to the user-selected Go ENSIP-15 library.

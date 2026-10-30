@@ -758,7 +758,7 @@ WITH visible_documents AS (
       AND document.valid_from_generation <= sqlc.arg('valid_from_generation')
       AND (document.valid_to_generation IS NULL OR document.valid_to_generation > sqlc.arg('valid_from_generation'))
 ), candidates(
-    kind, key, label, rank, canonical, name_source,
+    kind, key, label, rank, canonical, name_publication_id, name_profile_publication_id,
     verification_match_type, verification_valid_from_block,
     verification_request_digest, verification_job_id,
     verification_proxy_artifact
@@ -777,7 +777,8 @@ WITH visible_documents AS (
                  WHEN sqlc.arg('search_term')::text = ANY(document.exact_terms) THEN 94 ELSE 64 END
            END::bigint AS rank,
            CASE WHEN document.source_kind IN ('name', 'token') THEN TRUE ELSE NULL END::boolean AS canonical,
-           document.name_source,
+           document.name_publication_id,
+           document.name_profile_publication_id,
            document.verification_match_type,
            document.valid_from_block AS verification_valid_from_block,
            document.verification_request_digest,
@@ -813,11 +814,7 @@ WITH visible_documents AS (
      AND proxy_artifact.verification_job_id = document.verification_job_id
      AND proxy_artifact.request_digest = document.verification_request_digest
     WHERE document.source_kind <> 'code'
-      AND (
-          document.source_kind <> 'name'
-          OR sqlc.arg('name_observation_id')::bigint = 0
-          OR document.name_observation_id = sqlc.arg('name_observation_id')::bigint
-      )
+      AND (document.source_kind<>'name' OR (ens_name_known(document.name_source_id,document.logical_identity) AND EXISTS(SELECT 1 FROM ens_sync_sources s JOIN ens_effective_policies p ON p.source_id=s.id WHERE s.id=document.name_source_id AND p.policy_digest=sqlc.arg('name_policy')::bytea)))
       AND (sqlc.arg('search_term')::text = ANY(document.exact_terms) OR EXISTS (
           SELECT 1 FROM unnest(document.partial_terms) AS term
           WHERE strpos(term, sqlc.arg('search_term')::text) > 0
@@ -868,10 +865,10 @@ WITH visible_documents AS (
       )
 )
 SELECT result.kind, result.key, result.label, result.rank,
-       COALESCE(result.canonical,FALSE)::boolean AS canonical, result.name_source,
+       COALESCE(result.canonical,FALSE)::boolean AS canonical, result.name_publication_id, result.name_profile_publication_id,
        (result.canonical IS NOT NULL)::boolean AS canonical_known
 FROM (
-    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_source
+    SELECT DISTINCT ON (kind, key) kind, key, label, rank, canonical, name_publication_id, name_profile_publication_id
     FROM candidates
     ORDER BY kind, key, rank DESC,
              verification_proxy_artifact DESC,

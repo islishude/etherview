@@ -18,8 +18,9 @@
     "check:licenses": "node .github/scripts/check-workspace-licenses.mjs web && node .github/scripts/check-workspace-licenses.mjs compiler && node .github/scripts/check-workspace-licenses.mjs preview/contracts"
   },
   "devDependencies": {
+    "license-checker-rseidelsohn": "5.0.1",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
-    "license-checker-rseidelsohn": "5.0.1"
+    "oxlint-tsgolint": "7.0.2005"
   }
 }

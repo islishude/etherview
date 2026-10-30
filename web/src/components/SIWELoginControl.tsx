@@ -8,9 +8,10 @@ import { useWallet } from "@/wallet/WalletProvider";
 
 interface SIWELoginControlProps {
   full?: boolean;
+  label?: string;
 }
 
-export function SIWELoginControl({ full = false }: SIWELoginControlProps) {
+export function SIWELoginControl({ full = false, label }: SIWELoginControlProps) {
   const { t } = useTranslation();
   const auth = useAuth();
   const config = usePublicConfig();
@@ -49,7 +50,7 @@ export function SIWELoginControl({ full = false }: SIWELoginControlProps) {
         onClick={start}
         type="button"
       >
-        {busy ? t("auth.signIn.pending") : t("auth.signIn.action")}
+        {busy ? t("auth.signIn.pending") : (label ?? t("auth.signIn.action"))}
       </button>
       {choosing && wallet.providers.length > 1 ? (
         <div

@@ -1,9 +1,10 @@
+import { Message } from "@/components/Message";
 import { CircleCheck, CircleDot, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
 import { WatchlistPanel } from "./WatchlistPages";
 import { usePrivateIdentity } from "@/api/privateAccount";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -26,7 +27,7 @@ import { SIWELoginControl } from "@/components/SIWELoginControl";
 import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
 import { chainsMatch } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
-import { PersonalBillingHistory } from "./BillingPages";
+import { PersonalBilling } from "./PersonalBilling";
 import { Page } from "./pages";
 
 const ADMIN_PAGE_SIZE = 25;
@@ -63,7 +64,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
     setProfileSaved(false);
   }, [sessionUser?.id]);
 
-  const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
+  const submitProfile = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setProfileSaved(false);
     const normalized = normalizeDisplayName(displayName);
@@ -105,7 +106,13 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
               </strong>
               {wallet.active ? (
                 <>
-                  <code>{wallet.active.account}</code>
+                  <Link
+                    className="account-address"
+                    to="/address/$address"
+                    params={{ address: wallet.active.account }}
+                  >
+                    <code>{wallet.active.account}</code>
+                  </Link>
                   <p>
                     {walletOnChain
                       ? t("auth.walletState.correctChain", {
@@ -140,7 +147,13 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
               </strong>
               {auth.session.authenticated && sessionUser ? (
                 <>
-                  <code>{sessionUser.address}</code>
+                  <Link
+                    className="account-address"
+                    to="/address/$address"
+                    params={{ address: sessionUser.address }}
+                  >
+                    <code>{sessionUser.address}</code>
+                  </Link>
                   <p>
                     {walletMatchesUser
                       ? t("auth.sessionState.walletMatches")
@@ -153,11 +166,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
             </article>
           </section>
 
-          {auth.error && (
-            <p className="form-error" role="alert">
-              {t(authErrorTranslationKey(auth.error))}
-            </p>
-          )}
+          {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
 
           {!auth.loading && !auth.session.authenticated && (
             <section className="panel auth-action-panel" aria-labelledby="sign-in-title">
@@ -219,7 +228,13 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                   <div>
                     <dt>{t("auth.fields.address")}</dt>
                     <dd>
-                      <code>{sessionUser.address}</code>
+                      <Link
+                        className="account-address"
+                        to="/address/$address"
+                        params={{ address: sessionUser.address }}
+                      >
+                        <code>{sessionUser.address}</code>
+                      </Link>
                     </dd>
                   </div>
                   <div>
@@ -269,11 +284,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                       {profileError}
                     </p>
                   )}
-                  {profileSaved && (
-                    <p className="form-success" role="status">
-                      {t("auth.profile.saved")}
-                    </p>
-                  )}
+                  {profileSaved && <Message type="success">{t("auth.profile.saved")}</Message>}
                   <button className="button primary" disabled={auth.pending} type="submit">
                     {t("auth.profile.save")}
                   </button>
@@ -320,7 +331,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
           {billingEnabled &&
             auth.session.authenticated &&
             sessionUser &&
-            activeTab === "billing" && <PersonalBillingHistory />}
+            activeTab === "billing" && <PersonalBilling key={privateIdentity} />}
         </>
       )}
     </Page>
@@ -372,7 +383,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
     setFormError(undefined);
   };
 
-  const createKey = async (event: FormEvent<HTMLFormElement>) => {
+  const createKey = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedName = name.trim();
     if (!csrfToken || !normalizedName || scopes.length === 0) {
@@ -524,11 +535,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         </form>
       )}
 
-      {formError && (
-        <p className="form-error" role="alert">
-          {formError}
-        </p>
-      )}
+      {formError && <Message type="error">{formError}</Message>}
       {keys.isPending && (
         <p className="query-notice" role="status">
           {t("auth.apiKeys.loading")}
@@ -691,7 +698,7 @@ export function AdminUsersPage() {
   const publicConfig = usePublicConfig();
   const billingEnabled = publicConfig.data?.features.api_billing === true;
   const [cursors, setCursors] = useState([""]);
-  const [announcement, setAnnouncement] = useState<string>();
+  const [announcement, setAnnouncement] = useState<{ text: string; revision: number }>();
   const cursor = cursors.at(-1) || undefined;
   const isAdmin =
     auth.session.authenticated &&
@@ -711,7 +718,7 @@ export function AdminUsersPage() {
   }, [isAdmin]);
 
   const mutationComplete = async (message: string) => {
-    setAnnouncement(message);
+    setAnnouncement((previous) => ({ text: message, revision: (previous?.revision ?? 0) + 1 }));
     await users.refetch();
   };
 
@@ -750,15 +757,11 @@ export function AdminUsersPage() {
               </button>
             </div>
           </div>
-          {auth.error && (
-            <p className="form-error" role="alert">
-              {t(authErrorTranslationKey(auth.error))}
-            </p>
-          )}
+          {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
           {announcement && (
-            <p className="form-success" role="status">
-              {announcement}
-            </p>
+            <Message key={announcement.revision} type="success">
+              {announcement.text}
+            </Message>
           )}
           {users.isPending && (
             <p className="query-notice" role="status">

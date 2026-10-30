@@ -93,7 +93,6 @@ type proxyDetectionResultKey struct {
 }
 
 type ensMetricKey struct {
-	Source    string
 	Direction string
 	Outcome   string
 }
@@ -274,14 +273,9 @@ func (registry *Registry) RecordRPC(purpose, result string) {
 	registry.incrementPair(registry.rpcRequests, boundedRPCPurpose(purpose), boundedRPCResult(result))
 }
 
-func (registry *Registry) RecordENS(source, direction, outcome string) {
-	switch source {
-	case "ens", "custom_ens":
-	default:
-		source = "other"
-	}
+func (registry *Registry) RecordENS(direction, outcome string) {
 	switch direction {
-	case "forward", "primary":
+	case "forward", "primary", "profile", "identity", "policy", "collection", "schedule", "worker", "resolution":
 	default:
 		direction = "other"
 	}
@@ -291,7 +285,7 @@ func (registry *Registry) RecordENS(source, direction, outcome string) {
 		outcome = "other"
 	}
 	registry.mu.Lock()
-	registry.ensResolutions[ensMetricKey{Source: source, Direction: direction, Outcome: outcome}]++
+	registry.ensResolutions[ensMetricKey{Direction: direction, Outcome: outcome}]++
 	registry.mu.Unlock()
 }
 
@@ -666,13 +660,13 @@ func writeENSMetrics(output *strings.Builder, values map[ensMetricKey]uint64) {
 		keys = append(keys, key)
 	}
 	sort.Slice(keys, func(i, j int) bool {
-		left := keys[i].Source + "\x00" + keys[i].Direction + "\x00" + keys[i].Outcome
-		right := keys[j].Source + "\x00" + keys[j].Direction + "\x00" + keys[j].Outcome
+		left := keys[i].Direction + "\x00" + keys[i].Outcome
+		right := keys[j].Direction + "\x00" + keys[j].Outcome
 		return left < right
 	})
 	for _, key := range keys {
-		fmt.Fprintf(output, "etherview_ens_resolutions_total{source=%s,direction=%s,outcome=%s} %d\n",
-			quote(key.Source), quote(key.Direction), quote(key.Outcome), values[key])
+		fmt.Fprintf(output, "etherview_ens_resolutions_total{direction=%s,outcome=%s} %d\n",
+			quote(key.Direction), quote(key.Outcome), values[key])
 	}
 }
 

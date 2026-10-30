@@ -23,6 +23,7 @@ const points = [
 let stylesheet: HTMLStyleElement;
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   stylesheet?.remove();
   setOption.mockClear();
 });
@@ -46,16 +47,23 @@ describe("chart theme palette", () => {
       const events = new EventTarget();
       let systemDark = initialTheme === "dark";
       if (automatic) {
-        vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
-          matches: query === "(prefers-color-scheme: dark)" && systemDark,
-          media: query,
-          onchange: null,
-          addEventListener: events.addEventListener.bind(events),
-          removeEventListener: events.removeEventListener.bind(events),
-          dispatchEvent: events.dispatchEvent.bind(events),
-          addListener: vi.fn(),
-          removeListener: vi.fn(),
-        }));
+        vi.stubGlobal(
+          "matchMedia",
+          vi.fn(
+            (query: string) =>
+              ({
+                matches: query === "(prefers-color-scheme: dark)" && systemDark,
+                media: query,
+                onchange: null,
+                addEventListener: events.addEventListener.bind(events),
+                removeEventListener: events.removeEventListener.bind(events),
+                dispatchEvent: events.dispatchEvent.bind(events),
+              }) satisfies Pick<
+                MediaQueryList,
+                "matches" | "media" | "onchange" | keyof EventTarget
+              >,
+          ),
+        );
       } else {
         window.localStorage.setItem("etherview.theme", initialTheme);
       }

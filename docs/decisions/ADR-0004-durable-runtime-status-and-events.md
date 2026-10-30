@@ -76,13 +76,22 @@ public view.
   existing compact `/api/v1/events` stream retains its durable replay contract.
   A failed refresh retains the previously published snapshot without assigning
   it a newer event ID and retries from PostgreSQL.
-- The embedded Web client opens only `/api/v1/events`. `head`, `reorg`, and
-  `status` events coalesce into React Query invalidations for active chain
-  projections; asynchronous verification and payment workflows retain their
-  own bounded terminal polling. The home route fetches the current atomic
-  feed publication from `GET /api/v1/home` and invalidates it from the same
-  durable event source. `/api/v1/home/stream` remains a supported complete-
-  snapshot stream but is not a second browser connection.
+- The embedded Web client opens only `/api/v1/events`. Only home and chain
+  status opt into event-driven requests; verification and payment workflows
+  retain their terminal polling. Ordinary explorer queries never refetch while
+  idle because of heads, publication events, reconnection or periodic timers.
+  The home route fetches its atomic publication from `GET /api/v1/home`;
+  `/api/v1/home/stream` remains supported but is not a second browser connection.
+- Ordinary pages expose one manual refresh action. It retains route, tab,
+  filters and input, cancels superseded requests and restarts only visible
+  pagers. Hidden tabs retain their cursors. Navigation may fetch stale queries;
+  focus and network recovery do not. User submissions and interaction-target
+  revalidation remain explicit operations.
+- Reorgs, reconnects and in-range browsing publications mark cached snapshots
+  without requesting or resetting pagination. Marked snapshots carry a notice
+  and cannot reuse old cursors; invalid bindings cannot authorize interaction.
+  Cancellation fences late responses. Successful fresh reads clear only their
+  own markers. Transport errors do not invalidate unrelated page resources.
 - Home REST and complete-snapshot SSE envelopes carry a required `event_id`.
   `GET /api/v1/home` accepts optional `min_event_id`; both use canonical decimal
   strings from zero through PostgreSQL BIGINT's maximum. An invalid minimum is
@@ -94,12 +103,13 @@ public view.
   QueryClient and passes it as the next home request's minimum. Cancelled or
   obsolete responses cannot replace newer data; only snapshot-unavailable
   failures receive bounded retries. Each query declares its chain-event policy
-  in typed metadata. UserOperation list/detail respond to head and reorg events;
-  reorg invalidation clears a previously successful detail before refetching.
+  in typed metadata. UserOperation snapshots retain a visible stale notice after
+  reorgs and require explicit refresh; they do not poll or refresh on heads.
 - EventSource `CONNECTING` retains native browser reconnection. `CLOSED` closes
   the old instance and rebuilds one cursor-free connection with exponential
-  delays from one to thirty seconds. Chain queries invalidate before rebuilding
-  and after opening. Unmount cancels pending callbacks/timers and closes the
+  delays from one to thirty seconds. Reconnection marks manual snapshots and
+  refreshes live queries. Initial opening refreshes only live queries, without
+  revoking a fresh page snapshot. Unmount cancels timers and closes the
   connection, preserving the single-connection invariant.
 - Native and compatibility API responses use `Cache-Control: no-store` for
   browsers and unmanaged intermediaries; an explicitly configured server-side
@@ -129,8 +139,8 @@ public view.
   window faster. Status history follows the elected live reporter, and an
   expired or failed reporter can be replaced without a process-local tracker
   becoming the public source of truth.
-- A client that was disconnected beyond retention must refresh REST state and
-  reconnect without its expired cursor.
+- A client disconnected beyond retention reconnects without its expired cursor,
+  refreshes live REST state and marks ordinary snapshots for manual refresh.
 - PostgreSQL load includes a small status/event write per sync cycle. Optional
   NATS may later reduce wake latency, but cannot replace the ledger.
 - Changing payload identity, cursor interpretation, or retention ownership

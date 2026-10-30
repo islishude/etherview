@@ -459,7 +459,7 @@ func validateEvent(event Event) error {
 	if event.ID == 0 {
 		return errors.New("event ID must be greater than zero")
 	}
-	if event.Type != "head" && event.Type != "reorg" && event.Type != "status" {
+	if event.Type != "head" && event.Type != "reorg" && event.Type != "status" && event.Type != "names" {
 		return errors.New("unsupported live event type")
 	}
 	if len(event.Data) == 0 || len(event.Data) > maxEventPayloadBytes || !json.Valid(event.Data) {
