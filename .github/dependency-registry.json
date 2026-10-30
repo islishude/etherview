@@ -130,8 +130,11 @@
         },
         {
           "path": "package.json",
-          "template": "    \"license-checker-rseidelsohn\": \"{{version}}\"",
-          "count": 1
+          "template": "{{version}}",
+          "jsonPath": [
+            "devDependencies",
+            "license-checker-rseidelsohn"
+          ]
         }
       ],
       "commands": [
@@ -160,13 +163,18 @@
       "pins": [
         {
           "path": "package.json",
-          "template": "    \"pnpm\": \">= {{version}}\"",
-          "count": 1
+          "template": ">= {{version}}",
+          "jsonPath": [
+            "engines",
+            "pnpm"
+          ]
         },
         {
           "path": "package.json",
-          "template": "  \"packageManager\": \"pnpm@{{version}}\",",
-          "count": 1
+          "template": "pnpm@{{version}}",
+          "jsonPath": [
+            "packageManager"
+          ]
         },
         {
           "path": "Dockerfile",
@@ -190,8 +198,11 @@
         },
         {
           "path": "e2e/hardhat3/package.json",
-          "template": "    \"pnpm\": \">={{version}}\"",
-          "count": 1
+          "template": ">={{version}}",
+          "jsonPath": [
+            "engines",
+            "pnpm"
+          ]
         },
         {
           "path": ".github/scripts/toolchain-check.sh",
@@ -499,13 +510,19 @@
         },
         {
           "path": "package.json",
-          "template": "    \"node\": \">= {{version}}\",",
-          "count": 1
+          "template": ">= {{version}}",
+          "jsonPath": [
+            "engines",
+            "node"
+          ]
         },
         {
           "path": "compiler/package.json",
-          "template": "    \"node\": \"{{version}}\"",
-          "count": 1
+          "template": "{{version}}",
+          "jsonPath": [
+            "engines",
+            "node"
+          ]
         },
         {
           "path": "Dockerfile",
@@ -639,8 +656,11 @@
         },
         {
           "path": "e2e/hardhat3/package.json",
-          "template": "    \"node\": \">={{version}}\",",
-          "count": 1
+          "template": ">={{version}}",
+          "jsonPath": [
+            "engines",
+            "node"
+          ]
         },
         {
           "path": "internal/verify/solcjs.go",
@@ -677,13 +697,19 @@
       "pins": [
         {
           "path": "compiler/package.json",
-          "template": "    \"pyodide\": \"{{version}}\",",
-          "count": 1
+          "template": "{{version}}",
+          "jsonPath": [
+            "dependencies",
+            "pyodide"
+          ]
         },
         {
           "path": "compiler/vyper/wasm/runtime-policy.json",
-          "template": "    \"npm\": \"pyodide\",\n    \"pyodide\": \"{{version}}\",",
-          "count": 1
+          "template": "{{version}}",
+          "jsonPath": [
+            "modern",
+            "pyodide"
+          ]
         }
       ],
       "commands": [],
@@ -703,13 +729,19 @@
       "pins": [
         {
           "path": "compiler/package.json",
-          "template": "    \"pyodide-legacy\": \"npm:pyodide@{{version}}\"",
-          "count": 1
+          "template": "npm:pyodide@{{version}}",
+          "jsonPath": [
+            "dependencies",
+            "pyodide-legacy"
+          ]
         },
         {
           "path": "compiler/vyper/wasm/runtime-policy.json",
-          "template": "    \"npm\": \"pyodide-legacy\",\n    \"pyodide\": \"{{version}}\",",
-          "count": 1
+          "template": "{{version}}",
+          "jsonPath": [
+            "legacy",
+            "pyodide"
+          ]
         }
       ],
       "commands": [],
@@ -807,8 +839,11 @@
       "pins": [
         {
           "path": "compiler/package.json",
-          "template": "    \"solc\": \"{{version}}\",",
-          "count": 1
+          "template": "{{version}}",
+          "jsonPath": [
+            "dependencies",
+            "solc"
+          ]
         }
       ],
       "commands": [],

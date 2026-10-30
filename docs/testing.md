@@ -122,6 +122,9 @@ linked updates, upstream failures, clean-worktree protection and isolated
 candidate preparation. Publication tests use a temporary local Git remote to
 exercise PR-creation failure recovery and repeat runs without rewriting a
 branch; HTTP and GitHub API results are fixtures, not live publication evidence.
+JSON regressions cover whitespace and property order, multiple registered fields
+in one file, missing or non-string fields, version disagreement, duplicate field
+ownership and rejection of unrelated field changes during publication.
 
 Candidate preparation installs or resolves the selected tool/package where
 applicable, regenerates only its allowed locks, and runs workflow-script and

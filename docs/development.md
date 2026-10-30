@@ -89,6 +89,10 @@ Dependabot exclusions. Versions stay in their existing owning files; the
 registry matches them rather than maintaining a second current-version value.
 Missing positions, conflicting versions and duplicate ownership fail the gate.
 Add new Makefile `*_VERSION` settings to the registry in the same change.
+JSON pins use a `jsonPath` array of object keys and a template for the string
+value only; whitespace, property order and surrounding commas are not pins.
+Updates serialize JSON with two-space indentation and a final newline, preserving
+unregistered field values. Non-JSON pins retain exact text templates and counts.
 
 - `make dependency-check` queries upstream versions without modifying files.
   `DEP=govulncheck` restricts discovery. Output distinguishes available automatic
