@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -107,16 +108,36 @@ func TestPreviewContracts(t *testing.T) {
 	if _, err := h.project.Run(ctx, "stop", "bundler"); err != nil {
 		t.Fatal(err)
 	}
-	response, err := h.http.Get(h.apiURL + "/health/ready")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if closeErr := response.Body.Close(); closeErr != nil {
-		t.Fatal(closeErr)
-	}
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("core readiness depends on Bundler: %d", response.StatusCode)
-	}
+	// The real PoS chain keeps producing blocks after Bundler shutdown. A probe
+	// can observe core catch-up (503), so require readiness within the existing
+	// bounded wait while the Bundler stays stopped, rather than at one instant.
+	waitFor(t, ctx, "core readiness without Bundler", func() (bool, string, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/health/ready", nil)
+		if err != nil {
+			return false, "", err
+		}
+		response, err := h.http.Do(request)
+		if err != nil {
+			return false, "", err
+		}
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, 4096))
+		closeErr := response.Body.Close()
+		detail := fmt.Sprintf("HTTP %d: %s", response.StatusCode, body)
+		if readErr != nil {
+			return false, detail, readErr
+		}
+		if closeErr != nil {
+			return false, detail, closeErr
+		}
+		switch response.StatusCode {
+		case http.StatusOK:
+			return true, detail, nil
+		case http.StatusServiceUnavailable:
+			return false, detail, nil
+		default:
+			return false, detail, fmt.Errorf("unexpected readiness status %d", response.StatusCode)
+		}
+	})
 }
 
 func (h *harness) contractsAllRoles(ctx context.Context) {
