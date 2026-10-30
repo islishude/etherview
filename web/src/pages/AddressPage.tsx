@@ -4,7 +4,7 @@ import { AddressAssets, type AddressAssetTab } from "./AddressAssets";
 import { UIIcon } from "@/components/UIIcon";
 import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { NativeTransfersPanel } from "./NativeTransfersPanel";
-import { AddressAccountActions } from "@/components/AddressAccountActions";
+import { AddressExportLink, AddressWatchButton } from "@/components/AddressAccountActions";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -177,7 +177,6 @@ export function AddressDetailPage({
   return (
     <Page title={title} description={<AddressHeader address={displayAddress} />} mono>
       <QueryNotice loading={account.isPending} error={account.error} />
-      {account.data && <AddressAccountActions address={address} />}
       {account.data && (
         <>
           <DetailList label={t("detail.addressSummary")}>
@@ -420,16 +419,19 @@ function AddressHeader({ address }: { address: string }) {
           link={false}
           actions={
             isAddress(address) ? (
-              <button
-                aria-label={t("actions.showQRCode")}
-                aria-haspopup="dialog"
-                className="address-qr-button"
-                onClick={() => setOpen(true)}
-                ref={openButtonRef}
-                type="button"
-              >
-                <UIIcon icon={QrCode} size={16} />
-              </button>
+              <>
+                <button
+                  aria-label={t("actions.showQRCode")}
+                  aria-haspopup="dialog"
+                  className="address-qr-button"
+                  onClick={() => setOpen(true)}
+                  ref={openButtonRef}
+                  type="button"
+                >
+                  <UIIcon icon={QrCode} size={16} />
+                </button>
+                <AddressWatchButton address={address} />
+              </>
             ) : null
           }
         />
@@ -667,6 +669,7 @@ function AddressTransactions({
       onReset={onReset}
       page={page}
       title={t("addressTab.transactions")}
+      footer={<AddressExportLink address={address} />}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -974,6 +977,7 @@ function AddressActivitySection({
   busy,
   children,
   empty,
+  footer,
   error,
   hasNext,
   hasPrevious,
@@ -985,6 +989,7 @@ function AddressActivitySection({
   title,
 }: Omit<AddressActivityProps, "address" | "locale"> & {
   children: React.ReactNode;
+  footer?: React.ReactNode;
   empty: boolean;
   title: string;
 }) {
@@ -1009,6 +1014,7 @@ function AddressActivitySection({
           page={page}
         />
       ) : null}
+      {footer}
     </section>
   );
 }

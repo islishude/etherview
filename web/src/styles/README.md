@@ -134,3 +134,12 @@ report. Inspect these artifacts after structural or token changes. The account
 and Watchlist browser flows also save authenticated account, billing-admin and
 browser notification settings. `e2e/navigation.spec.ts` covers keyboard order, Escape, focus
 restoration, mobile disclosure and capability-gated entries.
+
+`components/Message` owns transient operation feedback. Messages stack at the
+viewport top, use semantic theme colors and Lucide status icons, dismiss after
+three seconds, and pause while hovered or focused. They never take initial focus;
+manual close returns focus to the previous control. Native modal dialogs own
+their message stack so feedback remains in the accessible top layer. Identical
+concurrent messages coalesce, and caller teardown removes feedback and timers.
+Keep read/loading states, field validation and durable transaction/payment
+outcomes in their owning views.

@@ -36,7 +36,11 @@ func TestV2RejectsUnboundIdentitiesAndHostileLabels(t *testing.T) {
 		t.Fatal("cycle", paths, e)
 	}
 	budget = 0
-	if _, e := c.registryPaths(t.Context(), nil, 1, address, 1800000000, nil, &budget); !errors.Is(e, ErrCollectionLimit) {
-		t.Fatal("unbounded graph", e)
+	if _, e := c.registryPaths(t.Context(), nil, 1, address, 1800000000, nil, &budget); !errors.Is(e, errGraphBudget) {
+		t.Fatal("unbounded batch", e)
+	}
+	budget = 512
+	if _, e := c.registryPaths(t.Context(), nil, 1, address, 1800000000, make([]common.Address, 32), &budget); !errors.Is(e, ErrCollectionLimit) {
+		t.Fatal("unbounded graph depth", e)
 	}
 }

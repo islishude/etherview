@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
@@ -19,7 +20,7 @@ export function VerificationLogin() {
     <section className="panel verification-login">
       <p>{t(auth.enabled ? "verification.signInRequired" : "verification.signInUnavailable")}</p>
       {auth.enabled && <SIWELoginControl />}
-      {auth.error && <p role="alert">{t(authErrorTranslationKey(auth.error))}</p>}
+      {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
     </section>
   );
 }
@@ -100,7 +101,9 @@ export function VerificationResults({
                 {t(submission.isPending ? "sourcify.importing" : "sourcify.importAction")}
               </button>
               {submission.error && (
-                <p role="alert">{errorMessage(submission.error, t("sourcify.importFailed"))}</p>
+                <Message type="error">
+                  {errorMessage(submission.error, t("sourcify.importFailed"))}
+                </Message>
               )}
             </section>
           )}

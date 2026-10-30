@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
-	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
@@ -518,7 +517,7 @@ func (r *PostgresReader) Search(ctx context.Context, value, encodedCursor string
 	if externalNameQuery(value) {
 		normalized, err := ensip15.Shared().Normalize(value)
 		if err != nil {
-			return nil, "", enscontract.ErrInvalidName
+			return nil, "", publicquery.ErrInvalidInput
 		}
 		searchValue = normalized
 	}

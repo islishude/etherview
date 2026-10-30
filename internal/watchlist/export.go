@@ -33,7 +33,7 @@ func (s *Service) Export(ctx context.Context, user string, input gen.AddressExpo
 		return Export{}, err
 	}
 	address, err := ethrpc.ParseAddress(input.Address)
-	if err != nil || !validDirection(string(input.Direction)) || (input.Kind != "transaction" && input.Kind != "erc20" && input.Kind != "nft") || input.From.Unix() < 0 || !input.To.After(input.From) || input.To.Sub(input.From) > 31*24*time.Hour {
+	if err != nil || !validDirection(string(input.Direction)) || (input.Kind != "all" && input.Kind != "transaction" && input.Kind != "erc20" && input.Kind != "nft") || input.From.Unix() < 0 || !input.To.After(input.From) || input.To.Sub(input.From) > 31*24*time.Hour {
 		return Export{}, ErrInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)

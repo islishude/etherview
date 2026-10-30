@@ -55,7 +55,10 @@ export type PushSubscriptionResponse = {
 
 export type AddressExportRequest = {
     address: Address;
-    kind: 'transaction' | 'erc20' | 'nft';
+    /**
+     * all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total.
+     */
+    kind: 'all' | 'transaction' | 'erc20' | 'nft';
     from: string;
     to: string;
     direction: 'in' | 'out' | 'both';

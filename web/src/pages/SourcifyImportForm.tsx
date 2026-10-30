@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -91,10 +92,15 @@ export function SourcifyImportForm({
             />
           </label>
         </div>
-        {(formError || submission.error) && (
+        {formError && (
           <p className="form-error" role="alert">
-            {formError ?? errorMessage(submission.error, t("sourcify.importFailed"))}
+            {formError}
           </p>
+        )}
+        {submission.error && (
+          <Message type="error">
+            {errorMessage(submission.error, t("sourcify.importFailed"))}
+          </Message>
         )}
         {active && submission.challenge}
         <button

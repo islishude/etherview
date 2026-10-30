@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
@@ -361,12 +362,15 @@ export function VerifyPage({
                   <small>{t("verificationUpload.help")}</small>
                 </div>
               </div>
-              {(upload.error || formError || submission.error) && (
+              {(upload.error || formError) && (
                 <p className="form-error" role="alert">
-                  {upload.error ??
-                    formError ??
-                    errorMessage(submission.error, t("verification.submitFailed"))}
+                  {upload.error || formError}
                 </p>
+              )}
+              {submission.error && (
+                <Message type="error">
+                  {errorMessage(submission.error, t("verification.submitFailed"))}
+                </Message>
               )}
               {!jobID && submission.challenge}
               <button

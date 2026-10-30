@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { CircleCheck, CircleDot, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
@@ -165,11 +166,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
             </article>
           </section>
 
-          {auth.error && (
-            <p className="form-error" role="alert">
-              {t(authErrorTranslationKey(auth.error))}
-            </p>
-          )}
+          {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
 
           {!auth.loading && !auth.session.authenticated && (
             <section className="panel auth-action-panel" aria-labelledby="sign-in-title">
@@ -287,11 +284,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                       {profileError}
                     </p>
                   )}
-                  {profileSaved && (
-                    <p className="form-success" role="status">
-                      {t("auth.profile.saved")}
-                    </p>
-                  )}
+                  {profileSaved && <Message type="success">{t("auth.profile.saved")}</Message>}
                   <button className="button primary" disabled={auth.pending} type="submit">
                     {t("auth.profile.save")}
                   </button>
@@ -542,11 +535,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         </form>
       )}
 
-      {formError && (
-        <p className="form-error" role="alert">
-          {formError}
-        </p>
-      )}
+      {formError && <Message type="error">{formError}</Message>}
       {keys.isPending && (
         <p className="query-notice" role="status">
           {t("auth.apiKeys.loading")}
@@ -709,7 +698,7 @@ export function AdminUsersPage() {
   const publicConfig = usePublicConfig();
   const billingEnabled = publicConfig.data?.features.api_billing === true;
   const [cursors, setCursors] = useState([""]);
-  const [announcement, setAnnouncement] = useState<string>();
+  const [announcement, setAnnouncement] = useState<{ text: string; revision: number }>();
   const cursor = cursors.at(-1) || undefined;
   const isAdmin =
     auth.session.authenticated &&
@@ -729,7 +718,7 @@ export function AdminUsersPage() {
   }, [isAdmin]);
 
   const mutationComplete = async (message: string) => {
-    setAnnouncement(message);
+    setAnnouncement((previous) => ({ text: message, revision: (previous?.revision ?? 0) + 1 }));
     await users.refetch();
   };
 
@@ -768,15 +757,11 @@ export function AdminUsersPage() {
               </button>
             </div>
           </div>
-          {auth.error && (
-            <p className="form-error" role="alert">
-              {t(authErrorTranslationKey(auth.error))}
-            </p>
-          )}
+          {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
           {announcement && (
-            <p className="form-success" role="status">
-              {announcement}
-            </p>
+            <Message key={announcement.revision} type="success">
+              {announcement.text}
+            </Message>
           )}
           {users.isPending && (
             <p className="query-notice" role="status">

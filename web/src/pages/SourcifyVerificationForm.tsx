@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { SelectControl } from "@/components/SelectControl";
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -236,12 +237,15 @@ export function SourcifyVerificationForm({
             <span>{t("sourcify.consent")}</span>
           </label>
         </div>
-        {(uploadError || formError || submission.error) && (
+        {(uploadError || formError) && (
           <p className="form-error" role="alert">
-            {uploadError ??
-              formError ??
-              errorMessage(submission.error, t("verification.submitFailed"))}
+            {uploadError || formError}
           </p>
+        )}
+        {submission.error && (
+          <Message type="error">
+            {errorMessage(submission.error, t("verification.submitFailed"))}
+          </Message>
         )}
         {active && submission.challenge}
         <button

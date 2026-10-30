@@ -24,6 +24,10 @@ type v2Registration struct {
 	TokenID              string `json:"token_id"`
 }
 
+// Distinguish resumable batch exhaustion from a single graph exceeding its
+// supported depth or fanout. Neither case permits publishing partial paths.
+var errGraphBudget = errors.New("ENS graph batch budget exhausted")
+
 func (c *Collector) expandGraph(ctx context.Context, source int64) error {
 	if !c.manifest.hasV2() {
 		return nil
@@ -51,19 +55,29 @@ func (c *Collector) expandGraph(ctx context.Context, source int64) error {
 		if e != nil {
 			return e
 		}
-		after := ""
+		after := work.AfterKey
+		complete := len(rows) < c.options.MaxAddresses
 		budget := 512
 		for _, row := range rows {
 			var registration v2Registration
 			if json.Unmarshal(row.Payload, &registration) != nil {
 				return ErrStorage
 			}
-			after = row.Key
 			label, valid := normalizedName(registration.Label)
 			if !valid || strings.Contains(label, ".") || crypto.Keccak256Hash([]byte(label)).Hex() != registration.LabelHash {
+				after = row.Key
 				continue
 			}
 			paths, e := c.registryPaths(ctx, q, source, common.BytesToAddress(row.Deployment), target.BlockTime.Time.Unix(), nil, &budget)
+			if errors.Is(e, errGraphBudget) {
+				if after == work.AfterKey {
+					return ErrCollectionLimit
+				}
+				// No origins for this row have been written. Commit completed
+				// rows and retry this one with a fresh budget on the next step.
+				complete = false
+				break
+			}
 			if e != nil {
 				return e
 			}
@@ -81,8 +95,8 @@ func (c *Collector) expandGraph(ctx context.Context, source int64) error {
 					return e
 				}
 			}
+			after = row.Key
 		}
-		complete := len(rows) < c.options.MaxAddresses
 		if complete {
 			after = ""
 		}
@@ -94,8 +108,11 @@ func (c *Collector) registryPaths(ctx context.Context, q *dbgen.Queries, source 
 	if slices.Contains(seen, registry) {
 		return nil, nil
 	}
-	if len(seen) >= 32 || *budget <= 0 {
+	if len(seen) >= 32 {
 		return nil, ErrCollectionLimit
+	}
+	if *budget <= 0 {
+		return nil, errGraphBudget
 	}
 	*budget--
 	paths := []string{}

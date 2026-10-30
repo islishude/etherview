@@ -27,6 +27,7 @@
 
 .field-control.wide,
 .checkbox-control.wide,
+.verification-form .form-grid > .wide,
 .form-grid > p.wide {
   grid-column: 1 / -1;
 }

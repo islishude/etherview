@@ -1087,8 +1087,10 @@ Only Caddy holds its wildcard private key. Metadata trusts the public CA and
 explicitly permits its private IPFS host; API media policy remains strict.
 Preview separately allowlists the exact IPFS HTTPS origin for confirmed image
 navigation; production defaults to no navigation exceptions.
-Node CORS uses an exact configurable allowlist without credentials. The SPA
-continues using the generated same-origin client and injected wallet boundary.
+The local Geth host accepts arbitrary Origins for JSON-RPC/WSS and returns
+wildcard CORS without credentials, allowing browser-extension wallets. Beacon
+and Bundler retain the exact configurable Origin allowlist. The SPA continues
+using the generated same-origin client and injected wallet boundary.
 Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
 The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.

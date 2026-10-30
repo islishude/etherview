@@ -33,6 +33,9 @@ export const accountResources = {
       error: "Could not update browser notifications. Please try again.",
     },
     watchlist: {
+      added: "Address watched.",
+      removed: "Address removed from watchlist.",
+      saved: "Watch updated.",
       title: "Watchlist",
       address: "Address",
       label: "Private label",
@@ -54,14 +57,8 @@ export const accountResources = {
       loading: "Loading…",
       transactions: "Transactions",
       hint: "Up to 5 addresses. Monitoring starts after the current indexed block; earlier activity is not backfilled. Re-enabling starts from the new current block.",
-      actions: "Watch and export",
       export: "Export CSV",
-      download: "Download CSV",
-      fromUTC: "From (UTC, inclusive)",
-      toUTC: "To (UTC, exclusive)",
-      exportHint:
-        "Up to 31 days and 10,000 rows, as of the indexed snapshot. Raw amounts are exact integers. Import numeric columns as text in spreadsheets to preserve precision. Incomplete data cannot be exported.",
-      loginHint: "Sign in to watch this address or export CSV.",
+
       errors: {
         watchlist_limit: "You can watch at most 5 addresses.",
         address_already_watched: "This address is already on your watchlist.",
@@ -494,6 +491,9 @@ export const accountResources = {
       error: "无法更新浏览器通知，请重试。",
     },
     watchlist: {
+      added: "已关注地址。",
+      removed: "已取消关注地址。",
+      saved: "已更新关注设置。",
       title: "关注列表",
       address: "地址",
       label: "私人标签",
@@ -515,14 +515,8 @@ export const accountResources = {
       loading: "加载中…",
       transactions: "普通交易",
       hint: "最多关注 5 个地址，从当前已索引区块之后开始监控，不补发历史活动。重新启用通知会以新的当前区块为起点。",
-      actions: "关注与导出",
       export: "导出 CSV",
-      download: "下载 CSV",
-      fromUTC: "开始时间（UTC，包含）",
-      toUTC: "结束时间（UTC，不包含）",
-      exportHint:
-        "最多 31 天、10,000 行，以已索引快照为准。金额为精确原始整数；使用电子表格时请将数值列按文本导入，避免精度损失。数据不完整时无法导出。",
-      loginHint: "登录后可关注该地址或导出 CSV。",
+
       errors: {
         watchlist_limit: "每个账户最多关注 5 个地址。",
         address_already_watched: "该地址已在关注列表中。",

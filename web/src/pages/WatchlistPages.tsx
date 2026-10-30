@@ -1,63 +1,12 @@
+import { Message } from "@/components/Message";
 import { Link } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { BrowserPushPanel } from "./BrowserPushPanel";
-import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "@/auth/AuthProvider";
-import { ApiError } from "@/api/client";
-import { useWatches, usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
+import { useWatches } from "@/api/privateAccount";
+import { AccountActionError, useAccountAction } from "@/components/AccountAction";
 import { deleteWatch, saveWatch, type WatchInput, type AddressWatch } from "@/api/watchlist";
 
-export function useAccountAction() {
-  const auth = useAuth();
-  const getSignal = usePrivateLifetime();
-  const identity = usePrivateIdentity();
-  const client = useQueryClient();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  async function run(action: (csrf: string, signal: AbortSignal) => Promise<unknown>) {
-    const signal = getSignal();
-    const csrf = auth.session.csrf_token;
-    if (!csrf || pending || signal.aborted) return false;
-    setPending(true);
-    setError("");
-    try {
-      await action(csrf, signal);
-      if (signal.aborted) return false;
-      await client.invalidateQueries({
-        queryKey: ["private-account", identity],
-      });
-      return true;
-    } catch (err) {
-      if (!signal.aborted) setError(err instanceof ApiError ? err.code : "activity_unavailable");
-      return false;
-    } finally {
-      if (!signal.aborted) setPending(false);
-    }
-  }
-  return { run, pending, error };
-}
-export function AccountActionError({ code }: { code: string }) {
-  const { t } = useTranslation();
-  const known = [
-    "watchlist_limit",
-    "address_already_watched",
-    "export_rate_limit",
-    "export_limit",
-    "invalid_watchlist_request",
-    "activity_unavailable",
-    "authentication_required",
-  ];
-  return code ? (
-    <p className="form-error" role="alert">
-      {t(
-        code === "turnstile_invalid" || code === "turnstile_unavailable"
-          ? `turnstile.${code}`
-          : `watchlist.errors.${known.includes(code) ? code : "activity_unavailable"}`,
-      )}
-    </p>
-  ) : null;
-}
 const allKinds: WatchInput["kinds"] = ["transaction", "erc20", "erc721", "erc1155"];
 export function WatchlistPanel() {
   const { t } = useTranslation();
@@ -85,7 +34,13 @@ export function WatchlistPanel() {
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (await action.run((csrf, signal) => saveWatch(form, csrf, signal, editing?.id))) reset();
+    if (
+      await action.run(
+        (csrf, signal) => saveWatch(form, csrf, signal, editing?.id),
+        t(editing ? "watchlist.saved" : "watchlist.added"),
+      )
+    )
+      reset();
   }
   return (
     <section className="panel watchlist-panel">
@@ -181,7 +136,9 @@ export function WatchlistPanel() {
           </div>
         </form>
       )}
-      <AccountActionError code={action.error || (query.isError ? "activity_unavailable" : "")} />
+      <AccountActionError code={action.error} />
+      {action.success && <Message type="success">{action.success}</Message>}
+      {query.isError && <AccountActionError inline code="activity_unavailable" />}
       {!showForm &&
         (query.isPending ? (
           <p role="status">{t("watchlist.loading")}</p>
@@ -223,7 +180,10 @@ export function WatchlistPanel() {
                     className="button secondary"
                     disabled={action.pending}
                     onClick={() =>
-                      void action.run((csrf, signal) => deleteWatch(item.id, csrf, signal))
+                      void action.run(
+                        (csrf, signal) => deleteWatch(item.id, csrf, signal),
+                        t("watchlist.removed"),
+                      )
                     }
                   >
                     {t("watchlist.remove")}

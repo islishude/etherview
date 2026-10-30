@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import "./PersonalBilling.css";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -244,16 +245,8 @@ export function PersonalBilling() {
           retry={() => void pending.refetch()}
         />
       )}
-      {notice && (
-        <p className="form-success" role="status">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
+      {notice && <Message type="success">{notice}</Message>}
+      {error && <Message type="error">{error}</Message>}
       <div id="billing-view">
         {view === "payment" && (
           <section className="panel billing-payment" aria-labelledby="billing-payment-title">

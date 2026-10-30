@@ -66,7 +66,7 @@ func TestWatchlistSessionCSRFAndCSVBoundary(t *testing.T) {
 		{"authenticated", "GET", "/users/me/watchlist", "", "", true, 200},
 		{"missing csrf", "POST", "/users/me/push-subscriptions", `{"endpoint":"https://push.example/a","p256dh":"key","auth":"key","language":"en"}`, "", true, 403},
 		{"subscribe", "POST", "/users/me/push-subscriptions", `{"endpoint":"https://push.example/a","p256dh":"key","auth":"key","language":"en"}`, "csrf", true, 200},
-		{"export", "POST", "/users/me/exports/address-activity", `{"address":"` + testAddress + `","kind":"transaction","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`, "csrf", true, 200},
+		{"export", "POST", "/users/me/exports/address-activity", `{"address":"` + testAddress + `","kind":"all","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`, "csrf", true, 200},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			req := httptest.NewRequest(test.method, "/api/v1"+test.path, strings.NewReader(test.body))
@@ -89,7 +89,7 @@ func TestWatchlistSessionCSRFAndCSVBoundary(t *testing.T) {
 			}
 			if test.name == "export" {
 				mediaType, params, err := mime.ParseMediaType(response.Header().Get("Content-Disposition"))
-				want := strings.ToLower(testAddress) + "-2026-09-01T00-00-00Z-2026-09-02T00-00-00Z-transaction.csv"
+				want := strings.ToLower(testAddress) + "-2026-09-01T00-00-00Z-2026-09-02T00-00-00Z-all.csv"
 				if err != nil || mediaType != "attachment" || params["filename"] != want {
 					t.Fatalf("incorrect CSV filename: %q", response.Header().Get("Content-Disposition"))
 				}
@@ -103,7 +103,7 @@ func TestWatchlistSessionCSRFAndCSVBoundary(t *testing.T) {
 	}
 	for _, e := range []error{context.DeadlineExceeded, watchlist.ErrExportLimit, watchlist.ErrUnavailable, errors.New("secret database URL")} {
 		fake.exportErr = e
-		req := httptest.NewRequest("POST", "/api/v1/users/me/exports/address-activity", strings.NewReader(`{"address":"`+testAddress+`","kind":"transaction","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`))
+		req := httptest.NewRequest("POST", "/api/v1/users/me/exports/address-activity", strings.NewReader(`{"address":"`+testAddress+`","kind":"all","direction":"both","from":"2026-09-01T00:00:00Z","to":"2026-09-02T00:00:00Z"}`))
 		req.Header.Set("Origin", testAuthOrigin)
 		req.Header.Set("X-CSRF-Token", "csrf")
 		req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: strings.Repeat("t", 43)})

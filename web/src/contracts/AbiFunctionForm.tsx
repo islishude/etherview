@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { useBrowsingInvalidated } from "@/api/browsingHooks";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -170,6 +171,7 @@ function AbiFunctionCard({
     message: string;
     context: string;
     sticky?: boolean;
+    inline?: boolean;
   }>();
   const expectedChainID = publicConfig.data?.chain_id;
   const context = interactionContext(target, expectedChainID, wallet.active);
@@ -246,6 +248,7 @@ function AbiFunctionCard({
     } catch (cause) {
       setError({
         context,
+        inline: true,
         message:
           cause instanceof AbiFormError
             ? t("contracts.functions.invalidInput", { path: cause.path })
@@ -377,6 +380,7 @@ function AbiFunctionCard({
       setCalldataCopied(false);
       setError({
         context,
+        inline: cause instanceof AbiFormError,
         message:
           cause instanceof AbiFormError
             ? t("contracts.functions.invalidInput", { path: cause.path })
@@ -494,9 +498,13 @@ function AbiFunctionCard({
         </div>
       </form>
       {visibleError ? (
-        <p className="form-error" role="alert">
-          {visibleError.message}
-        </p>
+        visibleError.sticky || visibleError.inline ? (
+          <p className="form-error" role="alert">
+            {visibleError.message}
+          </p>
+        ) : (
+          <Message type="error">{visibleError.message}</Message>
+        )
       ) : null}
       {visibleResult?.kind === "write" ? (
         <output className="call-result" role="status">

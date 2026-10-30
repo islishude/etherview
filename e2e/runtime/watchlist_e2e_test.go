@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"regexp"
 	"strings"
@@ -135,8 +136,9 @@ func workerRegistersEvent(body []byte, event string) bool {
 
 func (h *harness) assertRuntimeCSV(ctx context.Context, s runtimeWatchSession) {
 	h.t.Helper()
-	data, response := h.watchRequest(ctx, s, "POST", "/users/me/exports/address-activity", gen.AddressExportRequest{Address: h.fixture.accounts[0], Kind: "transaction", Direction: "both", From: time.Unix(int64(h.baseTimestamp), 0), To: time.Unix(int64(h.baseTimestamp+3600), 0)})
-	if !strings.HasPrefix(response.Header.Get("Content-Type"), "text/csv") || !bytes.Contains(data, []byte(h.fixture.creationHash)) || bytes.Contains(data, []byte(h.fixture.orphanDelegationHash)) {
+	data, response := h.watchRequest(ctx, s, "POST", "/users/me/exports/address-activity", gen.AddressExportRequest{Address: h.fixture.accounts[0], Kind: "all", Direction: "both", From: time.Unix(int64(h.baseTimestamp), 0), To: time.Unix(int64(h.baseTimestamp+3600), 0)})
+	mediaType, params, err := mime.ParseMediaType(response.Header.Get("Content-Disposition"))
+	if err != nil || mediaType != "attachment" || !strings.HasSuffix(params["filename"], "-all.csv") || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/csv") || !bytes.Contains(data, []byte(h.fixture.creationHash)) || bytes.Contains(data, []byte(h.fixture.orphanDelegationHash)) {
 		h.t.Fatalf("CSV canonical contract failed: %s", data)
 	}
 	h.writeArtifact(h.mode+"-address-export.csv", data)

@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { useId, useState } from "react";
 import { Download, Eye, EyeOff } from "lucide-react";
@@ -68,11 +69,7 @@ export function BlobActions({ hash, index }: { hash: string; index: string }) {
           {t(busy === "download" ? "consensus.preparingDownload" : "consensus.download")}
         </button>
       </div>
-      {failed && (
-        <p className="blob-action-error" role="alert">
-          {t("consensus.storageUnavailable")}
-        </p>
-      )}
+      {failed && <Message type="error">{t("consensus.storageUnavailable")}</Message>}
       <div id={previewID} hidden={!preview} className="blob-preview">
         <span>{t("consensus.hexPreview")}</span>
         <pre tabIndex={0} aria-label={t("consensus.hexPreview")}>

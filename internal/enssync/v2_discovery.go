@@ -129,55 +129,11 @@ func (c *Collector) discoverV2(ctx context.Context, source int64, session rpcSes
 		c.profiles[address] = p
 		discovered = append(discovered, verifiedDeployment{Deployment: instance, Header: header})
 	}
-	// Subregistry traversal needs a reviewed implementation. Resolver links may
-	// target arbitrary contracts resolved through the Universal Resolver; the
-	// link itself never grants standard-event emitter trust.
-	for _, log := range block.Logs {
-		d, known := c.deploymentAt(log.Address, log.BlockNumber)
-		if !known || d.Profile != "v2_registry" || len(log.Topics) == 0 {
-			continue
-		}
-		p := c.profiles[log.Address]
-		event, e := p.abi.EventByID(log.Topics[0])
-		if e != nil {
-			continue
-		}
-		field, profile := "", ""
-		switch event.Name {
-		case "SubregistryUpdated":
-			field, profile = "subregistry", "v2_registry"
-		case "ResolverUpdated":
-			continue
-		default:
-			continue
-		}
-		v, e := unpackEvent(*event, log)
-		if e != nil {
-			return block, nil, e
-		}
-		address := v[field].(common.Address)
-		if address == (common.Address{}) {
-			continue
-		}
-		linked, known := c.deploymentAt(address, log.BlockNumber)
-		if !known { // Its creation may precede this block, with no logs here.
-			stored, e := dbgen.New(c.repo.db).ListENSSyncEmitterDeployments(ctx, source, [][]byte{address.Bytes()})
-			if e != nil {
-				return block, nil, ErrStorage
-			}
-			if len(stored) == 1 {
-				p, e := loadProfile(profile)
-				if e != nil {
-					return block, nil, e
-				}
-				known = bytes.Equal(stored[0].AbiDigest, p.digest[:])
-				linked.Profile = profile
-			}
-		}
-		if !known || linked.Profile != profile {
-			return block, nil, ErrUnsupportedDeployment
-		}
-	}
+	// User-owned subregistry and resolver links are retained by projectV2,
+	// but never enroll their targets as standard-event emitters. An unknown
+	// target leaves that branch without trusted projections; it cannot disable
+	// collection for the entire source. Only reviewed deployments and verified
+	// factory instances may contribute the logs below.
 	filtered := make([]types.Log, 0, len(block.Logs))
 	for _, log := range block.Logs {
 		if _, known := c.deploymentAt(log.Address, log.BlockNumber); known {

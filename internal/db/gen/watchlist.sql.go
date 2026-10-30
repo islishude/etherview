@@ -15,7 +15,7 @@ const exportActivity = `-- name: ExportActivity :many
 SELECT source.activity FROM watch_activity_sources AS source
 WHERE source.chain_id=$1::numeric AND source.block_number<=$2::numeric
 AND source.block_timestamp>=$3::numeric AND source.block_timestamp<$4::numeric
-AND (source.source_kind=$5::text OR ($5='nft' AND source.source_kind IN ('erc721','erc1155')))
+AND (($5::text='all' AND source.source_kind IN ('transaction','erc20','erc721','erc1155')) OR source.source_kind=$5 OR ($5='nft' AND source.source_kind IN ('erc721','erc1155')))
 AND (($6::text IN ('in','both') AND source.to_address=$7::text)
  OR ($6 IN ('out','both') AND source.from_address=$7))
 ORDER BY source.block_number,source.tx_index,source.source_key LIMIT 10001

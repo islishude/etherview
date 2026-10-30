@@ -2685,8 +2685,10 @@ components:
         "address":
           "$ref": "#/components/schemas/Address"
         "kind":
+          "description": "all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total."
           "type": "string"
           "enum":
+            - "all"
             - "transaction"
             - "erc20"
             - "nft"

@@ -83,6 +83,7 @@ func (e AddressExportRequestDirection) Valid() bool {
 
 // Defines values for AddressExportRequestKind.
 const (
+	AddressExportRequestKindAll         AddressExportRequestKind = "all"
 	AddressExportRequestKindErc20       AddressExportRequestKind = "erc20"
 	AddressExportRequestKindNft         AddressExportRequestKind = "nft"
 	AddressExportRequestKindTransaction AddressExportRequestKind = "transaction"
@@ -91,6 +92,8 @@ const (
 // Valid indicates whether the value is a known member of the AddressExportRequestKind enum.
 func (e AddressExportRequestKind) Valid() bool {
 	switch e {
+	case AddressExportRequestKindAll:
+		return true
 	case AddressExportRequestKindErc20:
 		return true
 	case AddressExportRequestKindNft:
@@ -3981,14 +3984,16 @@ type AddressExportRequest struct {
 	Address   Address                       `json:"address"`
 	Direction AddressExportRequestDirection `json:"direction"`
 	From      time.Time                     `json:"from"`
-	Kind      AddressExportRequestKind      `json:"kind"`
-	To        time.Time                     `json:"to"`
+
+	// Kind all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total.
+	Kind AddressExportRequestKind `json:"kind"`
+	To   time.Time                `json:"to"`
 }
 
 // AddressExportRequestDirection defines model for AddressExportRequest.Direction.
 type AddressExportRequestDirection string
 
-// AddressExportRequestKind defines model for AddressExportRequest.Kind.
+// AddressExportRequestKind all combines transaction, ERC-20, ERC-721 and ERC-1155 rows in one snapshot; export limits apply to their combined total.
 type AddressExportRequestKind string
 
 // AddressInternalTransaction defines model for AddressInternalTransaction.

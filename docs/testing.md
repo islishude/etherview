@@ -23,6 +23,10 @@ P20-T28/P20-T29 and P40-T27 add real pinned v2 lifecycle/projection fixtures,
 background worker/publication and database-only reader tests. Run the combined
 PostgreSQL race suite with
 `go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
+The v2 regressions cover unknown subregistry links without source-wide shutdown,
+untrusted-emitter isolation, link repair, and bounded graph cursor progress across
+restarts. Search regressions exercise invalid ENS names through the query reader
+and HTTP handler, preserving typed client errors without database access.
 It includes source/canonical fences, immutable empty snapshots, HTTP-independent
 candidate discovery, catalog withdrawal and bounded idempotent import/replay.
 `make test-runtime-e2e` runs the production image in all/split mode with real
@@ -1047,8 +1051,11 @@ activity and CSV acceptance. Controlled receivers are protocol evidence only;
 real browser-provider delivery with the page closed requires separate HTTPS
 browser evidence and must never be inferred from mocks or local receivers.
 
-CSV bounds remain 31 days, 10,000 rows, 16 MiB and 15 seconds, including exact
-uint256 values and continuous Core/Token coverage. Reorg snapshot tests prove
+CSV bounds remain 31 days, 10,000 combined rows, 16 MiB and 15 seconds, including
+exact uint256 values and continuous Core/Token coverage. All-type exports cover
+transactions, ERC-20, ERC-721 and ERC-1155 in one snapshot, with per-row types,
+self-transfer deduplication, direction/time boundaries and combined limits.
+Reorg snapshot tests prove
 that one exported file stays on its original canonical view.
 
 ### Preview gateway regressions
@@ -1246,8 +1253,30 @@ account changes and cleanup across all browser submission variants and CSV.
 For CSV, hold the response pending to verify that the widget refreshes only
 after success or failure; assert the downloaded filename includes the selected
 address, UTC range and activity kind.
-Check the compact address toolbar in both languages/themes at desktop and 390px,
-including keyboard focus, download expansion and accessibility.
+Check the address watch icon immediately after the QR control and the CSV link
+at the bottom right of ordinary transaction history, in both languages/themes
+at desktop and 390px. Cover empty history, keyboard navigation, accessibility,
+and direct loading of the export page. Watch clicks stay on the address page;
+anonymous clicks open a half-shaded modal with Escape/backdrop dismissal, focus
+containment and restoration. Login closes the dialog without watching; a second
+click is required. Watch operations show a loading icon and block repeat clicks
+until the mutation and list refresh finish, then show the confirmed state. Both
+success and failure use the shared top-center Message. Cover add/remove, slow
+responses, failure, account changes and automatic three-second dismissal. The
+export login card uses a short, content-width button aligned with
+its message; login never starts a download. Cover All as the default type and
+the `-all.csv` filename.
+
+Shared operation feedback uses Message across account, wallet, verification,
+contract interaction, billing, copying and download controls. Check stacking,
+deduplication, manual dismissal, hover/focus timer suspension, translated close
+controls, modal top-layer accessibility, teardown and reduced motion. Include
+390px and desktop in both languages/themes. Loading/read failures, field
+validation and durable transaction/payment outcomes remain in their owning
+views; they must not disappear with a transient message.
+Watch reads must fail closed with retry; account changes and logout must cancel
+private operations and clear results. CSV challenges mount only on the signed-in
+export page and are removed on navigation.
 
 Acceptance requires `make check`, `make test-e2e`,
 `make test-integration-race` and `make test-runtime-e2e`. Controlled transport and

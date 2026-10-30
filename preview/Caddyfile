@@ -68,6 +68,21 @@
 	}
 }
 
+# Local wallet RPC accepts browser extensions and arbitrary development origins.
+(geth_origin) {
+	header {
+		Access-Control-Allow-Origin "*"
+		Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		Access-Control-Allow-Headers "Content-Type, Accept, Eth-Consensus-Version"
+		Access-Control-Expose-Headers "Eth-Consensus-Version, Eth-Execution-Optimistic, Eth-Finalized"
+	}
+	@preflight method OPTIONS
+	respond @preflight 204
+	request_body {
+		max_size 32MiB
+	}
+}
+
 (node_response) {
 	# The gateway owns browser policy; upstream CORS must not override it.
 	header_down -Access-Control-Allow-Origin
@@ -75,7 +90,7 @@
 	header_down -Access-Control-Allow-Methods
 	header_down -Access-Control-Allow-Headers
 	header_down -Access-Control-Expose-Headers
-	# Origin was checked at the gateway, including WebSocket requests.
+	# The gateway owns Origin policy, including WebSocket requests.
 	header_up -Origin
 	stream_timeout 24h
 }
@@ -90,7 +105,7 @@ https://app.etherview.localhost {
 https://geth.etherview.localhost {
 	import tls_boundary
 	route {
-		import node_origin
+		import geth_origin
 		@websocket {
 			method GET
 			header_regexp Connection "(?i)(^|,)[[:blank:]]*upgrade[[:blank:]]*(,|$)"

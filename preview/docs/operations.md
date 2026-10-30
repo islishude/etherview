@@ -301,21 +301,36 @@ edit system hosts.
 | `https://bundler.etherview.localhost`         | Rundler ERC-4337 JSON-RPC POST      |
 
 `PREVIEW_HTTPS_PORT` defaults to 443 on 127.0.0.1; ephemeral ports are used by
-tests. Nondefault browser ports require matching public URL, wallet URLs and
-allowed Origins in an operator config. The gateway does not open port 80,
+tests. Nondefault browser ports require matching public URL and wallet URLs,
+plus allowed Origins for Beacon/Bundler in an operator config. The gateway does not open port 80,
 automatically issue certificates, or expose an administration API. Its internal
 loopback health check reports serving readiness independently of upstreams.
 
-`PREVIEW_NODE_ALLOWED_ORIGINS` replaces the complete space-separated list;
-defaults are `https://app.etherview.localhost http://localhost:5173
-http://127.0.0.1:5173`. Unlisted/null Origins are rejected for REST and WSS;
-CLI clients without Origin are accepted. Browsers may separately prompt for
-local-network access; grant it for the trusted local development page. Node CORS does not grant application
-sessions or relax the app's CSP. Node request bodies are limited to 32 MiB;
-subscriptions end after 24 hours and should reconnect. No writes are retried.
+`geth.etherview.localhost` accepts any Origin for JSON-RPC and WSS, including
+MetaMask/browser-extension origins, `null` and requests without Origin. HTTP
+responses use `Access-Control-Allow-Origin: *`; OPTIONS preflight returns 204.
+Cross-origin credentials are not enabled.
+
+`PREVIEW_NODE_ALLOWED_ORIGINS` applies only to Beacon and Bundler and replaces
+their complete space-separated list; defaults are
+`https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173`.
+Those hosts reject unlisted/null Origins and accept CLI clients without Origin.
+Changing this variable does not restrict Geth. Browsers may separately prompt
+for local-network access; grant it for the trusted local development page. Node
+CORS does not grant application sessions or relax the app's CSP. Node request
+bodies are limited to 32 MiB; subscriptions end after 24 hours and should
+reconnect. No writes are retried.
 Engine, validator and Kubo administration routes are not exposed.
 
-Recreate Preview after updating certificates or configuration. Caddy is the
+After changing only the Caddy configuration, recreate just the gateway to apply
+it without restarting the chain or replacing data volumes:
+
+```sh
+.github/scripts/compose.sh --env-file .local/preview-push.env -f compose.yaml up -d --no-deps --force-recreate preview-gateway
+```
+
+Use the configured `PREVIEW_ENV_FILE` instead if overridden. Recreate Preview
+after other certificate or configuration changes. Caddy is the
 only TLS terminator in this topology; process-native TLS remains available for
 other deployments. Migration removes the old gateway container through
 Compose's orphan cleanup and preserves chain/database/IPFS/archive volumes.

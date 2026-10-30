@@ -24,6 +24,7 @@ test("private watches, browser notification settings and CSV download use the em
   });
   let watches: schemas.AddressWatch[] = [];
   let mutationCount = 0;
+  let releaseWatch: (() => void) | undefined;
   await page.route("**/api/v1/config", async (route) => {
     const upstream = await route.fetch();
     const body = await upstream.json();
@@ -48,6 +49,10 @@ test("private watches, browser notification settings and CSV download use the em
       mutationCount++;
     }
     if (url.pathname.endsWith("/watchlist")) {
+      if (request.method() === "POST" && mutationCount === 1)
+        await new Promise<void>((resolve) => {
+          releaseWatch = resolve;
+        });
       if (request.method() === "POST")
         watches = [
           ...watches,
@@ -70,16 +75,37 @@ test("private watches, browser notification settings and CSV download use the em
     }
     if (url.pathname.endsWith("/address-activity")) {
       expect(request.postDataJSON().address).toBe(address);
+      expect(request.postDataJSON().kind).toBe("all");
       await route.fulfill({ contentType: "text/csv", body: "amount\r\n12345678901234567890\r\n" });
       return;
     }
     await route.fulfill({ status: 404 });
   });
   await page.goto(`/address/${address}`);
+  expect(mutationCount).toBe(0);
   await page.getByRole("button", { name: "Watch address", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Watching: Remove watch", exact: true }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/address/${address}$`));
+  const busyWatch = page.locator(".address-watch-button");
+  await expect(busyWatch).toBeDisabled();
+  await expect(busyWatch).toHaveAttribute("aria-busy", "true");
+  await expect(busyWatch.locator(".lucide-loader-circle")).toBeVisible();
+  expect(
+    await busyWatch.locator("svg").evaluate((icon) => getComputedStyle(icon).animationName),
+  ).toBe("query-loading-spin");
+  await expect.poll(() => Boolean(releaseWatch)).toBe(true);
+  releaseWatch!();
+  await expect(page.getByRole("button", { name: "Remove watch", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(busyWatch.locator(".lucide-bell-ring")).toBeVisible();
+  await expect(busyWatch.locator(".lucide-loader-circle")).toHaveCount(0);
+  await expect(page.locator(".address-watch-feedback")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Remove watch", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.goto("/account?tab=watchlist");
   await expect(page.getByRole("heading", { name: "Watchlist", exact: true })).toBeVisible();
   await expect(page.locator(".account-tabs a")).toHaveText(["Overview", "Watchlist", "API Keys"]);
@@ -147,10 +173,157 @@ test("private watches, browser notification settings and CSV download use the em
   await expect(page.getByRole("heading", { name: "浏览器通知", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Switch to English" }).click();
   await page.goto(`/address/${address}`);
-  await page.getByRole("button", { name: "Export CSV", exact: true }).click();
+  await page.getByRole("link", { name: "Export CSV", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download CSV", exact: true }).click();
   const download = await downloadPromise;
   expect(await readFile((await download.path())!, "utf8")).toContain("12345678901234567890");
+  expect(download.suggestedFilename()).toMatch(/-all\.csv$/);
   expect(mutationCount).toBe(3);
 });
+
+for (const language of ["en", "zh"] as const) {
+  test(`anonymous address actions use a login dialog and compact export card in ${language}`, async ({
+    page,
+  }, info) => {
+    const zh = language === "zh";
+    const address = "0x1111111111111111111111111111111111111111";
+    await page.addInitScript((lng) => localStorage.setItem("etherview.language", lng), language);
+    await page.route("**/api/v1/config", async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      json.data.features.user_auth = true;
+      await route.fulfill({ response, json });
+    });
+    await page.route("**/api/v1/auth/session", (route) =>
+      route.fulfill({
+        json: {
+          data: { authenticated: false },
+          meta: { chain_id: "1", request_id: "anonymous-actions" },
+        },
+      }),
+    );
+    await page.route(`**/api/v1/addresses/${address}/transactions*`, async (route) => {
+      const response = await route.fetch();
+      const json = await response.json();
+      json.data = [];
+      delete json.meta.next_cursor;
+      await route.fulfill({ response, json });
+    });
+    const privateRequests: string[] = [];
+    page.on("request", (request) => {
+      if (
+        request.url().includes("/users/me/") ||
+        request.url().includes("challenges.cloudflare.com")
+      )
+        privateRequests.push(request.url());
+    });
+    await page.goto(`/address/${address}`);
+    const watch = page.getByRole("button", {
+      name: zh ? "关注地址" : "Watch address",
+      exact: true,
+    });
+    const exportLink = page.getByRole("link", {
+      name: zh ? "导出 CSV" : "Export CSV",
+      exact: true,
+    });
+    await expect(watch).toBeVisible();
+    await expect(watch).toHaveText("");
+    expect(
+      await watch.evaluate((element) =>
+        element.previousElementSibling?.classList.contains("address-qr-button"),
+      ),
+    ).toBe(true);
+    await expect(
+      page.getByText("Sign in to watch this address or export CSV.", { exact: true }),
+    ).toHaveCount(0);
+    await expect(page.locator(".address-activity table")).toHaveCount(0);
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await expect(exportLink).toBeVisible();
+        const linkBox = await exportLink.boundingBox();
+        const sectionBox = await page.locator(".address-activity").boundingBox();
+        expect(
+          Math.abs(linkBox!.x + linkBox!.width - sectionBox!.x - sectionBox!.width),
+        ).toBeLessThan(2);
+        expect(linkBox!.y).toBeGreaterThan(sectionBox!.y);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        await page.screenshot({
+          path: info.outputPath(`address-actions-${theme}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
+    await watch.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/address/${address}$`));
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    const close = dialog.getByRole("button", { name: zh ? "关闭" : "Close", exact: true });
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(close).toBeFocused(); // No wallet is installed; the login button is disabled.
+    expect(
+      (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze())
+        .violations,
+    ).toEqual([]);
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.screenshot({ path: info.outputPath(`watch-login-${theme}-${width}.png`) });
+      }
+    }
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(watch).toBeFocused();
+    await watch.click();
+    await page.mouse.click(4, 4);
+    await expect(dialog).toHaveCount(0);
+    await expect(watch).toBeFocused();
+    await exportLink.click();
+    await expect(page).toHaveURL(new RegExp(`/address/${address}/export$`));
+    await expect(page.locator(".address-action-login")).toBeVisible();
+    await expect(page.locator("#address-csv-export")).toHaveCount(0);
+    const login = page.locator(".address-action-login");
+    const signIn = login.getByRole("button", { name: zh ? "登录" : "Sign in", exact: true });
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate((value) => {
+        document.documentElement.dataset.theme = value;
+      }, theme);
+      for (const width of [1280, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        const buttonBox = (await signIn.boundingBox())!;
+        const textBox = (await login.locator("p").first().boundingBox())!;
+        expect(Math.abs(buttonBox.x - textBox.x)).toBeLessThan(2);
+        expect(buttonBox.width).toBeLessThan(160);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+        await page.screenshot({
+          path: info.outputPath(`export-login-${theme}-${width}.png`),
+          fullPage: true,
+        });
+      }
+    }
+    expect(
+      (await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze())
+        .violations,
+    ).toEqual([]);
+
+    await page.reload();
+    await expect(page.locator(".address-action-login")).toBeVisible();
+    expect(privateRequests).toEqual([]);
+    await page.goto(`/address/${address}?tab=erc20-transfers`);
+    await expect(page.locator(".address-activity")).toBeVisible();
+    await expect(exportLink).toHaveCount(0);
+  });
+}

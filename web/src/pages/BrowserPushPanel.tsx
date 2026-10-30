@@ -1,3 +1,4 @@
+import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -240,7 +241,8 @@ export function BrowserPushPanel() {
                 : "browserPush.allow",
         )}
       </button>
-      {(error || query.isError) && <p role="alert">{t("browserPush.error")}</p>}
+      {query.isError && <p role="alert">{t("browserPush.error")}</p>}
+      {error && <Message type="error">{t("browserPush.error")}</Message>}
     </section>
   );
 }

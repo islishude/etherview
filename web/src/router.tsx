@@ -35,6 +35,10 @@ const UserOperationDetailPage = lazyRouteComponent(
   () => import("@/pages/UserOperationPages"),
   "UserOperationDetailPage",
 );
+const AddressExportPage = lazyRouteComponent(
+  () => import("@/pages/AddressActionPages"),
+  "AddressExportPage",
+);
 const AccountPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AccountPage");
 const AdminUsersPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AdminUsersPage");
 const AdminBillingPage = lazyRouteComponent(
@@ -172,6 +176,11 @@ const addressRoute = createRoute({
   },
   component: AddressRoutePage,
 });
+const addressExportRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/address/$address/export",
+  component: AddressExportRoutePage,
+});
 const tokensRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tokens",
@@ -285,6 +294,7 @@ const routeTree = rootRoute.addChildren([
   userOperationsRoute,
   userOperationRoute,
   addressRoute,
+  addressExportRoute,
   nameRoute,
   tokensRoute,
   tokenRoute,
@@ -403,4 +413,10 @@ declare module "@tanstack/react-router" {
 function NameRoutePage() {
   const { name } = nameRoute.useParams();
   return <NamePage name={name} />;
+}
+
+function AddressExportRoutePage() {
+  const { address } = addressExportRoute.useParams();
+  if (!isAddress(address)) return <NotFoundPage />;
+  return <AddressExportPage address={getAddress(address)} />;
 }
