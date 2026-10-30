@@ -349,7 +349,13 @@ export function TokensPage() {
                         <Link to="/token/$address" params={{ address: token.address }}>
                           {token.name ?? token.symbol ?? shorten(token.address)}
                         </Link>
-                        <code>{shorten(token.address)}</code>
+                        <Link
+                          to="/token/$address"
+                          params={{ address: token.address }}
+                          title={token.address}
+                        >
+                          <code>{shorten(token.address)}</code>
+                        </Link>
                       </span>
                     </td>
                     <td>

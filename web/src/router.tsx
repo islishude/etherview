@@ -189,6 +189,14 @@ const tokensRoute = createRoute({
 const tokenRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/token/$address",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { tab?: "transfers" | "holders" | "details" } => ({
+    tab:
+      search.tab === "holders" || search.tab === "details" || search.tab === "transfers"
+        ? search.tab
+        : undefined,
+  }),
   component: TokenRoutePage,
 });
 const nftRoute = createRoute({
@@ -349,7 +357,8 @@ function AddressRoutePage() {
 
 function TokenRoutePage() {
   const { address } = tokenRoute.useParams();
-  return <EntityPage kind="token" identifier={address} />;
+  const { tab } = tokenRoute.useSearch();
+  return <EntityPage kind="token" identifier={address} tokenTab={tab} />;
 }
 
 function NFTRoutePage() {
