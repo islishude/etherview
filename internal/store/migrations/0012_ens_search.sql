@@ -556,16 +556,22 @@ CREATE TABLE ens_sync_job_watches (
  FOREIGN KEY(source_id,job_id) REFERENCES ens_sync_jobs(source_id,id) ON DELETE CASCADE
 );
 CREATE FUNCTION ens_sync_job_current(job bigint) RETURNS boolean LANGUAGE sql STABLE AS $$
- SELECT EXISTS(SELECT 1 FROM ens_sync_jobs j
- JOIN ens_sync_sources s ON s.id=j.source_id
- JOIN ens_sync_progress p ON p.source_id=s.id AND p.revision=j.source_revision
- JOIN ens_sync_candidates c ON c.id=j.candidate_id AND c.source_id=s.id
- JOIN ens_sync_blocks b ON b.source_id=s.id AND b.hash=j.target_hash AND b.canonical
- JOIN canonical_blocks cb ON cb.chain_id=s.source_chain_id AND cb.number=b.number AND cb.block_hash=b.hash AND cb.updated_at=j.core_canonical_at
- JOIN chains ch ON ch.chain_id=s.source_chain_id AND ch.genesis_hash=s.genesis_hash
- WHERE j.id=job AND j.generation>=c.minimum_generation AND p.state NOT IN ('halted','unsupported')
- AND NOT EXISTS(SELECT 1 FROM ens_sync_job_watches w
-  JOIN logs l ON l.chain_id=s.source_chain_id AND l.address=w.address AND l.block_number>b.number
+ -- Bound join planning before expanding the core-backed block views. This
+ -- predicate also runs during publication while the chain lock is held.
+ WITH candidate_job AS MATERIALIZED (
+  SELECT j.id,j.source_id,j.target_hash,j.core_canonical_at,s.source_chain_id,s.genesis_hash
+  FROM ens_sync_jobs j
+  JOIN ens_sync_sources s ON s.id=j.source_id
+  JOIN ens_sync_progress p ON p.source_id=s.id AND p.revision=j.source_revision
+  JOIN ens_sync_candidates c ON c.id=j.candidate_id AND c.source_id=s.id
+  WHERE j.id=job AND j.generation>=c.minimum_generation AND p.state NOT IN ('halted','unsupported')
+ )
+ SELECT EXISTS(SELECT 1 FROM candidate_job j
+ JOIN ens_sync_blocks b ON b.source_id=j.source_id AND b.hash=j.target_hash AND b.canonical
+ JOIN canonical_blocks cb ON cb.chain_id=j.source_chain_id AND cb.number=b.number AND cb.block_hash=b.hash AND cb.updated_at=j.core_canonical_at
+ JOIN chains ch ON ch.chain_id=j.source_chain_id AND ch.genesis_hash=j.genesis_hash
+ WHERE NOT EXISTS(SELECT 1 FROM ens_sync_job_watches w
+  JOIN logs l ON l.chain_id=j.source_chain_id AND l.address=w.address AND l.block_number>b.number
   JOIN canonical_blocks live ON live.chain_id=l.chain_id AND live.number=l.block_number AND live.block_hash=l.block_hash
   WHERE w.source_id=j.source_id AND w.job_id=j.id)
  AND NOT EXISTS(SELECT 1 FROM ens_sync_job_dependencies d
