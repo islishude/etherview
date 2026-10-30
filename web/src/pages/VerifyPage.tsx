@@ -2,7 +2,7 @@ import { Message } from "@/components/Message";
 import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { type SubmitEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 
@@ -106,7 +106,7 @@ export function VerifyPage({
   });
   const busy = upload.reading || submission.isPending;
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!submissionEnabled || !auth.session.authenticated || !auth.enabled || busy) return;
     setFormError(undefined);

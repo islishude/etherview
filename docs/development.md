@@ -255,7 +255,11 @@ After installation, `pnpm run lint`, `pnpm run format`, and `pnpm run format:che
 provide the JavaScript/frontend gates directly. Use
 `pnpm --dir web run format` for frontend-only edits.
 `make web-lint` runs TypeScript, Oxlint, and a read-only Oxfmt check through the
-same pnpm scripts used by CI. Keep generated API types under the API generator;
+same pnpm scripts used by CI. The Web Oxlint configuration enables type-aware
+`typescript/no-deprecated` checks using the pinned root `oxlint-tsgolint`
+dependency. Replace references to declarations marked `@deprecated`, including
+types, methods and test assertions, with their supported equivalents. Keep
+generated API types under the API generator;
 do not format them manually. `api/openapi-ts.config.ts` generates the Hey API
 Fetch SDK, domain types and bundled runtime under `web/src/api/heyapi/` from the
 API workspace. After changing `api/openapi.yaml`, run `make web-generate` for

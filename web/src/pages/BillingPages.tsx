@@ -1,5 +1,5 @@
 import { SelectControl } from "@/components/SelectControl";
-import { type FormEvent, useEffect, useState } from "react";
+import { type SubmitEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -121,7 +121,7 @@ export function AdminBillingPage() {
     }
   }, [isAdmin]);
 
-  const applyFilters = (event: FormEvent<HTMLFormElement>) => {
+  const applyFilters = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsed = parseBillingFilters(draft);
     if (!parsed.valid) {
@@ -282,7 +282,7 @@ function BillingFilterPanel({
   error?: string;
   onChange: (value: BillingFilterForm) => void;
   onClear: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }) {
   const { t } = useTranslation();
   return (

@@ -75,14 +75,14 @@ describe("historical Solidity ABI normalization", () => {
   it("rejects mutually contradictory historical flags", () => {
     expect(() =>
       parseVerifiedABI([{ name: "f", inputs: [], constant: true, payable: true }]),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
+    ).toThrow(expect.objectContaining({ code: "INVALID_ABI" }));
   });
 
   it.each(["constant", "payable", "type", "stateMutability", "outputs"])(
     "does not treat invalid %s as an omission",
     (key) => {
       for (const invalid of [undefined, null, "", 0, 1, {}]) {
-        expect(() => parseVerifiedABI([{ name: "f", inputs: [], [key]: invalid }])).toThrowError(
+        expect(() => parseVerifiedABI([{ name: "f", inputs: [], [key]: invalid }])).toThrow(
           expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
         );
       }
@@ -91,7 +91,7 @@ describe("historical Solidity ABI normalization", () => {
         enumerable: true,
         get: getter,
       });
-      expect(() => parseVerifiedABI([item])).toThrowError(
+      expect(() => parseVerifiedABI([item])).toThrow(
         expect.objectContaining({ code: "INVALID_ABI" }),
       );
       expect(getter).not.toHaveBeenCalled();
@@ -118,7 +118,7 @@ describe("historical Solidity ABI normalization", () => {
       { name: "f", inputs: [{ type: "address", payable: true }] },
       { name: "f", inputs: [], extra: false },
     ]) {
-      expect(() => parseVerifiedABI([item])).toThrowError(
+      expect(() => parseVerifiedABI([item])).toThrow(
         expect.objectContaining({ code: "INVALID_ABI" }),
       );
     }
@@ -154,21 +154,21 @@ describe("historical Solidity ABI normalization", () => {
     ).toContain("9");
     inputs[0]!.components[0]!.components[0]!.name = "changed";
     expect(JSON.stringify(entry.fn.inputs)).not.toContain("changed");
-    expect(() => parseVerifiedABI([{ name: "f", inputs: [{ type: "tuple" }] }])).toThrowError();
+    expect(() => parseVerifiedABI([{ name: "f", inputs: [{ type: "tuple" }] }])).toThrow();
   });
 
   it("keeps resource, prototype and duplicate-signature protections on the omission path", () => {
     const item = { name: "f", inputs: [] };
     expect(() =>
       parseVerifiedABI([Object.assign(Object.create({ constant: true }), item)]),
-    ).toThrowError();
-    expect(() => parseVerifiedABI(new Array(2))).toThrowError();
+    ).toThrow();
+    expect(() => parseVerifiedABI(new Array(2))).toThrow();
     expect(() =>
       parseVerifiedABI([
         { ...item, constant: true },
         { ...item, type: "function", outputs: [], stateMutability: "view" },
       ]),
-    ).toThrowError();
+    ).toThrow();
     for (const source of [
       `[${" ".repeat(ABI_LIMITS.jsonBytes)}${JSON.stringify(item)}]`,
       Array.from({ length: ABI_LIMITS.items + 1 }, () => item),
@@ -181,7 +181,7 @@ describe("historical Solidity ABI normalization", () => {
       [{ ...item, inputs: [{ type: `uint256[${ABI_LIMITS.fixedArrayLength + 1}]` }] }],
       [{ ...item, inputs: [{ type: `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}` }] }],
     ]) {
-      expect(() => parseVerifiedABI(source)).toThrowError(
+      expect(() => parseVerifiedABI(source)).toThrow(
         expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
       );
     }

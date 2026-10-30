@@ -63,20 +63,20 @@ describe("verified ABI parsing", () => {
     const getter = vi.fn(() => "function");
     const accessor = Object.create(null) as Record<string, unknown>;
     Object.defineProperty(accessor, "type", { enumerable: true, get: getter });
-    expect(() => parseVerifiedABI([accessor])).toThrowError(AbiFormError);
+    expect(() => parseVerifiedABI([accessor])).toThrow(AbiFormError);
     expect(getter).not.toHaveBeenCalled();
 
-    expect(() =>
-      parseVerifiedABI([{ ...simpleFunction("f", "uint256"), extra: true }]),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
-    expect(() => parseVerifiedABI(new Array(2))).toThrowError(AbiFormError);
+    expect(() => parseVerifiedABI([{ ...simpleFunction("f", "uint256"), extra: true }])).toThrow(
+      expect.objectContaining({ code: "INVALID_ABI" }),
+    );
+    expect(() => parseVerifiedABI(new Array(2))).toThrow(AbiFormError);
     expect(() =>
       parseVerifiedABI([Object.assign(Object.create({}), simpleFunction("f", "uint256"))]),
-    ).toThrowError(AbiFormError);
-    expect(() => parseVerifiedABI("{")).toThrowError(
+    ).toThrow(AbiFormError);
+    expect(() => parseVerifiedABI("{")).toThrow(
       expect.objectContaining({ code: "INVALID_ABI_JSON" }),
     );
-    expect(() => parseVerifiedABI(`[${" ".repeat(ABI_LIMITS.jsonBytes)}]`)).toThrowError(
+    expect(() => parseVerifiedABI(`[${" ".repeat(ABI_LIMITS.jsonBytes)}]`)).toThrow(
       expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
     );
 
@@ -84,16 +84,16 @@ describe("verified ABI parsing", () => {
       type: "receive",
       stateMutability: "payable",
     }));
-    expect(() => parseVerifiedABI(tooMany)).toThrowError(
+    expect(() => parseVerifiedABI(tooMany)).toThrow(
       expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
     );
     expect(() =>
       parseVerifiedABI([simpleFunction("large", `uint256[${ABI_LIMITS.fixedArrayLength + 1}]`)]),
-    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    ).toThrow(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
     expect(() =>
       parseVerifiedABI([simpleFunction("deep", `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`)]),
-    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
-    expect(() => parseVerifiedABI([simpleFunction("unsupported", "function")])).toThrowError(
+    ).toThrow(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    expect(() => parseVerifiedABI([simpleFunction("unsupported", "function")])).toThrow(
       expect.objectContaining({ code: "INVALID_ABI" }),
     );
   });
@@ -159,7 +159,7 @@ describe("verified ABI parsing", () => {
     it.each(["constant", "payable"] as const)("rejects conflicting or non-boolean %s", (key) => {
       const matching = { constant, payable };
       for (const invalid of [!matching[key], null, undefined, 0, 1, "false", "true", {}, []]) {
-        expect(() => parseVerifiedABI([{ ...item, ...matching, [key]: invalid }])).toThrowError(
+        expect(() => parseVerifiedABI([{ ...item, ...matching, [key]: invalid }])).toThrow(
           expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
         );
       }
@@ -169,13 +169,11 @@ describe("verified ABI parsing", () => {
       for (const invalid of [undefined, null, "constant", ""]) {
         expect(() =>
           parseVerifiedABI([{ ...item, stateMutability: invalid, constant, payable }]),
-        ).toThrowError(
-          expect.objectContaining({ code: "INVALID_ABI", path: "$[0].stateMutability" }),
-        );
+        ).toThrow(expect.objectContaining({ code: "INVALID_ABI", path: "$[0].stateMutability" }));
       }
       const { stateMutability: _stateMutability, ...missing } = item;
       if (type === "receive") {
-        expect(() => parseVerifiedABI([{ ...missing, constant, payable }])).toThrowError(
+        expect(() => parseVerifiedABI([{ ...missing, constant, payable }])).toThrow(
           expect.objectContaining({ code: "INVALID_ABI", path: "$[0].stateMutability" }),
         );
       } else {
@@ -190,26 +188,26 @@ describe("verified ABI parsing", () => {
     const getter = vi.fn(() => true);
     const item = { ...simpleFunction("f", "uint256"), constant: true, payable: false };
     const accessor = Object.defineProperty({ ...item }, key, { enumerable: true, get: getter });
-    expect(() => parseVerifiedABI([accessor])).toThrowError(
+    expect(() => parseVerifiedABI([accessor])).toThrow(
       expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
     );
     expect(getter).not.toHaveBeenCalled();
-    expect(() => parseVerifiedABI([{ ...item, extra: false }])).toThrowError(
+    expect(() => parseVerifiedABI([{ ...item, extra: false }])).toThrow(
       expect.objectContaining({ code: "INVALID_ABI", path: "$[0].extra" }),
     );
     for (const type of ["event", "error"]) {
-      expect(() => parseVerifiedABI([{ type, name: "E", inputs: [], [key]: false }])).toThrowError(
+      expect(() => parseVerifiedABI([{ type, name: "E", inputs: [], [key]: false }])).toThrow(
         expect.objectContaining({ code: "INVALID_ABI", path: `$[0].${key}` }),
       );
     }
     expect(() =>
       parseVerifiedABI(Array.from({ length: ABI_LIMITS.items + 1 }, () => item)),
-    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    ).toThrow(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
     for (const type of [
       `uint256[${ABI_LIMITS.fixedArrayLength + 1}]`,
       `uint256${"[]".repeat(ABI_LIMITS.depth + 1)}`,
     ]) {
-      expect(() => parseVerifiedABI([{ ...item, inputs: [{ type }] }])).toThrowError(
+      expect(() => parseVerifiedABI([{ ...item, inputs: [{ type }] }])).toThrow(
         expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }),
       );
     }
@@ -252,7 +250,7 @@ describe("verified ABI parsing", () => {
 
     expect(() =>
       parseVerifiedABI([simpleFunction("same", "uint"), simpleFunction("same", "uint256")]),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI" }));
+    ).toThrow(expect.objectContaining({ code: "INVALID_ABI" }));
   });
 });
 
@@ -309,14 +307,14 @@ describe("constructor argument decoding", () => {
     };
     const encoded = encodeAbiParameters(constructor.inputs, [7n]);
 
-    expect(() => decodeConstructorArguments([], encoded)).toThrowError(AbiFormError);
-    expect(() => decodeConstructorArguments([constructor, constructor], encoded)).toThrowError(
+    expect(() => decodeConstructorArguments([], encoded)).toThrow(AbiFormError);
+    expect(() => decodeConstructorArguments([constructor, constructor], encoded)).toThrow(
       expect.objectContaining({ path: "constructor" }),
     );
-    expect(() => decodeConstructorArguments([constructor], `${encoded}00`)).toThrowError(
+    expect(() => decodeConstructorArguments([constructor], `${encoded}00`)).toThrow(
       expect.objectContaining({ path: "constructorArguments" }),
     );
-    expect(() => decodeConstructorArguments([constructor], "0x0")).toThrowError(
+    expect(() => decodeConstructorArguments([constructor], "0x0")).toThrow(
       expect.objectContaining({ code: "INVALID_ABI_VALUE" }),
     );
   });
@@ -521,7 +519,7 @@ describe("transaction calldata projection", () => {
         },
       ],
     ]) {
-      expect(() => formatTransactionCalldataInputs(value)).toThrowError(AbiFormError);
+      expect(() => formatTransactionCalldataInputs(value)).toThrow(AbiFormError);
     }
   });
 
@@ -535,7 +533,7 @@ describe("transaction calldata projection", () => {
           components: [],
         },
       ]),
-    ).toThrowError(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
+    ).toThrow(expect.objectContaining({ code: "ABI_LIMIT_EXCEEDED" }));
 
     const within = Array.from({ length: ABI_LIMITS.outputNodes - 1 }, () => "1");
     expect(
@@ -557,7 +555,7 @@ describe("transaction calldata projection", () => {
           components: [],
         },
       ]),
-    ).toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
+    ).toThrow(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
   });
 });
 
@@ -656,29 +654,29 @@ describe("ABI argument trees", () => {
       ["bytes", "0x0"],
       ["bool", "TRUE"],
     ]) {
-      expect(() => parseScalarArgument(type!, value!)).toThrowError(
+      expect(() => parseScalarArgument(type!, value!)).toThrow(
         expect.objectContaining({ code: "INVALID_ABI_VALUE" }),
       );
     }
-    expect(() =>
-      parseScalarArgument("string", "x".repeat(ABI_LIMITS.stringBytes + 1)),
-    ).toThrowError(expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }));
+    expect(() => parseScalarArgument("string", "x".repeat(ABI_LIMITS.stringBytes + 1))).toThrow(
+      expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }),
+    );
     expect(() =>
       parseScalarArgument("bytes", `0x${"00".repeat(ABI_LIMITS.bytesLength + 1)}`),
-    ).toThrowError(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
+    ).toThrow(expect.objectContaining({ code: "INVALID_ABI_VALUE" }));
   });
 
   it("rejects malformed fixed and oversized dynamic array state", () => {
     const fixed = parameter("uint256[2]");
     expect(() =>
       parseAbiArguments([fixed], [array("uint256[2]", 2, [scalar("uint256", "1")])]),
-    ).toThrowError(AbiFormError);
+    ).toThrow(AbiFormError);
 
     const dynamic = parameter("uint256[]");
     const items = Array.from({ length: ABI_LIMITS.dynamicArrayLength + 1 }, () =>
       scalar("uint256", "1"),
     );
-    expect(() => parseAbiArguments([dynamic], [array("uint256[]", null, items)])).toThrowError(
+    expect(() => parseAbiArguments([dynamic], [array("uint256[]", null, items)])).toThrow(
       expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }),
     );
   });
@@ -702,7 +700,7 @@ describe("ABI argument trees", () => {
     ];
 
     expect(() => assertAbiInputTreeWithinLimits(withinBudget)).not.toThrow();
-    expect(() => assertAbiInputTreeWithinLimits(overBudget)).toThrowError(
+    expect(() => assertAbiInputTreeWithinLimits(overBudget)).toThrow(
       expect.objectContaining({ code: "ABI_VALUE_LIMIT_EXCEEDED" }),
     );
   });
@@ -786,7 +784,7 @@ describe("ABI result and revert formatting", () => {
       },
     ])[0] as AbiFunction;
     expect(formatAbiResult(single, 7n)[0]?.display).toBe("7");
-    expect(() => formatAbiResult(fn, [1n])).toThrowError(AbiFormError);
+    expect(() => formatAbiResult(fn, [1n])).toThrow(AbiFormError);
   });
 
   it("matches viem's number representation for integers up to 48 bits", () => {
@@ -808,10 +806,10 @@ describe("ABI result and revert formatting", () => {
     expect(
       formatAbiResult(fn, [18, -(2 ** 47), (1n << 56n) - 1n]).map((output) => output.display),
     ).toEqual(["18", "-140737488355328", "72057594037927935"]);
-    expect(() => formatAbiResult(fn, [18n, -(2 ** 47), (1n << 56n) - 1n])).toThrowError(
+    expect(() => formatAbiResult(fn, [18n, -(2 ** 47), (1n << 56n) - 1n])).toThrow(
       expect.objectContaining({ path: "$result[0]" }),
     );
-    expect(() => formatAbiResult(fn, [256, -(2 ** 47), (1n << 56n) - 1n])).toThrowError(
+    expect(() => formatAbiResult(fn, [256, -(2 ** 47), (1n << 56n) - 1n])).toThrow(
       expect.objectContaining({ path: "$result[0]" }),
     );
   });

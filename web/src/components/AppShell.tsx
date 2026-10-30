@@ -1,6 +1,6 @@
 import { lazyRouteComponent } from "@/lazyRouteComponent";
 import { AppNavigation } from "./AppNavigation";
-import { FormEvent, Suspense, useState } from "react";
+import { type SubmitEvent, Suspense, useState } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { normalize as normalizeENSName } from "viem/ens";
@@ -26,7 +26,7 @@ export function AppShell() {
   const [searchError, setSearchError] = useState("");
   const publicConfig = usePublicConfig();
 
-  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
+  const submitSearch = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     let normalized = query.trim();
     if (!normalized) return;

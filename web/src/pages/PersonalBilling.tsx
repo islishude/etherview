@@ -1,6 +1,6 @@
 import { Message } from "@/components/Message";
 import "./PersonalBilling.css";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -122,7 +122,7 @@ export function PersonalBilling() {
       ?.transaction_hash;
   const blocked = submitting || waiting || recovery.isPending || Boolean(recovery.error);
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (blocked || submittingRef.current) return;
     setError(undefined);
@@ -332,7 +332,7 @@ function TopupForm({
   onMethod: (value: BillingTransferMethod) => void;
   blocked: boolean;
   walletReady: boolean;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const validAmount =

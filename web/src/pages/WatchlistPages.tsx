@@ -1,6 +1,6 @@
 import { Message } from "@/components/Message";
 import { Link } from "@tanstack/react-router";
-import { type FormEvent, useState } from "react";
+import { type SubmitEvent, useState } from "react";
 import { BrowserPushPanel } from "./BrowserPushPanel";
 import { useTranslation } from "react-i18next";
 import { useWatches } from "@/api/privateAccount";
@@ -32,7 +32,7 @@ export function WatchlistPanel() {
       enabled: true,
     });
   }
-  async function submit(event: FormEvent) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (
       await action.run(

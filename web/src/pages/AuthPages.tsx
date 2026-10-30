@@ -4,7 +4,7 @@ import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
 import { WatchlistPanel } from "./WatchlistPages";
 import { usePrivateIdentity } from "@/api/privateAccount";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -64,7 +64,7 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
     setProfileSaved(false);
   }, [sessionUser?.id]);
 
-  const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
+  const submitProfile = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setProfileSaved(false);
     const normalized = normalizeDisplayName(displayName);
@@ -383,7 +383,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
     setFormError(undefined);
   };
 
-  const createKey = async (event: FormEvent<HTMLFormElement>) => {
+  const createKey = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const normalizedName = name.trim();
     if (!csrfToken || !normalizedName || scopes.length === 0) {

@@ -3,7 +3,7 @@ import { useBrowsingInvalidated } from "@/api/browsingHooks";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type SubmitEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -236,7 +236,7 @@ function AbiFunctionCard({
     }
   };
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending || invalidSnapshot) return;
     setResult(undefined);

@@ -1,6 +1,6 @@
 import { Message } from "@/components/Message";
 import "@/i18n/resources/addressActions";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type SubmitEvent, type ReactNode, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
@@ -60,7 +60,7 @@ function ExportForm({ address }: { address: string }) {
     new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 16),
   );
   const [to, setTo] = useState(() => new Date().toISOString().slice(0, 16));
-  async function download(event: FormEvent) {
+  async function download(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!challenge.ready || action.pending) return;
     setDownloaded(false);

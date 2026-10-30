@@ -66,3 +66,16 @@ it("resets success after the latest copy, and never shows success on rejection",
   expect(button).toHaveAccessibleName("Copy");
   expect(button.querySelector("svg")).toHaveClass("lucide-copy");
 });
+
+it.each(["en", "zh"])("reports unavailable clipboard access in %s", async (language) => {
+  await i18n.changeLanguage(language);
+  const user = userEvent.setup();
+  vi.spyOn(navigator, "clipboard", "get").mockReturnValue(undefined!);
+  render(<CopyButton value="exact value" />);
+  const copyLabel = language === "en" ? "Copy" : "复制";
+  const button = screen.getByRole("button", { name: copyLabel });
+  await user.click(button);
+  expect(await screen.findByRole("alert")).toHaveTextContent(i18n.t("common.copyFailed"));
+  expect(button).toHaveAccessibleName(copyLabel);
+  expect(button.querySelector("svg")).toHaveClass("lucide-copy");
+});

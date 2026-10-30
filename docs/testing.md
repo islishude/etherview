@@ -309,8 +309,11 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   contract generators and tests. Unused imports and variables fail with
   `eslint(no-unused-vars)`. Both `make lint` and root `pnpm run lint` include this gate.
 - `make web-lint`: run TypeScript project checking, pinned Oxlint 1.85.0, and
-  Oxfmt 0.70.0 format checking. Oxlint checks hand-written `src` TS/TSX for
-  unused code, hook placement/dependencies, and size. Production files/functions
+  Oxfmt 0.70.0 format checking. Type-aware lint uses pinned `oxlint-tsgolint`
+  7.0.2005 and rejects `@deprecated` references through
+  `typescript/no-deprecated`, including aliased imports, types, methods and
+  test code. Oxlint checks hand-written `src` TS/TSX for unused code, hook
+  placement/dependencies, and size. Production files/functions
   are capped at 1,400/400 lines; test files/functions at 2,500/1,000. Blank lines
   are excluded, comments count, and IIFEs are exempt from function length.
   Production classic cyclomatic complexity is capped at 150; test complexity
@@ -323,7 +326,10 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   dependencies, browser reports, and Go files. Formatting uses two spaces,
   double quotes, semicolons, 100 columns, LF, and trailing commas without import,
   Tailwind-class, or package-key sorting. `make web-test` includes executable
-  tooling-policy regressions for limits, exclusions, hooks, and idempotence.
+  tooling-policy regressions for limits, exclusions, hooks, deprecated symbols,
+  and idempotence. Deprecated-symbol fixtures exercise installed React types,
+  aliased imports, DOM methods, and references into ignored generated modules;
+  unrelated non-deprecated declarations with the same name remain valid.
 - `make test`: Go and frontend unit tests.
   Browser ABI regressions include the published Solidity 0.5.3 ERC1820Registry
   ABI and unmodified native Standard JSON ABI output from official solc-js

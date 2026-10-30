@@ -3,7 +3,7 @@ import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
 import { BrowsingRefreshControl } from "@/components/BrowsingRefreshControl";
 import { PageHeading } from "@/components/PageHeading";
-import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { type SubmitEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -192,7 +192,7 @@ export function ChartMetricPage({
   const choosePreset = (preset: Exclude<ChartPreset, "custom">) => {
     updateSearch({ range: preset, interval: search.interval });
   };
-  const submitCustom = (event: FormEvent<HTMLFormElement>) => {
+  const submitCustom = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const from = utcDateStart(fromDate);
     const to = utcDateEnd(toDate);

@@ -1,6 +1,6 @@
 import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 import { Download, ArrowRight } from "lucide-react";
@@ -31,7 +31,7 @@ export function SourcifyImportForm({
   const [formError, setFormError] = useState<string>();
   const submission = useImportSourcifyContract(onSubmitted);
 
-  const submit = (event: FormEvent) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submission.isPending || !auth.enabled || !auth.session.authenticated) return;
     setFormError(undefined);

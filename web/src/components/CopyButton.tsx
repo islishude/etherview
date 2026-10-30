@@ -5,21 +5,8 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export async function copyTextToClipboard(value: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  textarea.setAttribute("readonly", "");
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  document.body.removeChild(textarea);
-  if (!copied) throw new Error("fallback copy failed");
+  if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
+  await navigator.clipboard.writeText(value);
 }
 
 export function CopyButton({

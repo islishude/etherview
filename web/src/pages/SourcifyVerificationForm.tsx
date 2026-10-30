@@ -1,6 +1,6 @@
 import { Message } from "@/components/Message";
 import { SelectControl } from "@/components/SelectControl";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
 import { useSubmitSourcifyVerification } from "@/api/browserVerification";
@@ -85,7 +85,7 @@ export function SourcifyVerificationForm({
     setConsent(false);
   }, [identity]);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy || !auth.enabled || !auth.session.authenticated) return;
     setFormError(undefined);
