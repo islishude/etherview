@@ -25,7 +25,7 @@
     "priceOracleSourceSha256": "f79df80b515465dec44cc6c42757134690cd7a427695743f56c275c5ca0dadc3",
     "billingSourceSha256": "fbd57d3959abf7ffe8b043ff7170fc550b991c13718d976af441b37a452c34fa"
   },
-  "allocationSha256": "93957f08154c84696bae861bfb5b24bf09351ed32bf37d42624577a5fedcac0e",
+  "allocationSha256": "85ec0e8553fb3613cea5b206c66792947a60279daa32e238d99afa94acfc0958",
   "sources": {
     "accountAbstraction": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410",
     "ens": "9b034936a42f462fc04bc0a929a419ede5e18d59"
@@ -1867,7 +1867,7 @@
     },
     "BaseRegistrarImplementation": {
       "address": "0x43ca3d2c94be00692d207c6a1e60d8b325c6f12f",
-      "codeHash": "0x9ebd40ee693d23d71b9ee362b46f988916a2c3cabdc8ca0495dee8e4448ff0b7",
+      "codeHash": "0x92adcd1b9e461c43f68586a64be50b633f89b2dc94871a1227ea1762a7028b7e",
       "abi": [
         {
           "inputs": [
@@ -2601,7 +2601,7 @@
     },
     "ReverseRegistrar": {
       "address": "0xb09da8a5b236fe0295a345035287e80bb0008290",
-      "codeHash": "0xbdad61df46aa3b1a66e826cccb134b7ebf1432ed0412abcb3259a356788a1387",
+      "codeHash": "0x523a8641d97a3b39ba832959fa1d5a5084086457a9a2251b2b84ef3c5e06c0a1",
       "abi": [
         {
           "inputs": [
@@ -2941,7 +2941,7 @@
     },
     "DefaultReverseRegistrar": {
       "address": "0x6d925938edb8a16b3035a4cf34faa090f490202a",
-      "codeHash": "0x3d13f8070a1dbcadac6e8b8c40350706372ee2790e87a95ab632855d2395610a",
+      "codeHash": "0x109646e7c50d71ed2e7a7d5139ca7690659f5ca83de8afbd9ae4339561292fc0",
       "abi": [
         {
           "inputs": [],
@@ -3422,7 +3422,7 @@
     },
     "PreviewRegistrarController": {
       "address": "0xa7c8b0d74b68ef10511f27e97c379fb1651e1ed2",
-      "codeHash": "0xe45c69715f0e9bf2b9b7b9427fb723722e18df8763e871d1041e7e33c711e14e",
+      "codeHash": "0x6949fefd53e12804ff55ca23af2f6873ed558db162d5d4763c40b443d91c5555",
       "abi": [
         {
           "inputs": [
