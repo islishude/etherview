@@ -262,6 +262,11 @@ describe("P50 capability pages", () => {
       await screen.findByRole("heading", { name: "<img src=x onerror=alert(1)>", level: 1 }),
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "NFT instance", level: 2 })).toBeVisible();
+    const instance = within(screen.getByRole("region", { name: "NFT instance" }));
+    expect(instance.getByText("Collection name").nextElementSibling).toHaveTextContent(
+      "Collectible contract",
+    );
+    expect(instance.getByText("Collection symbol").nextElementSibling).toHaveTextContent("TOK");
     expect(await screen.findByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
     const metadataRegion = screen.getByRole("region", { name: "NFT metadata" });
     expect(within(metadataRegion).getByText("**plain text only**")).toBeVisible();
@@ -341,6 +346,11 @@ describe("P50 capability pages", () => {
     expect(
       await screen.findByRole("heading", { name: "Shared collectible #42", level: 1 }),
     ).toBeVisible();
+    const instance = within(screen.getByRole("region", { name: "NFT instance" }));
+    expect(instance.getByText("Collection name").nextElementSibling).toHaveTextContent(
+      "Shared collectible",
+    );
+    expect(instance.getByText("Collection symbol").nextElementSibling).toHaveTextContent("TOK");
     expect(screen.getByText(/ERC-1155 tokens may have multiple holders/)).toBeVisible();
     expect(screen.getByText("The metadata document has no image link")).toBeVisible();
     expect(screen.getByText(/No standard scalar traits are available/)).toBeVisible();
@@ -354,7 +364,12 @@ describe("P50 capability pages", () => {
         const path = String(input);
         if (path === `/api/v1/tokens/${address}`) {
           return Response.json({
-            data: { ...tokenContract("Unsafe collectible"), standard: "erc1155" },
+            data: {
+              ...tokenContract("Unsafe collectible"),
+              name: undefined,
+              symbol: undefined,
+              standard: "erc1155",
+            },
             meta,
           });
         }
@@ -389,6 +404,9 @@ describe("P50 capability pages", () => {
       within(metadataRegion).getByText("No metadata document is inferred from this state."),
     ).toBeVisible();
     expect(within(metadataRegion).queryByText("Traits")).toBeNull();
+    const instance = within(screen.getByRole("region", { name: "NFT instance" }));
+    expect(instance.getByText("Collection name").nextElementSibling).toHaveTextContent("—");
+    expect(instance.getByText("Collection symbol").nextElementSibling).toHaveTextContent("—");
   });
 
   it("keeps prior canonical metadata visible with a bilingual refresh warning", async () => {

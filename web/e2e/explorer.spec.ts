@@ -1308,6 +1308,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
     page.getByRole("heading", { name: "NFT instance", exact: true, level: 2 }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
+  const nftInstance = page.getByRole("region", { name: "NFT instance" });
+  await expect(nftInstance.getByText("Example Collectible", { exact: true })).toBeVisible();
+  await expect(nftInstance.getByText("ECO", { exact: true })).toBeVisible();
   const metadataRegion = page.getByRole("region", { name: "NFT metadata" });
   await expect(
     metadataRegion.getByText("Plain fixture metadata; no image is embedded."),
@@ -1340,6 +1343,8 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   const chineseMetadataRegion = page.getByRole("region", { name: "NFT 元数据" });
+  await expect(page.getByRole("region", { name: "NFT 实例" }).getByText("合集名称")).toBeVisible();
+  await expect(page.getByRole("region", { name: "NFT 实例" }).getByText("合集符号")).toBeVisible();
   await activateInView(
     chineseMetadataRegion.getByRole("button", {
       name: `检查未经验证的外部图片目标 ${nftImageURL}`,
@@ -1561,18 +1566,51 @@ test("capability pages survive the embedded binary boundary in both accessible t
   expect(externalRequests).toEqual([]);
 });
 
+test("token address links lead to shareable tabs with keyboard and history navigation", async ({
+  page,
+}) => {
+  await page.goto("/tokens");
+  const addressLink = page.getByRole("link", { name: "0x111111…111111", exact: true });
+  await expect(addressLink).toHaveAttribute("title", address);
+  await addressLink.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(`/token/${address}`);
+  const tabs = page.getByRole("navigation", { name: "Token sections" });
+  await expect(tabs.getByRole("link", { name: "Transfers" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(tabs.getByRole("link", { name: "Token holders" })).toHaveCount(0);
+  const details = tabs.getByRole("link", { name: "Details", exact: true });
+  await details.focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(`/token/${address}?tab=details`);
+  await expect(page.getByRole("heading", { name: "Token metadata" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Token metadata" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Token events" })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "Token metadata" })).toBeVisible();
+  await assertA11yAndNoOverflow(page, "token details navigation");
+});
+
 test("authoritative ERC-20 holders remain accessible and bilingual at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/token/${holderToken}`);
   await expect(page.getByRole("heading", { name: "Holder Token", level: 1 })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Token summary" }).getByText("Holder count"),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Token holders", exact: true }).click();
   const holders = page.getByRole("region", { name: "Token holders" });
-  await expect(holders.getByText("Authoritative holder snapshot")).toBeVisible();
-  await expect(holders.getByText("Holder count")).toBeVisible();
   await expect(holders.getByRole("link", { name: "0x222222…222222" })).toBeVisible();
   await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in English");
   await page.getByRole("button", { name: "切换到中文" }).click();
   await expect(page.getByRole("region", { name: "代币持有人" })).toBeVisible();
-  await expect(page.getByText("权威持有人快照")).toBeVisible();
+  await expect(page.getByText("持有人数量")).toBeVisible();
+  await page.getByRole("link", { name: "详情", exact: true }).click();
+  await expect(page.getByText("快照区块哈希", { exact: true })).toBeVisible();
   await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in Chinese");
 });
 

@@ -402,15 +402,17 @@ describe("embedded explorer shell", () => {
     renderExplorer(`/token/${address}`);
 
     expect(await screen.findByRole("heading", { name: "Example Dollar", level: 1 })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Token metadata", level: 2 })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Token summary", level: 2 })).toBeVisible();
     expect(screen.getByText("EXD")).toBeVisible();
     expect(await screen.findByRole("heading", { name: "Token events", level: 2 })).toBeVisible();
-    expect(await screen.findByRole("heading", { name: "Token holders", level: 2 })).toBeVisible();
-    expect(screen.getByText("Authoritative holder snapshot")).toBeVisible();
     expect(screen.getByRole("link", { name: "0x787878…787878" })).toHaveAttribute(
       "href",
       `/tx/${transactionHash}?tab=overview`,
     );
+    await userEvent.click(screen.getByRole("link", { name: "Token holders" }));
+    expect(await screen.findByRole("heading", { name: "Token holders", level: 2 })).toBeVisible();
+    await userEvent.click(screen.getByRole("link", { name: "Details" }));
+    expect(await screen.findByRole("heading", { name: "Token metadata", level: 2 })).toBeVisible();
     expect(screen.getAllByText("1", { exact: true }).length).toBeGreaterThan(0);
     expect(fetcher).toHaveBeenCalledWith(`/api/v1/tokens/${address}`, expect.anything());
     expect(fetcher).toHaveBeenCalledWith(

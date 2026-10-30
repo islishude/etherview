@@ -14,6 +14,7 @@ export function EntityPage({
   addressTab,
   addressAsset,
   blockTab,
+  tokenTab,
 }: {
   kind: EntityKind;
   identifier: string;
@@ -22,6 +23,7 @@ export function EntityPage({
   addressTab?: string;
   addressAsset?: AddressAssetTab;
   blockTab?: string;
+  tokenTab?: "transfers" | "holders" | "details";
 }) {
   switch (kind) {
     case "block":
@@ -37,7 +39,7 @@ export function EntityPage({
         />
       );
     case "token":
-      return <TokenDetailPage address={identifier} />;
+      return <TokenDetailPage address={identifier} tab={tokenTab} />;
     case "nft":
       return <NFTDetailPage address={identifier} tokenID={secondary ?? ""} />;
   }

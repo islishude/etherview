@@ -1,3 +1,4 @@
+import "@/i18n/resources/tokenPage";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { CircleAlert, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -13,10 +14,10 @@ import {
   useTokenHolders,
   useTokenTransfers,
 } from "@/api/hooks";
-import type { NFTMetadata, TokenEvent, TokenHolder, TokenHolderMeta } from "@/api/types";
+import type { NFTMetadata, TokenEvent, TokenHolder } from "@/api/types";
 import { ApiError } from "@/api/client";
 import { formatInteger, formatTokenAmount, shorten } from "@/components/format";
-import { CopyButton } from "@/components/CopyButton";
+import { CopyableField, CopyButton } from "@/components/CopyButton";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
 import {
@@ -34,14 +35,32 @@ import {
   type Translate,
 } from "./pages";
 
-export function TokenDetailPage({ address }: { address: string }) {
+export function TokenDetailPage({
+  address,
+  tab = "transfers",
+}: {
+  address: string;
+  tab?: "transfers" | "holders" | "details";
+}) {
   const { i18n, t } = useTranslation();
   const transferPager = useBrowsingCursorHistory(`token-transfers:${address}`);
   const holderPager = useCursorHistory(`token-holders:${address}`);
   const token = useToken(address);
-  const transfers = useTokenTransfers(address, transferPager.request, true, CORE_PAGE_SIZE);
+  const activeTab =
+    tab === "holders" && token.data && token.data.standard !== "erc20" ? "transfers" : tab;
+  const transfers = useTokenTransfers(
+    address,
+    transferPager.request,
+    activeTab === "transfers",
+    CORE_PAGE_SIZE,
+  );
   const holders = useTokenHolders(address, holderPager.request, token.data?.standard === "erc20");
   const locale = i18n.resolvedLanguage ?? "en";
+  const holderData = holders.error ? undefined : holders.data;
+  const holderMeta = holderData?.meta;
+  const supply = holderMeta?.total_supply ?? token.data?.total_supply;
+  const supplyBlock = holderMeta?.snapshot_block_number ?? token.data?.observed_block_number;
+  const supplyHash = holderMeta?.snapshot_block_hash ?? token.data?.observed_block_hash;
 
   return (
     <Page
@@ -51,16 +70,82 @@ export function TokenDetailPage({ address }: { address: string }) {
     >
       <QueryNotice loading={token.isPending} error={token.error} />
       {token.data && (
-        <DetailList label={t("detail.tokenMetadata")}>
+        <DetailList label={t("tokenPage.summary")}>
           <Detail label={t("detail.name")} value={token.data.name} />
           <Detail label={t("detail.symbol")} value={token.data.symbol} />
           <Detail label={t("table.standard")} value={tokenStandardLabel(token.data.standard, t)} />
+          <Detail
+            label={t("tokenPage.contract")}
+            mono
+            value={
+              <CopyableField value={address}>
+                <Link to="/address/$address" params={{ address }} search={{}}>
+                  {address}
+                </Link>
+              </CopyableField>
+            }
+          />
+          <Detail
+            label={t("tokenPage.totalSupply")}
+            value={
+              <>
+                <span>{formatTokenAmount(supply, token.data.decimals, locale)}</span>
+                {supply !== undefined && token.data.decimals === undefined && (
+                  <small> {t("tokenPage.rawUnits")}</small>
+                )}
+                {supply !== undefined && supplyHash && (
+                  <small className="table-secondary">
+                    {t(holderMeta ? "tokenPage.snapshotSupply" : "tokenPage.observedSupply")}{" "}
+                    <Link to="/blocks/$blockID" params={{ blockID: supplyHash }}>
+                      {formatInteger(supplyBlock, locale)}
+                    </Link>
+                  </small>
+                )}
+              </>
+            }
+          />
+          {token.data.standard === "erc20" && (
+            <Detail
+              label={t("tokenHolder.count")}
+              value={
+                <>
+                  <span>{formatInteger(holderMeta?.holder_count, locale)}</span>
+                  {activeTab !== "holders" && (
+                    <QueryNotice compact loading={holders.isPending} error={holders.error} />
+                  )}
+                </>
+              }
+            />
+          )}
+        </DetailList>
+      )}
+      <nav className="transaction-tabs" aria-label={t("tokenPage.sections")}>
+        {(
+          [
+            ["transfers", t("tokenPage.transfers")],
+            ...(token.data?.standard === "erc20"
+              ? ([["holders", t("tokenHolder.title")]] as const)
+              : []),
+            ["details", t("tokenPage.details")],
+          ] as const
+        ).map(([tabID, label]) => (
+          <Link
+            key={tabID}
+            to="/token/$address"
+            params={{ address }}
+            search={{ tab: tabID }}
+            activeProps={{ className: "" }}
+            className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+            aria-current={activeTab === tabID ? "page" : undefined}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
+      {activeTab === "details" && token.data && (
+        <DetailList label={t("detail.tokenMetadata")}>
           <Detail label={t("table.confidence")} value={confidenceLabel(token.data.confidence, t)} />
           <Detail label={t("detail.decimals")} value={token.data.decimals?.toString()} />
-          <Detail
-            label={t("table.supply")}
-            value={formatInteger(token.data.total_supply, locale)}
-          />
           <Detail
             label={t("table.metadata")}
             value={stageStateLabel(token.data.metadata_state, t)}
@@ -92,40 +177,58 @@ export function TokenDetailPage({ address }: { address: string }) {
               </Link>
             }
           />
+          {holderMeta && (
+            <>
+              <Detail
+                label={t("tokenHolder.snapshot")}
+                value={formatInteger(holderMeta.snapshot_block_number, locale)}
+              />
+              <Detail
+                label={t("tokenHolder.snapshotHash")}
+                mono
+                value={
+                  <Link to="/blocks/$blockID" params={{ blockID: holderMeta.snapshot_block_hash }}>
+                    {holderMeta.snapshot_block_hash}
+                  </Link>
+                }
+              />
+            </>
+          )}
         </DetailList>
       )}
-      {token.data?.standard === "erc20" && (
+      {activeTab === "holders" && token.data?.standard === "erc20" && (
         <TokenHolders
           busy={holders.isFetching}
           decimals={token.data.decimals}
           error={holders.error}
           hasNext={Boolean(holders.data?.next_cursor)}
           hasPrevious={holderPager.hasPrevious}
-          holders={holders.data?.items}
+          holders={holderData?.items}
           loading={holders.isPending}
           locale={locale}
-          meta={holders.data?.meta}
           onNext={() => holderPager.next(holders.data?.next_cursor)}
           onPrevious={holderPager.previous}
           onReset={holderPager.reset}
           page={holderPager.page}
         />
       )}
-      <BrowsingScope status={transfers.data?.meta.browsing}>
-        <TokenTransfers
-          busy={transfers.isFetching}
-          error={transfers.error}
-          events={transfers.data?.items}
-          hasNext={Boolean(transfers.data?.next_cursor)}
-          hasPrevious={transferPager.hasPrevious}
-          loading={transfers.isPending}
-          locale={locale}
-          onNext={() => transferPager.next(transfers.data?.next_cursor)}
-          onPrevious={transferPager.previous}
-          onReset={transferPager.reset}
-          page={transferPager.page}
-        />
-      </BrowsingScope>
+      {activeTab === "transfers" && (
+        <BrowsingScope status={transfers.data?.meta.browsing}>
+          <TokenTransfers
+            busy={transfers.isFetching}
+            error={transfers.error}
+            events={transfers.data?.items}
+            hasNext={Boolean(transfers.data?.next_cursor)}
+            hasPrevious={transferPager.hasPrevious}
+            loading={transfers.isPending}
+            locale={locale}
+            onNext={() => transferPager.next(transfers.data?.next_cursor)}
+            onPrevious={transferPager.previous}
+            onReset={transferPager.reset}
+            page={transferPager.page}
+          />
+        </BrowsingScope>
+      )}
     </Page>
   );
 }
@@ -139,7 +242,6 @@ function TokenHolders({
   holders,
   loading,
   locale,
-  meta,
   onNext,
   onPrevious,
   onReset,
@@ -153,7 +255,6 @@ function TokenHolders({
   holders?: TokenHolder[];
   loading: boolean;
   locale: string;
-  meta?: TokenHolderMeta;
   onNext: () => void;
   onPrevious: () => void;
   onReset: () => void;
@@ -164,20 +265,6 @@ function TokenHolders({
     <section className="detail-section" aria-labelledby="token-holders-title">
       <h2 id="token-holders-title">{t("tokenHolder.title")}</h2>
       <QueryNotice loading={loading} error={error} onReset={onReset} />
-      {meta && (
-        <DetailList label={t("tokenHolder.summary")}>
-          <Detail label={t("tokenHolder.count")} value={formatInteger(meta.holder_count, locale)} />
-          <Detail
-            label={t("table.supply")}
-            value={formatTokenAmount(meta.total_supply, decimals, locale)}
-          />
-          <Detail
-            label={t("tokenHolder.snapshot")}
-            value={formatInteger(meta.snapshot_block_number, locale)}
-          />
-          <Detail label={t("tokenHolder.snapshotHash")} mono value={meta.snapshot_block_hash} />
-        </DetailList>
-      )}
       {holders && holders.length === 0 && (
         <p className="empty-result" role="status">
           {t("tokenHolder.empty")}
@@ -357,6 +444,8 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
       <QueryNotice loading={token.isPending} error={token.error} />
       {token.data && isNFTStandard(token.data.standard) ? (
         <DetailList label={t("nftMetadata.instance")}>
+          <Detail label={t("tokenPage.collectionName")} value={token.data.name} />
+          <Detail label={t("tokenPage.collectionSymbol")} value={token.data.symbol} />
           <Detail
             label={t("page.token")}
             mono
