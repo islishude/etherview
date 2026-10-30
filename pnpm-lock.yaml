@@ -260,8 +260,8 @@ importers:
         specifier: 5.6.1
         version: 5.6.1
       '@openzeppelin/contracts-v4':
-        specifier: npm:@openzeppelin/contracts@4.9.3
-        version: '@openzeppelin/contracts@4.9.3'
+        specifier: npm:@openzeppelin/contracts@4.9.6
+        version: '@openzeppelin/contracts@4.9.6'
       solc:
         specifier: 0.8.30
         version: 0.8.30(debug@4.4.3(supports-color@7.2.0))
@@ -929,8 +929,8 @@ packages:
     peerDependencies:
       '@openzeppelin/contracts': 5.6.1
 
-  '@openzeppelin/contracts@4.9.3':
-    resolution: {integrity: sha512-He3LieZ1pP2TNt5JbkPA4PNT9WC3gOTOlDcFGJW4Le4QKqwmiNJCRt44APfxMxvq7OugU/cqYuPcSBzOw38DAg==}
+  '@openzeppelin/contracts@4.9.6':
+    resolution: {integrity: sha512-xSmezSupL+y9VkHZJGDoCBpmnB2ogM13ccaYDWqJTfS3dbuHkgjuwDFUmaFauBCboQMGB/S5UqUl2y54X99BmA==}
 
   '@openzeppelin/contracts@5.6.1':
     resolution: {integrity: sha512-Ly6SlsVJ3mj+b18W3R8gNufB7dTICT105fJhodGAGgyC2oqnBAhqSiNDJ8V8DLY05cCz81GLI0CU5vNYA1EC/w==}
@@ -3776,7 +3776,7 @@ snapshots:
     dependencies:
       '@openzeppelin/contracts': 5.6.1
 
-  '@openzeppelin/contracts@4.9.3': {}
+  '@openzeppelin/contracts@4.9.6': {}
 
   '@openzeppelin/contracts@5.6.1': {}
 
