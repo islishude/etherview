@@ -215,6 +215,8 @@ it.each(["erc721", "erc1155", "unknown"])(
     expect(tabs().queryByRole("link", { name: "Token holders" })).not.toBeInTheDocument();
     expect(summary().queryByText("Holder count")).not.toBeInTheDocument();
     expect(resourceRequests("holders")).toHaveLength(0);
+    expect(field("Name")).toHaveTextContent("Example Token");
+    expect(field("Symbol")).toHaveTextContent("EXT");
     expect(field("Total supply")).toHaveTextContent("(raw units)");
   },
 );

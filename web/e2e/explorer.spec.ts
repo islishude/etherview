@@ -1308,6 +1308,9 @@ test("capability pages survive the embedded binary boundary in both accessible t
     page.getByRole("heading", { name: "NFT instance", exact: true, level: 2 }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "NFT ownership", level: 2 })).toBeVisible();
+  const nftInstance = page.getByRole("region", { name: "NFT instance" });
+  await expect(nftInstance.getByText("Example Collectible", { exact: true })).toBeVisible();
+  await expect(nftInstance.getByText("ECO", { exact: true })).toBeVisible();
   const metadataRegion = page.getByRole("region", { name: "NFT metadata" });
   await expect(
     metadataRegion.getByText("Plain fixture metadata; no image is embedded."),
@@ -1340,6 +1343,8 @@ test("capability pages survive the embedded binary boundary in both accessible t
 
   await activateInView(page.getByRole("button", { name: "切换到中文" }));
   const chineseMetadataRegion = page.getByRole("region", { name: "NFT 元数据" });
+  await expect(page.getByRole("region", { name: "NFT 实例" }).getByText("合集名称")).toBeVisible();
+  await expect(page.getByRole("region", { name: "NFT 实例" }).getByText("合集符号")).toBeVisible();
   await activateInView(
     chineseMetadataRegion.getByRole("button", {
       name: `检查未经验证的外部图片目标 ${nftImageURL}`,

@@ -71,6 +71,7 @@ export function TokenDetailPage({
       <QueryNotice loading={token.isPending} error={token.error} />
       {token.data && (
         <DetailList label={t("tokenPage.summary")}>
+          <Detail label={t("detail.name")} value={token.data.name} />
           <Detail label={t("detail.symbol")} value={token.data.symbol} />
           <Detail label={t("table.standard")} value={tokenStandardLabel(token.data.standard, t)} />
           <Detail
@@ -443,6 +444,8 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
       <QueryNotice loading={token.isPending} error={token.error} />
       {token.data && isNFTStandard(token.data.standard) ? (
         <DetailList label={t("nftMetadata.instance")}>
+          <Detail label={t("tokenPage.collectionName")} value={token.data.name} />
+          <Detail label={t("tokenPage.collectionSymbol")} value={token.data.symbol} />
           <Detail
             label={t("page.token")}
             mono
