@@ -666,10 +666,10 @@ Name detail and search compose immutable profile and resolution references in
 one read-only snapshot; their validity windows are independent. Names SSE and
 local expiry withdraw stale fields without manufacturing a new negative.
 Coverage transitions emit `status` with `reason: names_progress`; they do not
-withdraw valid names. Publication/directory events refresh visible names in the
-background and replace batches atomically. Explicit invalidation, reorg and
-reconnect withdraw immediately before rereading; failed refreshes never extend
-observation validity.
+withdraw valid names. Publication/directory events mark snapshots for manual
+refresh. Explicit invalidation, reorg and reconnect withdraw names without
+rereading; local expiry still applies. Explicit refresh replaces requested
+batches atomically and failed reads never extend observation validity.
 
 Name history references core logs and captures event-position protocol state
 under the collector's canonical/source fence. Node identities and event-time v2
@@ -685,7 +685,7 @@ source revision and name-association watermark. Newer blocks preserve a page;
 reorgs or late associations reject the old traversal. History remains available
 when current registration/resolution observations expire. The compact name page
 uses the existing stream; `names` with `history=true, invalidated=false` requests
-a background refresh without withdrawing current profile fields.
+a manual-refresh notice without withdrawing current profile fields.
 
 ## Public Boundaries
 
@@ -1268,6 +1268,10 @@ It stores compressed completed ranges and per-block monotonic revisions. All
 reads still join the authoritative published-stage view. Snapshot-range changes
 invalidate list cursors, including replay and same-hash reattachment; newer
 blocks above the snapshot do not. Publication changes emit existing `status`
-events so the single browser SSE connection clears revoked cached results and
-refreshes these queries. Search, exports and Etherscan retain their strict
+events so the single browser SSE connection marks affected snapshots and
+blocks stale cursors without requests or page resets. A page refresh button
+updates the overview and visible tab and restarts only its visible pagers.
+Only home and chain status refresh from events; verification and payment jobs
+retain terminal polling. Navigation can load stale queries; focus and network
+recovery do not. Search, exports and Etherscan retain their strict
 snapshot and coverage contracts.

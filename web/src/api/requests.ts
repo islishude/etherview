@@ -12,7 +12,7 @@ export function useBlockRequests(
 ) {
   return useQuery({
     queryKey: ["block-requests", hash, type, page],
-    meta: statusQueryMeta,
+    meta: { ...statusQueryMeta, pagination: page.identity },
     enabled: Boolean(hash),
     queryFn: async ({ signal }) =>
       requireEnvelope(
@@ -23,7 +23,6 @@ export function useBlockRequests(
           query: { request_type: type || undefined, cursor: page.cursor, limit: 50 },
         }),
       ),
-    refetchInterval: 12000,
     retry: false,
   });
 }

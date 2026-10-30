@@ -32,7 +32,8 @@ values. Preserve the import order unless the intended cascade change is tested.
 `explorer.css` imports these modules in order:
 
 1. `explorer/shared.css` — page layout, panels, status badges, and notices.
-2. `explorer/home.css` — home metrics and recent activity.
+2. `explorer/home.css` — shared panel headings, consensus metrics and recent activity.
+   `pages/HomePage.css` loads home summary and ENS participant layout with the route.
 3. `explorer/tables.css` — tables and list notes.
 4. `explorer/chain.css` — coverage and reorg context.
 5. `explorer/pending.css` — pending snapshots, fees, and pagination.
@@ -112,8 +113,11 @@ link activation close it. Keep wallet connection and SIWE account identity
 separate, preserve capability-gated links, and never add initial imports of
 route-only dependencies for shell decoration.
 
-Shared page titles use `PageHeading` from `DesignPrimitives`; domain pages retain
-their own identifiers and summary content. The account, contract and transaction
+Shared page titles use `components/PageHeading`; domain pages retain
+their own identifiers and summary content. Manual refresh occupies the heading action
+slot; its route-loaded styles live in `api/browsingRefresh.css`. Keep stale status
+compact, preserve its accessible description on mobile, and expose the hint on
+keyboard focus with Escape dismissal. The account, contract and transaction
 tab primitives share the underline rules in `explorer/entities.css`. Selected tabs must
 retain visible text and keyboard focus rather than relying on a filled surface.
 Use `numeric` for right-aligned quantities without rounding source strings.

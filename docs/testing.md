@@ -38,7 +38,7 @@ not satisfy full historical coverage; direct resolver success alone does not
 satisfy the publication gate.
 
 `make test-e2e` covers the generated-client ENS contract, existing single SSE
-stream, proactive publication replacement, exact address disclosure, expiry
+stream, explicit manual publication replacement, exact address disclosure, expiry
 without requests, bilingual accessibility and mobile layout. Unit tests cover
 multi-chunk atomicity and stale responses. API tests reject ENS calls and writes,
 including enqueue and snapshot inserts, without changing authentication/billing.
@@ -349,7 +349,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   launched browser with blank pages still requires console/runtime diagnosis.
   CI remains on the ordinary multi-process browser.
   The same gate verifies route-lazy delivery, one durable browser event stream,
-  event-driven home/list refresh, on-demand CodeMirror, and embedded
+  event-driven home/status and manual list refresh, on-demand CodeMirror, and embedded
   precompressed asset behavior without console or CSP failures.
   It also browses the ERC-4337 global list, detail, transaction activity, and
   address activity against the generated client, including a decoded failure
@@ -1257,3 +1257,21 @@ widget validation is a separate operator smoke test.
 ## Preview application contracts acceptance
 
 See [Preview application contracts acceptance](../preview/docs/testing.md#preview-application-contracts-acceptance).
+
+## Manual explorer refresh acceptance
+
+P50-T84 restricts passive requests to home/status and verification/payment task
+progress. Test heads, publication bursts, reorgs, initial SSE opening, native
+reconnect and online recovery: ordinary views must retain request counts and
+pagination. In-range publications mark snapshots; out-of-range events do not.
+Manual refresh preserves route, tab, filters and drafts, resets visible pagers
+only, and rejects late cancelled results. Verify failed refresh retry, invalid
+cursor blocking, binding guards, identity-mismatch hiding and ENS expiry without
+requests. New addresses must not renew existing names.
+
+Run focused frontend/browser regressions followed by `make web-test`,
+`make web-lint`, `make test-e2e`, `make generate-check`, `make docs-check` and
+`make plan-check`. Browser acceptance includes both languages and mobile layout.
+Check title alignment, mobile overflow, status indicators, keyboard activation
+and focus/Escape tooltip behavior in `manual-refresh.spec.ts`. These checks
+establish local behavior, not remote CI or live chain acceptance.

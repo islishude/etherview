@@ -1,38 +1,30 @@
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { getName } from "@/api/heyapi/sdk.gen";
 import type { NameField, NameObservation } from "@/api/heyapi/types.gen";
 import { apiClient, requireEnvelope } from "@/api/client";
 import { CopyButton, CopyableField } from "@/components/CopyButton";
+import { BrowsingRefreshControl } from "@/components/BrowsingRefreshControl";
 import { QueryNotice } from "@/components/QueryNotice";
-import { subscribeNames } from "@/ens/nameEvents";
+import { useQueryWithdrawn } from "@/api/browsingHooks";
 import { expirationText, freshNameDetail, nameDeadlines } from "@/ens/nameDetails";
 import { NameHistory } from "@/ens/NameHistory";
 import "./NamePage.css";
 
 export function NamePage({ name }: { name: string }) {
   const { t, i18n } = useTranslation();
-  const client = useQueryClient();
   const [now, setNow] = useState(Date.now);
-  const [invalid, setInvalid] = useState(false);
+  const invalid = useQueryWithdrawn(["name-detail", name]);
   const query = useQuery({
     queryKey: ["name-detail", name],
+    meta: { chainEvents: ["names", "reorg"] },
     queryFn: async ({ signal }) =>
       requireEnvelope(await getName({ client: apiClient, signal, path: { name } })).data,
     retry: false,
   });
-  useEffect(
-    () =>
-      subscribeNames(client, (change) => {
-        if (change === "invalidate") setInvalid(true);
-        void client.invalidateQueries({ queryKey: ["name-detail", name] });
-      }),
-    [client, name],
-  );
   useEffect(() => {
-    setInvalid(false);
     setNow(Date.now());
   }, [query.dataUpdatedAt]);
   useEffect(() => {
@@ -53,6 +45,7 @@ export function NamePage({ name }: { name: string }) {
         <div className="name-title-row">
           <h1>{detail?.name ?? name}</h1>
           <CopyButton value={detail?.name ?? name} />
+          <BrowsingRefreshControl />
         </div>
         {detail?.state === "indexed" && (
           <span className={`name-status name-status-${detail.registration_state}`}>

@@ -19,8 +19,8 @@ export function NameHistory({ name }: { name: string }) {
   const client = useQueryClient();
   const pager = useCursorHistory(`name-history:${name}`);
   const [newRecords, setNewRecords] = useState(false);
-  const { hasPrevious, reset: resetHistory } = pager;
   const query = useQuery({
+    meta: { chainEvents: ["names", "reorg"], pagination: pager.request.identity },
     queryKey: ["name-history", name, pager.request],
     queryFn: async ({ signal }) =>
       requireEnvelope(
@@ -36,15 +36,13 @@ export function NameHistory({ name }: { name: string }) {
   useEffect(
     () =>
       subscribeNames(client, (change) => {
-        if (change === "invalidate" || !hasPrevious) {
-          void client.cancelQueries({ queryKey: ["name-history", name] });
-          void client.cancelQueries({ queryKey: ["name-history-events", name] });
-          resetHistory();
-          setNewRecords(false);
-        } else setNewRecords(true);
+        if (change === "invalidate" || change === "refresh") setNewRecords(true);
       }),
-    [client, name, hasPrevious, resetHistory],
+    [client, name],
   );
+  useEffect(() => {
+    if (query.isSuccess) setNewRecords(false);
+  }, [query.dataUpdatedAt, query.isSuccess]);
   const data = query.data?.data;
   const reset = () => {
     pager.reset();
@@ -192,6 +190,7 @@ function HistoryEvents({
   const { t } = useTranslation();
   const pager = useCursorHistory(`${name}:${snapshot}:${item.block_hash}:${item.transaction_hash}`);
   const query = useQuery({
+    meta: { chainEvents: ["names", "reorg"], pagination: pager.request.identity },
     queryKey: [
       "name-history-events",
       name,

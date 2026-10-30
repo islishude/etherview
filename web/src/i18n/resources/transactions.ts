@@ -2,8 +2,6 @@ export const transactionsResources = {
   en: {
     nativeTransfer: {
       title: "Native transfers",
-      source:
-        "Protocol ETH transfer logs after Amsterdam. Excludes fees, withdrawals and historical trace transfers.",
       unavailable: "Not applicable before Amsterdam.",
       empty: "No native transfers in this indexed range.",
       coverage: "Indexed blocks {{start}}–{{end}}",
@@ -314,7 +312,6 @@ export const transactionsResources = {
   zh: {
     nativeTransfer: {
       title: "原生币转账",
-      source: "Amsterdam 后的协议 ETH 转账日志，不包含手续费、提款和历史 trace 转账。",
       unavailable: "Amsterdam 升级前不适用。",
       empty: "此索引范围内没有原生币转账。",
       coverage: "已索引区块 {{start}}–{{end}}",

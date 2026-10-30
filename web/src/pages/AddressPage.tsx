@@ -45,6 +45,7 @@ import {
   shorten,
 } from "@/components/format";
 import { CopyableField } from "@/components/CopyButton";
+import { usePrimaryName } from "@/ens/AddressNamesProvider";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { QueryNotice } from "@/components/QueryNotice";
 import { UserOperationTable } from "@/components/UserOperationTable";
@@ -739,11 +740,12 @@ function AddressTransactions({
                 <td>
                   <TransactionStatusBadge showFinality={false} transaction={transaction} />
                 </td>
-                <AddressCell address={transaction.from} currentAddress={address} />
+                <AddressCell nameOnly address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
                 />
                 <AddressCell
+                  nameOnly
                   address={destination}
                   created={!transaction.to && Boolean(destination)}
                   currentAddress={address}
@@ -822,7 +824,7 @@ function AddressInternalTransactions({
                     {transaction.reverted ? <small>{t("activity.reverted")}</small> : null}
                   </span>
                 </td>
-                <AddressCell address={transaction.from} currentAddress={address} />
+                <AddressCell nameOnly address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
                 />
@@ -1166,12 +1168,15 @@ function AddressCell({
   address,
   created,
   currentAddress,
+  nameOnly = false,
 }: {
   address?: string;
   created?: boolean;
   currentAddress: string;
+  nameOnly?: boolean;
 }) {
   const { t } = useTranslation();
+  const primary = usePrimaryName(nameOnly ? (address ?? "") : "");
   if (!address) return <td>—</td>;
   return (
     <td>
@@ -1180,7 +1185,8 @@ function AddressCell({
           address={address}
           activity
           copy
-          link={!sameAddress(address, currentAddress)}
+          nameOnly={nameOnly}
+          link={Boolean(nameOnly && primary) || !sameAddress(address, currentAddress)}
         />
         {created ? <small>{t("activity.created")}</small> : null}
       </span>

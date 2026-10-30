@@ -1,7 +1,8 @@
 import { Activity, ArrowDown, ArrowRight, ArrowUp, CircleDot } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
-import { PageHeading } from "@/components/DesignPrimitives";
+import { BrowsingRefreshControl } from "@/components/BrowsingRefreshControl";
+import { PageHeading } from "@/components/PageHeading";
 import { FormEvent, lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -487,7 +488,7 @@ function ChartsPageFrame({
 }) {
   return (
     <div className="page-stack inner-page charts-page">
-      <PageHeading title={title} description={description} />
+      <PageHeading actions={<BrowsingRefreshControl />} title={title} description={description} />
       {children}
     </div>
   );

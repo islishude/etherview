@@ -6,7 +6,7 @@ export function useChainStatus(enabled = true) {
   return useQuery({
     queryKey: ["status"],
     enabled,
-    meta: { chainEvents: ["head", "reorg", "status", "names"] },
+    meta: { refreshPolicy: "live", chainEvents: ["head", "reorg", "status", "names"] },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(await getStatus({ client: apiClient, signal }));
       return {

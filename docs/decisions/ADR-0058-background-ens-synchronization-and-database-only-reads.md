@@ -139,10 +139,12 @@ incomplete-directory notice. No browser ENS RPC, extra EventSource or list polle
 Coverage catch-up/lag transitions emit `status` with `reason: names_progress`,
 not a name invalidation. Source revision/state changes and known dependency
 invalidations retain `names` with `invalidated: true`. Publication/directory
-`names` events request background rereads without first clearing still-valid
-observations; visible address batches replace atomically. True invalidation,
-reorg and reconnect withdraw before rereading, and invalid snapshots and local
-expiry still withdraw. Refresh failure never extends an observation's deadline.
+`names` events mark changed snapshots without background rereads. True
+invalidation, reorg and reconnect withdraw names without starting a request;
+invalid snapshots and local expiry still withdraw. Navigation, newly visible
+addresses and explicit manual refresh may load names, with each requested batch
+replaced atomically. New addresses never renew observations of existing rows.
+Refresh failure never extends an observation's deadline.
 Unknown or malformed name notifications are treated as invalidations. Scheduler
 invalidation of a candidate after known core-log/dependency changes emits one
 source invalidation in the same transaction as replacement jobs; ordinary
@@ -195,7 +197,8 @@ are not_set. Detail and search preserve independent observation metadata.
 
 The /name/$name route exposes Registrant, Controller, Expiration Time and Resolved
 Address. Primary names link to it; reverse/forward agreement remains mandatory.
-Use the existing single names SSE stream and local expiry timers, safe normalized
+Use the existing single names SSE stream for notices and withdrawal, manual
+refresh for current fields and history, local expiry timers, safe normalized
 URLs, bilingual/mobile layouts and independent address navigation/copy actions.
 No account-owned-name enumeration or registration management is introduced.
 

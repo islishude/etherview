@@ -72,6 +72,8 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                             |
 | P40-T25 | done   | P40-T08, P40-T20                   | Published partial browsing across native explorer pages with publication-fenced cursors and explicit completeness                                                                      | PostgreSQL publication/replay/reorg, API, bilingual browser and all/split regression gates                        |
 | P40-T27 | done   | P20-T29                            | Database-only ENS reads, immutable snapshots and separate directory/resolution status                                                                                                  | Generated contracts, no upstream or ENS writes, canonical/expiry and pagination tests                             |
+| P40-T28 | done   | P20-T30                            | Database-only name detail and name-identity search with independent field states and publication snapshots                                                                             | Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests                           |
+| P40-T29 | done   | P20-T31                            | Database-only transaction-grouped ENS history and snapshot-bound event pagination                                                                                                      | ENS history regressions, generated contracts and applicable production/browser gates                              |
 
 P40-T06's authoritative compatibility reads build on P20, the native API,
 P60-T09 user authentication/scoped keys, and P60-T13 prepaid read billing.
@@ -80,12 +82,7 @@ ERC-20/ERC-721
 holding pages, reader/writer routing, and production runtime parity. Their
 acceptance is independent of P60's still-blocked live-payment gate.
 
-| P40-T28 | done | P20-T30 | Database-only name detail and name-identity search with independent field states and publication snapshots | Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests |
-| P40-T29 | done | P20-T31 | Database-only transaction-grouped ENS history and snapshot-bound event pagination | ENS history regressions, generated contracts and applicable production/browser gates |
-
 ## Acceptance
-
-- [x] P40-T29: Database-only history groups transactions and separately bounds event pages; snapshots reject reorgs and late associations while remaining stable across new heads. Verified by HTTP contract/input-boundary tests, PostgreSQL pagination/reorg regressions and generated-contract checks.
 
 - [x] P40-T28: Database-only name detail and name-identity search with independent field states and publication snapshots. Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests. Existing historical reports do not validate this extension.
 
@@ -269,3 +266,5 @@ P40-T28: generated name detail/search contracts, read-only API/query units and
 PostgreSQL ENS race regressions passed. Canonical name discovery, unresolved
 aliases, independent observations and pagination invalidation (including
 registration expiry) are covered in the [extension report](../reviews/ens-name-details-acceptance.md).
+
+P40-T29: Database-only history groups transactions and separately bounds event pages; snapshots reject reorgs and late associations while remaining stable across new heads. Verified by HTTP contract/input-boundary tests, PostgreSQL pagination/reorg regressions and generated-contract checks.

@@ -130,3 +130,13 @@
   min-width: 0;
   max-width: 100%;
 }
+
+.address-name-link {
+  display: block;
+  max-width: 14rem;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: isolate;
+}

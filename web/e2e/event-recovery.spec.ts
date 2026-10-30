@@ -72,7 +72,8 @@ test("native EventSource recovers from an expired cursor without duplicate insta
   await page.unroute("**/assets/pages-*.js");
   const beforeHead = blockReads;
   await page.evaluate(() => fetch("/__e2e/home/head", { method: "POST" }));
-  await expect.poll(() => blockReads).toBeGreaterThan(beforeHead);
+  await page.waitForTimeout(350);
+  expect(blockReads).toBe(beforeHead);
   const beforeRecovery = blockReads;
   await page.evaluate(() => fetch("/__e2e/events/expire", { method: "POST" }));
   await expect.poll(() => cursors.length, { timeout: 10000 }).toBe(3);
@@ -80,6 +81,9 @@ test("native EventSource recovers from an expired cursor without duplicate insta
   await expect
     .poll(() => page.evaluate(() => Reflect.get(window, "eventSourceProbe").opened))
     .toBe(2);
+  await expect(page.getByText(/Data changed/)).toBeVisible();
+  expect(blockReads).toBe(beforeRecovery);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect.poll(() => blockReads).toBeGreaterThan(beforeRecovery);
   const probe = await page.evaluate(() => Reflect.get(window, "eventSourceProbe"));
   expect(probe.created).toBe(2);
@@ -87,7 +91,7 @@ test("native EventSource recovers from an expired cursor without duplicate insta
   expect(probe.active).toBe(1);
 });
 
-test("UserOperation pages refresh on heads and withdraw orphaned detail after a reorg", async ({
+test("UserOperation snapshots require manual refresh after heads and reorgs", async ({
   context,
   page,
 }) => {
@@ -122,7 +126,8 @@ test("UserOperation pages refresh on heads and withdraw orphaned detail after a 
   await expect(page.getByRole("table").getByRole("link", { name: /0x121212/u })).toBeVisible();
   const beforeHead = listReads;
   await page.evaluate(() => fetch("/__e2e/home/head", { method: "POST" }));
-  await expect.poll(() => listReads).toBeGreaterThan(beforeHead);
+  await page.waitForTimeout(350);
+  expect(listReads).toBe(beforeHead);
   await page
     .getByRole("table")
     .getByRole("link", { name: /0x121212/u })
@@ -130,10 +135,14 @@ test("UserOperation pages refresh on heads and withdraw orphaned detail after a 
   await expect(page.getByText("paymaster rejected", { exact: true }).first()).toBeVisible();
   const beforeDetailHead = detailReads;
   await page.evaluate(() => fetch("/__e2e/home/head", { method: "POST" }));
-  await expect.poll(() => detailReads).toBeGreaterThan(beforeDetailHead);
+  await page.waitForTimeout(350);
+  expect(detailReads).toBe(beforeDetailHead);
   orphaned = true;
   await page.evaluate(() => fetch("/__e2e/home/reorg", { method: "POST" }));
+  await expect(page.getByText(/Data changed/)).toBeVisible();
+  expect(detailReads).toBe(beforeDetailHead);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByText("paymaster rejected", { exact: true })).toHaveCount(0);
   await expect(page.getByText("0xdeadbeef", { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("status")).toContainText("Indexed entity not found");
+  await expect(page.getByText("Indexed entity not found", { exact: true })).toBeVisible();
 });

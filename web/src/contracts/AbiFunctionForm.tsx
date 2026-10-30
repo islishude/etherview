@@ -1,3 +1,4 @@
+import { useBrowsingInvalidated } from "@/api/browsingHooks";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
@@ -142,6 +143,7 @@ function AbiFunctionCard({
   index: number;
   onBindingChanged?: () => void;
 }) {
+  const invalidSnapshot = useBrowsingInvalidated();
   const { t } = useTranslation();
   const wallet = useWallet();
   const publicConfig = usePublicConfig();
@@ -234,7 +236,7 @@ function AbiFunctionCard({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending) return;
+    if (pending || invalidSnapshot) return;
     setResult(undefined);
     setError(undefined);
     let encoded: EncodedFunctionCall;
@@ -465,7 +467,7 @@ function AbiFunctionCard({
           >
             <button
               className={highRisk ? "button danger" : "button primary"}
-              disabled={!ready || pending}
+              disabled={!ready || pending || invalidSnapshot}
               type="submit"
             >
               {pending

@@ -1,3 +1,4 @@
+import { markBrowsingQuery } from "@/api/browsingState";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -33,7 +34,8 @@ it("withdraws profile fields while retaining known names at expiry without a str
       },
     },
   }));
-  const { result } = renderHook(() => useNameFreshness(items), {
+  client.setQueryData(["search"], items);
+  const { result } = renderHook(() => useNameFreshness(items, ["search"]), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
@@ -50,6 +52,6 @@ it("withdraws profile fields while retaining known names at expiry without a str
   expect(result.current.items).toHaveLength(2);
   expect(result.current.items?.[1]?.name_details?.registrant.state).toBe("pending");
   expect(result.current.withdrawn).toBe(false);
-  act(() => notifyNames(client, "invalidate"));
+  act(() => markBrowsingQuery(client.getQueryCache().find({ queryKey: ["search"] })!, true));
   expect(result.current.withdrawn).toBe(true);
 });

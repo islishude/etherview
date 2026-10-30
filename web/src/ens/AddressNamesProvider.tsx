@@ -11,7 +11,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { usePublicConfig } from "@/api/publicConfig";
 import type * as schemas from "@/api/heyapi/types.gen";
-import { subscribeNames } from "./nameEvents";
+import { subscribeNames, registerNamesRefresh } from "./nameEvents";
 
 type PrimaryName = schemas.PrimaryName;
 type AddressNamesContextValue = {
@@ -29,8 +29,9 @@ export function AddressNamesProvider({ children }: { children: ReactNode }) {
   const [names, setNames] = useState<Map<string, PrimaryName>>(new Map());
   const [revision, setRevision] = useState(0);
   const visible = useRef(new Map<string, number>());
-  const snapshot = useRef<string | undefined>(undefined);
+  const attempted = useRef(new Set<string>());
   const generation = useRef(0);
+  const request = useRef<AbortController | undefined>(undefined);
   const register = useCallback((address: string) => {
     const key = normalizeAddress(address);
     if (!key) return () => {};
@@ -41,63 +42,82 @@ export function AddressNamesProvider({ children }: { children: ReactNode }) {
       if (count > 0) visible.current.set(key, count);
       else {
         visible.current.delete(key);
-        setRevision((value) => value + 1);
+        attempted.current.delete(key);
       }
     };
   }, []);
+  const load = useCallback(
+    async (all: boolean) => {
+      if (!enabled) return;
+      const addresses = [...visible.current.keys()].filter(
+        (address) => all || !attempted.current.has(address),
+      );
+      if (!addresses.length) return;
+      const epoch = ++generation.current;
+      request.current?.abort();
+      const controller = new AbortController();
+      request.current = controller;
+      const current = () => !controller.signal.aborted && epoch === generation.current;
+      try {
+        const { loadVisibleNames } = await import("./loadVisibleNames");
+        // New visible addresses do not renew the observations of existing rows.
+        const result = await loadVisibleNames(addresses, undefined, controller.signal, () => {
+          if (current())
+            setNames(
+              (prior) => new Map([...prior].filter(([address]) => !addresses.includes(address))),
+            );
+        });
+        if (current()) {
+          setNames((prior) => {
+            const next = new Map([...prior].filter(([address]) => visible.current.has(address)));
+            for (const address of addresses) next.delete(address);
+            for (const [address, name] of result.names) {
+              if (visible.current.has(address)) next.set(address, name);
+            }
+            return next;
+          });
+        }
+      } catch {
+        // Failed manual reads never extend the validity of retained observations.
+      } finally {
+        if (current())
+          for (const address of addresses) {
+            if (visible.current.has(address)) attempted.current.add(address);
+          }
+      }
+    },
+    [enabled],
+  );
+  useEffect(() => registerNamesRefresh(client, () => load(true)), [client, load]);
   useEffect(
     () =>
       subscribeNames(client, (change) => {
+        if (change !== "invalidate") return;
         generation.current++;
-        snapshot.current = undefined;
-        if (change === "invalidate") setNames(new Map());
-        setRevision((value) => value + 1);
+        request.current?.abort();
+        for (const address of visible.current.keys()) attempted.current.add(address);
+        setNames(new Map());
       }),
     [client],
   );
   useEffect(() => {
-    const epoch = ++generation.current;
-    const controller = new AbortController();
     if (!enabled) {
-      snapshot.current = undefined;
+      request.current?.abort();
+      attempted.current.clear();
       setNames(new Map());
       return;
     }
-    const addresses = [...visible.current.keys()];
-    const load = async () => {
-      const current = () => !controller.signal.aborted && epoch === generation.current;
-      const reset = () => {
-        if (current()) {
-          setNames(new Map());
-          snapshot.current = undefined;
-        }
-      };
-      try {
-        const { loadVisibleNames } = await import("./loadVisibleNames");
-        const result = await loadVisibleNames(
-          addresses,
-          snapshot.current,
-          controller.signal,
-          reset,
-        );
-        if (current()) {
-          snapshot.current = result.token;
-          setNames(result.names);
-        }
-      } catch {
-        // A failed refresh cannot renew prior observations. Keep only their
-        // existing bounded validity; invalid cursors and known invalidations
-        // already withdraw them through reset/the event listener.
-      }
-    };
-    const scheduled = setTimeout(() => {
-      void load();
+    const timer = setTimeout(() => {
+      void load(false);
     }, 0);
-    return () => {
-      controller.abort();
-      clearTimeout(scheduled);
-    };
-  }, [enabled, revision]);
+    return () => clearTimeout(timer);
+  }, [enabled, revision, load]);
+  useEffect(
+    () => () => {
+      request.current?.abort();
+    },
+    [],
+  );
   useEffect(() => {
     if (names.size === 0) return;
     const expiry = Math.min(...[...names.values()].map((name) => Date.parse(name.valid_until)));

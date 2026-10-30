@@ -15,3 +15,16 @@ export function subscribeNames(client: QueryClient, listener: (change: NameChang
 export function notifyNames(client: QueryClient, change: NameChange = "invalidate") {
   for (const listener of listeners.get(client) ?? []) listener(change);
 }
+
+const refreshers = new WeakMap<QueryClient, Set<() => Promise<void>>>();
+export function registerNamesRefresh(client: QueryClient, refresh: () => Promise<void>) {
+  const set = refreshers.get(client) ?? new Set<() => Promise<void>>();
+  refreshers.set(client, set);
+  set.add(refresh);
+  return () => {
+    set.delete(refresh);
+  };
+}
+export async function refreshVisibleNames(client: QueryClient) {
+  await Promise.all([...(refreshers.get(client) ?? [])].map((refresh) => refresh()));
+}

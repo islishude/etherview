@@ -8,8 +8,9 @@ import { usePublicConfig } from "@/api/publicConfig";
 import { useHomeSnapshot } from "@/api/homeStream";
 import type { BlockSummary, TransactionSummary } from "@/api/types";
 import { formatInteger, formatRelativeTimestamp, shorten } from "@/components/format";
-import { PageHeading } from "@/components/DesignPrimitives";
+import { PageHeading } from "@/components/PageHeading";
 import { QueryNotice } from "@/components/QueryNotice";
+import "./HomePage.css";
 import { AddressIdentity } from "@/ens/AddressIdentity";
 import { IncludedTransactionStatus } from "./TransactionPage";
 import { FinalityBadge } from "./pages";
@@ -149,10 +150,15 @@ function TransactionRow({ transaction }: { transaction: TransactionSummary }) {
         <Link to="/tx/$hash" params={{ hash: transaction.hash }} search={{ tab: "overview" }}>
           {shorten(transaction.hash)}
         </Link>
-        <small>
-          <AddressIdentity address={transaction.from} /> <UIIcon icon={ArrowRight} size={14} />{" "}
-          {transaction.to ? <AddressIdentity address={transaction.to} /> : "∅"}
-        </small>
+        <span className="transaction-participants">
+          <span className="transaction-participant">
+            <AddressIdentity nameOnly address={transaction.from} />
+          </span>
+          <UIIcon icon={ArrowRight} size={14} />
+          <span className="transaction-participant">
+            {transaction.to ? <AddressIdentity nameOnly address={transaction.to} /> : "∅"}
+          </span>
+        </span>
       </span>
       <IncludedTransactionStatus transaction={transaction} />
     </div>

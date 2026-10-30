@@ -305,6 +305,7 @@ export function TransactionCalldata({
                       <>
                         <span aria-hidden="true">·</span>
                         <AddressIdentity
+                          nameOnly
                           address={resource.execution.address}
                           compact={false}
                           copy
@@ -318,7 +319,12 @@ export function TransactionCalldata({
                         {t("detail.calldataAbiSource", { kind: decoding.abi_source.kind })}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <AddressIdentity address={decoding.abi_source.address} compact={false} copy />
+                      <AddressIdentity
+                        nameOnly
+                        address={decoding.abi_source.address}
+                        compact={false}
+                        copy
+                      />
                     </div>
                   )}
                 </div>

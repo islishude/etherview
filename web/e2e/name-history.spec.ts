@@ -184,6 +184,13 @@ for (const language of ["en", "zh"] as const) {
           true,
         ),
       );
+      await expect(page.locator(".browsing-refresh-status")).toHaveText(
+        language === "en" ? "Data changed" : "数据已变化",
+      );
+      await expect(page.locator(".browsing-refresh-dot")).toBeVisible();
+      await page
+        .getByRole("button", { name: language === "en" ? "Refresh" : "刷新", exact: true })
+        .click();
       await expect(
         page.locator(`.name-history-transaction a[href^="/tx/${hash("1")}"]`),
       ).toBeVisible();

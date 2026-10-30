@@ -1,32 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useCallback, useState } from "react";
+import { useRefreshPager } from "./browsingHooks";
 
 // Cursor and generation travel together: restarting always selects a new cache entry.
 export interface CursorRequest {
   readonly cursor?: string;
+  readonly identity?: string;
   readonly refreshGeneration: number;
 }
 export const firstPage: CursorRequest = { refreshGeneration: 0 };
 let nextRefreshGeneration = 0;
-const browsingPagers = new WeakMap<QueryClient, Set<() => void>>();
-
-export function resetBrowsingPagination(client: QueryClient) {
-  for (const reset of browsingPagers.get(client) ?? []) reset();
-}
-
-export function useBrowsingCursorHistory(identity: string) {
-  const client = useQueryClient();
-  const pager = useCursorHistory(identity);
-  useEffect(() => {
-    const pagers = browsingPagers.get(client) ?? new Set<() => void>();
-    browsingPagers.set(client, pagers);
-    pagers.add(pager.reset);
-    return () => {
-      pagers.delete(pager.reset);
-    };
-  }, [client, pager.reset]);
-  return pager;
-}
+export const useBrowsingCursorHistory = useCursorHistory;
 
 export function useCursorHistory(identity: string) {
   const [state, setState] = useState({ identity, cursors: [""], refreshGeneration: 0 });
@@ -67,12 +50,18 @@ export function useCursorHistory(identity: string) {
       refreshGeneration,
     });
   }, [identity]);
+  const invalid = useRefreshPager(identity, reset);
   return {
-    request: { cursor: cursors.at(-1) || undefined, refreshGeneration } satisfies CursorRequest,
+    request: {
+      cursor: cursors.at(-1) || undefined,
+      refreshGeneration,
+      identity,
+    } satisfies CursorRequest,
     page: cursors.length,
-    hasPrevious: cursors.length > 1,
-    next,
-    previous,
+    invalid,
+    hasPrevious: !invalid && cursors.length > 1,
+    next: invalid ? () => {} : next,
+    previous: invalid ? () => {} : previous,
     reset,
   };
 }

@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { configureAppearance, collectBrowserErrors } from "./appearance";
 
 for (const language of ["en", "zh"] as const) {
-  test(`ENS publications update and expire without upstream requests at mobile width in ${language}`, async ({
+  test(`ENS publications refresh manually and expire without upstream requests at mobile width in ${language}`, async ({
     page,
   }, testInfo) => {
     await configureAppearance(page, { width: 390, language, theme: "light" });
@@ -99,7 +99,7 @@ for (const language of ["en", "zh"] as const) {
       });
     });
     await page.goto("/transactions");
-    await expect(page.locator(".address-primary-name").first()).toHaveText("published-1.test");
+    await expect(page.locator(".address-name-link").first()).toHaveText("published-1.test");
     await expect(
       page.getByText(
         language === "en"
@@ -108,16 +108,20 @@ for (const language of ["en", "zh"] as const) {
       ),
     ).toHaveCount(0);
     expect(statusRequests).toBe(0);
-    await expect(page.locator(".address-identity-value").first()).toHaveAttribute(
-      "title",
-      /^0x[0-9a-fA-F]{40}$/,
-    );
+    await expect(page.locator(".address-identity-value")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "published-1.test", exact: true }).first(),
+    ).toHaveAttribute("href", /^\/address\/0x[0-9a-fA-F]{40}$/);
     expect(
       await page.evaluate(() => (window as unknown as { ensSources: unknown[] }).ensSources.length),
     ).toBe(1);
     await page.goto(`/address/0x${"1".repeat(40)}`);
     const header = page.locator(".address-header-actions");
     await expect(header.locator(".address-primary-name")).toHaveText("published-1.test");
+    await expect(header.locator(".address-identity-value")).toHaveAttribute(
+      "title",
+      `0x${"1".repeat(40)}`,
+    );
     const stableHeader = await header.boundingBox();
     const beforeProgress = requests;
     // Consecutive coverage transitions must not withdraw names or issue name reads.
@@ -136,9 +140,13 @@ for (const language of ["en", "zh"] as const) {
     });
     version = "2";
     await page.evaluate(() => (window as unknown as { publishNames: () => void }).publishNames());
+    await page.waitForTimeout(350);
+    expect(requests).toBe(beforeProgress);
+    await page
+      .getByRole("button", { name: language === "en" ? "Refresh" : "刷新", exact: true })
+      .click();
     await expect.poll(() => requests).toBeGreaterThan(beforeProgress);
     await expect(header.locator(".address-primary-name")).toHaveText("published-1.test");
-    expect(await header.boundingBox()).toEqual(stableHeader);
     release();
     await expect(header.locator(".address-primary-name")).toHaveText("published-2.test");
     const beforeInvalidation = requests;
@@ -150,6 +158,11 @@ for (const language of ["en", "zh"] as const) {
     await page.evaluate(() =>
       (window as unknown as { publishNames: (invalidated: boolean) => void }).publishNames(true),
     );
+    await expect(page.locator(".address-primary-name")).toHaveCount(0);
+    expect(requests).toBe(beforeInvalidation);
+    await page
+      .getByRole("button", { name: language === "en" ? "Refresh" : "刷新", exact: true })
+      .click();
     await expect.poll(() => requests).toBeGreaterThan(beforeInvalidation);
     await expect(page.locator(".address-primary-name")).toHaveCount(0);
     release();

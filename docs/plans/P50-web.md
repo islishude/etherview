@@ -50,7 +50,7 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T05 | done   | P50-T01                            | Precompressed immutable assets, deep-link fallback, cache headers and per-shell nonce-authorized editor styles under CSP                                                                               | cache/encoding/ETag/HEAD/fallback, CSP nonce, binary/runtime, asset and accessibility tests                                    |
 | P50-T06 | done   | P40-T07, P40-T12, P40-T15, P30-T43 | Tabbed transaction/block protocol details and separate native-transfer panels, structured log ABI provenance, decoded/raw calldata, exact-decimal transfers and automatic pending/replaced transitions | generated client, ABI/failure/identity, bilingual responsive/accessibility, embedded browser and runtime tests                 |
 | P50-T10 | done   | P40-T08, P40-T10, P40-T17          | Address activity/assets/withdrawals/protocol transfers, origins/QR/copy, contract entry, native labels/add-network flow, and compact Method/signature disclosure                                       | snapshot, exact Ether/decimals, wallet provider, generation, bilingual responsive/accessibility and browser tests              |
-| P50-T11 | done   | P40-T09                            | Atomic version-fenced home state, query-local event policies and one recoverable EventSource including UserOperation reorg refresh without list polling                                                | version-floor, reconnect/reorg, frontend, embedded browser, runtime and generation checks                                      |
+| P50-T11 | done   | P40-T09                            | Atomic version-fenced home state, query-local event policies and one recoverable EventSource with manual UserOperation recovery under P50-T84                                                          | version-floor, reconnect/reorg, frontend, embedded browser, runtime and generation checks                                      |
 | P50-T14 | done   | P40-T11, P50-T10                   | Etherscan-style verified ABI read/write forms for contracts, implementations through proxies, exact management targets, and proxy histories, with real OpenZeppelin 5.6.1 Preview acceptance           | Vitest, generated client, embedded browser, responsive, accessibility, Hardhat 3, monolith/split, and seven-role Preview tests |
 | P50-T16 | done   | P50-T14                            | Verified source/artifact workspace, compiler settings, decoded constructor arguments with raw hex, contract deep links and accessible source directory tree                                            | ABI/tree-model, generated client, security/license, bilingual responsive/accessibility and embedded browser tests              |
 | P50-T72 | done   | P40-T20, P50-T02, P50-T03          | Bilingual UserOperation search/list/detail, transaction Bundle activity, and address participant-role activity                                                                                         | generated-client, Vitest, responsive/accessibility, browser, and runtime tests                                                 |
@@ -61,14 +61,12 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T77 | done   | P40-T24                            | Bilingual Requests tab with five request types, filtering, details and pagination                                                                                                                      | 545 frontend tests and 105 embedded browser scenarios; bilingual 390px accessibility                                           |
 | P50-T78 | done   | P50-T03, P60-T03, P60-T05          | Session-authenticated browser verification with two-step submission/results and recoverable result links; API-key protocol isolation                                                                   | authentication matrix, frontend/browser, PostgreSQL, production all/split and common gates                                     |
 | P50-T79 | done   | P50-T74, P50-T78                   | Optional runtime Turnstile guards for browser verification and CSV; compact address actions                                                                                                            | transport/auth/CSP, bilingual browser, deployment and all/split regressions                                                    |
-| P50-T81 | done   | P40-T27                            | Published names with atomic refresh, expiry hiding and compact incomplete-directory notice                                                                                                             | Generated-client, single SSE, bilingual mobile and browser regressions                                                         |
-
-| P50-T82 | done | P40-T28 | Bilingual name detail, name search and primary-name links without source badges | Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions |
-| P50-T83 | done | P40-T29 | Compact name overview and bilingual expandable ENS transaction history | ENS history regressions, generated contracts and applicable production/browser gates |
+| P50-T81 | done   | P40-T27                            | Published names with atomic reads, expiry hiding and compact incomplete-directory notice                                                                                                               | Generated-client, single SSE, bilingual mobile and browser regressions                                                         |
+| P50-T82 | done   | P40-T28                            | Bilingual name detail, name search and primary-name links without source badges                                                                                                                        | Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions                               |
+| P50-T83 | done   | P40-T29                            | Compact name overview and bilingual expandable ENS transaction history                                                                                                                                 | ENS history regressions, generated contracts and applicable production/browser gates                                           |
+| P50-T84 | done   | P50-T11, P50-T81, P50-T83          | Explicit live-refresh allowlist and page-scoped manual browsing refresh with invalidation notices                                                                                                      | Frontend, embedded browser, generation, docs and plan gates                                                                    |
 
 ## Acceptance
-
-- [x] P50-T83: Compact overview and lazy expandable history support both languages/themes and 390px/1440px layouts. All 161 embedded-browser scenarios passed, including accessibility, inert record values, pagination and single-SSE refresh; production all/split runtime checks, Preview contracts and `make check` passed. Local fixtures do not establish complete live history coverage.
 
 - [x] P50-T82: Bilingual name detail, name search and primary-name links without source badges. Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions. Existing historical reports do not validate this extension.
 
@@ -102,8 +100,8 @@ implementation and its own acceptance; directory coverage is reported separately
 - [x] Explorer routes, deep links and canonical/snapshot identities remain stable.
 - [x] Wallet-only RPC and signing enforce provider, chain and exact target fences.
 - [x] Verified code, ABI, protocol fields and decoded/raw data retain explicit provenance.
-- [x] One durable public EventSource drives live-list invalidation and
-      pending/replaced transitions without periodic list polling.
+- [x] One durable public EventSource owns browser transport. P50-T84 narrows
+      automatic refresh to home/status and asynchronous task progress.
 - [x] Embedded assets, CSP, theme, responsive layout and accessibility pass browser coverage.
 - [x] The initial asset graph excludes feature pages and CodeMirror; raw and
       compressed asset budgets protect route-lazy delivery.
@@ -128,8 +126,8 @@ implementation and its own acceptance; directory coverage is reported separately
 - [x] Every external navigation is bilingual, keyboard accessible, opener-free,
       and no-referrer, with the target host visible before confirmation.
 - [x] Pending/failed NFT refresh keeps prior canonical content with a bilingual
-      stale warning and explicit observation identities; reorg restores the
-      prior version and clears the warning.
+      stale warning and explicit observation identities; reorg marks the snapshot
+      until an explicit read validates its replacement.
 - [x] Query-local event policy, bounded version floors and one recoverable SSE
       connection preserve reorg-aware lists and UserOperation views.
 - [x] Global/address Method columns disclose full signatures and retain exact
@@ -231,3 +229,7 @@ new bilingual 390px cases additionally rerun using keyboard activation.
 Generation, Web lint and production-image schema/all/split/Preview gates passed.
 See the [extension report](../reviews/ens-name-details-acceptance.md) for scope
 and the separate Mainnet/release evidence boundary.
+
+P50-T83: Compact overview and lazy expandable history support both languages/themes and 390px/1440px layouts. All 161 embedded-browser scenarios passed, including accessibility, inert record values, pagination and single-SSE refresh; production all/split runtime checks, Preview contracts and `make check` passed. Local fixtures do not establish complete live history coverage.
+
+P50-T84: Local acceptance passed 780 frontend tests, 39 tooling tests and all 170 embedded Chromium scenarios, including nine Address tabs, manual refresh races/failures, ENS withdrawal, single-SSE recovery and keyboard/mobile heading controls. `make web-test`, `make web-lint`, `make test-e2e`, `make generate-check`, `make docs-check` and `make plan-check` passed. Remote CI was not run; local browser fixtures do not establish live chain acceptance.

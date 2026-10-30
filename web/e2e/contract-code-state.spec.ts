@@ -75,11 +75,9 @@ for (const status of ["unavailable", "failed"] as const) {
   });
 }
 
-test("Code recovers after proxy publication without another chain event or reload", async ({
-  page,
-}) => {
+test("Code refreshes manually after proxy publication", async ({ page }) => {
   const verifiedAddress = "0x1111111111111111111111111111111111111111";
-  // Hold the durable event stream quiet: only classification recovery can refresh.
+  // A publication must not start a classification recovery poll.
   await page.addInitScript(() => {
     window.EventSource = class {
       static CLOSED = 2;
@@ -108,9 +106,12 @@ test("Code recovers after proxy publication without another chain event or reloa
   await page.goto(`/address/${verifiedAddress}#code`);
   const panel = page.getByRole("tabpanel", { name: "Code", exact: true });
   await expect(panel.getByText("Unavailable", { exact: true })).toBeVisible();
-  await expect(panel.getByText("Loading indexed data…")).toBeVisible();
+  await expect(panel.getByText("Loading indexed data…")).toHaveCount(0);
   await expect(panel.getByRole("heading", { name: "Verified artifact" })).toHaveCount(0);
+  await page.waitForTimeout(1200);
+  expect(requests).toBe(1);
   published = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(panel.getByRole("heading", { name: "Verified artifact" })).toBeVisible();
   await expect(panel.getByText("Loading indexed data…")).toHaveCount(0);
   const completedRequests = requests;

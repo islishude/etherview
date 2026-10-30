@@ -1,3 +1,4 @@
+import { useQueryWithdrawn } from "@/api/browsingHooks";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -63,6 +64,7 @@ export function UserOperationsPage() {
 export function UserOperationDetailPage({ hash }: { hash: string }) {
   const { i18n, t } = useTranslation();
   const operation = useUserOperation(hash);
+  const withdrawn = useQueryWithdrawn(["user-operation", hash]);
   const config = usePublicConfig();
   const locale = i18n.resolvedLanguage ?? "en";
   const nativeDecimals = config.data?.native_decimals ?? 18;
@@ -70,7 +72,7 @@ export function UserOperationDetailPage({ hash }: { hash: string }) {
   return (
     <Page title={t("page.userOperation")} description={hash} mono>
       <QueryNotice loading={operation.isPending} error={operation.error} />
-      {operation.data ? (
+      {operation.data && !withdrawn ? (
         <div className="page-stack user-operation-detail">
           {!operation.data.success ? <UserOperationFailure operation={operation.data} /> : null}
           <DetailList label={t("page.userOperation")}>

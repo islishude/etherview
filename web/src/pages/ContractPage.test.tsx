@@ -190,7 +190,7 @@ describe("contract proxy route", () => {
   );
 
   it.each(["none", "cwia"] as const)(
-    "recovers an unavailable classification to %s without showing the wrong source panel",
+    "manually refreshes an unavailable classification to %s without showing the wrong source panel",
     async (pattern) => {
       let ready = false;
       installContractAPI({
@@ -203,9 +203,10 @@ describe("contract proxy route", () => {
       renderContractRoute();
       const panel = await screen.findByRole("tabpanel", { name: "Code" });
       expect(await within(panel).findByText("Unavailable", { exact: true })).toBeVisible();
-      expect(within(panel).getByText(i18n.t("state.loading"))).toBeVisible();
+      expect(within(panel).queryByText(i18n.t("state.loading"))).toBeNull();
       expect(within(panel).queryByRole("heading", { name: "Verified artifact" })).toBeNull();
       ready = true;
+      await userEvent.setup().click(screen.getByRole("button", { name: "Refresh" }));
       await waitFor(() =>
         expect(within(panel).queryByText("Unavailable", { exact: true })).toBeNull(),
       );

@@ -1,24 +1,15 @@
 import { useEffect, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { subscribeNames } from "./nameEvents";
+import type { QueryKey } from "@tanstack/react-query";
+import { useQueryWithdrawn } from "@/api/browsingHooks";
 import { freshNameDetail, nameDeadlines } from "./nameDetails";
 import type { SearchResult } from "@/api/heyapi/types.gen";
 
-export function useNameFreshness(items: SearchResult[] | undefined) {
-  const client = useQueryClient();
-  const [invalid, setInvalid] = useState(false);
+export function useNameFreshness(items: SearchResult[] | undefined, queryKey: QueryKey) {
+  const invalid = useQueryWithdrawn(queryKey);
   const [now, setNow] = useState(Date.now);
-  useEffect(
-    () =>
-      subscribeNames(client, (change) => {
-        if (change === "invalidate") setInvalid(true);
-      }),
-    [client],
-  );
   useEffect(() => {
-    setInvalid(false);
     setNow(Date.now());
-  }, [items]);
+  }, [items, invalid]);
   useEffect(() => {
     const expiry = Math.min(
       ...(items ?? [])

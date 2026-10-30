@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { AddressNamesProvider, usePrimaryName } from "./AddressNamesProvider";
-import { notifyNames } from "./nameEvents";
+import { notifyNames, refreshVisibleNames } from "./nameEvents";
 vi.mock("@/api/publicConfig", () => ({
   usePublicConfig: () => ({ data: { features: { ens: true } } }),
 }));
@@ -53,7 +53,7 @@ function response(url: URL, name: string, version: string, expiry = Date.now() +
     { headers: { "Content-Type": "application/json" } },
   );
 }
-it("commits all visible chunks atomically and replaces the entire publication on names events", async () => {
+it("commits all visible chunks atomically and replaces the entire publication on explicit refresh", async () => {
   let version = "1";
   let finish: (() => void) | undefined;
   const calls: Array<URL> = [];
@@ -79,6 +79,8 @@ it("commits all visible chunks atomically and replaces the entire publication on
   version = "2";
   await act(async () => notifyNames(client));
   expect(screen.queryByText("name-1.test")).toBeNull();
+  expect(calls).toHaveLength(2);
+  await act(async () => refreshVisibleNames(client));
   expect(await screen.findAllByText("name-2.test")).toHaveLength(101);
   expect(calls[2]!.searchParams.get("snapshot")).toBeNull();
   expect(calls[3]!.searchParams.get("snapshot")).toBe("snapshot-2");
@@ -101,6 +103,7 @@ it("rejects a late old response even when its transport ignores cancellation", a
   const { client } = setup();
   await waitFor(() => expect(finish).toBeTypeOf("function"));
   await act(async () => notifyNames(client));
+  await act(async () => refreshVisibleNames(client));
   expect(await screen.findByText("new.test")).toBeVisible();
   await act(async () => finish!());
   expect(screen.queryByText("old.test")).toBeNull();
@@ -139,7 +142,7 @@ it("keeps missing and failed publication entries as exact addresses", async () =
   expect(await screen.findByText(address(1))).toBeVisible();
 });
 
-it("retains the visible batch during publication refresh and atomically replaces it", async () => {
+it("retains the visible batch during manual refresh and atomically replaces it", async () => {
   let pending: (() => void) | undefined;
   let calls = 0;
   vi.stubGlobal(
@@ -159,7 +162,10 @@ it("retains the visible batch during publication refresh and atomically replaces
   );
   const { client } = setup(101);
   expect(await screen.findAllByText("old.test")).toHaveLength(101);
-  act(() => notifyNames(client, "refresh"));
+  act(() => {
+    notifyNames(client, "refresh");
+    void refreshVisibleNames(client);
+  });
   await waitFor(() => expect(pending).toBeTypeOf("function"));
   expect(screen.getAllByText("old.test")).toHaveLength(101);
   expect(screen.queryByText("new.test")).toBeNull();
@@ -185,16 +191,19 @@ it("withdraws immediately on real invalidation and ignores the in-flight refresh
   );
   const { client } = setup();
   await screen.findByText("old.test");
-  act(() => notifyNames(client, "refresh"));
+  act(() => {
+    notifyNames(client, "refresh");
+    void refreshVisibleNames(client);
+  });
   await waitFor(() => expect(pending).toBeTypeOf("function"));
   act(() => notifyNames(client, "invalidate"));
   expect(screen.queryByText("old.test")).toBeNull();
   await act(async () => pending!());
-  await waitFor(() => expect(calls).toBe(3));
+  expect(calls).toBe(2);
   expect(screen.queryByText("old.test")).toBeNull();
 });
 
-it("a failed background refresh does not withdraw or extend unexpired names", async () => {
+it("a failed manual refresh does not withdraw or extend unexpired names", async () => {
   let calls = 0;
   const expiry = Date.now() + 500;
   vi.stubGlobal(
@@ -206,7 +215,10 @@ it("a failed background refresh does not withdraw or extend unexpired names", as
   );
   const { client } = setup();
   await screen.findByText("brief.test");
-  act(() => notifyNames(client, "refresh"));
+  act(() => {
+    notifyNames(client, "refresh");
+    void refreshVisibleNames(client);
+  });
   await waitFor(() => expect(calls).toBe(2));
   expect(screen.getByText("brief.test")).toBeVisible();
   await waitFor(() => expect(screen.queryByText("brief.test")).toBeNull());
@@ -238,9 +250,33 @@ it("withdraws an invalid snapshot during refresh before retrying the current pub
   );
   const { client } = setup();
   await screen.findByText("old.test");
-  act(() => notifyNames(client, "refresh"));
+  act(() => {
+    notifyNames(client, "refresh");
+    void refreshVisibleNames(client);
+  });
   await waitFor(() => expect(retry).toBeTypeOf("function"));
   expect(screen.queryByText("old.test")).toBeNull();
   await act(async () => retry!());
   expect(await screen.findByText("current.test")).toBeVisible();
+});
+
+it("ignores publication notifications until the user explicitly refreshes", async () => {
+  const fetcher = vi.fn(async (input: RequestInfo | URL) =>
+    response(new URL(String(input), "http://localhost"), "stable.test", "1"),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const { client } = setup();
+  await screen.findByText("stable.test");
+  act(() => {
+    notifyNames(client, "refresh");
+    notifyNames(client, "refresh");
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("stable.test")).toBeVisible();
+  act(() => notifyNames(client, "invalidate"));
+  expect(screen.queryByText("stable.test")).toBeNull();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => refreshVisibleNames(client));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("stable.test")).toBeVisible();
 });

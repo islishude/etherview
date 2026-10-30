@@ -163,7 +163,7 @@ describe("core transaction detail pages", () => {
     expect(screen.getByRole("tab", { name: "Authorizations" })).toBeVisible();
   });
 
-  it("refetches a mismatched calldata identity once and then fails closed", async () => {
+  it("keeps mismatched calldata hidden without automatic recovery", async () => {
     const calldata = "0x55241077";
     let transactionFetches = 0;
     let calldataFetches = 0;
@@ -217,8 +217,8 @@ describe("core transaction detail pages", () => {
     renderExplorer(`/tx/${transactionHash}`);
     await userEvent.setup().click(await screen.findByText("More details"));
     await waitFor(() => {
-      expect(transactionFetches).toBe(2);
-      expect(calldataFetches).toBe(2);
+      expect(transactionFetches).toBe(1);
+      expect(calldataFetches).toBe(1);
     });
     expect(screen.getByText("Transaction action unavailable", { exact: true })).toBeVisible();
     expect(screen.queryByText("Contract interaction", { exact: true })).not.toBeInTheDocument();
@@ -997,7 +997,7 @@ describe("transaction failures and types", () => {
     },
   );
 
-  it("refetches a mismatched failure identity once and then fails closed", async () => {
+  it("keeps mismatched failure data hidden without automatic recovery", async () => {
     let failureRequests = 0;
     vi.stubGlobal(
       "fetch",
@@ -1040,7 +1040,7 @@ describe("transaction failures and types", () => {
     );
 
     renderExplorer(`/tx/${transactionHash}`);
-    await waitFor(() => expect(failureRequests).toBe(2));
+    await waitFor(() => expect(failureRequests).toBe(1));
     expect(
       await screen.findByText(
         "The canonical transaction inclusion changed. Refreshing this tab will load the new block identity.",

@@ -11,7 +11,6 @@ export function useBlockConsensus(id: string, enabled = true) {
     queryFn: async ({ signal }) =>
       requireEnvelope(await sdk.getBlockConsensus({ client: apiClient, signal, path: { id } }))
         .data,
-    refetchInterval: 12000,
     retry: false,
   });
 }
@@ -22,7 +21,6 @@ export function useBlockBlobs(id: string, enabled = true) {
     enabled,
     queryFn: async ({ signal }) =>
       requireEnvelope(await sdk.getBlockBlobs({ client: apiClient, signal, path: { id } })).data,
-    refetchInterval: 12000,
     retry: false,
   });
 }
