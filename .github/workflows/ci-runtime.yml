@@ -47,8 +47,6 @@ jobs:
     name: Preview gateway, genesis, x402, CLI and consensus smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -70,10 +68,14 @@ jobs:
         run: make test-preview-gateway
       - name: Run Preview x402 E2E
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: make test-preview-x402-prebuilt
       - name: Run Preview CLI smoke E2E
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         id: tools
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: make test-preview-tools-e2e-prebuilt
       - name: Upload Preview tools evidence and diagnostics
         if: ${{ always() && steps.tools.outcome != 'skipped' }}
@@ -106,7 +108,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      TMPDIR: ${{ runner.temp }}
       PLAYWRIGHT_USE_BUNDLED: "1"
     steps:
       - uses: actions/checkout@v7
@@ -117,6 +118,8 @@ jobs:
           browser: "true"
       - name: Run Preview metadata E2E
         id: acceptance
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: make test-preview-metadata-prebuilt
       - name: Upload Preview metadata evidence and diagnostics
         if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
@@ -132,7 +135,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
-      TMPDIR: ${{ runner.temp }}
       PLAYWRIGHT_USE_BUNDLED: "1"
     steps:
       - uses: actions/checkout@v7
@@ -143,6 +145,8 @@ jobs:
           browser: "true"
       - name: Run Preview contracts, Bundler and ENS E2E
         id: acceptance
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: make test-preview-contracts-prebuilt
       - name: Upload Preview contracts evidence and diagnostics
         if: ${{ always() && steps.acceptance.outcome != 'skipped' }}

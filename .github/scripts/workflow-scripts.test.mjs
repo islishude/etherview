@@ -389,7 +389,13 @@ test("Preview groups short checks and isolates heavy suites without losing failu
     const browser = ["metadata", "contracts"].includes(suite);
     assert.equal(job.includes('browser: "true"'), browser);
     assert.equal(job.includes('PLAYWRIGHT_USE_BUNDLED: "1"'), browser);
-    assert.ok(job.includes("TMPDIR: ${{ runner.temp }}"));
+    // runner is available in step env, but not in job env: GitHub rejects
+    // the whole reusable workflow before any jobs start if this regresses.
+    assert.doesNotMatch(job.split("    steps:")[0], /\$\{\{[^}]*\brunner\./);
+    for (const step of job.split(/^      - /m).slice(1)) {
+      if (/make test-preview-(?:x402|tools-e2e|metadata|contracts)-prebuilt/.test(step))
+        assert.match(step, /        env:\n          TMPDIR: \$\{\{ runner\.temp \}\}/);
+    }
     assert.match(job, /uses: actions\/upload-artifact@/);
     assert.ok(job.includes("path: ${{ runner.temp }}/etherview-preview-metadata-*"));
     assert.match(job, /retention-days: 7/);
