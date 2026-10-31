@@ -95,6 +95,9 @@
 }
 
 .billing-topup-form > .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   justify-self: start;
 }
 

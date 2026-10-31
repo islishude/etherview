@@ -4,6 +4,7 @@ import "./PersonalBilling.css";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { LoaderCircle } from "lucide-react";
 
 import {
   createBillingTopupIntent,
@@ -22,6 +23,7 @@ import { usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
 import { useAuth } from "@/auth/AuthProvider";
 import { formatTimestamp } from "@/components/format";
 import { SelectControl } from "@/components/SelectControl";
+import { UIIcon } from "@/components/UIIcon";
 import { useWallet } from "@/wallet/WalletProvider";
 import { chainsMatch } from "@/wallet/eip6963";
 import { BillingLoadError, BillingPagination } from "./BillingPages";
@@ -307,6 +309,7 @@ export function PersonalBilling() {
                     onAmount={setAmount}
                     onMethod={setMethod}
                     blocked={blocked}
+                    busy={submitting || waiting}
                     walletReady={walletReady}
                     onSubmit={submit}
                   />
@@ -357,6 +360,7 @@ function TopupForm({
   onAmount,
   onMethod,
   blocked,
+  busy,
   walletReady,
   onSubmit,
 }: {
@@ -366,6 +370,7 @@ function TopupForm({
   onAmount: (value: string) => void;
   onMethod: (value: BillingTransferMethod) => void;
   blocked: boolean;
+  busy: boolean;
   walletReady: boolean;
   onSubmit: (event: SubmitEvent<HTMLFormElement>) => Promise<void>;
 }) {
@@ -456,11 +461,13 @@ function TopupForm({
       )}
       <button
         className="button primary"
+        aria-busy={busy}
         disabled={
           blocked || !walletReady || !validAmount || !config.asset_transfer_methods.includes(method)
         }
         type="submit"
       >
+        {busy && <UIIcon icon={LoaderCircle} className="query-loading-spinner" />}
         {t("billing.topup.submit")}
       </button>
     </form>
