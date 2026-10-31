@@ -1202,7 +1202,8 @@ execution-header fallback and `slot_number_source`. Consensus and blob HTTP
 metadata reads do not contact upstream nodes. Exact-hash content reads decompress and validate the object, then recheck the
 published manifest. V2 `blob.getblob` uses API-key prepaid billing with weight 5.
 The public V1 content GET is removed; a free browser-only content POST on the same block-scoped path
-requires SIWE, Origin, CSRF and optional global Turnstile (`blob_content`).
+requires SIWE, Origin and CSRF, without Turnstile. The expanded content details
+provide a bottom-right download icon that saves the already loaded bytes.
 Preview and file saving share a session-scoped in-memory byte buffer. Core execution readiness and fork
 choice never depend on either optional upstream.
 
@@ -1250,7 +1251,7 @@ retaining TLS verification, redirect rejection and all source-verification fence
 ## Optional browser human verification
 
 Runtime `turnstile.enabled` is the single default-off switch for browser
-verification, CSV exports, blob content acquisition and future Turnstile-protected operations. Actions
+verification, CSV exports and future Turnstile-protected operations. Actions
 remain scenario-specific; adding an operation does not add a configuration
 switch. Public config exposes only `enabled` and `site_key` while enabled and
 omits the `turnstile` object while disabled. API/all read the secret from

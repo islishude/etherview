@@ -1344,7 +1344,8 @@ establish local behavior, not remote CI or live chain acceptance.
 ## Blob content access and S2 regressions
 
 Cover removal of the public content GET, session-only browser POST, Origin/CSRF,
-Turnstile enabled/disabled admission, and rejection before archive access.
+successful token-free access with Turnstile enabled or disabled, and rejection
+before archive access for missing sessions, invalid Origin or CSRF.
 V2 blob tests cover key-only access, exact hash/index validation, weight-5
 pricing, successful debit, failed-read release, insufficient credit and free
 operator/disabled-billing exceptions. The existing PostgreSQL prepaid tests
@@ -1355,5 +1356,6 @@ malformed, oversized, truncated, wrong-length and wrong-digest objects. Retain
 conditional-create/readback, replay, reorg and role-parity tests. Preview real
 blob tooling reads V2 with an operator key and independently decompresses S3
 objects before comparison. Browser tests must assert a single fetch for both
-preview-then-download and download-then-preview, and discard content on identity
-changes. Apply the consensus/blob and Turnstile acceptance gates above.
+preview-then-download and collapse/reopen, show the download icon only in
+expanded details, and discard content on identity changes. Apply the
+consensus/blob acceptance gates above.

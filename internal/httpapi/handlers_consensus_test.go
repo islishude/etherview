@@ -129,7 +129,7 @@ func TestHomeConsensusFreshnessAgesWithoutMutatingPublication(t *testing.T) {
 
 func TestBrowserBlobProtectionAndRemovedPublicRoute(t *testing.T) {
 	for _, enabled := range []bool{false, true} {
-		for _, mode := range []string{"anonymous", "api_key", "csrf", "origin", "token", "accepted", "old"} {
+		for _, mode := range []string{"anonymous", "api_key", "csrf", "origin", "accepted", "old"} {
 			t.Run(strconv.FormatBool(enabled)+"/"+mode, func(t *testing.T) {
 				h, _, _ := browserVerificationHandler(t)
 				reader := &consensusReaderStub{}
@@ -137,18 +137,14 @@ func TestBrowserBlobProtectionAndRemovedPublicRoute(t *testing.T) {
 				h.cfg.Consensus.Blobs.Enabled = true
 				h.cfg.Turnstile.Enabled = enabled
 				validations := 0
-				h.turnstile = challengeValidator(func(_ context.Context, token, action string) error {
+				h.turnstile = challengeValidator(func(_ context.Context, _, _ string) error {
 					validations++
-					if token != "token" || action != "blob_content" {
-						t.Fatal("incorrect challenge binding")
-					}
 					return nil
 				})
 				hash := "0x" + strings.Repeat("11", 32)
 				req := httptest.NewRequest("POST", "/api/v1/blocks/"+hash+"/blobs/0/content", nil)
 				req.Header.Set("Origin", testAuthOrigin)
 				req.Header.Set("X-CSRF-Token", "csrf")
-				req.Header.Set("X-Turnstile-Token", "token")
 				if mode != "anonymous" && mode != "api_key" {
 					req.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
 				}
@@ -159,16 +155,14 @@ func TestBrowserBlobProtectionAndRemovedPublicRoute(t *testing.T) {
 					req.Header.Del("X-CSRF-Token")
 				case "origin":
 					req.Header.Set("Origin", "https://other.example")
-				case "token":
-					req.Header.Del("X-Turnstile-Token")
 				case "old":
 					req = httptest.NewRequest("GET", "/api/v1/blocks/"+hash+"/blobs/0/content", nil)
 				}
 				out := httptest.NewRecorder()
 				h.ServeHTTP(out, req)
-				accepted := mode == "accepted" || (mode == "token" && !enabled)
+				accepted := mode == "accepted"
 				if accepted {
-					if out.Code != 200 || reader.calls != 1 {
+					if out.Code != 200 || reader.calls != 1 || validations != 0 {
 						t.Fatalf("status=%d reads=%d", out.Code, reader.calls)
 					}
 				} else if out.Code == 200 || reader.calls != 0 || validations != 0 {

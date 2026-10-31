@@ -3754,10 +3754,6 @@ export type GetBrowserBlobContentData = {
     body?: never;
     headers: {
         'X-CSRF-Token': string;
-        /**
-         * Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
-         */
-        'X-Turnstile-Token'?: string;
     };
     path: {
         hash: Hash;

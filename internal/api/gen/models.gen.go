@@ -8401,9 +8401,6 @@ type ListBlocksParams struct {
 // GetBrowserBlobContentParams defines parameters for GetBrowserBlobContent.
 type GetBrowserBlobContentParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-
-	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
-	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // GetBlockRequestsParams defines parameters for GetBlockRequests.

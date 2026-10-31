@@ -47,11 +47,7 @@ function wrap(node: React.ReactNode, enabled: boolean | null = true) {
   });
   return <QueryClientProvider client={client}>{node}</QueryClientProvider>;
 }
-function ChallengeForm({
-  action = "csv_export",
-}: {
-  action?: "csv_export" | "verification" | "blob_content";
-}) {
+function ChallengeForm({ action = "csv_export" }: { action?: "csv_export" | "verification" }) {
   const gate = useTurnstile(action);
   return (
     <>
@@ -183,7 +179,7 @@ for (const kind of ["local", "sourcify-import", "sourcify", "sourcify-from-ether
   });
 }
 
-for (const action of ["csv_export", "verification", "blob_content"] as const) {
+for (const action of ["csv_export", "verification"] as const) {
   it.each([false, null])(
     `allows ${action} without a token when protection is disabled or omitted (%s)`,
     (enabled) => {

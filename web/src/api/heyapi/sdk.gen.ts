@@ -312,7 +312,7 @@ export const getBlockConsensus = <ThrowOnError extends boolean = false>(options:
 export const getBlockBlobs = <ThrowOnError extends boolean = false>(options: Options<GetBlockBlobsData, ThrowOnError>): RequestResult<GetBlockBlobsResponses, GetBlockBlobsErrors, ThrowOnError> => options.client.get<GetBlockBlobsResponses, GetBlockBlobsErrors, ThrowOnError>({ url: '/blocks/{id}/blobs', ...options });
 
 /**
- * Session-only browser content acquisition. Requires same-origin Origin and CSRF; when Turnstile is enabled, a single-use blob_content token. Not an API-key download endpoint.
+ * Session-only browser content acquisition. Requires same-origin Origin and CSRF. Does not require Turnstile. Not an API-key download endpoint.
  */
 export const getBrowserBlobContent = <ThrowOnError extends boolean = false>(options: Options<GetBrowserBlobContentData, ThrowOnError>): RequestResult<GetBrowserBlobContentResponses, GetBrowserBlobContentErrors, ThrowOnError> => options.client.post<GetBrowserBlobContentResponses, GetBrowserBlobContentErrors, ThrowOnError>({
     security: [{

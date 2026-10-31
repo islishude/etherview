@@ -238,11 +238,13 @@ P50-T84: Local acceptance passed 780 frontend tests, 39 tooling tests and all 17
 
 | ID      | Status      | Dependencies                                          | Outcome                                                                               | Acceptance                                                                                                         |
 | ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| P50-T85 | in_progress | Existing blob archive and session/billing foundations | Session and Turnstile guarded blob acquisition with shared in-memory preview/download | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
+| P50-T85 | in_progress | Existing blob archive and session/billing foundations | Session-only blob acquisition with shared in-memory preview and an expanded-detail download icon | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
 
-Acceptance evidence: Login/Turnstile content acquisition and session-scoped preview/download reuse implemented.
-Focused Go regressions and the complete frontend unit suite (79 files, 899 tests)
-passed. Generation/OpenAPI, lint-go, source, docs and plan checks passed;
+Acceptance evidence: Login-only content acquisition (with Origin/CSRF), an expanded-detail download icon, and session-scoped preview/download reuse implemented.
+The login-only/icon update passes focused HTTP and frontend regressions; full
+browser and runtime acceptance for that update remains deferred to remote CI.
+Earlier archive/V2 acceptance included focused Go regressions and the complete
+frontend unit suite (79 files, 899 tests). Generation/OpenAPI, lint-go, source, docs and plan checks passed;
 RustFS, production schema, all/split runtime including local prepaid payments,
 and real Lighthouse blob smoke with V2 readback passed. The smoke rerun used
 `make test-preview-consensus-prebuilt` against the image built by the full target.

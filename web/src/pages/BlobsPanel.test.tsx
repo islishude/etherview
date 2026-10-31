@@ -20,12 +20,9 @@ vi.mock("@/components/SIWELoginControl", () => ({
   SIWELoginControl: ({ label }: { label: string }) => <button>{label}</button>,
 }));
 vi.mock("@/components/TurnstileChallenge", () => ({
-  useTurnstile: () => ({
-    ready: true,
-    consume: () => undefined,
-    refresh: () => {},
-    challenge: null,
-  }),
+  useTurnstile: () => {
+    throw new Error("Blob content must not use Turnstile");
+  },
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
@@ -150,8 +147,8 @@ it.each(["en", "zh"])("shows full %s metadata only on the detail page", async (l
   expect(screen.getByText(commitment)).toBeVisible();
   expect(screen.getByText(checksum)).toBeVisible();
   expect(
-    screen.getByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
-  ).toBeVisible();
+    screen.queryByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
+  ).not.toBeInTheDocument();
   expect(reads).toEqual([]);
 });
 
@@ -167,7 +164,7 @@ it("previews only on demand, disables actions while loading, and hides without a
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Preview first 1 KiB" }));
   expect(screen.getByRole("button", { name: "Loading preview…" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Download blob" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Download blob" })).not.toBeInTheDocument();
   await act(async () => {
     finish(new Response(new Uint8Array(131072).fill(7)));
   });
@@ -245,21 +242,30 @@ it("does not substitute another blob for an unknown index", async () => {
   expect(reads).toEqual([]);
 });
 
-it.each([true, false])(
-  "shares content between preview and download (preview first: %s)",
-  async (previewFirst) => {
-    const create = vi.fn(() => "blob:test");
+it.each(["en", "zh"])(
+  "saves full cached content from the expanded detail icon (%s)",
+  async (language) => {
+    await i18n.changeLanguage(language);
+    const create = vi.fn((_blob: Blob) => "blob:test");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     const reads = renderBlobs({ index: "42" });
     const user = userEvent.setup();
-    const preview = await screen.findByRole("button", { name: "Preview first 1 KiB" });
-    const download = screen.getByRole("button", { name: "Download blob" });
-    await user.click(previewFirst ? preview : download);
-    await user.click(previewFirst ? download : preview);
-    expect(reads).toHaveLength(1);
+    const label = i18n.t("consensus.download");
+    await user.click(await screen.findByRole("button", { name: i18n.t("consensus.preview") }));
+    const download = screen.getByRole("button", { name: label });
+    expect(download).toHaveAttribute("title", label);
+    expect(download).toHaveTextContent("");
+    expect(download.closest(".blob-preview")).toBeVisible();
+    await user.click(download);
     expect(create).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText("Hex preview · first 1 KiB")).toBeVisible();
+    expect(create.mock.calls[0]![0].size).toBe(131072);
+    expect(click.mock.instances[0]).toHaveAttribute("download", "blob-9007199254740993-42.bin");
+    await user.click(screen.getByRole("button", { name: i18n.t("consensus.hidePreview") }));
+    expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: i18n.t("consensus.preview") }));
+    expect(screen.getByRole("button", { name: label })).toBeVisible();
+    expect(reads).toHaveLength(1);
     click.mockRestore();
   },
 );

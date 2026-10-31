@@ -100,8 +100,5 @@ func (h *Handler) browserBlobContent(w http.ResponseWriter, r *http.Request) {
 		h.handleReaderError(w, r, ErrUnavailable)
 		return
 	}
-	if !h.requireTurnstile(w, r, "blob_content") {
-		return
-	}
 	h.blobContent(w, r)
 }

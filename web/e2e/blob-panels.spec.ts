@@ -110,7 +110,7 @@ for (const { width, language, theme } of appearanceCases) {
     await expect(page.getByText(commitment, { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     const detailScan = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -139,8 +139,13 @@ test("transaction preview and download use the exact block blob index and remain
   await page.getByRole("button", { name: "Hide preview" }).click();
   await expect(page.locator(".blob-preview")).toBeHidden();
   expect(reads).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Download blob" })).toHaveCount(0);
+  await preview.click();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download blob" }).click();
+  const downloadButton = page.getByRole("button", { name: "Download blob" });
+  await expect(downloadButton).toHaveAttribute("title", "Download blob");
+  await downloadButton.focus();
+  await page.keyboard.press("Enter");
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("blob-9007199254740993-42.bin");
   const downloadedBytes: Buffer[] = [];

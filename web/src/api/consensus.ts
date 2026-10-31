@@ -24,16 +24,10 @@ export function useBlockBlobs(id: string, enabled = true) {
     retry: false,
   });
 }
-export async function readBlob(
-  hash: string,
-  index: string,
-  csrf: string,
-  signal?: AbortSignal,
-  token?: string,
-) {
+export async function readBlob(hash: string, index: string, csrf: string, signal?: AbortSignal) {
   const result = await sdk.getBrowserBlobContent({
     signal,
-    headers: { "X-CSRF-Token": csrf, ...(token ? { "X-Turnstile-Token": token } : {}) },
+    headers: { "X-CSRF-Token": csrf },
     client: apiClient,
     path: { hash, index },
     parseAs: "stream",

@@ -6,8 +6,11 @@ afterEach(() => vi.unstubAllGlobals());
 const hash = `0x${"11".repeat(32)}`;
 
 it("retains the exact block number and block-scoped index in the download filename", async () => {
-  const fetch = vi.fn(async (request: RequestInfo | URL) => {
+  const fetch = vi.fn(async (request: RequestInfo | URL, options?: RequestInit) => {
     expect(request).toBe(`/api/v1/blocks/${hash}/blobs/42/content`);
+    const headers = new Headers(options?.headers);
+    expect(headers.get("X-CSRF-Token")).toBe("csrf");
+    expect(headers.has("X-Turnstile-Token")).toBe(false);
     return new Response(new Uint8Array(131072), {
       headers: { "Content-Disposition": "attachment; filename=blob-9007199254740993-42.bin" },
     });

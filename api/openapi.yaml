@@ -675,12 +675,11 @@ paths:
       operationId: "getBrowserBlobContent"
       security:
         - UserSession: []
-      description: "Session-only browser content acquisition. Requires same-origin Origin and CSRF; when Turnstile is enabled, a single-use blob_content token. Not an API-key download endpoint."
+      description: "Session-only browser content acquisition. Requires same-origin Origin and CSRF. Does not require Turnstile. Not an API-key download endpoint."
       tags:
         - "blocks"
       parameters:
         - $ref: "#/components/parameters/CSRFToken"
-        - $ref: "#/components/parameters/TurnstileToken"
         - name: "hash"
           in: "path"
           required: true

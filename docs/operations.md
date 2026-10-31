@@ -1881,7 +1881,8 @@ operator keys and billing-disabled deployments retain free exceptions.
 
 The old public `/api/v1/blocks/{hash}/blobs/{index}/content` GET is absent.
 The free browser POST `/api/v1/blocks/{hash}/blobs/{index}/content` requires
-SIWE, matching Origin and CSRF. The existing global Turnstile setting applies
-with action `blob_content`; no additional secret or role is introduced.
+SIWE, matching Origin and CSRF. Blob content does not require Turnstile, even
+when the global switch is enabled. The expanded details provide a download
+icon that saves the cached complete blob without another request or fee.
 The browser saves previously fetched content locally without another charge
 or token validation. Account/session changes and navigation discard that buffer.

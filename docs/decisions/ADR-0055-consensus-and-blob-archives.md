@@ -60,10 +60,11 @@ access, validate object integrity, then recheck publication identity before
 returning bytes. Content acquisition uses exact block hashes. The public V1
 content GET is removed. The free browser-only POST at
 `/api/v1/blocks/{hash}/blobs/{index}/content` requires a writer-authoritative
-SIWE session, exact Origin, CSRF and, when globally enabled, a single-use
-Turnstile token with action `blob_content`. API keys cannot replace sessions.
+SIWE session, exact Origin and CSRF. Turnstile is not required, even when
+globally enabled. API keys cannot replace sessions.
 The browser retains content only in session-scoped component memory and reuses
-it for preview and local file saving; changing identity or leaving the blob
+it for preview and local file saving through a download icon at the bottom right
+of the expanded content details; changing identity or leaving the blob
 page clears it. Responses are no-store, including failures.
 API clients use the `blob.getblob` V2 extension governed by ADR-0044, returning
 raw bytes as a 0x-prefixed hex result after the same integrity/publication checks. Credentials
