@@ -95,7 +95,7 @@ for (const suite of [
     const f = fixture(t);
     const prebuilt = f.run(`${target}-prebuilt`);
     assert.equal(prebuilt.status, 0, prebuilt.stdout + prebuilt.stderr);
-    assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), false);
+    assert.equal(existsSync(join(f.dir, ".local/preview.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
       preview ? ["docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
@@ -125,7 +125,7 @@ for (const suite of [
     }
     const ordinary = f.run(target);
     assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
-    assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), preview);
+    assert.equal(existsSync(join(f.dir, ".local/preview.env")), preview);
     const builds = ordinary.commands.filter((c) => c.command === "buildx");
     assert.equal(builds.length, preview ? 2 : 1);
     assert(builds[0].args.includes("production"));

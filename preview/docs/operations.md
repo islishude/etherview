@@ -11,7 +11,7 @@ make preview-cert
 make start-preview
 ```
 
-Preview settings live in `.local/preview-push.env`. Start/recreate automatically
+Preview settings live in `.local/preview.env`. Start/recreate automatically
 initialize missing settings and reuse existing VAPID keys; `make preview-env`
 prepares the file separately. See [browser push configuration](#browser-push).
 
@@ -83,9 +83,9 @@ first bring up the runtime, then run `archive-init` separately and propagate its
 exit status before checking real block production. Initialization failure does
 not prevent already started API/enrich containers from becoming ready.
 After correcting credentials or restoring storage, repeat
-`docker compose --env-file .local/preview-push.env -f compose.yaml run --rm archive-init`; this preserves
+`docker compose --env-file .local/preview.env -f compose.yaml run --rm archive-init`; this preserves
 existing objects. To recreate application roles during an archive outage, use
-`docker compose --env-file .local/preview-push.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
+`docker compose --env-file .local/preview.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
 
 ### Preview x402 billing
@@ -228,7 +228,7 @@ failed runs retain diagnostics and a success report when available.
 ## Browser push
 
 For Preview at `https://app.etherview.localhost`, the root Compose entry point
-uses ignored `.local/preview-push.env` for general local settings, including the
+uses ignored `.local/preview.env` for general local settings, including the
 VAPID key pair.
 `make start-preview` and `make recreate-preview` run `make preview-env` first:
 it creates the file when missing, generates a P-256 key pair, fills missing push
@@ -241,17 +241,16 @@ build contexts. Production push remains disabled by default.
 
 Preview lifecycle commands explicitly load that file, without loading root `.env`.
 `PREVIEW_ENV_FILE` overrides the path for Make commands. To migrate existing
-settings other than Turnstile, move the root `.env` contents into `.local/preview-push.env`, keeping
+settings, move the root `.env` contents into `.local/preview.env`, keeping
 its existing private key and matching public key, then remove root `.env`.
 `ETHERVIEW_PREVIEW_PUSH_ENV_FILE` is no longer used.
 
-Turnstile uses a separate ignored `.local/turnstile.env`, loaded automatically
-by the root Compose API service with `env_file.required: false`. The file is
-optional: without it, the checked-in configuration keeps Turnstile disabled.
-Both raw Compose and Preview Make commands load it; `PREVIEW_ENV_FILE` does
-not change its path. Keep Turnstile settings out of root `.env` and
-`.local/preview-push.env`; host environment variables do not override this file.
-Only the API receives its contents, so use it exclusively for Turnstile:
+Turnstile settings share `.local/preview.env` with Push and other Preview
+settings. Compose explicitly passes Turnstile settings only to API and the
+VAPID private key only to maintenance; it never injects the entire file into a
+container. Turnstile stays disabled when its settings are absent. Initialization
+preserves existing settings and comments and does not generate Turnstile keys.
+For example, add your existing keys:
 
 ```dotenv
 ETHERVIEW_TURNSTILE_ENABLED=true
@@ -259,13 +258,22 @@ ETHERVIEW_TURNSTILE_SITE_KEY=your-site-key
 ETHERVIEW_TURNSTILE_SECRET_KEY=your-secret-key
 ```
 
-Move existing Turnstile values into this file without changing them, set
-`chmod 600 .local/turnstile.env`, and remove root `.env` once all its settings
-have been migrated. `.local/` is excluded from Git and Docker build contexts.
+When migrating from `.local/preview-push.env` and `.local/turnstile.env`, merge
+their contents into `.local/preview.env` before starting Preview. Preserve the
+existing VAPID pair and Turnstile keys, resolve any conflicting duplicate settings
+explicitly, and remove the old files only after verifying the merged values.
+Startup does not read or migrate the old paths. Run `make preview-env` to validate
+the VAPID pair, fill missing Push defaults and enforce mode 0600. `.local/` is
+excluded from Git and Docker build contexts.
+
+Both Make and raw Compose use the same settings: Make selects `PREVIEW_ENV_FILE`,
+while raw Compose requires `--env-file .local/preview.env` (or your custom path).
+Exported host variables override matching file values under Compose precedence,
+including Turnstile; unset them to use the file's values.
 After changing the file, recreate the API to apply it:
 
 ```sh
-docker compose --env-file .local/preview-push.env up -d --no-deps --force-recreate api
+docker compose --env-file .local/preview.env up -d --no-deps --force-recreate api
 ```
 
 `make recreate-preview` also applies the configuration when recreating Preview.
@@ -275,7 +283,7 @@ Run `make preview-env` separately before using raw Compose commands:
 
 ```sh
 make preview-env
-docker compose --env-file .local/preview-push.env config --quiet
+docker compose --env-file .local/preview.env config --quiet
 ```
 
 Compose itself does not generate the file. An existing public key without its
@@ -355,7 +363,7 @@ After changing only the Caddy configuration, recreate just the gateway to apply
 it without restarting the chain or replacing data volumes:
 
 ```sh
-.github/scripts/compose.sh --env-file .local/preview-push.env -f compose.yaml up -d --no-deps --force-recreate preview-gateway
+.github/scripts/compose.sh --env-file .local/preview.env -f compose.yaml up -d --no-deps --force-recreate preview-gateway
 ```
 
 Use the configured `PREVIEW_ENV_FILE` instead if overridden. Recreate Preview
@@ -408,7 +416,7 @@ metadata or compiler-download policies.
 Set `ETHERVIEW_BYTECODE_DB_ENABLED=false` to disable bytecode discovery.
 Set `ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS=false` and
 `ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS=false` to restore strict
-public-network checks. Put overrides in `.local/preview-push.env` (or the file
+public-network checks. Put overrides in `.local/preview.env` (or the file
 selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply them.
 See the [Sourcify workflow](../../docs/operations.md#sourcify-operations) and
 [bytecode discovery](../../docs/operations.md#automatic-bytecode-database-source-discovery)

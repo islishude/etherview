@@ -97,7 +97,10 @@ Preview lifecycle helpers and their unit tests live in `preview/scripts/`.
 `make preview-network-check` exercises immutable reuse, incomplete material,
 configuration drift, tampering, symlinks and rejected single-file overrides.
 It also checks Preview env creation, key-pair reuse and validation, operator-setting
-preservation and 0600 permissions. Deterministic short-scalar cases verify
+preservation and 0600 permissions in the unified `.local/preview.env`, including
+Turnstile settings and repeated CLI/Make initialization. `make compose-check`
+checks default/custom env paths, host override precedence and API/maintenance
+secret isolation without injecting unrelated file contents. Deterministic short-scalar cases verify
 32-byte private-key encoding, unchanged public identity and reuse without rotation.
 Preview Compose behavior is exercised by the metadata, consensus, contracts
 and x402 E2E gates. Production deployment render commands pass
