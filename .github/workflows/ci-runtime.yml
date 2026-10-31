@@ -44,9 +44,9 @@ jobs:
           retention-days: 7
 
   preview-metadata:
-    name: Preview metadata, consensus, and blobs E2E
+    name: Preview metadata, consensus, blobs, and manual tools E2E
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       PLAYWRIGHT_USE_BUNDLED: "1"
     steps:
@@ -95,6 +95,10 @@ jobs:
         run: make test-preview-contracts-prebuilt
       - name: Run local Preview x402 acceptance
         run: make test-preview-x402-prebuilt
+      - name: Run Preview manual tool and browser acceptance
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: make test-preview-tools-e2e-prebuilt
       - name: Run real Preview consensus and blob acceptance
         env:
           TMPDIR: ${{ runner.temp }}

@@ -7,6 +7,10 @@ and the shared runtime/operations platform. P60/P70 release and live-payment blo
 
 ## Outcome
 
+P30-T152 provides the Preview manual scenario CLI with completed local all/split
+acceptance. Browser-provider delivery and public-chain acceptance remain separate
+evidence.
+
 Etherview provides fail-closed contract verification and contract intelligence
 over exact chain, address, runtime, block, and generation identities. It supports
 the maintained Solidity/Yul, pinned Geas and pinned Vyper verification paths, authenticated
@@ -102,8 +106,15 @@ availability does not gate core readiness.
 | P30-T149 | done   | P20-T29                                                       | ENS in enrich with one current-chain configuration and shared runtime/deployment boundaries                                                                                                                             | Component parity, credential isolation, readiness/shutdown and deployment checks                                                                                        |
 | P30-T150 | done   | P30-T149, P40-T27, P50-T81                                    | Real-contract and production-image current-chain ENS acceptance in all/split layouts                                                                                                                                    | Fresh schema, autonomous discovery/publication, reorg/restart/outage and browser gates                                                                                  |
 | P30-T151 | done   | P30-T150                                                      | Representative Mainnet core-to-publication acceptance and independent reconciliation                                                                                                                                    | Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons                                                                      |
+| P30-T152 | done   | P30-T144, P30-T145, P30-T150                                  | Preview manual scenarios, resumable transaction journal, reports, proxy families and EIP-7702 lifecycle controls                                                                                                        | Tool regressions, isolated split/all Preview CLI and browser acceptance                                                                                                 |
 
 ## Acceptance
+
+### Preview manual tools
+
+- [x] P30-T152: Preview CLI initial samples, lifecycle actions, durable recovery,
+      reports, isolated all/split execution and bilingual desktop/mobile browser
+      acceptance. Wallet-provider operations and final visual checks remain manual.
 
 ### Current-chain ENS rewrite
 
@@ -220,6 +231,18 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P60/P70 release blockers remain independent.
 
 ## Evidence
+
+P30-T152 passed 24 tool regressions and isolated all/split production Preview runs.
+Each layout published 17 initial scenarios and completed 38 lifecycle actions,
+including real blob download comparison, AA rejection/revert, proxy families,
+EIP-7702, ENS and token/NFT changes. Read-only checks preserved transaction history;
+English desktop and Chinese mobile checks covered initial/final pages and manual
+refresh (136 screenshots). `make check`, generation, Go lint, docs/plan checks,
+Runtime, Hardhat, 221 browser regressions and four existing Preview gates passed
+locally. [Testing conditions](../../preview/docs/tools.md#acceptance) document the
+isolated strict-policy gateway, polling interval and external discovery boundary.
+Wallet login/signing, payments, notification permission and final human visual
+acceptance remain manual.
 
 Existing runtime/Preview results below remain evidence for their original
 revisions; local fixtures cannot close the live-source gate.

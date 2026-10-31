@@ -199,3 +199,10 @@ the production API, requiring all 24 non-empty allocations to publish, then
 repeats it to prove reuse. This check is additive to existing Preview chain,
 Bundler, ENS and billing acceptance; a mocked helper test does not establish
 compiler execution or durable publication.
+
+## Manual scenario tool acceptance
+
+See [manual tools](tools.md#acceptance) for the journal and real Preview CLI gates.
+The tool gate exercises initial and final states in split/all roles and consumes
+the same public reports in browser checks. Reports retain manual wallet and
+provider-dependent checks as unverified.

@@ -601,3 +601,20 @@ verify-preview-genesis: preview-env
 preview-verification-check: pnpm-install
 	$(NODE) preview/verification/generate.mjs --check
 	$(NODE) --test preview/verification/verify.test.mjs
+
+# Explicit manual scenarios; never start or reset the daily Preview implicitly.
+.PHONY: preview-tool test-preview-tools test-preview-tools-e2e test-preview-tools-e2e-prebuilt
+preview-tool:
+	@NODE_EXTRA_CA_CERTS="$${NODE_EXTRA_CA_CERTS:-$(CURDIR)/$(PREVIEW_TLS_CA)}" $(NODE) preview/contracts/tools/cli.mjs $(ARGS)
+
+test-preview-tools: pnpm-install
+	$(NODE) --test preview/contracts/tools/*.test.mjs
+	$(GO) test ./cmd/previewblob
+
+test-preview-tools-e2e: pnpm-install preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-tools-e2e-prebuilt
+
+test-preview-tools-e2e-prebuilt: preview-e2e-check
+	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewTools$$' ./e2e/previewmetadata
+
+check: test-preview-tools
