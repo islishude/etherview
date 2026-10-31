@@ -68,7 +68,7 @@
   cursor: pointer;
 }
 
-.billing-view-switch button[aria-pressed="true"] {
+.billing-view-switch button[aria-selected="true"] {
   border-color: var(--line-strong);
   background: var(--surface-raised);
   color: var(--text);
@@ -90,7 +90,7 @@
 .billing-topup-form {
   display: grid;
   gap: 1rem;
-  width: min(100%, 34rem);
+  width: min(100%, 36rem);
   min-width: 0;
 }
 
@@ -275,4 +275,148 @@
 
 #billing-view {
   min-width: 0;
+}
+
+.billing-view-switch {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.billing-wallet-balance {
+  overflow-wrap: anywhere;
+}
+
+.billing-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.billing-step {
+  min-width: 0;
+  color: var(--text-soft);
+  text-align: center;
+}
+
+.billing-step-head {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.65rem;
+}
+
+.billing-step:not(:last-child) .billing-step-head::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: calc(50% + 1rem);
+  width: calc(100% - 2rem);
+  height: 2px;
+  background: var(--line-strong);
+}
+
+.billing-step.success .billing-step-head::after {
+  background: var(--success);
+}
+
+.billing-step-icon {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.billing-step.process {
+  color: var(--brand-strong);
+}
+
+.billing-step.success {
+  color: var(--success);
+}
+
+.billing-step.error {
+  color: var(--danger);
+}
+
+.billing-step strong {
+  display: block;
+  font-size: 0.875rem;
+  padding-inline: 0.25rem;
+}
+
+.billing-step-description {
+  display: block;
+  padding: 0.35rem 0.25rem 0;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.billing-payment > * {
+  width: min(100%, 36rem);
+  margin-inline: auto;
+}
+.billing-wallet-balance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+.billing-wallet-balance > p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+}
+.billing-balance-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.billing-balance-refresh:hover:not(:disabled) {
+  color: var(--brand-strong);
+  background: var(--surface-raised);
+}
+.billing-balance-refresh:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.billing-balance-refresh:focus-visible {
+  outline: 2px solid var(--brand-strong);
+  outline-offset: 2px;
+}
+
+.billing-connect {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+.billing-connect p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+.billing-connect > button {
+  justify-self: start;
 }

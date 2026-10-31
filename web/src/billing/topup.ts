@@ -1,3 +1,4 @@
+import { checkTopupBalance, TopupBalanceError } from "./balance";
 import { x402Client } from "@x402/core/client";
 import type { Network, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
@@ -99,13 +100,30 @@ export async function payBillingTopup(options: {
     assetName: config.asset_eip712_name,
     assetVersion: config.asset_eip712_version,
   };
+  const checkBalance = () =>
+    checkTopupBalance(
+      wallet.readContract,
+      binding.account,
+      binding.asset,
+      binding.chainID,
+      binding.amountAtomic,
+    );
   if (method === "permit2") {
+    await checkBalance();
     await ensureExactPermit2Allowance(wallet, binding);
   }
+  let balanceError: TopupBalanceError | undefined;
   const signer = {
     address: wallet.active.account,
-    signTypedData: (typedData: BillingTypedData) =>
-      wallet.signBillingTypedData(typedData, binding, wallet.active),
+    signTypedData: async (typedData: BillingTypedData) => {
+      try {
+        await checkBalance();
+      } catch (cause) {
+        if (cause instanceof TopupBalanceError) balanceError = cause;
+        throw cause;
+      }
+      return wallet.signBillingTypedData(typedData, binding, wallet.active);
+    },
   };
   const selector = (_version: number, requirements: PaymentRequirements[]) => {
     const selected = requirements.find(
@@ -143,6 +161,7 @@ export async function payBillingTopup(options: {
       },
     },
   ).catch((cause: unknown) => {
+    if (!paymentSubmitted && balanceError) throw balanceError;
     if (!paymentSubmitted) throw new TopupAuthorizationError();
     throw cause;
   });

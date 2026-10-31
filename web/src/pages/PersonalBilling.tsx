@@ -1,10 +1,13 @@
+import { BillingWalletConnect } from "./BillingWalletConnect";
+import { BillingSteps } from "./BillingSteps";
+import { checkTopupBalance, readTopupBalance, TopupBalanceError } from "@/billing/balance";
 import "@/i18n/resources/billingPrices";
 import { Message } from "@/components/Message";
 import "./PersonalBilling.css";
-import { type SubmitEvent, useEffect, useRef, useState } from "react";
+import { type ReactNode, type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, RefreshCw } from "lucide-react";
 
 import {
   createBillingTopupIntent,
@@ -48,12 +51,13 @@ export function PersonalBilling() {
   const identity = usePrivateIdentity();
   const lifetime = usePrivateLifetime();
   const client = useQueryClient();
-  const [view, setView] = useState<"payment" | "history">("payment");
+  const [view, setView] = useState<"payment" | "history" | "prices">("payment");
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<BillingTransferMethod>("eip3009");
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [notice, setNotice] = useState<string>();
+  const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string>();
   const [pendingID, setPendingID] = useState<string>();
   const completed = useRef(new Set<string>());
@@ -107,6 +111,7 @@ export function PersonalBilling() {
     if (!pendingID || intent?.id !== pendingID) return;
     if (!["credited", "failed", "expired"].includes(intent.state)) return;
     completed.current.add(intent.id);
+    setFinished(true);
     setPendingID(undefined);
     if (intent.state === "credited") {
       setNotice(
@@ -133,6 +138,34 @@ export function PersonalBilling() {
     wallet.signBillingTypedData &&
     wallet.waitForBillingTransaction,
   );
+  const walletKey = JSON.stringify([
+    identity,
+    wallet.active,
+    config.data?.network,
+    config.data?.asset,
+    config.data?.recipient,
+  ]);
+  const currentWalletKey = useRef(walletKey);
+  currentWalletKey.current = walletKey;
+  const balance = useQuery({
+    queryKey: [...prefix, "wallet-balance", walletKey],
+    queryFn: () =>
+      readTopupBalance(
+        wallet.readContract,
+        wallet.active!.account,
+        config.data!.asset!,
+        config.data!.network!.slice("eip155:".length),
+      ),
+    enabled: walletReady && Boolean(config.data?.x402_topups_enabled),
+    retry: false,
+    staleTime: 0,
+  });
+  const atomicAmount = config.data ? topupAmount(amount, config.data) : undefined;
+  const enoughBalance =
+    balance.data !== undefined &&
+    atomicAmount !== undefined &&
+    balance.data >= BigInt(atomicAmount);
+  const balanceBlocked = !enoughBalance || balance.isFetching || Boolean(balance.error);
   const waiting = Boolean(pendingID || recoverable);
   const pendingHash =
     pending.data?.transaction_hash ??
@@ -142,9 +175,10 @@ export function PersonalBilling() {
 
   const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (blocked || submittingRef.current) return;
+    if (blocked || submittingRef.current || balanceBlocked) return;
     setError(undefined);
     setNotice(undefined);
+    setFinished(false);
     if (
       !walletReady ||
       !wallet.active ||
@@ -163,9 +197,21 @@ export function PersonalBilling() {
     setSubmitting(true);
     try {
       const { payBillingTopup } = await import("@/billing/topup");
-      signal.throwIfAborted();
+      const assertCurrent = () => {
+        signal.throwIfAborted();
+        if (currentWalletKey.current !== walletKey) throw new TopupBalanceError("unavailable");
+      };
+      assertCurrent();
+      await checkTopupBalance(
+        wallet.readContract,
+        wallet.active.account,
+        config.data.asset!,
+        config.data.network!.slice("eip155:".length),
+        atomic,
+      );
+      assertCurrent();
       const intent = await createBillingTopupIntent(atomic, auth.session.csrf_token);
-      signal.throwIfAborted();
+      assertCurrent();
       const receipt = await payBillingTopup({
         config: config.data,
         intent,
@@ -174,27 +220,28 @@ export function PersonalBilling() {
         wallet: {
           active: wallet.active,
           readContract: (...args) => {
-            signal.throwIfAborted();
+            assertCurrent();
             return wallet.readContract(...args);
           },
           sendTransaction: (...args) => {
-            signal.throwIfAborted();
+            assertCurrent();
             return wallet.sendTransaction(...args);
           },
           signBillingTypedData: async (...args) => {
-            signal.throwIfAborted();
+            assertCurrent();
             const signature = await wallet.signBillingTypedData!(...args);
-            signal.throwIfAborted();
+            assertCurrent();
             return signature;
           },
           waitForBillingTransaction: (...args) => {
-            signal.throwIfAborted();
+            assertCurrent();
             return wallet.waitForBillingTransaction!(...args);
           },
         },
       });
       signal.throwIfAborted();
       completed.current.add(receipt.intent.id);
+      setFinished(true);
       setNotice(
         t("billing.topup.credited", {
           amount: displayBillingAmount(
@@ -215,6 +262,9 @@ export function PersonalBilling() {
       ) {
         setPendingID(cause.intentID);
         await refreshBilling();
+      } else if (cause instanceof TopupBalanceError) {
+        setError(t(`billing.guide.${cause.reason}`));
+        void balance.refetch();
       } else if (cause instanceof Error && cause.name === "TopupAuthorizationError") {
         setError(t("billing.topup.notSubmitted"));
       } else {
@@ -245,23 +295,7 @@ export function PersonalBilling() {
           />
         )}
       </section>
-      <div
-        className="billing-view-switch"
-        role="group"
-        aria-label={t("billing.workspace.sections")}
-      >
-        {(["payment", "history"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={view === value}
-            aria-controls="billing-view"
-            onClick={() => setView(value)}
-          >
-            {t(`billing.workspace.${value}`)}
-          </button>
-        ))}
-      </div>
+      <BillingTabs view={view} setView={setView} />
       {submitting && (
         <p className="query-notice" role="status">
           {t("billing.topup.processing")}
@@ -281,7 +315,7 @@ export function PersonalBilling() {
       )}
       {notice && <Message type="success">{notice}</Message>}
       {error && <Message type="error">{error}</Message>}
-      <div id="billing-view">
+      <div id="billing-view" role="tabpanel" aria-labelledby={`billing-tab-${view}`}>
         {view === "payment" && (
           <section className="panel billing-payment" aria-labelledby="billing-payment-title">
             <h2 id="billing-payment-title">{t("billing.workspace.paymentTitle")}</h2>
@@ -302,11 +336,64 @@ export function PersonalBilling() {
                       retry={() => void recovery.refetch()}
                     />
                   )}
+                  <BillingSteps
+                    active={finished || waiting ? 2 : submitting ? 1 : 0}
+                    complete={Boolean(notice)}
+                    failed={Boolean(error) && !waiting}
+                  />
                   <TopupForm
                     config={config.data}
                     amount={amount}
                     method={method}
-                    onAmount={setAmount}
+                    balance={
+                      wallet.active && (
+                        <div role="status" className="billing-wallet-balance">
+                          <span>{t("billing.guide.walletBalance")}</span>{" "}
+                          {walletReady
+                            ? balance.isPending
+                              ? t("billing.guide.loading")
+                              : balance.error
+                                ? t("billing.guide.unavailable")
+                                : displayBillingAmount(balance.data!.toString(), config.data)
+                            : t("billing.topup.walletRequired")}
+                          <button
+                            type="button"
+                            className="billing-balance-refresh"
+                            aria-label={t("billing.guide.refresh")}
+                            title={t("billing.guide.refresh")}
+                            disabled={!walletReady || balance.isFetching || submitting}
+                            onClick={() => void balance.refetch()}
+                          >
+                            <UIIcon
+                              icon={RefreshCw}
+                              size={14}
+                              className={balance.isFetching ? "query-loading-spinner" : undefined}
+                            />
+                          </button>
+                          {balance.data !== undefined &&
+                            !balance.error &&
+                            atomicAmount &&
+                            !enoughBalance && (
+                              <p>
+                                {t("billing.guide.shortfall", {
+                                  amount: displayBillingAmount(
+                                    (BigInt(atomicAmount) - balance.data).toString(),
+                                    config.data,
+                                  ),
+                                })}
+                              </p>
+                            )}
+                        </div>
+                      )
+                    }
+                    payer={wallet.active?.account}
+                    balanceBlocked={balanceBlocked}
+                    onAmount={(value) => {
+                      setAmount(value);
+                      setFinished(false);
+                      setNotice(undefined);
+                      setError(undefined);
+                    }}
                     onMethod={setMethod}
                     blocked={blocked}
                     busy={submitting || waiting}
@@ -322,8 +409,69 @@ export function PersonalBilling() {
           </section>
         )}
         <PersonalHistory visible={view === "history"} config={config.data} />
-        {config.data && !config.error && <BillingPrices config={config.data} />}
+        {view === "prices" &&
+          (config.isPending ? (
+            <p role="status">{t("billing.workspace.loadingPayment")}</p>
+          ) : config.error ? (
+            <BillingError
+              title={t("billing.workspace.configFailed")}
+              retry={() => void config.refetch()}
+            />
+          ) : (
+            config.data && <BillingPrices config={config.data} />
+          ))}
       </div>
+    </div>
+  );
+}
+
+function BillingTabs({
+  view,
+  setView,
+}: {
+  view: "payment" | "history" | "prices";
+  setView: (view: "payment" | "history" | "prices") => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="billing-view-switch"
+      role="tablist"
+      aria-label={t("billing.workspace.sections")}
+    >
+      {(["payment", "history", "prices"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          role="tab"
+          id={`billing-tab-${value}`}
+          aria-selected={view === value}
+          tabIndex={view === value ? 0 : -1}
+          onKeyDown={(event) => {
+            const tabs = ["payment", "history", "prices"] as const;
+            const index = tabs.indexOf(value);
+            const next =
+              event.key === "ArrowRight"
+                ? tabs[(index + 1) % 3]
+                : event.key === "ArrowLeft"
+                  ? tabs[(index + 2) % 3]
+                  : event.key === "Home"
+                    ? tabs[0]
+                    : event.key === "End"
+                      ? tabs[2]
+                      : undefined;
+            if (next) {
+              event.preventDefault();
+              setView(next);
+              document.getElementById(`billing-tab-${next}`)?.focus();
+            }
+          }}
+          aria-controls="billing-view"
+          onClick={() => setView(value)}
+        >
+          {t(`billing.workspace.${value}`)}
+        </button>
+      ))}
     </div>
   );
 }
@@ -354,6 +502,9 @@ function BalanceSummary({ account, config }: { account: BillingAccount; config?:
 }
 
 function TopupForm({
+  balance,
+  payer,
+  balanceBlocked,
   config,
   amount,
   method,
@@ -364,6 +515,9 @@ function TopupForm({
   walletReady,
   onSubmit,
 }: {
+  balance: ReactNode;
+  payer?: string;
+  balanceBlocked: boolean;
   config: BillingConfig;
   amount: string;
   method: BillingTransferMethod;
@@ -399,6 +553,7 @@ function TopupForm({
           aria-describedby="billing-amount-range"
           onChange={(event) => onAmount(event.target.value)}
         />
+        {balance}
         <small id="billing-amount-range">
           {t("billing.workspace.range", {
             min: config.minimum_topup_amount_atomic
@@ -436,6 +591,14 @@ function TopupForm({
         </p>
       )}
       <dl className="billing-payment-destination">
+        {payer && (
+          <div>
+            <dt>{t("billing.fields.payer")}</dt>
+            <dd>
+              <code>{payer}</code>
+            </dd>
+          </div>
+        )}
         <div>
           <dt>{t("billing.fields.network")}</dt>
           <dd>{config.network ?? "—"}</dd>
@@ -453,22 +616,31 @@ function TopupForm({
           </dd>
         </div>
       </dl>
-      <p className="billing-muted">{t("billing.workspace.authorization")}</p>
-      {!walletReady && (
-        <p className="billing-muted" role="status">
-          {t("billing.topup.walletRequired")}
-        </p>
+      <p className="billing-muted">{t("billing.guide.authorization")}</p>
+      {method === "permit2" && <p className="billing-muted">{t("billing.guide.permit2")}</p>}
+      {!payer ? (
+        <BillingWalletConnect />
+      ) : (
+        !walletReady && (
+          <p className="billing-muted" role="status">
+            {t("billing.topup.walletRequired")}
+          </p>
+        )
       )}
       <button
         className="button primary"
         aria-busy={busy}
         disabled={
-          blocked || !walletReady || !validAmount || !config.asset_transfer_methods.includes(method)
+          blocked ||
+          balanceBlocked ||
+          !walletReady ||
+          !validAmount ||
+          !config.asset_transfer_methods.includes(method)
         }
         type="submit"
       >
         {busy && <UIIcon icon={LoaderCircle} className="query-loading-spinner" />}
-        {t("billing.topup.submit")}
+        {t("billing.guide.confirm")}
       </button>
     </form>
   );

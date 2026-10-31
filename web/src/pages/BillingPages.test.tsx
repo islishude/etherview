@@ -100,7 +100,7 @@ describe("billing pages", () => {
 
     expect(await screen.findByRole("heading", { name: "Add credit" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "History" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "History" }));
+    await user.click(screen.getByRole("tab", { name: "History" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "Record type" }), "payments");
     expect(await screen.findByRole("heading", { name: "History" })).toBeVisible();
     expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();

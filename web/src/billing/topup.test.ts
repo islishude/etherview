@@ -190,6 +190,40 @@ describe("x402 SDK top-up flow", () => {
   }
 
   it.each(["eip3009", "permit2"] as const)(
+    "blocks %s authorization when balance is insufficient or unreadable",
+    async (method) => {
+      for (const invalid of ["zero", "error"] as const) {
+        const { options, wallet, fetch } = fixture(method);
+        if (invalid === "zero") wallet.readContract.mockResolvedValue(`0x${"0".repeat(64)}`);
+        else wallet.readContract.mockRejectedValue(new Error("private provider error"));
+        await expect(payBillingTopup(options)).rejects.toMatchObject({
+          name: "TopupBalanceError",
+          reason: invalid === "zero" ? "insufficient" : "unavailable",
+        });
+        expect(wallet.signBillingTypedData).not.toHaveBeenCalled();
+        expect(wallet.sendTransaction).not.toHaveBeenCalled();
+        expect(fetch.mock.calls.some(([request]) => request.headers.has("PAYMENT-SIGNATURE"))).toBe(
+          false,
+        );
+      }
+    },
+  );
+
+  it("rechecks balance after Permit2 approval before signing", async () => {
+    const { options, wallet } = fixture("permit2");
+    wallet.readContract
+      .mockResolvedValueOnce(`0x${1000n.toString(16).padStart(64, "0")}`)
+      .mockResolvedValueOnce(`0x${"0".repeat(64)}`)
+      .mockResolvedValueOnce(`0x${"0".repeat(64)}`);
+    await expect(payBillingTopup(options)).rejects.toMatchObject({
+      name: "TopupBalanceError",
+      reason: "insufficient",
+    });
+    expect(wallet.sendTransaction).toHaveBeenCalledOnce();
+    expect(wallet.signBillingTypedData).not.toHaveBeenCalled();
+  });
+
+  it.each(["eip3009", "permit2"] as const)(
     "signs and submits custom Preview assets with %s using the real SDK",
     async (method) => {
       const { options, wallet, fetch } = fixture(method);
