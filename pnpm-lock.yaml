@@ -268,6 +268,16 @@ importers:
       viem:
         specifier: 2.57.8
         version: 2.57.8(typescript@7.0.2)(zod@4.6.6)
+    devDependencies:
+      '@openzeppelin/contracts-upgradeable':
+        specifier: 5.6.1
+        version: 5.6.1(@openzeppelin/contracts@5.6.1)
+      '@safe-global/safe-contracts':
+        specifier: 1.4.1
+        version: 1.4.1
+      solady:
+        specifier: 0.1.26
+        version: 0.1.26
 
   web:
     dependencies:

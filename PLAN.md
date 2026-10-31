@@ -33,6 +33,11 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P30-T152 completed the [Preview manual scenario CLI](preview/docs/tools.md) with
+proxy and EIP-7702 lifecycle controls, durable local run journals and inspection
+links. Isolated all/split CLI and bilingual desktop/mobile browser acceptance passed;
+wallet-provider actions and live payments remain separate manual gates.
+
 P60-T22 completed whole-token top-up input and mandatory complexity-weighted V2 query pricing with local browser, writer and all/split payment acceptance. P60-T17 remains an independent live-payment gate.
 
 ENS now indexes current-chain core block/log facts under enrich and serves

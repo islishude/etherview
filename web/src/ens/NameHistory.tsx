@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
@@ -12,13 +12,10 @@ import { QueryNotice } from "@/components/QueryNotice";
 import { UIIcon } from "@/components/UIIcon";
 import { shorten } from "@/components/format";
 import { CursorPagination } from "@/pages/pages";
-import { subscribeNames } from "./nameEvents";
 
 export function NameHistory({ name }: { name: string }) {
   const { t } = useTranslation();
-  const client = useQueryClient();
   const pager = useCursorHistory(`name-history:${name}`);
-  const [newRecords, setNewRecords] = useState(false);
   const query = useQuery({
     meta: { chainEvents: ["names", "reorg"], pagination: pager.request.identity },
     queryKey: ["name-history", name, pager.request],
@@ -33,30 +30,12 @@ export function NameHistory({ name }: { name: string }) {
       ),
     retry: false,
   });
-  useEffect(
-    () =>
-      subscribeNames(client, (change) => {
-        if (change === "invalidate" || change === "refresh") setNewRecords(true);
-      }),
-    [client, name],
-  );
-  useEffect(() => {
-    if (query.isSuccess) setNewRecords(false);
-  }, [query.dataUpdatedAt, query.isSuccess]);
   const data = query.data?.data;
-  const reset = () => {
-    pager.reset();
-    setNewRecords(false);
-  };
+  const reset = pager.reset;
   return (
     <section className="name-history" aria-labelledby="name-history-heading">
       <div className="name-section-heading">
         <h2 id="name-history-heading">{t("names.history.title")}</h2>
-        {newRecords && (
-          <button type="button" className="button secondary" onClick={reset}>
-            {t("names.history.newRecords")}
-          </button>
-        )}
       </div>
       <QueryNotice loading={query.isPending} error={query.error} onReset={reset} />
       {data && (

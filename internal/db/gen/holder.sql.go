@@ -555,29 +555,6 @@ func (q *Queries) HolderDeleteBlockOutput(ctx context.Context, chainID pgtype.Nu
 	return err
 }
 
-const holderEventSupply = `-- name: HolderEventSupply :one
-SELECT COALESCE(sum(CASE event.event_kind
-    WHEN 'mint' THEN event.amount WHEN 'burn' THEN -event.amount ELSE 0 END), 0)::text AS total_supply
-FROM token_events AS event
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = event.chain_id
- AND canonical.number = event.block_number
- AND canonical.block_hash = event.block_hash
-WHERE event.chain_id = $1::numeric
-  AND event.token_address = $2::bytea
-  AND event.block_number <= $3::numeric
-  AND event.canonical AND event.standard = 'erc20'
-  AND event.event_kind IN ('mint', 'burn')
-  AND event.confidence IN ('high', 'verified')
-`
-
-func (q *Queries) HolderEventSupply(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (string, error) {
-	row := q.db.QueryRow(ctx, holderEventSupply, chainID, tokenAddress, blockNumber)
-	var total_supply string
-	err := row.Scan(&total_supply)
-	return total_supply, err
-}
-
 const holderHasUnreconciledEvents = `-- name: HolderHasUnreconciledEvents :one
 SELECT EXISTS (
     SELECT 1

@@ -76,7 +76,6 @@ func TestReconcileHolderTokenRequiresExactSupplyAgreement(t *testing.T) {
 
 	complete, err := reconcileHolderToken(t.Context(), endpoint, job, holderTokenInput{
 		token: token, holders: []common.Address{first, second}, full: true,
-		eventSupply: big.NewInt(10), eventSupplyValid: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -86,13 +85,12 @@ func TestReconcileHolderTokenRequiresExactSupplyAgreement(t *testing.T) {
 	}
 
 	unavailable, err := reconcileHolderToken(t.Context(), endpoint, job, holderTokenInput{
-		token: token, holders: []common.Address{first, second}, full: true,
-		eventSupply: big.NewInt(9), eventSupplyValid: true,
+		token: token, holders: []common.Address{first}, full: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unavailable.state != "unavailable" || unavailable.totalSupply.String() != "10" {
+	if unavailable.state != "unavailable" || unavailable.totalSupply.String() != "10" || unavailable.balanceSum.String() != "4" {
 		t.Fatalf("unavailable reconciliation=%+v", unavailable)
 	}
 	fixture.mu.Lock()
@@ -101,8 +99,7 @@ func TestReconcileHolderTokenRequiresExactSupplyAgreement(t *testing.T) {
 	fixture.mu.Unlock()
 	incremental, err := reconcileHolderToken(t.Context(), endpoint, job, holderTokenInput{
 		token: token, holders: []common.Address{first}, previousBalances: []*big.Int{big.NewInt(4)},
-		previousSum: big.NewInt(10), previousCount: 2, eventSupply: big.NewInt(9),
-		eventSupplyValid: true,
+		previousSum: big.NewInt(10), previousCount: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +110,7 @@ func TestReconcileHolderTokenRequiresExactSupplyAgreement(t *testing.T) {
 	fixture.mu.Lock()
 	calls := fixture.calls
 	fixture.mu.Unlock()
-	if calls != 8 {
-		t.Fatalf("RPC calls=%d, want 8", calls)
+	if calls != 7 {
+		t.Fatalf("RPC calls=%d, want 7", calls)
 	}
 }

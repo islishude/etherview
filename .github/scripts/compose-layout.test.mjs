@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -184,6 +185,73 @@ test("image navigation origins preserve defaults and reach API in every topology
     ]) {
       const config = render(args, { [key]: value });
       assert.equal(config.services[owner].environment[key], value ?? null);
+    }
+  }
+});
+
+test("Preview optionally loads Turnstile only into API through Compose and Make", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-turnstile-compose-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.copyFileSync(path.join(root, "compose.yaml"), path.join(directory, "compose.yaml"));
+  fs.cpSync(path.join(root, "preview/compose"), path.join(directory, "preview/compose"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(directory, ".local"));
+  fs.writeFileSync(path.join(directory, ".local/preview-push.env"), "");
+  const fixture = {
+    ETHERVIEW_TURNSTILE_ENABLED: "true",
+    ETHERVIEW_TURNSTILE_SITE_KEY: "public-fixture",
+    ETHERVIEW_TURNSTILE_SECRET_KEY: "private-fixture",
+  };
+  const env = { ...process.env, COMPOSE_DISABLE_ENV_FILE: "true" };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("COMPOSE_") && key !== "COMPOSE_DISABLE_ENV_FILE") delete env[key];
+    if (key.startsWith("ETHERVIEW_TURNSTILE_")) delete env[key];
+  }
+  // Deliberately conflicting host values must not override the service env_file.
+  Object.assign(env, Object.fromEntries(Object.keys(fixture).map((key) => [key, "host-value"])));
+  const composeCommand = process.env.COMPOSE || ".github/scripts/compose.sh";
+  const compose = fs.existsSync(path.resolve(root, composeCommand))
+    ? path.resolve(root, composeCommand)
+    : composeCommand;
+  for (const present of [false, true]) {
+    if (present)
+      fs.writeFileSync(
+        path.join(directory, ".local/turnstile.env"),
+        Object.entries(fixture)
+          .map(([key, value]) => `${key}=${value}\n`)
+          .join(""),
+      );
+    const direct = JSON.parse(
+      runCompose(["-f", "compose.yaml", "config", "--format", "json"], { cwd: directory, env }),
+    );
+    // Replace only the lifecycle recipe: retain the real target's exported env
+    // settings while rendering configuration instead of stopping any services.
+    const made = spawnSync(
+      "make",
+      [
+        "--no-print-directory",
+        "-f",
+        path.join(root, "Makefile"),
+        "-f",
+        "-",
+        "stop-preview",
+        `COMPOSE=${compose}`,
+      ],
+      {
+        cwd: directory,
+        env,
+        encoding: "utf8",
+        input: "stop-preview:\n\t@$(COMPOSE) -f compose.yaml config --format json\n",
+      },
+    );
+    assert.equal(made.status, 0, "Make configuration rendering succeeds");
+    for (const config of [direct, JSON.parse(made.stdout)]) {
+      for (const [name, service] of Object.entries(config.services)) {
+        for (const [key, value] of Object.entries(fixture))
+          assert.equal(service.environment?.[key], present && name === "api" ? value : undefined);
+        assert.equal(service.environment?.ETHERVIEW_TURNSTILE_SECRET_KEY_FILE, undefined);
+      }
     }
   }
 });

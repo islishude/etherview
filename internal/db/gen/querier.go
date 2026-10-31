@@ -460,7 +460,6 @@ type Querier interface {
 	HolderAffectedTokens(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]HolderAffectedTokensRow, error)
 	HolderCandidates(ctx context.Context, arg HolderCandidatesParams) ([]HolderCandidatesRow, error)
 	HolderDeleteBlockOutput(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
-	HolderEventSupply(ctx context.Context, chainID pgtype.Numeric, tokenAddress []byte, blockNumber pgtype.Numeric) (string, error)
 	HolderHasUnreconciledEvents(ctx context.Context, arg HolderHasUnreconciledEventsParams) (bool, error)
 	HolderInsertBalance(ctx context.Context, arg HolderInsertBalanceParams) error
 	HolderInsertSnapshot(ctx context.Context, arg HolderInsertSnapshotParams) error

@@ -275,6 +275,35 @@ describe("AbiFunctionExplorer", () => {
     vi.mocked(getContractProxyResponse).mockResolvedValue(proxyResponse());
   });
 
+  it.each(["read", "write", "all"] as const)(
+    "shows group headings only in all mode and keeps function types in %s mode",
+    (mode) => {
+      mockWallet();
+      const types = ["view", "pure", "nonpayable", "payable"] as const;
+      renderExplorer(
+        types.map((stateMutability) => ({
+          type: "function",
+          name: `${stateMutability}Function`,
+          stateMutability,
+          inputs: [],
+          outputs: [],
+        })),
+        mode,
+        directTargets(),
+      );
+      expect(screen.queryAllByRole("heading", { level: 2 })).toHaveLength(mode === "all" ? 2 : 0);
+      const visibleTypes =
+        mode === "all" ? types : mode === "read" ? types.slice(0, 2) : types.slice(2);
+      for (const type of visibleTypes) {
+        const summary = screen.getByText(`${type}Function()`).closest("summary")!;
+        expect(within(summary).getByText(type)).toBeVisible();
+        expect(summary.querySelector(".function-index")).toBeNull();
+        expect(summary.firstElementChild?.tagName).toBe("CODE");
+        expect(summary.lastElementChild).toHaveClass("native-disclosure-icon");
+      }
+    },
+  );
+
   it("reads with a connected wallet even when an unrelated browsing snapshot is invalidated", async () => {
     const managerABI = [
       {

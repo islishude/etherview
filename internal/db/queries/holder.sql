@@ -210,21 +210,6 @@ WHERE balance.chain_id = sqlc.arg('chain_id')::numeric
 ORDER BY balance.block_number DESC
 LIMIT 1;
 
--- name: HolderEventSupply :one
-SELECT COALESCE(sum(CASE event.event_kind
-    WHEN 'mint' THEN event.amount WHEN 'burn' THEN -event.amount ELSE 0 END), 0)::text AS total_supply
-FROM token_events AS event
-JOIN canonical_blocks AS canonical
-  ON canonical.chain_id = event.chain_id
- AND canonical.number = event.block_number
- AND canonical.block_hash = event.block_hash
-WHERE event.chain_id = sqlc.arg('chain_id')::numeric
-  AND event.token_address = sqlc.arg('token_address')::bytea
-  AND event.block_number <= sqlc.arg('block_number')::numeric
-  AND event.canonical AND event.standard = 'erc20'
-  AND event.event_kind IN ('mint', 'burn')
-  AND event.confidence IN ('high', 'verified');
-
 -- name: HolderDeleteBlockOutput :exec
 WITH delete_balances AS (
     DELETE FROM erc20_holder_balances

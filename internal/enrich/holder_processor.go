@@ -42,8 +42,6 @@ type holderTokenInput struct {
 	previousSum      *big.Int
 	previousCount    uint64
 	full             bool
-	eventSupply      *big.Int
-	eventSupplyValid bool
 }
 
 type holderBalance struct {
@@ -359,35 +357,9 @@ func (processor *PostgresHolderProcessor) readTokenInput(
 			previousBalances[index] = balance
 		}
 	}
-	var supplyText string
-	if err := func() error {
-		var queryValue0 pgtype.Numeric
-		if err := queryValue0.Scan(job.ChainID); err != nil {
-			return err
-		}
-		var queryValue1 pgtype.Numeric
-		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
-			return err
-		}
-		queryRow, err := dbgen.New(processor.db).HolderEventSupply(ctx, queryValue0, token[:], queryValue1)
-		if err != nil {
-			return err
-		}
-		supplyText = queryRow
-		return nil
-	}(); err != nil {
-		return holderTokenInput{}, fmt.Errorf("read holder event supply: %w", err)
-	}
-	eventSupply, ok := new(big.Int).SetString(supplyText, 10)
-	eventSupplyValid := ok && eventSupply.Sign() >= 0 && eventSupply.BitLen() <= 256 && eventSupply.String() == supplyText
-	if !eventSupplyValid {
-		eventSupply = new(big.Int)
-	}
 	return holderTokenInput{
 		token: token, holders: holders, previousBalances: previousBalances,
 		previousSum: previousSum, previousCount: previousCount, full: full,
-		eventSupply:      eventSupply,
-		eventSupplyValid: eventSupplyValid,
 	}, nil
 }
 
@@ -434,7 +406,9 @@ func reconcileHolderToken(
 		}
 	}
 	state := "complete"
-	if !input.eventSupplyValid || sum.Cmp(totalSupply) != 0 || input.eventSupply.Cmp(totalSupply) != 0 {
+	// Mint/burn logs do not account for constructor or genesis allocations.
+	// Availability depends on exact balances covering the exact supply.
+	if sum.Cmp(totalSupply) != 0 {
 		state = "unavailable"
 	}
 	return holderTokenReconciliation{

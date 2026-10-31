@@ -124,6 +124,9 @@ services:
     extends:
       file: preview/compose/app.yaml
       service: api
+    env_file:
+      - path: ./.local/turnstile.env
+        required: false
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro

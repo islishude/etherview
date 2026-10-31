@@ -174,11 +174,12 @@ for (const language of ["en", "zh"] as const) {
           false,
         ),
       );
+      await expect(page.locator(".browsing-refresh-dot")).toBeVisible();
       await expect(
         page.getByRole("button", {
           name: language === "en" ? "New records · Refresh" : "有新记录 · 刷新",
         }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await page.evaluate(() =>
         (window as unknown as { publishHistory: (invalidate: boolean) => void }).publishHistory(
           true,

@@ -196,3 +196,13 @@ The `sys-asm.json` bundle pins ethereum/sys-asm revision
 f808a29f280f0b844d83fec592d3e1c592d1c92a and retains its complete MIT license.
 Its BeaconRoots source explicitly uses PUSH3 for the deployed EIP-4788 constant;
 this adaptation is recorded alongside the upstream revision.
+
+### Preview manual tool fixtures
+
+The manual CLI uses the locked development-only `@safe-global/safe-contracts`
+1.4.1 artifacts under LGPL-3.0; the upstream text is retained in
+`preview-safe-LGPL-3.0.txt`. Artifacts and their source remain available in that
+installed package. The CLI deploys the official bytecode on the disposable
+Preview chain; it does not embed Safe into the explorer SPA, production binary
+or genesis. OpenZeppelin upgradeable contracts 5.6.1 and Solady 0.1.26 are
+MIT-licensed development dependencies used for these local fixtures.

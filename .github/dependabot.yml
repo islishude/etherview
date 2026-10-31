@@ -63,6 +63,7 @@ updates:
     directories:
       - /
       - /.github/actions/setup-toolchain
+      - /.github/actions/setup-preview
       - /.github/actions/load-production-image
       - /.github/actions/prepare-production
     schedule:

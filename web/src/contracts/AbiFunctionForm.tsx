@@ -100,9 +100,11 @@ export function AbiFunctionExplorer({
         });
         return (
           <section className="abi-function-section" key={section}>
-            <h2>
-              {section === "read" ? t("contracts.readFunctions") : t("contracts.writeFunctions")}
-            </h2>
+            {mode === "all" ? (
+              <h2>
+                {section === "read" ? t("contracts.readFunctions") : t("contracts.writeFunctions")}
+              </h2>
+            ) : null}
             {callable.length === 0 ? (
               <p className="quiet">
                 {section === "read"
@@ -217,7 +219,7 @@ function AbiFunctionCard({
   if (!tree) {
     return (
       <details className="abi-function-card" open={index === 0}>
-        <FunctionSummary entry={entry} index={index} />
+        <FunctionSummary entry={entry} />
         <p className="form-error" role="alert">
           {t("contracts.functions.inputShapeLimit")}
         </p>
@@ -391,7 +393,7 @@ function AbiFunctionCard({
 
   return (
     <details className="abi-function-card" open={index === 0}>
-      <FunctionSummary entry={entry} index={index} />
+      <FunctionSummary entry={entry} />
       <form
         aria-busy={pending}
         className="abi-function-form"
@@ -533,15 +535,12 @@ function AbiFunctionCard({
   );
 }
 
-function FunctionSummary({ entry, index }: { entry: AbiFunctionEntry; index: number }) {
+function FunctionSummary({ entry }: { entry: AbiFunctionEntry }) {
   return (
     <summary>
-      <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
-      <span className="function-index">{index + 1}</span>
       <code>{entry.signature}</code>
-      <span className={`function-mutability ${entry.fn.stateMutability}`}>
-        {entry.fn.stateMutability}
-      </span>
+      <span className="function-mutability">{entry.fn.stateMutability}</span>
+      <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
     </summary>
   );
 }

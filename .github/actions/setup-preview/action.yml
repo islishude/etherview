@@ -1,0 +1,43 @@
+name: Prepare Preview acceptance
+description: Prepare an isolated Preview runner using the exact production image artifact
+inputs:
+  image-artifact-id:
+    required: true
+    description: Exact AMD64 production image artifact ID
+  browser:
+    required: false
+    default: "false"
+    description: Install bundled Chromium and its system dependencies
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-toolchain
+    - name: Install Preview dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+    - name: Use Ubuntu archive mirrors for browser dependencies
+      if: ${{ inputs.browser == 'true' }}
+      shell: bash
+      # Slow successful Azure downloads do not trigger APT mirror failover.
+      # Keep the runner's official Ubuntu archive and security mirrors.
+      run: sudo sed -i '\|://azure\.archive\.ubuntu\.com/ubuntu/|d' /etc/apt/apt-mirrors.txt
+    - name: Install Preview browser dependencies
+      if: ${{ inputs.browser == 'true' }}
+      shell: bash
+      run: pnpm --dir web exec playwright install --with-deps chromium
+    - uses: ./.github/actions/load-production-image
+      with:
+        arch: amd64
+        image-artifact-id: ${{ inputs.image-artifact-id }}
+    - name: Install pinned local certificate tool
+      shell: bash
+      run: make install-preview-tools
+    - name: Create ephemeral Preview certificates
+      shell: bash
+      env:
+        CAROOT: ${{ runner.temp }}/preview-ca
+        TRUST_STORES: system
+      run: make preview-cert
+    - name: Prepare Preview gateway and external images
+      shell: bash
+      run: make preview-images

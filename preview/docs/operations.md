@@ -228,7 +228,7 @@ failed runs retain diagnostics and a success report when available.
 ## Browser push
 
 For Preview at `https://app.etherview.localhost`, the root Compose entry point
-uses one ignored `.local/preview-push.env` for all local settings, including the
+uses ignored `.local/preview-push.env` for general local settings, including the
 VAPID key pair.
 `make start-preview` and `make recreate-preview` run `make preview-env` first:
 it creates the file when missing, generates a P-256 key pair, fills missing push
@@ -241,9 +241,36 @@ build contexts. Production push remains disabled by default.
 
 Preview lifecycle commands explicitly load that file, without loading root `.env`.
 `PREVIEW_ENV_FILE` overrides the path for Make commands. To migrate existing
-settings, move the root `.env` contents into `.local/preview-push.env`, keeping
+settings other than Turnstile, move the root `.env` contents into `.local/preview-push.env`, keeping
 its existing private key and matching public key, then remove root `.env`.
 `ETHERVIEW_PREVIEW_PUSH_ENV_FILE` is no longer used.
+
+Turnstile uses a separate ignored `.local/turnstile.env`, loaded automatically
+by the root Compose API service with `env_file.required: false`. The file is
+optional: without it, the checked-in configuration keeps Turnstile disabled.
+Both raw Compose and Preview Make commands load it; `PREVIEW_ENV_FILE` does
+not change its path. Keep Turnstile settings out of root `.env` and
+`.local/preview-push.env`; host environment variables do not override this file.
+Only the API receives its contents, so use it exclusively for Turnstile:
+
+```dotenv
+ETHERVIEW_TURNSTILE_ENABLED=true
+ETHERVIEW_TURNSTILE_SITE_KEY=your-site-key
+ETHERVIEW_TURNSTILE_SECRET_KEY=your-secret-key
+```
+
+Move existing Turnstile values into this file without changing them, set
+`chmod 600 .local/turnstile.env`, and remove root `.env` once all its settings
+have been migrated. `.local/` is excluded from Git and Docker build contexts.
+After changing the file, recreate the API to apply it:
+
+```sh
+docker compose --env-file .local/preview-push.env up -d --no-deps --force-recreate api
+```
+
+`make recreate-preview` also applies the configuration when recreating Preview.
+This local loading mechanism does not change production `deploy/compose.yaml`.
+
 Run `make preview-env` separately before using raw Compose commands:
 
 ```sh

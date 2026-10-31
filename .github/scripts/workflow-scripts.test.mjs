@@ -330,3 +330,107 @@ test("docs checker accepts aligned action tables and still rejects missing or un
     assert.match(result.stderr, /action map and compatibility matrix drift/);
   }
 });
+
+test("Preview groups short checks and isolates heavy suites without losing failure coverage", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci-runtime.yml"), "utf8");
+  const jobs = new Map(
+    [
+      ...workflow
+        .split("\njobs:\n")[1]
+        .matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:\n|$(?![\s\S]))/gm),
+    ].map(([, id, body]) => [id, body]),
+  );
+  assert.deepEqual(
+    [...jobs.keys()],
+    ["runtime", "preview-smoke", "preview-metadata", "preview-contracts"],
+  );
+  const smoke = jobs.get("preview-smoke");
+  assert.equal(smoke.split("uses: ./.github/actions/setup-preview").length - 1, 1);
+  assert.match(smoke, /id: setup/);
+  assert.doesNotMatch(
+    smoke,
+    /browser:|PLAYWRIGHT_USE_BUNDLED|tools-e2e-full|PREVIEW_TOOLS_FULL|continue-on-error/,
+  );
+  for (const command of [
+    "make preview-contracts-check",
+    "node preview/contracts/upstream.mjs --check",
+    "make test-preview-gateway",
+    "make test-preview-x402-prebuilt",
+    "make test-preview-tools-e2e-prebuilt",
+    "make test-preview-consensus-prebuilt",
+  ]) {
+    assert.equal(workflow.split(command).length - 1, 1, command);
+    const step = smoke.split(/^      - /m).find((part) => part.includes(command));
+    assert.ok(
+      step.includes("if: ${{ !cancelled() && steps.setup.outcome == 'success' }}"),
+      command,
+    );
+  }
+  assert.ok(smoke.includes("always() && steps.tools.outcome != 'skipped'"));
+  assert.ok(smoke.includes("name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}"));
+  assert.match(smoke, /Run Preview consensus and blobs smoke/);
+  assert.doesNotMatch(smoke, /consensus-full|PREVIEW_CONSENSUS_FULL/);
+  assert.ok(smoke.includes("always() && steps.consensus.outcome != 'skipped'"));
+  assert.ok(smoke.includes("TMPDIR: ${{ runner.temp }}/preview-consensus"));
+  assert.ok(smoke.includes('mkdir -p "$TMPDIR"'));
+  assert.ok(
+    smoke.includes("name: preview-consensus-${{ github.run_id }}-${{ github.run_attempt }}"),
+  );
+  assert.ok(
+    smoke.includes("path: ${{ runner.temp }}/preview-consensus/etherview-preview-metadata-*"),
+  );
+  for (const suite of ["smoke", "metadata", "contracts"]) {
+    const job = jobs.get(`preview-${suite}`);
+    assert.doesNotMatch(job, /^    (needs|continue-on-error|if):/m);
+    assert.match(job, /uses: actions\/checkout@/);
+    assert.match(job, /uses: docker\/setup-buildx-action@/);
+    assert.match(job, /uses: \.\/\.github\/actions\/setup-preview/);
+    assert.ok(job.includes("image-artifact-id: ${{ inputs.image-artifact-id }}"));
+    const browser = ["metadata", "contracts"].includes(suite);
+    assert.equal(job.includes('browser: "true"'), browser);
+    assert.equal(job.includes('PLAYWRIGHT_USE_BUNDLED: "1"'), browser);
+    // runner is available in step env, but not in job env: GitHub rejects
+    // the whole reusable workflow before any jobs start if this regresses.
+    assert.doesNotMatch(job.split("    steps:")[0], /\$\{\{[^}]*\brunner\./);
+    for (const step of job.split(/^      - /m).slice(1)) {
+      if (/make test-preview-(?:x402|tools-e2e|metadata|contracts)-prebuilt/.test(step))
+        assert.match(step, /        env:\n          TMPDIR: \$\{\{ runner\.temp \}\}/);
+    }
+    assert.match(job, /uses: actions\/upload-artifact@/);
+    assert.ok(job.includes("path: ${{ runner.temp }}/etherview-preview-metadata-*"));
+    assert.match(job, /retention-days: 7/);
+    if (suite === "smoke") continue;
+    const target = `make test-preview-${suite}-prebuilt`;
+    assert.equal(workflow.split(target).length - 1, 1, target);
+    assert.ok(job.includes(target));
+    assert.ok(job.includes("always() && steps.acceptance.outcome != 'skipped'"));
+    assert.ok(
+      job.includes(`name: preview-${suite}-\${{ github.run_id }}-\${{ github.run_attempt }}`),
+    );
+  }
+});
+
+test("shared Preview setup preserves image identity and makes browser preparation optional", () => {
+  const action = readFileSync(join(root, ".github/actions/setup-preview/action.yml"), "utf8");
+  assert.match(action, /using: composite/);
+  assert.match(action, /browser:\n\s+required: false\n\s+default: "false"/);
+  assert.ok(action.includes("image-artifact-id: ${{ inputs.image-artifact-id }}"));
+  assert.match(action, /arch: amd64/);
+  assert.match(action, /uses: \.\/\.github\/actions\/load-production-image/);
+  assert.doesNotMatch(action, /docker-build|actions\/checkout|setup-buildx-action/);
+  const steps = action.split(/^    - /m).slice(1);
+  for (const step of steps) {
+    if (step.includes("run:")) assert.match(step, /shell: bash/);
+    if (/playwright install|sudo sed/.test(step))
+      assert.ok(step.includes("if: ${{ inputs.browser == 'true' }}"));
+  }
+  for (const command of [
+    "pnpm install --frozen-lockfile",
+    "make install-preview-tools",
+    "make preview-cert",
+    "make preview-images",
+  ])
+    assert.equal(action.split(command).length - 1, 1, command);
+  assert.ok(action.includes("CAROOT: ${{ runner.temp }}/preview-ca"));
+  assert.match(action, /TRUST_STORES: system/);
+});

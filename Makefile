@@ -254,7 +254,8 @@ license-check: license-tool-check web-install compiler-install
 .PHONY: test test-go web-test test-race test-workflow-scripts test-integration test-integration-race \
 	test-rustfs test-e2e test-schema-e2e test-schema-e2e-prebuilt test-runtime-e2e \
 	test-runtime-e2e-prebuilt test-preview-metadata preview-e2e-check test-preview-metadata-prebuilt \
-	test-preview-consensus test-preview-consensus-prebuilt test-hardhat3-provider-compat \
+	test-preview-consensus test-preview-consensus-prebuilt test-preview-consensus-full \
+	test-preview-consensus-full-prebuilt test-hardhat3-provider-compat \
 	test-hardhat3-e2e test-hardhat3-offline-compile test-hardhat3-e2e-prebuilt test-foundry-e2e \
 	test-foundry-offline-compile test-foundry-e2e-prebuilt test-vyper-e2e test-vyper-e2e-prebuilt \
 	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate \
@@ -343,7 +344,14 @@ test-preview-consensus: preview-cert-check docker-build preview-images
 
 test-preview-consensus-prebuilt: preview-e2e-check
 	@PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
+		$(GO) test -count=1 -v -timeout=10m -tags=previewmetadatae2e -run '^TestPreviewConsensus$$' ./e2e/previewmetadata
+
+test-preview-consensus-full: preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-consensus-full-prebuilt
+
+test-preview-consensus-full-prebuilt: preview-e2e-check
+	@PREVIEW_CONSENSUS_FULL=1 PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run '^TestPreviewConsensusFull$$' ./e2e/previewmetadata
 
 test-hardhat3-provider-compat: pnpm-install
 	$(NODE) --test e2e/hardhat3/safe-artifact.test.mjs e2e/hardhat3/transaction-sender.test.mjs
@@ -601,3 +609,26 @@ verify-preview-genesis: preview-env
 preview-verification-check: pnpm-install
 	$(NODE) preview/verification/generate.mjs --check
 	$(NODE) --test preview/verification/verify.test.mjs
+
+# Explicit manual scenarios; never start or reset the daily Preview implicitly.
+.PHONY: preview-tool test-preview-tools test-preview-tools-e2e test-preview-tools-e2e-prebuilt test-preview-tools-e2e-full test-preview-tools-e2e-full-prebuilt
+preview-tool:
+	@NODE_EXTRA_CA_CERTS="$${NODE_EXTRA_CA_CERTS:-$(CURDIR)/$(PREVIEW_TLS_CA)}" $(NODE) preview/contracts/tools/cli.mjs $(ARGS)
+
+test-preview-tools: pnpm-install
+	$(NODE) --test preview/contracts/tools/*.test.mjs
+	$(GO) test ./cmd/previewblob
+
+test-preview-tools-e2e: pnpm-install preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-tools-e2e-prebuilt
+
+test-preview-tools-e2e-prebuilt: preview-e2e-check
+	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=15m -tags=previewmetadatae2e -run '^TestPreviewTools$$' ./e2e/previewmetadata
+
+test-preview-tools-e2e-full: pnpm-install preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-tools-e2e-full-prebuilt
+
+test-preview-tools-e2e-full-prebuilt: preview-e2e-check
+	PREVIEW_TOOLS_FULL=1 IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewToolsFull$$' ./e2e/previewmetadata
+
+check: test-preview-tools

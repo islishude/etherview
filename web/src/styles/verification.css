@@ -279,7 +279,7 @@
 
 .abi-function-card > summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 0.65rem;
   align-items: center;
   padding: 0.8rem;
@@ -291,30 +291,10 @@
   overflow-wrap: anywhere;
 }
 
-.function-index {
-  width: 1.7rem;
-  height: 1.7rem;
-  display: grid;
-  place-items: center;
-  color: var(--brand-strong);
-  background: var(--brand-soft);
-  border-radius: 50%;
-  font-size: 0.72rem;
-  font-weight: 850;
-}
-
 .function-mutability {
-  padding: 0.2rem 0.4rem;
   color: var(--text-soft);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
   font-size: 0.66rem;
-}
-
-.function-mutability.payable {
-  color: var(--warning);
-  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+  white-space: nowrap;
 }
 
 .abi-function-form {
@@ -567,13 +547,8 @@
     flex-direction: column;
   }
 
-  .abi-function-card > summary,
   .abi-scalar-input {
     grid-template-columns: 1fr;
-  }
-
-  .abi-function-card > summary .function-index {
-    display: none;
   }
 
   .abi-function-form > .button,
