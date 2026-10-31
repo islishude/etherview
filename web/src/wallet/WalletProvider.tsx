@@ -33,11 +33,7 @@ import {
   type WalletBoundaryErrorCode,
 } from "./eip6963";
 import { encodeCanonicalSIWEChallenge } from "./siwe";
-import {
-  type BillingSigningBinding,
-  type BillingTypedData,
-  encodeBillingTypedData,
-} from "./billing";
+import type { BillingSigningBinding, BillingTypedData } from "./billing";
 
 export interface ContractCall {
   to: Address;
@@ -570,6 +566,7 @@ function useWalletOperations({
 
   const signBillingTypedData = useCallback(
     async (typedData: BillingTypedData, binding: BillingSigningBinding, expected: ActiveWallet) => {
+      const { encodeBillingTypedData } = await import("./billing");
       const wallet = await requireProvider(configuredChainID);
       assertExpectedWalletIdentity(wallet, expected);
       if (binding.account !== wallet.account || binding.chainID !== wallet.chainID) {

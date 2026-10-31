@@ -1,6 +1,8 @@
+import { hashTypedData, type TypedDataDefinition } from "viem";
 import { describe, expect, it } from "vitest";
 
 import {
+  encodeBillingTypedData,
   validateBillingTypedData,
   type BillingSigningBinding,
   type BillingTypedData,
@@ -11,6 +13,83 @@ const asset = "0x2222222222222222222222222222222222222222";
 const recipient = "0x3333333333333333333333333333333333333333";
 
 describe("billing typed-data boundary", () => {
+  it.each([
+    {
+      method: "eip3009" as const,
+      create: eip3009TypedData,
+      domainFields: ["name", "version", "chainId", "verifyingContract"],
+      digest: "0xb2ffc8ce212f6b4c78dfe55f487413a8a74e8291a9a0b18ecefd6b3ae99d6c77",
+      missingDomainDigest: "0x6aa0cd83bce5ec628bf95137f07b219e8a228db7319db2572ce8fa4de4680a0f",
+    },
+    {
+      method: "permit2" as const,
+      create: permit2TypedData,
+      domainFields: ["name", "chainId", "verifyingContract"],
+      digest: "0xcc98ae8403559bc9d1293262361cfdbc5d12900d97af498c74f652e6a1392d8b",
+      missingDomainDigest: "0xe38004500c37cc51dbeb903f1caf0a76fb498c57e577557217b033f099780ede",
+    },
+  ])("encodes the complete $method signing domain for raw wallet RPC", (testCase) => {
+    const input = testCase.create();
+    const original = structuredClone(input);
+    const binding: BillingSigningBinding = {
+      method: testCase.method,
+      chainID: "31337",
+      account,
+      asset,
+      recipient,
+      amountAtomic: "1000",
+      assetName: "Local USD",
+      assetVersion: "1",
+    };
+    const wire = JSON.parse(encodeBillingTypedData(input, binding)) as TypedDataDefinition;
+
+    // Independent vectors from @metamask/eth-sig-util 8.2.0, TypedDataUtils.eip712Hash V4.
+    // An explicit empty fallback models its missing-domain behavior and prevents
+    // viem from silently deriving the omitted schema, which hid this regression.
+    expect(hashTypedData({ ...wire, types: { EIP712Domain: [], ...wire.types } })).toBe(
+      testCase.digest,
+    );
+    expect(hashTypedData({ ...wire, types: { ...wire.types, EIP712Domain: [] } })).toBe(
+      testCase.missingDomainDigest,
+    );
+    expect(wire.types.EIP712Domain).toEqual(
+      testCase.domainFields.map((name) => ({
+        name,
+        type: name === "chainId" ? "uint256" : name === "verifyingContract" ? "address" : "string",
+      })),
+    );
+    expect(input).toEqual(original);
+    expect(input.types).not.toHaveProperty("EIP712Domain");
+
+    // Only this boundary may add the trusted domain schema after validating the SDK input.
+    for (const fields of [[], [{ name: "chainId", type: "uint256" }]]) {
+      const hostile = structuredClone(input);
+      hostile.types.EIP712Domain = fields;
+      expect(() => encodeBillingTypedData(hostile, binding)).toThrow(TypeError);
+    }
+  });
+
+  it("preserves uint256 precision and byte nonces when encoding wallet RPC", () => {
+    const input = eip3009TypedData();
+    const amount = (1n << 256n) - 1n;
+    input.message.value = amount;
+    input.message.nonce = new Uint8Array(32).fill(17);
+    const wire = JSON.parse(
+      encodeBillingTypedData(input, {
+        method: "eip3009",
+        chainID: "31337",
+        account,
+        asset,
+        recipient,
+        amountAtomic: amount.toString(),
+        assetName: "Local USD",
+        assetVersion: "1",
+      }),
+    );
+    expect(wire.message.value).toBe(amount.toString());
+    expect(wire.message.nonce).toBe(`0x${"11".repeat(32)}`);
+  });
+
   it("accepts only the exact EIP-3009 shape and binding", () => {
     const binding: BillingSigningBinding = {
       method: "eip3009",

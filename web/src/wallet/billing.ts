@@ -1,4 +1,4 @@
-import { getAddress, isAddress, type Address, type Hex } from "viem";
+import { getAddress, getTypesForEIP712Domain, isAddress, type Address, type Hex } from "viem";
 
 const PERMIT2 = getAddress("0x000000000022D473030F116dDEE9F6B43aC78BA3");
 const X402_EXACT_PERMIT2_PROXY = getAddress("0x402085c248EeA27D92E8b30b2C58ed07f9E20001");
@@ -28,7 +28,17 @@ export function encodeBillingTypedData(
   binding: BillingSigningBinding,
 ): string {
   validateBillingTypedData(input, binding);
-  return JSON.stringify(deepJSONValue(input));
+  // The SDK supplies message types only. Raw eth_signTypedData_v4 also needs
+  // the domain schema; unlike viem's wallet action, the provider need not infer it.
+  return JSON.stringify(
+    deepJSONValue({
+      ...input,
+      types: {
+        ...input.types,
+        EIP712Domain: getTypesForEIP712Domain({ domain: input.domain }),
+      },
+    }),
+  );
 }
 
 export function validateBillingTypedData(

@@ -1,4 +1,12 @@
-import { decodeFunctionData, encodeFunctionResult, type Address, type Hex } from "viem";
+import {
+  decodeFunctionData,
+  encodeFunctionResult,
+  recoverTypedDataAddress,
+  type Address,
+  type Hex,
+  type TypedDataDefinition,
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,9 +17,10 @@ import {
   type TopupWallet,
 } from "./topup";
 import type { BillingConfig, BillingTopupIntent } from "@/api/billing";
-import { validateBillingTypedData, type BillingSigningBinding } from "@/wallet/billing";
+import { encodeBillingTypedData, type BillingSigningBinding } from "@/wallet/billing";
 
-const account = "0x1111111111111111111111111111111111111111" as Address;
+const signer = privateKeyToAccount(`0x${"01".repeat(32)}`);
+const account = signer.address;
 const asset = "0x2222222222222222222222222222222222222222" as Address;
 const recipient = "0x3333333333333333333333333333333333333333" as Address;
 const permit2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -171,8 +180,9 @@ describe("x402 SDK top-up flow", () => {
       ),
       sendTransaction: vi.fn(),
       signBillingTypedData: vi.fn(async (data, binding) => {
-        validateBillingTypedData(data, binding);
-        return `0x${"ab".repeat(65)}` as Hex;
+        const wire = JSON.parse(encodeBillingTypedData(data, binding)) as TypedDataDefinition;
+        // Raw wallet RPC must not get viem's automatic repair of missing domain types.
+        return signer.signTypedData({ ...wire, types: { EIP712Domain: [], ...wire.types } });
       }),
       waitForBillingTransaction: vi.fn(),
     } satisfies TopupWallet;
@@ -190,6 +200,10 @@ describe("x402 SDK top-up flow", () => {
       expect(request.headers.get("X-CSRF-Token")).toBe("csrf");
       const payload = JSON.parse(atob(request.headers.get("PAYMENT-SIGNATURE")!));
       expect(payload.accepted).toMatchObject({ network, asset, amount: "1000" });
+      const signedData = wallet.signBillingTypedData.mock.calls[0]![0] as TypedDataDefinition;
+      expect(
+        await recoverTypedDataAddress({ ...signedData, signature: payload.payload.signature }),
+      ).toBe(account);
     },
   );
 
