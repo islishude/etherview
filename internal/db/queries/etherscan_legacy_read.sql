@@ -79,7 +79,7 @@ LEFT JOIN LATERAL (
 SELECT number::text, block_hash
 FROM canonical_blocks
 WHERE chain_id = sqlc.arg('chain_id')::numeric
-ORDER BY number DESC
+ORDER BY canonical_blocks.number DESC
 LIMIT 1;
 
 -- name: EtherscanCanonicalReference :one
