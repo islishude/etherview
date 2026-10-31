@@ -25,6 +25,7 @@ test("fresh Preview gets a valid unique P-256 pair, reused without rewriting", (
   key.setPrivateKey(Buffer.from(values.ETHERVIEW_PUSH_PRIVATE_KEY, "base64url"));
   assert.equal(key.getPublicKey().toString("base64url"), values.ETHERVIEW_PUSH_PUBLIC_KEY);
   assert.equal(values.ETHERVIEW_PUSH_ENABLED, "true");
+  assert.equal(values.ETHERVIEW_TURNSTILE_SECRET_KEY, undefined);
   assert.equal(values.ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS, "false");
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   const modified = fs.statSync(file).mtimeMs;
@@ -68,7 +69,7 @@ for (const length of [1, 30, 31, 32]) {
 test("operator settings and comments survive completion and permission tightening", (t) => {
   const file = fixture(t);
   const source =
-    '# local settings\nETHERVIEW_PORT=9999\nETHERVIEW_PUSH_ENABLED=false\nETHERVIEW_PUSH_CONTACT="mailto:me@example.com"\nETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true';
+    '# local settings\nETHERVIEW_PORT=9999\nETHERVIEW_TURNSTILE_ENABLED=true\nETHERVIEW_TURNSTILE_SITE_KEY=site-fixture\nETHERVIEW_TURNSTILE_SECRET_KEY="secret # preserved"\nETHERVIEW_PUSH_ENABLED=false\nETHERVIEW_PUSH_CONTACT="mailto:me@example.com"\nETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS=true';
   fs.writeFileSync(file, source, { mode: 0o644 });
   prepareEnvironment(file);
   const result = fs.readFileSync(file, "utf8");
@@ -76,6 +77,9 @@ test("operator settings and comments survive completion and permission tightenin
   assert.equal(parseEnv(result).ETHERVIEW_PUSH_ENABLED, "false");
   assert.equal(parseEnv(result).ETHERVIEW_PUSH_CONTACT, "mailto:me@example.com");
   assert.equal(parseEnv(result).ETHERVIEW_PUSH_UNSAFE_ALLOW_PRIVATE_NETWORKS, "true");
+  assert.equal(parseEnv(result).ETHERVIEW_TURNSTILE_SECRET_KEY, "secret # preserved");
+  prepareEnvironment(file);
+  assert.equal(fs.readFileSync(file, "utf8"), result);
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
 
@@ -147,4 +151,23 @@ test("Make initializes a custom path with spaces and missing parent directories"
   assert.equal(values.ETHERVIEW_PUSH_ENABLED, "true");
   assert.ok(!output.includes(values.ETHERVIEW_PUSH_PRIVATE_KEY));
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+});
+
+test("CLI default and Make share preview.env and preserve updates on repeated initialization", (t) => {
+  const directory = path.dirname(fixture(t));
+  const scripts = path.join(directory, "preview/scripts");
+  fs.mkdirSync(scripts, { recursive: true });
+  const script = path.join(scripts, "env.mjs");
+  fs.copyFileSync(new URL("./env.mjs", import.meta.url), script);
+  fs.copyFileSync(new URL("../../Makefile", import.meta.url), path.join(directory, "Makefile"));
+  execFileSync(process.execPath, [script], { cwd: directory });
+  const file = path.join(directory, ".local/preview.env");
+  const initial = fs.readFileSync(file, "utf8");
+  const update =
+    "# Turnstile settings\nETHERVIEW_TURNSTILE_ENABLED=true\nETHERVIEW_TURNSTILE_SECRET_KEY=existing-secret\n";
+  fs.appendFileSync(file, update);
+  execFileSync("make", ["--no-print-directory", "preview-env"], { cwd: directory });
+  assert.equal(fs.readFileSync(file, "utf8"), initial + update);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.equal(fs.existsSync(path.join(directory, ".local/preview-push.env")), false);
 });

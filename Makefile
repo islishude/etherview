@@ -55,7 +55,7 @@ export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
 PREVIEW_RUNTIME_SERVICES := bundler x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
-PREVIEW_ENV_FILE ?= .local/preview-push.env
+PREVIEW_ENV_FILE ?= .local/preview.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
 PREVIEW_GATEWAY_CERT := $(PREVIEW_TLS_DIR)/gateway.crt

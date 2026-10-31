@@ -75,7 +75,7 @@ configuration or source directory. Do not put secrets in these public inputs.
 .github/scripts/buildx.sh build --load --target production --tag etherview:acme \
   --build-arg ETHERVIEW_WEB_BRANDING_DIR=branding/acme .
 ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
-  --env-file .local/preview-push.env build api
+  --env-file .local/preview.env build api
 ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
   --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile monolith build etherview
 ```

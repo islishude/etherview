@@ -74,9 +74,7 @@ export function prepareEnvironment(file) {
 if (import.meta.main) {
   try {
     prepareEnvironment(
-      path.resolve(
-        process.argv[2] ?? path.join(import.meta.dirname, "../../.local/preview-push.env"),
-      ),
+      path.resolve(process.argv[2] ?? path.join(import.meta.dirname, "../../.local/preview.env")),
     );
     console.log(
       "preview-env: environment ready (0600); existing settings and VAPID identity preserved",
