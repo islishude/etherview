@@ -1340,3 +1340,20 @@ Run focused frontend/browser regressions followed by `make web-test`,
 Check title alignment, mobile overflow, status indicators, keyboard activation
 and focus/Escape tooltip behavior in `manual-refresh.spec.ts`. These checks
 establish local behavior, not remote CI or live chain acceptance.
+
+## Blob content access and S2 regressions
+
+Cover removal of the public content GET, session-only browser POST, Origin/CSRF,
+Turnstile enabled/disabled admission, and rejection before archive access.
+V2 blob tests cover key-only access, exact hash/index validation, weight-5
+pricing, successful debit, failed-read release, insufficient credit and free
+operator/disabled-billing exceptions. The existing PostgreSQL prepaid tests
+remain the authority for concurrent balance reservations.
+
+Archive tests round-trip zero, sparse and incompressible blobs and reject
+malformed, oversized, truncated, wrong-length and wrong-digest objects. Retain
+conditional-create/readback, replay, reorg and role-parity tests. Preview real
+blob tooling reads V2 with an operator key and independently decompresses S3
+objects before comparison. Browser tests must assert a single fetch for both
+preview-then-download and download-then-preview, and discard content on identity
+changes. Apply the consensus/blob and Turnstile acceptance gates above.

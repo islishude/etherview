@@ -86,3 +86,22 @@ func (h *Handler) blobContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	_, _ = w.Write(data)
 }
+
+func (h *Handler) browserBlobContent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !h.userAuthAvailable(w, r) {
+		return
+	}
+	authentication, ok := h.requireUserSession(w, r)
+	if !ok || !h.requireAuthOrigin(w, r) || !h.requireCSRF(w, r, authentication) {
+		return
+	}
+	if !h.cfg.Consensus.Blobs.Enabled {
+		h.handleReaderError(w, r, ErrUnavailable)
+		return
+	}
+	if !h.requireTurnstile(w, r, "blob_content") {
+		return
+	}
+	h.blobContent(w, r)
+}

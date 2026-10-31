@@ -195,7 +195,7 @@ func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 		resource[31] = identity
 		return prepaid.ReserveUsage(context.Background(), ReserveUsageInput{
 			UserID: userID, APIKeyPrefix: prefix, Method: http.MethodGet,
-			Operation: "etherscan.account.balance", Resource: resource,
+			Operation: "etherview.account.balance", Resource: resource,
 			AmountAtomic: amount, ObservedAt: observedAt,
 		})
 	}

@@ -77,6 +77,9 @@ type response struct {
 }
 
 var supported = map[string]map[string]actionSpec{
+	"blob": {
+		"getblob": {hashes: []string{"blockhash"}, required: []string{"index"}, strict: true, validate: validateBlobParameters},
+	},
 	"account": {
 		"balance":                  {addresses: []string{"address"}, state: true},
 		"balancemulti":             {required: []string{"address"}, state: true},
@@ -193,6 +196,9 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	module, action := values.Get("module"), values.Get("action")
+	if module == "blob" {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	actions, ok := supported[module]
 	if !ok {
 		h.writeError(w, "unsupported module")
@@ -208,6 +214,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity := auth.IdentityFrom(r.Context())
+	if module == "blob" && !identity.Authenticated {
+		h.writeErrorStatus(w, http.StatusUnauthorized, "API Key required")
+		return
+	}
 	verificationOperation := spec.keyed ||
 		(module == "contract" && (action == "getabi" || action == "getsourcecode"))
 	if identity.Authenticated && !identity.HasScope(auth.ScopeRead) &&
@@ -396,6 +406,8 @@ func validateValues(values url.Values, spec actionSpec) error {
 
 func (h Handler) writeBackendError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrBlobUnavailable):
+		h.writeError(w, "blob content unavailable")
 	case errors.Is(err, ErrNotFound):
 		h.write(w, http.StatusOK, response{Status: "0", Message: "No records found", Result: []any{}})
 	case errors.Is(err, ErrCoreUnavailable):

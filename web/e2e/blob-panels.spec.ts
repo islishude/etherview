@@ -1,3 +1,4 @@
+import { installVerificationSession } from "./verification-session";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -9,6 +10,7 @@ const versionedHash = `0x01${"bc".repeat(31)}`;
 const commitment = `0x${"cd".repeat(48)}`;
 
 async function setupBlobs(page: Page, enabled = true, count = 1) {
+  await installVerificationSession(page);
   const hashes = Array.from({ length: count }, (_, index) =>
     index === 0 ? versionedHash : `0x01${String(index).repeat(62)}`,
   );
@@ -17,6 +19,7 @@ async function setupBlobs(page: Page, enabled = true, count = 1) {
     const response = await route.fetch();
     const body = await response.json();
     body.data.features.consensus = enabled;
+    body.data.features.user_auth = true;
     body.data.features.blobs = enabled;
     await route.fulfill({ response, json: body });
   });
@@ -143,7 +146,7 @@ test("transaction preview and download use the exact block blob index and remain
   const downloadedBytes: Buffer[] = [];
   for await (const chunk of await download.createReadStream()) downloadedBytes.push(chunk);
   expect(Buffer.concat(downloadedBytes).equals(Buffer.alloc(131072, 7))).toBe(true);
-  expect(reads).toEqual(Array(2).fill(`/api/v1/blocks/${blockHash}/blobs/42/content`));
+  expect(reads).toEqual(Array(1).fill(`/api/v1/blocks/${blockHash}/blobs/42/content`));
   await expect(page.getByRole("link", { name: "View block blobs" })).toHaveAttribute(
     "href",
     `/blocks/${blockHash}?tab=blobs`,

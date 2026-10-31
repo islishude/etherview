@@ -4,7 +4,7 @@ import { usePublicConfig } from "@/api/publicConfig";
 import { usePrivateIdentity } from "@/api/privateAccount";
 import "./TurnstileChallenge.css";
 
-type Action = "verification" | "csv_export";
+type Action = "verification" | "csv_export" | "blob_content";
 type WidgetOptions = {
   sitekey: string;
   action: Action;

@@ -121,6 +121,21 @@ export function receiptView(r) {
   };
 }
 export class Engine {
+  apiKeyAdmin(args) {
+    return JSON.parse(
+      runCompose([
+        "exec",
+        "-T",
+        "api",
+        "/etherview",
+        "admin",
+        "api-key",
+        ...args,
+        "--config=/etc/etherview/config.yaml",
+      ]),
+    );
+  }
+
   constructor(run, options, artifacts) {
     this.run = run;
     this.options = options;
@@ -702,48 +717,74 @@ export async function checkScenario(engine, s) {
           }),
     });
     if (step.blobs) {
-      const base = "/api/v1/blocks/" + step.receipt.blockHash;
-      const downloaded = new Set();
-      engine.check(s, id + " consensus", base + "/consensus", { "data.state": "complete" });
-      engine.check(s, id + " requests", base + "/requests", { "data.state": "complete" });
-      await engine.wait(
-        async () => {
-          const result = await request(engine.run.state.endpoints.app, base + "/blobs");
-          if (result.status !== 200 || result.body.data?.state !== "complete") return false;
-          for (const wanted of step.blobs) {
-            const item = result.body.data.items.find(
-              (v) => v.versioned_hash === wanted.versionedHash && v.transaction_hash === step.hash,
-            );
-            if (
-              !item ||
-              item.commitment !== wanted.commitment ||
-              item.sha256.replace(/^0x/, "") !== wanted.sha256
-            )
-              return false;
-            if (downloaded.has(wanted.versionedHash)) continue;
-            const download = await request(
-              engine.run.state.endpoints.app,
-              base + "/blobs/" + item.index + "/content",
-            );
-            if ([404, 409, 429, 503].includes(download.status)) return false;
-            if (
-              wanted.file &&
-              !download.bytes?.equals(fs.readFileSync(path.join(engine.run.dir, wanted.file)))
-            )
-              throw Error("Blob download differs from saved original");
-            if (
-              download.status !== 200 ||
-              download.bytes.length !== 131072 ||
-              digest(download.bytes) !== wanted.sha256
-            )
-              throw Error("Blob archive readback mismatch");
-            downloaded.add(wanted.versionedHash);
-          }
-          return true;
-        },
-        Boolean,
-        "blob archive readback",
-      );
+      const key = engine.apiKeyAdmin([
+        "create",
+        "--name=preview-blob-readback",
+        "--scope=api:read",
+      ]);
+      try {
+        const base = "/api/v1/blocks/" + step.receipt.blockHash;
+        const downloaded = new Set();
+        engine.check(s, id + " consensus", base + "/consensus", { "data.state": "complete" });
+        engine.check(s, id + " requests", base + "/requests", { "data.state": "complete" });
+        await engine.wait(
+          async () => {
+            const result = await request(engine.run.state.endpoints.app, base + "/blobs");
+            if (result.status !== 200 || result.body.data?.state !== "complete") return false;
+            for (const wanted of step.blobs) {
+              const item = result.body.data.items.find(
+                (v) =>
+                  v.versioned_hash === wanted.versionedHash && v.transaction_hash === step.hash,
+              );
+              if (
+                !item ||
+                item.commitment !== wanted.commitment ||
+                item.sha256.replace(/^0x/, "") !== wanted.sha256
+              )
+                return false;
+              if (downloaded.has(wanted.versionedHash)) continue;
+              const download = await request(
+                engine.run.state.endpoints.app,
+                "/v2/api?" +
+                  new URLSearchParams({
+                    chainid: "48815",
+                    module: "blob",
+                    action: "getblob",
+                    blockhash: step.receipt.blockHash,
+                    index: item.index,
+                  }),
+                undefined,
+                key.token,
+              );
+              if ([404, 409, 429, 503].includes(download.status) || download.body?.status === "0")
+                return false;
+              if (
+                download.body?.status !== "1" ||
+                !/^0x[0-9a-f]{262144}$/.test(download.body.result)
+              )
+                throw Error("Invalid blob content response");
+              download.bytes = Buffer.from(download.body.result.slice(2), "hex");
+              if (
+                wanted.file &&
+                !download.bytes?.equals(fs.readFileSync(path.join(engine.run.dir, wanted.file)))
+              )
+                throw Error("Blob download differs from saved original");
+              if (
+                download.status !== 200 ||
+                download.bytes.length !== 131072 ||
+                digest(download.bytes) !== wanted.sha256
+              )
+                throw Error("Blob archive readback mismatch");
+              downloaded.add(wanted.versionedHash);
+            }
+            return true;
+          },
+          Boolean,
+          "blob archive readback",
+        );
+      } finally {
+        engine.apiKeyAdmin(["revoke", key.prefix]);
+      }
     }
   }
   for (const c of s.checks) {

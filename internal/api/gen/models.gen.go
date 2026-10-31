@@ -4503,7 +4503,9 @@ type BillingOperationPrice struct {
 	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	AmountAtomic     Quantity `json:"amount_atomic"`
 	ComplexityWeight int      `json:"complexity_weight"`
-	Operation        string   `json:"operation"`
+
+	// Operation Etherview operation ID in the etherview.<module>.<action> namespace.
+	Operation string `json:"operation"`
 }
 
 // BillingPayment defines model for BillingPayment.
@@ -4654,10 +4656,12 @@ type BillingUsage struct {
 	FailureCode  *string            `json:"failure_code,omitempty"`
 	Id           openapi_types.UUID `json:"id"`
 	Method       BillingUsageMethod `json:"method"`
-	Operation    string             `json:"operation"`
-	State        BillingUsageState  `json:"state"`
-	UpdatedAt    time.Time          `json:"updated_at"`
-	UserId       openapi_types.UUID `json:"user_id"`
+
+	// Operation Etherview operation ID in the etherview.<module>.<action> namespace.
+	Operation string             `json:"operation"`
+	State     BillingUsageState  `json:"state"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	UserId    openapi_types.UUID `json:"user_id"`
 }
 
 // BillingUsageMethod defines model for BillingUsage.Method.
@@ -8392,6 +8396,14 @@ type ListCurrentUserBillingUsageParams struct {
 type ListBlocksParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetBrowserBlobContentParams defines parameters for GetBrowserBlobContent.
+type GetBrowserBlobContentParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+
+	// XTurnstileToken Required when the shared runtime Turnstile switch is enabled. Single-use token; action must be verification for browser verification or csv_export for CSV. Missing/invalid tokens return 403 turnstile_invalid; verification service failures return 503 turnstile_unavailable.
+	XTurnstileToken *TurnstileToken `json:"X-Turnstile-Token,omitempty"`
 }
 
 // GetBlockRequestsParams defines parameters for GetBlockRequests.

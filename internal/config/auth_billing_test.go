@@ -466,7 +466,7 @@ func TestHelmBillingBasePriceSchema(t *testing.T) {
 		t.Fatal("expected only base-price configuration")
 	}
 	prices, err := etherscanops.Prices("1")
-	if err != nil || len(prices) != 30 {
+	if err != nil || len(prices) != 31 {
 		t.Fatalf("prices=%v error=%v", prices, err)
 	}
 }

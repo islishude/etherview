@@ -79,7 +79,7 @@ the worker and tests its MIME, cache, CSP and missing-file behavior.
 
 Turnstile is an explicit runtime-controlled external script/iframe exception.
 The shared default-off `turnstile.enabled` switch protects browser verification,
-CSV exports and future protected operations, and enables only the fixed
+CSV exports, blob content acquisition and future protected operations, and enables only the fixed
 `https://challenges.cloudflare.com` script and frame sources on SPA shell
 responses, including navigation fallbacks. Other responses retain the baseline
 policy; connect-src stays same-origin, with no unsafe-inline/eval or wildcard.
@@ -88,7 +88,7 @@ form belonging to an authenticated session. Tokens remain in memory, are cleared
 on consumption, expiry, account changes and unmount, and never enter URLs,
 logs, durable requests or browser storage. All application API calls still use
 the generated same-origin client. Siteverify is mandatory on the server;
-client success alone grants no permission. See ADR-0024 and ADR-0051.
+client success alone grants no permission. See ADR-0024, ADR-0051 and ADR-0055.
 
 ### Verified ABI normalization
 

@@ -32,6 +32,7 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/consensus"
+	"github.com/klauspost/compress/s2"
 )
 
 func TestPreviewConsensus(t *testing.T) {
@@ -244,20 +245,25 @@ func (h *harness) assertConsensusBlob(ctx context.Context, receipt rpcReceipt, b
 
 func (h *harness) assertBlobDownload(ctx context.Context, hash common.Hash, want []byte) {
 	h.t.Helper()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/api/v1/blocks/"+hash.Hex()+"/blobs/0/content", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/v2/api?chainid=48815&module=blob&action=getblob&blockhash="+hash.Hex()+"&index=0", nil)
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	request.Header.Set("X-API-Key", h.createHoldingsOperatorKey(ctx))
 	response, err := h.http.Do(request)
 	if err != nil {
 		h.t.Fatal(err)
 	}
 	defer response.Body.Close() //nolint:errcheck
-	got, err := io.ReadAll(io.LimitReader(response.Body, 131073))
+	got, err := io.ReadAll(io.LimitReader(response.Body, 300000))
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if response.StatusCode != 200 || !bytes.Equal(got, want) {
+	var envelope struct {
+		Status string `json:"status"`
+		Result string `json:"result"`
+	}
+	if json.Unmarshal(got, &envelope) != nil || envelope.Status != "1" || response.StatusCode != 200 || !bytes.Equal(common.FromHex(envelope.Result), want) {
 		h.t.Fatalf("blob download: status=%d length=%d", response.StatusCode, len(got))
 	}
 }
@@ -273,9 +279,13 @@ func (h *harness) assertArchivePermissions(ctx context.Context, ref consensus.Bl
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	data, err := io.ReadAll(io.LimitReader(read.Body, 131073))
+	data, err := io.ReadAll(io.LimitReader(read.Body, int64(s2.MaxEncodedLen(131072))+1))
 	closeErr := read.Body.Close()
-	if err != nil || closeErr != nil || !bytes.Equal(data, blob) {
+	if err != nil || closeErr != nil {
+		h.t.Fatal("independent S3 read failed")
+	}
+	data, err = s2.Decode(nil, data)
+	if err != nil || !bytes.Equal(data, blob) {
 		h.t.Fatal("independent S3 readback differs")
 	}
 	_, err = client.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String("etherview-preview-blobs"), Key: aws.String("must-not-write"), Body: bytes.NewReader(blob)})

@@ -7,7 +7,7 @@ import (
 
 func TestComplexityPrices(t *testing.T) {
 	prices, err := Prices("3")
-	if err != nil || len(prices) != 30 {
+	if err != nil || len(prices) != 31 {
 		t.Fatalf("prices=%v err=%v", prices, err)
 	}
 	expected := map[string]string{
@@ -16,12 +16,12 @@ func TestComplexityPrices(t *testing.T) {
 		"account.addresstokenbalance": "300",
 	}
 	for id, want := range expected {
-		if prices["etherscan."+id] != want {
-			t.Fatalf("%s: %s want %s", id, prices["etherscan."+id], want)
+		if prices["etherview."+id] != want {
+			t.Fatalf("%s: %s want %s", id, prices["etherview."+id], want)
 		}
 	}
 	for _, pair := range [][2]string{{"account.tokenbalance", "token.tokenbalance"}, {"stats.tokensupply", "token.tokensupply"}} {
-		if prices["etherscan."+pair[0]] != prices["etherscan."+pair[1]] {
+		if prices["etherview."+pair[0]] != prices["etherview."+pair[1]] {
 			t.Fatalf("alias prices differ: %v", pair)
 		}
 	}
@@ -43,13 +43,24 @@ func TestMissingQueryPolicyRejected(t *testing.T) {
 	original := catalog
 	defer func() { catalog = original }()
 	for _, spec := range []Spec{
-		{ID: "etherscan.new.query", Classification: "query", BillingEligible: true, CostReason: "lookup"},
-		{ID: "etherscan.new.query", Classification: "query", BillingEligible: true, ComplexityWeight: 1},
-		{ID: "etherscan.new.query"},
+		{ID: "etherview.new.query", Classification: "query", BillingEligible: true, CostReason: "lookup"},
+		{ID: "etherview.new.query", Classification: "query", BillingEligible: true, ComplexityWeight: 1},
+		{ID: "etherview.new.query"},
 	} {
 		catalog = append(append([]Spec{}, original...), spec)
 		if _, err := Prices("1"); err == nil {
 			t.Fatalf("accepted missing policy: %+v", spec)
 		}
+	}
+}
+
+func TestOperationNamespace(t *testing.T) {
+	for _, spec := range All() {
+		if spec.ID != "etherview."+spec.Module+"."+spec.Action {
+			t.Errorf("unexpected operation ID %q", spec.ID)
+		}
+	}
+	if _, ok := Lookup("etherscan.account.balance"); ok {
+		t.Fatal("legacy namespace remains accepted")
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
+	"github.com/klauspost/compress/s2"
 )
 
 const ArchiveBlobBytes = 131072
@@ -25,7 +26,7 @@ var ErrArchiveIntegrity = errors.New("blob_storage_integrity")
 type BlobArchive struct{ store *S3BlobStore }
 
 func NewBlobArchive(ctx context.Context, endpoint string, options S3Options) (*BlobArchive, error) {
-	options.MaxObjectBytes = ArchiveBlobBytes
+	options.MaxObjectBytes = int64(s2.MaxEncodedLen(ArchiveBlobBytes))
 	store, err := NewS3BlobStore(ctx, endpoint, options)
 	if err != nil {
 		return nil, ErrArchiveUnavailable
@@ -44,12 +45,23 @@ func (a *BlobArchive) Read(ctx context.Context, key, digest string) ([]byte, err
 		return nil, ErrArchiveUnavailable
 	}
 	defer func() { _ = result.Body.Close() }()
-	if result.ContentLength == nil || *result.ContentLength != ArchiveBlobBytes {
+	if result.ContentLength == nil || *result.ContentLength <= 0 || *result.ContentLength > int64(s2.MaxEncodedLen(ArchiveBlobBytes)) {
 		return nil, ErrArchiveIntegrity
 	}
-	data, err := io.ReadAll(io.LimitReader(result.Body, ArchiveBlobBytes+1))
+	data, err := io.ReadAll(io.LimitReader(result.Body, int64(s2.MaxEncodedLen(ArchiveBlobBytes))+1))
 	if err != nil {
 		return nil, ErrArchiveUnavailable
+	}
+	if int64(len(data)) != *result.ContentLength {
+		return nil, ErrArchiveIntegrity
+	}
+	decodedLen, err := s2.DecodedLen(data)
+	if err != nil || decodedLen != ArchiveBlobBytes {
+		return nil, ErrArchiveIntegrity
+	}
+	data, err = s2.Decode(make([]byte, 0, ArchiveBlobBytes), data)
+	if err != nil {
+		return nil, ErrArchiveIntegrity
 	}
 	sum := sha256.Sum256(data)
 	if len(data) != ArchiveBlobBytes || hex.EncodeToString(sum[:]) != strings.TrimPrefix(digest, "0x") {
@@ -67,9 +79,11 @@ func (a *BlobArchive) Create(ctx context.Context, key string, data []byte) (stri
 	}
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
+	data = s2.EncodeBetter(nil, data)
+	encodedSum := sha256.Sum256(data)
 	request, cancel := context.WithTimeout(ctx, a.store.operationTimeout)
 	defer cancel()
-	_, err = a.store.client.PutObject(request, &s3.PutObjectInput{Bucket: aws.String(a.store.bucket), Key: aws.String(name), Body: bytes.NewReader(data), ContentLength: aws.Int64(int64(len(data))), ContentType: aws.String("application/octet-stream"), IfNoneMatch: aws.String("*"), ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(sum[:]))})
+	_, err = a.store.client.PutObject(request, &s3.PutObjectInput{Bucket: aws.String(a.store.bucket), Key: aws.String(name), Body: bytes.NewReader(data), ContentLength: aws.Int64(int64(len(data))), ContentType: aws.String("application/octet-stream"), IfNoneMatch: aws.String("*"), ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(encodedSum[:]))})
 	if err != nil {
 		var api smithy.APIError
 		if !errors.As(err, &api) || api.ErrorCode() != "PreconditionFailed" {

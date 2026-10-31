@@ -671,11 +671,16 @@ paths:
         default:
           $ref: "#/components/responses/Error"
   "/blocks/{hash}/blobs/{index}/content":
-    get:
-      operationId: "getBlobContent"
+    post:
+      operationId: "getBrowserBlobContent"
+      security:
+        - UserSession: []
+      description: "Session-only browser content acquisition. Requires same-origin Origin and CSRF; when Turnstile is enabled, a single-use blob_content token. Not an API-key download endpoint."
       tags:
         - "blocks"
       parameters:
+        - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/TurnstileToken"
         - name: "hash"
           in: "path"
           required: true
@@ -3016,6 +3021,7 @@ components:
           minimum: 1
           maximum: 2147483647
         operation:
+          description: "Etherview operation ID in the etherview.<module>.<action> namespace."
           type: string
           minLength: 1
           maxLength: 128
@@ -3081,7 +3087,7 @@ components:
             $ref: "#/components/schemas/BillingAssetTransferMethod"
         operations:
           type: array
-          maxItems: 30
+          maxItems: 31
           items:
             $ref: "#/components/schemas/BillingOperationPrice"
     BillingAccount:
@@ -3232,6 +3238,7 @@ components:
           type: string
           enum: [GET, POST]
         operation:
+          description: "Etherview operation ID in the etherview.<module>.<action> namespace."
           type: string
           minLength: 1
           maxLength: 128

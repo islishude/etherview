@@ -212,3 +212,17 @@ and pending-hash reconciliation passed: split credit/debit/available was
 200/2/198, all-role continuation 400/4/396, and final reconciled credit/debit
 401/4. The local Anvil suite additionally verifies the 40-weight batch query
 against the same shared writer balance. These results do not close P60-T17.
+
+### Etherview operation namespace (P60-T23)
+
+| ID      | Status      | Depends on | Deliverable                                                                                                                                               | Verification                                                                                       |
+| ------- | ----------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| P60-T23 | in_progress | P60-T22    | Use etherview.module.action IDs throughout pricing, usage persistence, API responses, metrics and billing UI; retain Sourcify and V2 compatibility naming | Targeted catalog/ledger/API/UI regressions; aggregate checks deferred to remote CI at user request |
+
+The namespace follows the fresh-database contract without legacy aliases or
+backfills. P60-T17 remains blocked on its independent live-payment acceptance.
+
+Targeted namespace, price, prepaid dispatch, API and metrics regressions pass,
+as do the 18 PersonalBilling tests, generation consistency, docs and plan checks.
+The final branch's full Go/SQL integration, lint, browser and aggregate gates
+remain assigned to remote CI at the user's request; this item is not yet done.

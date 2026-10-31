@@ -1,6 +1,6 @@
 # P50 — Embedded Web
 
-Status: `done`
+Status: `in_progress`
 
 ## Outcome
 
@@ -233,3 +233,23 @@ and the separate Mainnet/release evidence boundary.
 P50-T83: Compact overview and lazy expandable history support both languages/themes and 390px/1440px layouts. All 161 embedded-browser scenarios passed, including accessibility, inert record values, pagination and single-SSE refresh; production all/split runtime checks, Preview contracts and `make check` passed. Local fixtures do not establish complete live history coverage.
 
 P50-T84: Local acceptance passed 780 frontend tests, 39 tooling tests and all 170 embedded Chromium scenarios, including nine Address tabs, manual refresh races/failures, ENS withdrawal, single-SSE recovery and keyboard/mobile heading controls. `make web-test`, `make web-lint`, `make test-e2e`, `make generate-check`, `make docs-check` and `make plan-check` passed. Remote CI was not run; local browser fixtures do not establish live chain acceptance.
+
+## Blob access and archive update
+
+| ID      | Status      | Dependencies                                          | Outcome                                                                               | Acceptance                                                                                                         |
+| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| P50-T85 | in_progress | Existing blob archive and session/billing foundations | Session and Turnstile guarded blob acquisition with shared in-memory preview/download | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
+
+Acceptance evidence: Login/Turnstile content acquisition and session-scoped preview/download reuse implemented.
+Focused Go regressions and the complete frontend unit suite (79 files, 899 tests)
+passed. Generation/OpenAPI, lint-go, source, docs and plan checks passed;
+RustFS, production schema, all/split runtime including local prepaid payments,
+and real Lighthouse blob smoke with V2 readback passed. The smoke rerun used
+`make test-preview-consensus-prebuilt` against the image built by the full target.
+
+Remaining acceptance: the user requested stopping broad local tests and running
+them in remote CI. Complete `make check`, `make test-integration-race` and
+`make test-e2e` there before marking this item done. Interrupted local runs are
+not passing evidence. The browser suite exposed one stale two-fetch expectation;
+it now expects the intended single fetch and awaits the CI rerun. Local topology
+checks do not establish live payment or production archive backup/restore evidence.

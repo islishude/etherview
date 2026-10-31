@@ -70,6 +70,9 @@ export const consensusResources = {
       hexPreview: "Hex preview · first 1 KiB",
       preview: "Preview first 1 KiB",
       download: "Download blob",
+      signInRequired: "Sign in to preview or download blob content.",
+      signInUnavailable: "Sign-in is unavailable.",
+      signIn: "Sign in",
       storageUnavailable: "Blob storage is unavailable or failed integrity checks.",
       sources: { consensus: "Consensus", execution: "Execution header" },
       states: {
@@ -166,6 +169,9 @@ export const consensusResources = {
       hexPreview: "十六进制预览 · 前 1 KiB",
       preview: "预览前 1 KiB",
       download: "下载 Blob",
+      signInRequired: "登录后可预览或下载 Blob 内容。",
+      signInUnavailable: "登录暂不可用。",
+      signIn: "登录",
       storageUnavailable: "Blob 存储不可用或完整性校验失败。",
       sources: { consensus: "共识层", execution: "执行头" },
       states: {

@@ -43,9 +43,21 @@ The retired accountless `x402testnet` command and support package are also remov
 live acceptance belongs to the user-bound top-up and prepaid-usage workflow.
 
 The billable operation catalog is the closed bounded-read subset of the
-Etherscan V2 compatibility matrix. Every query has an explicit positive integer complexity weight and cost rationale
+Etherscan V2 compatibility matrix, including the explicitly documented native
+`blob.getblob` extension. This extension requires an `api:read` key even when
+billing is disabled; sessions and Turnstile tokens do not authorize it. Its
+fixed-size archive read has complexity weight 5. Ordinary user-owned keys use
+the existing reservation/commit/release path, while operator keys and disabled
+billing retain their existing free exceptions. Successful results contain the
+entire raw blob as 0x-prefixed hexadecimal, never an archive URL. The separate
+session/Origin/CSRF/Turnstile browser content POST remains free under ADR-0055. Every query has an explicit positive integer complexity weight and cost rationale
 in the operation catalog. Its price is that weight multiplied by the deployment's
 positive `billing.base_price_atomic`, denominated in token atomic units.
+Operation IDs use the `etherview.<module>.<action>` namespace across the price
+catalog, usage ledger, API responses and metrics, including `etherview.blob.getblob`.
+The fresh-database contract does not accept the former `etherscan.*` prefix,
+translate historical records, or perform startup backfills. This naming does not
+change `/v2/api`, module/action parameters, response envelopes or Sourcify imports.
 The complete schedule is validated at startup (including uint256 overflow); missing
 query prices fail closed. Per-operation `billing.operations` is rejected.
 New supported actions must declare a classification and queries must define a

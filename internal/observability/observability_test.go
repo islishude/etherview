@@ -301,13 +301,13 @@ func TestPrepaidBillingMetricsUseClosedMethodOperationAndResultLabels(t *testing
 	registry := NewRegistry("test", "api")
 	registry.ObserveBillingTopup("permit2", "credited")
 	registry.ObserveBillingTopup("wallet-secret", "remote-secret")
-	registry.ObserveBillingUsage("etherscan.account.balance", "committed")
+	registry.ObserveBillingUsage("etherview.account.balance", "committed")
 	registry.ObserveBillingUsage("https://secret", "database-secret")
 	exposition := registry.Gather()
 	for _, expected := range []string{
 		`etherview_billing_topups_total{method="permit2",result="credited"} 1`,
 		`etherview_billing_topups_total{method="other",result="other"} 1`,
-		`etherview_billing_usage_total{operation="etherscan.account.balance",result="committed"} 1`,
+		`etherview_billing_usage_total{operation="etherview.account.balance",result="committed"} 1`,
 		`etherview_billing_usage_total{operation="other",result="other"} 1`,
 	} {
 		if !strings.Contains(exposition, expected) {

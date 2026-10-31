@@ -1,6 +1,6 @@
 # P20 — Enrichment & Durable Archives
 
-Status: `done`
+Status: `in_progress`
 
 ## Outcome
 
@@ -233,3 +233,23 @@ registration-expiry pagination also passed, followed by the full PostgreSQL
 race suite; see the [extension report](../reviews/ens-name-details-acceptance.md).
 
 P20-T31: Canonical event facts retain source, block and log identity; event-time v2 associations exclude later aliases and recover persisted pending work after restart. Verified by the ENS PostgreSQL race suite, temporal/restart regressions and fresh production-schema gate.
+
+## Blob access and archive update
+
+| ID      | Status      | Dependencies                                          | Outcome                                                                         | Acceptance                                                                                                         |
+| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| P20-T32 | in_progress | Existing blob archive and session/billing foundations | S2-compressed immutable blob archives with bounded decoding and verified replay | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
+
+Acceptance evidence: S2 archive encoding, bounded decoding, raw-byte identities and versioned object keys implemented.
+Focused Go regressions and the complete frontend unit suite (79 files, 899 tests)
+passed. Generation/OpenAPI, lint-go, source, docs and plan checks passed;
+RustFS, production schema, all/split runtime including local prepaid payments,
+and real Lighthouse blob smoke with V2 readback passed. The smoke rerun used
+`make test-preview-consensus-prebuilt` against the image built by the full target.
+
+Remaining acceptance: the user requested stopping broad local tests and running
+them in remote CI. Complete `make check`, `make test-integration-race` and
+`make test-e2e` there before marking this item done. Interrupted local runs are
+not passing evidence. The browser suite exposed one stale two-fetch expectation;
+it now expects the intended single fetch and awaits the CI rerun. Local topology
+checks do not establish live payment or production archive backup/restore evidence.

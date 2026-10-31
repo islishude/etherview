@@ -83,6 +83,12 @@ weaken the raw-first ingestion boundary.
 
 ## Supported Actions
 
+### `blob`
+
+| Action    | Required parameters  | Optional parameters | API key                  | Capability / result                                                         |
+| --------- | -------------------- | ------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| `getblob` | `blockhash`, `index` | None                | **required**, `api:read` | Etherview extension: verified 131072-byte blob as 0x-prefixed hex; weight 5 |
+
 ### `account`
 
 | Action                     | Methods       | Required parameters                                              | Optional parameters                                                         | API key  | Capability prerequisite                                                  |
@@ -374,3 +380,18 @@ such; they are not forwarded upstream.
   returns a durable UUID. It is stricter than permissive compatibility
   parsers: repeated or unknown form fields, duplicate JSON keys, external
   source indirection, and conflicting form/Standard-JSON settings are rejected.
+
+## Blob content extension
+
+`module=blob&action=getblob` is an Etherview extension on `/v2/api`, not an
+upstream Etherscan compatibility claim. Supply `chainid`, `blockhash` (exact
+32-byte execution hash) and `index` (canonical unsigned decimal uint64).
+Height and `latest` selectors are not accepted. Authentication requires an
+`api:read` key, never a browser Cookie. The standard success envelope contains
+`result: "0x..."` with all 131072 raw bytes encoded as hexadecimal.
+
+The complexity weight is 5 (a bounded large artifact read), priced through the
+shared base-price catalog. Integrity/publication failures release any reserved
+credit. Operator keys and billing-disabled deployments retain free exceptions.
+Browser preview and local download use the separate free session-protected
+POST specified by ADR-0055; the former public V1 content GET is removed.

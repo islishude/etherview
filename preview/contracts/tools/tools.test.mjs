@@ -70,18 +70,26 @@ test("blob recheck retains verified downloads when a later blob is rate limited"
   };
   const e = new Engine(run, { timeout: 5 }, {});
   e.reconcile = async (step) => step;
+  const keyActions = [];
+  e.apiKeyAdmin = (args) => {
+    keyActions.push(args);
+    return { prefix: "fixture-prefix", token: "fixture-token" };
+  };
   const original = globalThis.fetch;
   t.after(() => {
     globalThis.fetch = original;
   });
   const downloads = [0, 0];
-  globalThis.fetch = async (url) => {
-    const content = url.match(/\/blobs\/(\d)\/content$/);
-    if (content) {
-      const i = Number(content[1]);
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url);
+    if (parsed.pathname === "/v2/api") {
+      assert.equal(options.headers["X-API-Key"], "fixture-token");
+      assert.equal(parsed.searchParams.get("action"), "getblob");
+      assert.equal(parsed.searchParams.get("blockhash"), "0xdef");
+      const i = Number(parsed.searchParams.get("index"));
       downloads[i]++;
       if (i === 1 && downloads[i] === 1) return new Response("{}", { status: 429 });
-      return new Response(bodies[i]);
+      return Response.json({ status: "1", result: "0x" + bodies[i].toString("hex") });
     }
     const data = url.endsWith("/blobs")
       ? {
@@ -104,6 +112,8 @@ test("blob recheck retains verified downloads when a later blob is rate limited"
   };
   await checkScenario(e, s);
   assert.deepEqual(downloads, [1, 2]);
+  assert.equal(keyActions[0][0], "create");
+  assert.deepEqual(keyActions[1], ["revoke", "fixture-prefix"]);
   assert.equal(s.status, "api_published");
 });
 test("CLI rejects unsafe inputs before network operations", () => {

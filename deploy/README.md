@@ -97,7 +97,8 @@ raise those values. The safe public configuration exposes only whether the
 capability is enabled, never either pepper.
 
 x402 top-ups and prepaid API billing are disabled independently by default.
-Configure the network, asset, and `etherscan.<module>.<action>` prices, then
+Configure the network, asset, and `billing.base_price_atomic` (the catalog derives
+`etherview.<module>.<action>` prices from complexity weights), then
 enable `features.api_billing`. Enable `features.x402_topups` only with SIWE,
 user-owned keys, top-up bounds, ordered `[eip3009, permit2]`, recipient, and
 the reviewed Facilitator origin/CIDRs. Provide

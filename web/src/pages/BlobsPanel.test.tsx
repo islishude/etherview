@@ -7,7 +7,26 @@ import i18n from "@/i18n";
 import type * as schemas from "@/api/heyapi/types.gen";
 import { BlobsPanel } from "./BlobsPanel";
 import { BlobPage } from "./BlobPage";
+import { BlobActions } from "./BlobActions";
 import { shorten } from "@/components/format";
+
+const authState = vi.hoisted(() => ({
+  enabled: true,
+  loading: false,
+  session: { authenticated: true, csrf_token: "csrf", expires_at: "one", user: { id: "user" } },
+}));
+vi.mock("@/auth/AuthProvider", () => ({ useAuth: () => authState }));
+vi.mock("@/components/SIWELoginControl", () => ({
+  SIWELoginControl: ({ label }: { label: string }) => <button>{label}</button>,
+}));
+vi.mock("@/components/TurnstileChallenge", () => ({
+  useTurnstile: () => ({
+    ready: true,
+    consume: () => undefined,
+    refresh: () => {},
+    challenge: null,
+  }),
+}));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -49,6 +68,8 @@ const data: schemas.BlockBlobs = {
 };
 
 beforeEach(async () => {
+  authState.session.authenticated = true;
+  authState.session.expires_at = "one";
   await i18n.changeLanguage("en");
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -222,4 +243,69 @@ it("does not substitute another blob for an unknown index", async () => {
   expect(screen.queryByText(versionedHash)).not.toBeInTheDocument();
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(reads).toEqual([]);
+});
+
+it.each([true, false])(
+  "shares content between preview and download (preview first: %s)",
+  async (previewFirst) => {
+    const create = vi.fn(() => "blob:test");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const reads = renderBlobs({ index: "42" });
+    const user = userEvent.setup();
+    const preview = await screen.findByRole("button", { name: "Preview first 1 KiB" });
+    const download = screen.getByRole("button", { name: "Download blob" });
+    await user.click(previewFirst ? preview : download);
+    await user.click(previewFirst ? download : preview);
+    expect(reads).toHaveLength(1);
+    expect(create).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Hex preview · first 1 KiB")).toBeVisible();
+    click.mockRestore();
+  },
+);
+
+it("discards cached bytes when the session changes", async () => {
+  const fetch = vi.fn(
+    async () =>
+      new Response(new Uint8Array(131072).fill(7), {
+        headers: { "Content-Disposition": "attachment; filename=blob-1-42.bin" },
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const view = render(<BlobActions hash={block} index="42" />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  expect(screen.getByLabelText("Hex preview · first 1 KiB")).toBeVisible();
+  authState.session.expires_at = "two";
+  view.rerender(<BlobActions hash={block} index="42" />);
+  expect(screen.getByLabelText("Hex preview · first 1 KiB")).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+it("aborts an in-flight request and ignores its bytes after logout", async () => {
+  let finish!: (response: Response) => void;
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_request: unknown, options: RequestInit) => {
+      signal = options.signal ?? undefined;
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    }),
+  );
+  const view = render(<BlobActions hash={block} index="42" />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  authState.session.authenticated = false;
+  view.rerender(<BlobActions hash={block} index="42" />);
+  expect(signal?.aborted).toBe(true);
+  await act(async () => {
+    finish(
+      new Response(new Uint8Array(131072), {
+        headers: { "Content-Disposition": "attachment; filename=blob-1-42.bin" },
+      }),
+    );
+  });
+  expect(screen.queryByLabelText("Hex preview · first 1 KiB")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign in" })).toBeVisible();
 });

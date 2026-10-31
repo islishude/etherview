@@ -13,7 +13,7 @@ it("retains the exact block number and block-scoped index in the download filena
     });
   });
   vi.stubGlobal("fetch", fetch);
-  const result = await readBlob(hash, "42");
+  const result = await readBlob(hash, "42", "csrf");
   expect(result.filename).toBe("blob-9007199254740993-42.bin");
   expect(result.data.byteLength).toBe(131072);
   expect(fetch).toHaveBeenCalledOnce();
@@ -34,5 +34,5 @@ it.each([
         }),
     ),
   );
-  await expect(readBlob(hash, "42")).rejects.toThrow("blob_storage_unavailable");
+  await expect(readBlob(hash, "42", "csrf")).rejects.toThrow("blob_storage_unavailable");
 });

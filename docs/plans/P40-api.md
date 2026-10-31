@@ -1,6 +1,6 @@
 # P40 — API & Data Exports
 
-Status: `done`
+Status: `in_progress`
 
 Browser subscription API and all/split delivery acceptance were completed
 under P60-T20; notifications have no persisted history or replay.
@@ -286,3 +286,23 @@ actual simulated read/write calls with unrelated browsing invalidation. Focused
 Go tests, 831 frontend tests, 221 embedded browser tests, production-image
 fresh-schema E2E, generate-check, lint-go, web-lint, docs-check and plan-check
 passed locally. Running Preview and remote CI were not updated.
+
+## Blob access and archive update
+
+| ID      | Status      | Dependencies                                          | Outcome                                                                               | Acceptance                                                                                                         |
+| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| P40-T32 | in_progress | Existing blob archive and session/billing foundations | Paid V2 blob content and session-protected browser content; remove public V1 download | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
+
+Acceptance evidence: Public V1 content GET removed; free session-protected browser POST and weight-5 V2 blob.getblob implemented.
+Focused Go regressions and the complete frontend unit suite (79 files, 899 tests)
+passed. Generation/OpenAPI, lint-go, source, docs and plan checks passed;
+RustFS, production schema, all/split runtime including local prepaid payments,
+and real Lighthouse blob smoke with V2 readback passed. The smoke rerun used
+`make test-preview-consensus-prebuilt` against the image built by the full target.
+
+Remaining acceptance: the user requested stopping broad local tests and running
+them in remote CI. Complete `make check`, `make test-integration-race` and
+`make test-e2e` there before marking this item done. Interrupted local runs are
+not passing evidence. The browser suite exposed one stale two-fetch expectation;
+it now expects the intended single fetch and awaits the CI rerun. Local topology
+checks do not establish live payment or production archive backup/restore evidence.

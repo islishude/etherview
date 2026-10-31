@@ -281,7 +281,12 @@ describe("Hey API compatibility", () => {
         }),
     );
     const response = requireResponse(
-      await sdk.getBlobContent({ client, path: { hash, index: "0" }, parseAs: "stream" }),
+      await sdk.getBrowserBlobContent({
+        headers: { "X-CSRF-Token": "csrf" },
+        client,
+        path: { hash, index: "0" },
+        parseAs: "stream",
+      }),
     );
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");

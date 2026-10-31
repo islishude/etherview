@@ -81,6 +81,7 @@ func (c compatibilityActionCase) key() string { return c.module + "." + c.action
 func compatibilityActionCases() []compatibilityActionCase {
 	const guid = "123e4567-e89b-42d3-a456-426614174000"
 	return []compatibilityActionCase{
+		{module: "blob", action: "getblob", values: url.Values{"blockhash": {testHash(7)}, "index": {"0"}}},
 		{module: "account", action: "balance", values: url.Values{"address": {testSender}}},
 		{module: "account", action: "balancemulti", values: url.Values{"address": {testSender + "," + testRecipient}}},
 		{module: "account", action: "txlist", values: url.Values{"address": {testSender}}},
@@ -189,7 +190,7 @@ func TestCompatibilityActionGoldenEnvelopesAndMethods(t *testing.T) {
 				backend := &fakeBackend{result: test.key()}
 				handler := manager.Middleware(false, Handler{ChainID: 1, Backend: backend})
 				request := compatibilityActionRequest(method, test)
-				if test.keyed {
+				if test.keyed || test.module == "blob" {
 					request.Header.Set("X-API-Key", issued.Token)
 				}
 				recorder := httptest.NewRecorder()
@@ -319,8 +320,8 @@ func TestPricedCompatibilityActionChargesUserKeyAfterCanonicalValidation(t *test
 	usage, err := billing.NewUsageDispatcher(billing.UsageDispatcherOptions{
 		Ledger: usageLedger,
 		Prices: map[string]string{
-			"etherscan.account.balance":             "10",
-			"etherscan.account.addresstokenbalance": "10",
+			"etherview.account.balance":             "10",
+			"etherview.account.addresstokenbalance": "10",
 		},
 		MaxBodyBytes: 1 << 20, MaxHeaderBytes: 4096,
 		Now: func() time.Time { return time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC) },
@@ -359,7 +360,7 @@ func TestPricedCompatibilityActionChargesUserKeyAfterCanonicalValidation(t *test
 	}
 	first := usageLedger.reserves[0]
 	if first.UserID != userID || first.APIKeyPrefix != userKey.Record.Prefix ||
-		first.Method != http.MethodGet || first.Operation != "etherscan.account.balance" ||
+		first.Method != http.MethodGet || first.Operation != "etherview.account.balance" ||
 		first.AmountAtomic != "10" ||
 		backend.request.Values.Get("address") != "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ||
 		backend.request.Values.Get("tag") != "latest" {
