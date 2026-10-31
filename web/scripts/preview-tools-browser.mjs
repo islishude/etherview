@@ -62,49 +62,56 @@ try {
       await page.goto(url.href);
       await expect(page.locator("h1")).toBeVisible({ timeout: 30000 });
       const refresh = page.getByRole("button", { name: /^(Refresh|刷新)$/ });
-      if (phase.includes("final") && (await refresh.count())) {
-        await new Promise((resolve) => setTimeout(resolve, 4000));
-        await refresh.first().click();
-      }
       await expect(page.locator("main")).toBeVisible();
       await expect(page.locator("html")).toHaveAttribute("lang", mobile ? "zh-CN" : "en");
-      const implementation = scenario.checks.find((c) => c.label.startsWith("proxy "))?.expected[
-        "data.implementation.address"
-      ];
-      if (implementation)
-        await expect(
-          page.locator('a[href^="/address/' + implementation + '" i]').first(),
-        ).toBeVisible({ timeout: 30000 });
-      if (scenario.name === "ens")
-        await expect(page.locator("h1")).toContainText(scenario.entities.name);
-      if (scenario.name === "aa")
-        await expect(
-          page.locator('a[href^="/address/' + scenario.entities.smartAccount + '" i]').first(),
-        ).toBeVisible({ timeout: 30000 });
-      if (scenario.name === "blob") {
-        const blob = scenario.transactions.find((t) => t.blobs?.length)?.blobs[0];
-        await expect(page.locator('code[title="' + blob.versionedHash + '"]')).toBeVisible({
-          timeout: 30000,
-        });
-      }
-      if (scenario.entities.erc721 && link.label === "NFT")
-        await expect(page.getByText(scenario.entities.tokenID, { exact: true })).toBeVisible({
-          timeout: 30000,
-        });
-      if (scenario.name === "eip7702") {
-        const cleared = /^0x0{40}$/.test(scenario.entities.currentDelegate);
-        const bindingPanel = page.locator('section[aria-labelledby="delegation-binding-title"]');
-        await expect(
-          bindingPanel.getByText(
-            cleared ? (mobile ? "未委托" : "Not delegated") : mobile ? "已委托" : "Delegated",
-            { exact: true },
-          ),
-        ).toBeVisible({ timeout: 30000 });
-        if (!cleared)
+      // Publications can cancel even the initial read. Ordinary explorer pages
+      // require explicit refresh; retry that user action within a bounded window.
+      // Keep the anonymous request budget and all scenario assertions intact.
+      await expect(async () => {
+        if (await refresh.count()) {
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          await refresh.first().click();
+        }
+        const implementation = scenario.checks.find((c) => c.label.startsWith("proxy "))?.expected[
+          "data.implementation.address"
+        ];
+        if (implementation)
           await expect(
-            bindingPanel.locator('a[href^="/address/' + scenario.entities.currentDelegate + '" i]'),
-          ).toBeVisible();
-      }
+            page.locator('a[href^="/address/' + implementation + '" i]').first(),
+          ).toBeVisible({ timeout: 2000 });
+        if (scenario.name === "ens")
+          await expect(page.locator("h1")).toContainText(scenario.entities.name);
+        if (scenario.name === "aa")
+          await expect(
+            page.locator('a[href^="/address/' + scenario.entities.smartAccount + '" i]').first(),
+          ).toBeVisible({ timeout: 2000 });
+        if (scenario.name === "blob") {
+          const blob = scenario.transactions.find((t) => t.blobs?.length)?.blobs[0];
+          await expect(page.locator('code[title="' + blob.versionedHash + '"]')).toBeVisible({
+            timeout: 2000,
+          });
+        }
+        if (scenario.entities.erc721 && link.label === "NFT")
+          await expect(page.getByText(scenario.entities.tokenID, { exact: true })).toBeVisible({
+            timeout: 2000,
+          });
+        if (scenario.name === "eip7702") {
+          const cleared = /^0x0{40}$/.test(scenario.entities.currentDelegate);
+          const bindingPanel = page.locator('section[aria-labelledby="delegation-binding-title"]');
+          await expect(
+            bindingPanel.getByText(
+              cleared ? (mobile ? "未委托" : "Not delegated") : mobile ? "已委托" : "Delegated",
+              { exact: true },
+            ),
+          ).toBeVisible({ timeout: 2000 });
+          if (!cleared)
+            await expect(
+              bindingPanel.locator(
+                'a[href^="/address/' + scenario.entities.currentDelegate + '" i]',
+              ),
+            ).toBeVisible();
+        }
+      }).toPass({ timeout: 60000, intervals: [4000] });
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1),
         false,
