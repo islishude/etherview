@@ -26,6 +26,19 @@ import (
 )
 
 func TestAuthoritativeHolderStagePublishesNativeAndCompatibilityReads(t *testing.T) {
+	for _, genesisAllocation := range []bool{false, true} {
+		name := "mint"
+		if genesisAllocation {
+			name = "genesis_allocation_without_mint"
+		}
+		t.Run(name, func(t *testing.T) {
+			testAuthoritativeHolderPublication(t, genesisAllocation)
+		})
+	}
+}
+
+func testAuthoritativeHolderPublication(t *testing.T, genesisAllocation bool) {
+	t.Helper()
 	db := newMigratedPostgres(t)
 	repository, err := store.NewPostgresRepository(db)
 	if err != nil {
@@ -50,15 +63,22 @@ func TestAuthoritativeHolderStagePublishesNativeAndCompatibilityReads(t *testing
 	insertTokenObservation(t, ctx, db, tip, token, testHash(180_012), "Holder Token")
 	reference := mustBlockRef(t, tip)
 	transactionHash := tip.Block.Transactions()[0].Hash()
+	eventKind, from := "mint", make([]byte, common.AddressLength)
+	if genesisAllocation {
+		// Genesis storage provides the initial balance without a mint log.
+		// A later self-transfer discovers the owner, as in Preview Local USD.
+		eventKind, from = "transfer", mustBytes(t, owner)
+	}
+
 	execFixture(t, ctx, db, `
 		INSERT INTO token_events (
 			chain_id, block_number, block_hash, log_index, sub_index,
 			transaction_hash, token_address, standard, event_kind,
 			from_address, to_address, amount, canonical, confidence, raw
-		) VALUES (1, 1, $1, 0, 0, $2, $3, 'erc20', 'mint',
+		) VALUES (1, 1, $1, 0, 0, $2, $3, 'erc20', $6,
 			$4, $5, 7, TRUE, 'high', '{}'::jsonb)`,
 		mustBytes(t, reference.Hash), mustBytes(t, transactionHash), mustBytes(t, token),
-		make([]byte, common.AddressLength), mustBytes(t, owner),
+		from, mustBytes(t, owner), eventKind,
 	)
 
 	state := &holderIntegrationState{token: token, supply: big.NewInt(7), balances: map[common.Address]*big.Int{owner: big.NewInt(7)}}
