@@ -85,7 +85,7 @@ test("consensus slots and blob content remain exact, optional and on demand", as
   await expect(page.getByRole("tabpanel")).toContainText("Consensus and execution slots differ");
   await page.getByRole("tab", { name: "Blobs", exact: true }).click();
   await page.getByRole("link", { name: "View Blob 0" }).click();
-  const preview = page.getByRole("button", { name: "Preview first 1 KiB" });
+  const preview = page.getByRole("button", { name: "View content" });
   await expect(preview).toBeVisible();
   expect(reads).toBe(0);
   await preview.click();

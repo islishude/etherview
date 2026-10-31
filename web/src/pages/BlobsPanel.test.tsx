@@ -162,13 +162,15 @@ it("previews only on demand, disables actions while loading, and hides without a
       }),
   });
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Preview first 1 KiB" }));
+  await user.click(await screen.findByRole("button", { name: "View content" }));
   expect(screen.getByRole("button", { name: "Loading preview…" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Download blob" })).not.toBeInTheDocument();
   await act(async () => {
     finish(new Response(new Uint8Array(131072).fill(7)));
   });
-  const preview = await screen.findByLabelText("Hex preview · first 1 KiB");
+  const preview = await screen.findByLabelText(
+    "Only the first 1024 bytes are shown. Download for the complete content.",
+  );
   expect(preview).toHaveTextContent("07".repeat(1024));
   expect(preview.textContent).toHaveLength(2048);
   expect(reads).toEqual([`/api/v1/blocks/${block}/blobs/42/content`]);
@@ -194,10 +196,14 @@ it("keeps content errors readable and allows retry without exposing a partial pr
     content: async () => new Response(new Uint8Array(++attempt === 1 ? 16 : 131072).fill(7)),
   });
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Preview first 1 KiB" }));
+  await user.click(await screen.findByRole("button", { name: "View content" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Blob storage is unavailable");
-  expect(screen.queryByLabelText("Hex preview · first 1 KiB")).not.toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  expect(
+    screen.queryByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "View content" }));
   expect(await screen.findByRole("button", { name: "Hide preview" })).toBeEnabled();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
@@ -280,12 +286,20 @@ it("discards cached bytes when the session changes", async () => {
   vi.stubGlobal("fetch", fetch);
   const view = render(<BlobActions hash={block} index="42" />);
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
-  expect(screen.getByLabelText("Hex preview · first 1 KiB")).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "View content" }));
+  expect(
+    screen.getByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).toBeVisible();
   authState.session.expires_at = "two";
   view.rerender(<BlobActions hash={block} index="42" />);
-  expect(screen.getByLabelText("Hex preview · first 1 KiB")).not.toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  expect(
+    screen.getByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "View content" }));
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 it("aborts an in-flight request and ignores its bytes after logout", async () => {
@@ -301,7 +315,7 @@ it("aborts an in-flight request and ignores its bytes after logout", async () =>
     }),
   );
   const view = render(<BlobActions hash={block} index="42" />);
-  await userEvent.setup().click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  await userEvent.setup().click(screen.getByRole("button", { name: "View content" }));
   authState.session.authenticated = false;
   view.rerender(<BlobActions hash={block} index="42" />);
   expect(signal?.aborted).toBe(true);
@@ -312,6 +326,10 @@ it("aborts an in-flight request and ignores its bytes after logout", async () =>
       }),
     );
   });
-  expect(screen.queryByLabelText("Hex preview · first 1 KiB")).not.toBeInTheDocument();
+  expect(
+    screen.queryByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Sign in" })).toBeVisible();
 });

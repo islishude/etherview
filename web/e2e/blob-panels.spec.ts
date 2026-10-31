@@ -130,7 +130,7 @@ test("transaction preview and download use the exact block blob index and remain
   await page.getByRole("link", { name: "View Blob 42" }).click();
   await expect(page).toHaveURL(`/blocks/${blockHash}/blobs/42`);
   await page.reload();
-  const preview = page.getByRole("button", { name: "Preview first 1 KiB" });
+  const preview = page.getByRole("button", { name: "View content" });
   await expect(preview).toBeVisible();
   expect(reads).toEqual([]);
   await preview.focus();
