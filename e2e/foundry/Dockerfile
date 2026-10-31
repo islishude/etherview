@@ -1,4 +1,4 @@
-FROM ghcr.io/foundry-rs/foundry:v1.8.6
+FROM ghcr.io/foundry-rs/foundry:v1.8.7
 
 USER root
 RUN install -d -o foundry -g foundry /workspace
