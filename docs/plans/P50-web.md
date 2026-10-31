@@ -236,8 +236,8 @@ P50-T84: Local acceptance passed 780 frontend tests, 39 tooling tests and all 17
 
 ## Blob access and archive update
 
-| ID      | Status      | Dependencies                                          | Outcome                                                                               | Acceptance                                                                                                         |
-| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| ID      | Status      | Dependencies                                          | Outcome                                                                                          | Acceptance                                                                                                         |
+| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | P50-T85 | in_progress | Existing blob archive and session/billing foundations | Session-only blob acquisition with shared in-memory preview and an expanded-detail download icon | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
 
 Acceptance evidence: Login-only content acquisition (with Origin/CSRF), an expanded-detail download icon, and session-scoped preview/download reuse implemented.
