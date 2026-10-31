@@ -5,7 +5,6 @@ export const nameResources = {
       dataDetails: "Data details",
       history: {
         title: "Operation history",
-        newRecords: "New records · Refresh",
         empty: "No operations in the indexed range.",
         noKnown: "No verifiable operations indexed yet.",
         coverage: {
@@ -82,7 +81,6 @@ export const nameResources = {
       dataDetails: "数据详情",
       history: {
         title: "操作历史",
-        newRecords: "有新记录 · 刷新",
         empty: "已索引区间内暂无操作记录。",
         noKnown: "尚未索引到可验证的操作记录。",
         coverage: {
