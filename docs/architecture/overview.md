@@ -787,8 +787,12 @@ a manual-refresh notice without withdrawing current profile fields.
   bounded retry.
 - ADR-0044 replaces per-request x402. Native `/api/v1` reads are free and reject
   `PAYMENT-SIGNATURE`; only the Account top-up payment endpoint accepts it.
-  Configured bounded `/v2/api` actions reserve a user account's permanent
-  token-atomic credit after API-key quota and full compatibility validation.
+  With billing enabled, every supported bounded `/v2/api` query reserves a user
+  account's permanent token-atomic credit after API-key quota and full compatibility
+  validation. Prices derive from explicit catalog complexity weights times
+  `billing.base_price_atomic`; missing query prices fail closed. Personal billing
+  converts whole-token decimal input exactly to atomic units and displays the
+  complete price schedule. Request-rate quotas remain one token per request.
   Operator keys have no owner and retain a quota-controlled credit bypass.
   A debit commits only for an HTTP 200 Etherscan envelope with `status:"1"`;
   every logical/transport/panic/cancellation/capture failure releases the

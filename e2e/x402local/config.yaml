@@ -108,37 +108,7 @@ billing:
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
-  operations:
-    etherscan.account.balance: { amount_atomic: "1" }
-    etherscan.account.balancemulti: { amount_atomic: "1" }
-    etherscan.account.txlist: { amount_atomic: "1" }
-    etherscan.account.txlistinternal: { amount_atomic: "1" }
-    etherscan.account.tokentx: { amount_atomic: "1" }
-    etherscan.account.tokennfttx: { amount_atomic: "1" }
-    etherscan.account.token1155tx: { amount_atomic: "1" }
-    etherscan.account.tokenbalance: { amount_atomic: "1" }
-    etherscan.account.getminedblocks: { amount_atomic: "1" }
-    etherscan.account.txsBeaconWithdrawal: { amount_atomic: "1" }
-    etherscan.account.addresstokenbalance: { amount_atomic: "1" }
-    etherscan.account.addresstokennftbalance: { amount_atomic: "1" }
-    etherscan.account.addresstokennftinventory: { amount_atomic: "1" }
-    etherscan.account.fundedby: { amount_atomic: "1" }
-    etherscan.contract.getabi: { amount_atomic: "1" }
-    etherscan.contract.getsourcecode: { amount_atomic: "1" }
-    etherscan.contract.getcontractcreation: { amount_atomic: "1" }
-    etherscan.transaction.getstatus: { amount_atomic: "1" }
-    etherscan.transaction.gettxreceiptstatus: { amount_atomic: "1" }
-    etherscan.logs.getLogs: { amount_atomic: "1" }
-    etherscan.block.getblocknobytime: { amount_atomic: "1" }
-    etherscan.block.getblockcountdown: { amount_atomic: "1" }
-    etherscan.block.getblocktxnscount: { amount_atomic: "1" }
-    etherscan.stats.ethprice: { amount_atomic: "1" }
-    etherscan.stats.tokensupply: { amount_atomic: "1" }
-    etherscan.token.tokensupply: { amount_atomic: "1" }
-    etherscan.token.tokenbalance: { amount_atomic: "1" }
-    etherscan.token.tokenholdercount: { amount_atomic: "1" }
-    etherscan.token.tokenholderlist: { amount_atomic: "1" }
-    etherscan.token.tokeninfo: { amount_atomic: "1" }
+  base_price_atomic: "1"
 
 observability:
   environment: x402-local

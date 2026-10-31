@@ -10,7 +10,7 @@ requests. Users and administrators remain separate from API-key identity and
 quota policy.
 
 Users fund permanent token-denominated API credit through one Account-page
-x402 top-up. User-owned API keys spend that credit on configured bounded
+x402 top-up. User-owned API keys spend that credit on all supported bounded
 Etherscan V2 reads, while native explorer reads stay free and operator keys
 retain an audited quota-controlled bypass.
 
@@ -52,6 +52,8 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T20 | done    | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                   |
 | P60-T21 | done    | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                            | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                       |
 
+| P60-T22 | done | P60-T21 | Whole-token top-up input and mandatory complexity-weighted pricing for every V2 query | Exact decimal/UI, catalog/config, accounting, generation and local all/split x402 gates |
+
 ## Acceptance
 
 - [x] An invalid signature creates neither a user nor a session; a first valid
@@ -88,7 +90,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 - [x] A settled top-up credits exactly one matching active user account once.
 - [x] EIP-3009 and Permit2 top-ups are replay-fenced and payer-bound.
 - [x] User-owned keys share account credit; operator keys bypass credit only.
-- [x] Only configured bounded `/v2/api` logical successes commit a debit.
+- [x] Only bounded `/v2/api` query logical successes commit a debit.
 - [x] Native explorer reads never prompt for or accept x402 payment.
 - [x] Reservation, crash, pending-settlement, and reconciliation behavior is durable.
 - [x] Account UI exposes only the constrained top-up signing and exact approval flow.
@@ -194,3 +196,19 @@ credit without resending (final credit/debit/available 401/2/399). RPC/race test
 cover broadcast uncertainty, receipt timeouts/errors, hash mismatch, indexing and
 confirmed reverts. The test-only Permit2 witness path and these local results do not establish
 production Permit2/proxy compatibility, remote CI or P60-T17 live acceptance.
+
+### Whole-token input and complexity pricing (P60-T22)
+
+All 30 bounded V2 queries have explicit positive weights and cost reasons;
+public prices and writer reservations derive from one validated base price.
+Catalog completeness and missing-price rejection prevent implicit free queries.
+Whole-token input and personal billing display use exact decimal conversion,
+including precision/uint256 bounds and asset-aware historical formatting.
+
+Local acceptance passed `make check`, `CI=true make test-e2e` (221 tests, no
+retries), billing PostgreSQL integration/race, and production runtime/x402
+all/split tests. Preview EIP-3009/Permit2, replay, exact allowance, restart/outage
+and pending-hash reconciliation passed: split credit/debit/available was
+200/2/198, all-role continuation 400/4/396, and final reconciled credit/debit
+401/4. The local Anvil suite additionally verifies the 40-weight batch query
+against the same shared writer balance. These results do not close P60-T17.

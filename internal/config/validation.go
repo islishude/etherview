@@ -487,17 +487,12 @@ func validateBillingConfig(cfg Config) error {
 			errs = append(errs, fmt.Errorf("billing.facilitator_allowed_cidrs[%d] must be a canonical masked CIDR prefix", index))
 		}
 	}
-	if len(billing.Operations) > 0 && !cfg.Features.APIBilling {
-		errs = append(errs, errors.New("billing.operations requires features.api_billing"))
-	}
-	for operationID, operationConfig := range billing.Operations {
-		operation, ok := etherscanops.Lookup(operationID)
-		if !ok || !operation.BillingEligible {
-			errs = append(errs, fmt.Errorf("billing operation %q is not eligible", operationID))
+	if cfg.Features.APIBilling {
+		if _, err := etherscanops.Prices(billing.BasePriceAtomic); err != nil {
+			errs = append(errs, err)
 		}
-		if !validBillingAtomic(operationConfig.AmountAtomic) {
-			errs = append(errs, fmt.Errorf("billing operation %q amount_atomic must fit in uint256", operationID))
-		}
+	} else if billing.BasePriceAtomic != "" {
+		errs = append(errs, errors.New("billing.base_price_atomic requires features.api_billing"))
 	}
 	if !cfg.Features.APIBilling {
 		if cfg.Features.X402Topups {
@@ -569,11 +564,6 @@ func validateFacilitatorOrigin(raw string, unsafeAllowHTTP bool) error {
 		return errors.New("billing.facilitator_url must be a root HTTP origin when facilitator_unsafe_allow_http is enabled")
 	}
 	return nil
-}
-
-func validBillingAtomic(value string) bool {
-	_, ok := billingAtomic(value)
-	return ok
 }
 
 func billingAtomic(value string) (*big.Int, bool) {

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -30,6 +31,7 @@ import {
   type EIP6963ProviderDetail,
 } from "./eip6963";
 import { useWallet, WalletProvider } from "./WalletProvider";
+import type { BillingTransferMethod } from "./billing";
 
 const accountA = "0x1111111111111111111111111111111111111111";
 const accountB = "0x2222222222222222222222222222222222222222";
@@ -48,6 +50,33 @@ afterEach(() => {
 });
 
 describe("EIP-6963 wallet boundary", () => {
+  it.each(["eip3009", "permit2"] as const)(
+    "sends the complete %s domain schema to the injected provider",
+    async (method) => {
+      const fake = createFakeProvider({ eth_signTypedData_v4: walletSignature });
+      registerProvider(providerDetail(fake.provider));
+      renderWallet(<BillingHarness method={method} />);
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "Connect billing wallet" }));
+      await user.click(await screen.findByRole("button", { name: "Sign top-up" }));
+      expect(await screen.findByTestId("billing-result")).toHaveTextContent(walletSignature);
+      const requests = fake.request.mock.calls
+        .map(([request]) => request)
+        .filter((request) => request.method === "eth_signTypedData_v4");
+      expect(requests).toHaveLength(1);
+      const params = requests[0]!.params as [string, string];
+      expect(params[0]).toBe(accountA);
+      const data = JSON.parse(params[1]);
+      expect(data.types.EIP712Domain).toEqual([
+        { name: "name", type: "string" },
+        ...(method === "eip3009" ? [{ name: "version", type: "string" }] : []),
+        { name: "chainId", type: "uint256" },
+        { name: "verifyingContract", type: "address" },
+      ]);
+      expect(data.domain.chainId).toBe(1);
+    },
+  );
+
   it("validates and snapshots bounded EIP-6963 provider metadata", async () => {
     const fake = createFakeProvider();
     const source = providerDetail(fake.provider);
@@ -958,7 +987,7 @@ function WalletHarness() {
   );
 }
 
-function renderWallet() {
+function renderWallet(children: ReactNode = <WalletHarness />) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -978,10 +1007,56 @@ function renderWallet() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <WalletProvider>
-        <WalletHarness />
-      </WalletProvider>
+      <WalletProvider>{children}</WalletProvider>
     </QueryClientProvider>,
+  );
+}
+
+function BillingHarness({ method }: { method: BillingTransferMethod }) {
+  const wallet = useWallet();
+  const [result, setResult] = useState<string>();
+  const sign = async () => {
+    const expected = wallet.active!;
+    const payload = await new ExactEvmScheme({
+      address: expected.account,
+      signTypedData: (data) =>
+        wallet.signBillingTypedData!(
+          data,
+          {
+            method,
+            chainID: "1",
+            account: accountA,
+            asset: target,
+            recipient: accountB,
+            amountAtomic: "1000",
+            assetName: "Local USD",
+            assetVersion: "1",
+          },
+          expected,
+        ),
+    }).createPaymentPayload(2, {
+      scheme: "exact",
+      network: "eip155:1",
+      asset: target,
+      amount: "1000",
+      payTo: accountB,
+      maxTimeoutSeconds: 60,
+      extra: { name: "Local USD", version: "1", assetTransferMethod: method },
+    });
+    setResult(JSON.stringify(payload));
+  };
+  return (
+    <>
+      {wallet.providers[0] && (
+        <button onClick={() => void wallet.connect(wallet.providers[0]!.uuid)}>
+          Connect billing wallet
+        </button>
+      )}
+      {wallet.active && (
+        <button onClick={() => void sign().catch(() => setResult("failed"))}>Sign top-up</button>
+      )}
+      {result && <span data-testid="billing-result">{result}</span>}
+    </>
   );
 }
 

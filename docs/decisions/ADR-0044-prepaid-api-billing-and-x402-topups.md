@@ -43,8 +43,13 @@ The retired accountless `x402testnet` command and support package are also remov
 live acceptance belongs to the user-bound top-up and prepaid-usage workflow.
 
 The billable operation catalog is the closed bounded-read subset of the
-Etherscan V2 compatibility matrix. A configured price is denominated in the
-configured token's atomic units. Missing prices mean free actions. Verification
+Etherscan V2 compatibility matrix. Every query has an explicit positive integer complexity weight and cost rationale
+in the operation catalog. Its price is that weight multiplied by the deployment's
+positive `billing.base_price_atomic`, denominated in token atomic units.
+The complete schedule is validated at startup (including uint256 overflow); missing
+query prices fail closed. Per-operation `billing.operations` is rejected.
+New supported actions must declare a classification and queries must define a
+weight and rationale; catalog coverage tests enforce this requirement. Verification
 submission/status actions, intentionally unavailable actions, and every other
 mutation are ineligible.
 
@@ -83,8 +88,8 @@ poll the intent after an uncertain response but never resubmit automatically.
   existing balance.
 - User-owned keys for one user share the same account and concurrency fence;
   operator keys never consume user balances.
-- Price changes affect only new reservations. Asset rotation requires clearing
-  prices and draining active top-up/usage work; balances are never converted.
+- Price changes affect only new reservations. Asset rotation requires blocking
+  new V2 traffic and draining active top-up/usage work; balances are never converted.
 - Local/offline Anvil evidence does not replace the explicit live testnet
   top-up, writer, usage, and chain reconciliation gate.
 
@@ -103,3 +108,22 @@ The API/all role alone receives the fingerprint pepper. Docker bridge CIDRs and
 plain HTTP are explicit Preview-only transport exceptions; production defaults
 remain strict. Permit2 uses the fixture token's local witness settlement path,
 not a deployed production Permit2/proxy pair. These results do not close P60-T17.
+
+## Complexity price policy and amount presentation
+
+The fixed weights are a policy based on bounded query work, not measured CPU ratios.
+Single-record/published aggregate reads cost 1; exact-state and bounded composite
+lookups 2; paged/large-artifact reads 5; derived joins/coverage/batch reads 10;
+20-address balance batches 40; bounded log scans 50; holdings enumeration with
+state reconciliation 100. The operation catalog assigns every query explicitly,
+including aliases. Parameters and result counts do not change a request's price.
+Rate limits remain one token per request and operator-owned keys retain their
+existing credit bypass. Billing-disabled deployments remain non-billing.
+
+The public price schedule includes the base atomic price, each operation's weight
+and derived atomic price. Personal billing accepts and displays whole-token decimal
+amounts using the configured precision. String/BigInt conversion is exact and rejects
+excess fractional digits, zero, negative values and uint256 overflow without rounding.
+Wire, ledger and wallet authorization values remain atomic integer strings. Historical
+records with a different asset/network or unavailable precision are explicitly shown
+in atomic units rather than converted with unrelated asset metadata.

@@ -167,12 +167,12 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	consumeBalance(t, httpClient, publicOrigin, firstKey, owner)
 	consumeBalance(t, httpClient, publicOrigin, secondKey, owner)
 	account = billingAccount(t, httpClient, publicOrigin)
-	if account.TotalDebitAtomic != "2" || account.AvailableAtomic != "198" {
+	if account.TotalDebitAtomic != "4" || account.AvailableAtomic != "196" {
 		t.Fatalf("shared-key account=%+v", account)
 	}
 
 	logicalFailure(t, httpClient, publicOrigin, firstKey)
-	if after := billingAccount(t, httpClient, publicOrigin); after.TotalDebitAtomic != "2" {
+	if after := billingAccount(t, httpClient, publicOrigin); after.TotalDebitAtomic != "4" {
 		t.Fatalf("logical failure was charged: %+v", after)
 	}
 
@@ -193,15 +193,24 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		}
 	}
 	account = billingAccount(t, httpClient, publicOrigin)
-	if account.TotalDebitAtomic != "18" || account.AvailableAtomic != "182" || account.ReservedAtomic != "0" {
+	if account.TotalDebitAtomic != "36" || account.AvailableAtomic != "164" || account.ReservedAtomic != "0" {
 		t.Fatalf("concurrent debit account=%+v", account)
+	}
+
+	// A second tier exercises the same writer accounting in both topologies.
+	if err := consumeBalanceAction(httpClient, publicOrigin, firstKey, owner, "31337", "balancemulti"); err != nil {
+		t.Fatal(err)
+	}
+	account = billingAccount(t, httpClient, publicOrigin)
+	if account.TotalDebitAtomic != "76" || account.AvailableAtomic != "124" {
+		t.Fatalf("weighted batch debit=%+v", account)
 	}
 
 	operatorKey := createOperatorKey(t, ctx, project, mode)
 	consumeBalance(t, httpClient, publicOrigin, operatorKey, owner)
 	assertERC20Holdings(t, httpClient, publicOrigin, operatorKey, owner)
 	account = billingAccount(t, httpClient, publicOrigin)
-	if account.TotalDebitAtomic != "18" {
+	if account.TotalDebitAtomic != "76" {
 		t.Fatalf("operator bypass changed user balance: %+v", account)
 	}
 
@@ -408,7 +417,11 @@ func consumeBalanceError(client *http.Client, origin, key string, owner common.A
 }
 
 func consumeBalanceOnChain(client *http.Client, origin, key string, owner common.Address, chainID string) error {
-	target := origin + "/v2/api?chainid=" + chainID + "&module=account&action=balance&address=" + owner.Hex() + "&apikey=" + url.QueryEscape(key)
+	return consumeBalanceAction(client, origin, key, owner, chainID, "balance")
+}
+
+func consumeBalanceAction(client *http.Client, origin, key string, owner common.Address, chainID, action string) error {
+	target := origin + "/v2/api?chainid=" + chainID + "&module=account&action=" + action + "&address=" + owner.Hex() + "&apikey=" + url.QueryEscape(key)
 	response, err := client.Get(target)
 	if err != nil {
 		return err

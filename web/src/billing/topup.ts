@@ -1,3 +1,4 @@
+import { checkTopupBalance, TopupBalanceError } from "./balance";
 import { x402Client } from "@x402/core/client";
 import type { Network, PaymentRequirements } from "@x402/core/types";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
@@ -61,6 +62,13 @@ export class TopupPendingError extends Error {
   }
 }
 
+export class TopupAuthorizationError extends Error {
+  constructor() {
+    super("Top-up authorization could not be completed");
+    this.name = "TopupAuthorizationError";
+  }
+}
+
 export async function payBillingTopup(options: {
   config: BillingConfig;
   intent: BillingTopupIntent;
@@ -92,23 +100,55 @@ export async function payBillingTopup(options: {
     assetName: config.asset_eip712_name,
     assetVersion: config.asset_eip712_version,
   };
+  const checkBalance = () =>
+    checkTopupBalance(
+      wallet.readContract,
+      binding.account,
+      binding.asset,
+      binding.chainID,
+      binding.amountAtomic,
+    );
   if (method === "permit2") {
+    await checkBalance();
     await ensureExactPermit2Allowance(wallet, binding);
   }
+  let balanceError: TopupBalanceError | undefined;
   const signer = {
     address: wallet.active.account,
-    signTypedData: (typedData: BillingTypedData) =>
-      wallet.signBillingTypedData(typedData, binding, wallet.active),
+    signTypedData: async (typedData: BillingTypedData) => {
+      try {
+        await checkBalance();
+      } catch (cause) {
+        if (cause instanceof TopupBalanceError) balanceError = cause;
+        throw cause;
+      }
+      return wallet.signBillingTypedData(typedData, binding, wallet.active);
+    },
   };
   const selector = (_version: number, requirements: PaymentRequirements[]) => {
     const selected = requirements.find(
-      (requirement) => requirement.extra?.assetTransferMethod === method,
+      (requirement) =>
+        requirement.extra?.assetTransferMethod === method &&
+        requirement.network === network &&
+        getAddress(requirement.asset) === asset &&
+        getAddress(requirement.payTo) === recipient &&
+        requirement.amount === intent.amount_atomic,
     );
     if (!selected) throw new TypeError("Selected x402 transfer method is unavailable");
     return selected;
   };
-  const client = new x402Client(selector).register(network, new ExactEvmScheme(signer));
-  const fetchWithPayment = wrapFetchWithPayment(globalThis.fetch, client);
+  const client = new x402Client(selector)
+    .register(network, new ExactEvmScheme(signer))
+    .setSpendControls({
+      allowedAssets: [{ network, asset, maxAmountPerPayment: intent.amount_atomic }],
+    });
+  let paymentSubmitted = false;
+  const fetchWithPayment = wrapFetchWithPayment((input, init) => {
+    const request = new Request(input, init);
+    // Mark before transport: a lost response does not prove settlement failed.
+    if (request.headers.has("PAYMENT-SIGNATURE")) paymentSubmitted = true;
+    return globalThis.fetch(request);
+  }, client);
   const response = await fetchWithPayment(
     `/api/v1/billing/topup-intents/${encodeURIComponent(intent.id)}/pay`,
     {
@@ -120,7 +160,11 @@ export async function payBillingTopup(options: {
         "X-CSRF-Token": csrfToken,
       },
     },
-  );
+  ).catch((cause: unknown) => {
+    if (!paymentSubmitted && balanceError) throw balanceError;
+    if (!paymentSubmitted) throw new TopupAuthorizationError();
+    throw cause;
+  });
   if (response.status === 402 && response.headers.has("PAYMENT-RESPONSE")) {
     throw new TopupPendingError(intent.id);
   }

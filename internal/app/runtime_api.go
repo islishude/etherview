@@ -286,7 +286,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		compatibility := &etherscan.Handler{
 			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
 			MaxBody:      int64(cfg.Verification.MaxInputBytes) + 1<<20,
-			PublicOrigin: cfg.Server.PublicURL, Usage: usageDispatcher,
+			PublicOrigin: cfg.Server.PublicURL, Usage: usageDispatcher, APIBilling: cfg.Features.APIBilling,
 		}
 		proxyReader := newProxyReaderAdapter(
 			writerReader, cfg.Chain.ID,

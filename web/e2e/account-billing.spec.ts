@@ -17,6 +17,30 @@ for (const appearance of appearanceCases) {
     page,
   }, testInfo) => {
     await configureAppearance(page, appearance);
+    await page.addInitScript((account) => {
+      const provider = {
+        async request({ method }: { method: string }) {
+          if (method === "eth_accounts" || method === "eth_requestAccounts") return [account];
+          if (method === "eth_chainId") return "0x1";
+          if (method === "eth_call") return `0x${25000000n.toString(16).padStart(64, "0")}`;
+          throw new Error(`Unexpected authorization: ${method}`);
+        },
+        on() {},
+        removeListener() {},
+      };
+      const detail = {
+        info: {
+          uuid: "00000000-0000-4000-8000-000000000065",
+          name: "Billing Test Wallet",
+          icon: "data:image/png;base64,",
+          rdns: "org.etherview.billing-test",
+        },
+        provider,
+      };
+      window.addEventListener("eip6963:requestProvider", () =>
+        window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail })),
+      );
+    }, address);
     const errors = collectBrowserErrors(page);
     const external: string[] = [];
     const writes: string[] = [];
@@ -82,7 +106,11 @@ for (const appearance of appearanceCases) {
             asset_transfer_methods: ["eip3009", "permit2"],
             minimum_topup_amount_atomic: "1",
             maximum_topup_amount_atomic: largeAmount,
-            operations: [],
+            asset_decimals: 6,
+            base_price_atomic: "1",
+            operations: [
+              { operation: "etherscan.account.balance", complexity_weight: 2, amount_atomic: "2" },
+            ],
           }),
         });
       if (path.endsWith("/account"))
@@ -148,9 +176,39 @@ for (const appearance of appearanceCases) {
         animations: "disabled",
       });
     };
+    await expect(page.locator(".billing-connect")).toContainText(
+      appearance.language === "zh" ? "请先连接" : "Connect the wallet",
+    );
+    await page.locator(".billing-connect button").click();
+    await expect(page.locator(".billing-connect")).toHaveCount(0);
+    await page.locator(".billing-payment h2").click();
     await checkView("payment");
+    await expect(page.locator(".billing-balance-values dd").first()).toHaveText("25");
+    await expect(page.locator(".billing-prices")).toHaveCount(0);
+    await page
+      .getByRole("tab")
+      .filter({ hasText: appearance.language === "zh" ? "查询价格" : "Query prices" })
+      .click();
+    await expect(page.getByRole("cell", { name: "0.000002", exact: true })).toBeVisible();
+    await checkView("query-prices");
+    await page.keyboard.press("Home");
+    await page.locator(".billing-view-switch button").first().click();
     const amountInput = page.locator("#billing-topup-amount");
-    await amountInput.fill("123");
+    await amountInput.fill("1.25");
+    await expect(
+      page.getByRole("button", {
+        name: appearance.language === "zh" ? "充值并授权" : "Top up & authorize",
+      }),
+    ).toBeEnabled();
+    await expect(page.locator(".billing-step.success")).toHaveCount(0);
+    expect(writes).toEqual([]);
+    const widths = await page.evaluate(() =>
+      [".billing-steps", ".billing-topup-form"].map(
+        (selector) => document.querySelector(selector)!.getBoundingClientRect().width,
+      ),
+    );
+    expect(Math.abs(widths[0]! - widths[1]!)).toBeLessThan(1);
+    await checkView("topup-ready");
     const historyButton = page.locator(".billing-view-switch button").nth(1);
     await historyButton.focus();
     await page.keyboard.press("Enter");
@@ -165,7 +223,7 @@ for (const appearance of appearanceCases) {
     await expect(page.locator(".billing-records li")).toHaveCount(1);
     await checkView("payment-history");
     await page.locator(".billing-view-switch button").first().click();
-    await expect(amountInput).toHaveValue("123");
+    await expect(amountInput).toHaveValue("1.25");
     await page.goto("/account");
     await expect(page.locator(".profile-details .account-address")).toHaveAttribute(
       "href",

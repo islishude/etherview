@@ -959,7 +959,7 @@ expect_render_failure free-verified-artifact-read \
 expect_render_failure topups-without-prepaid-dependencies \
   --set config.features.x402_topups=true
 expect_render_failure invalid-x402-amount \
-  --set-json 'config.billing.operations={"etherscan.account.balance":{"amount_atomic":"01"}}'
+  --set-string config.billing.base_price_atomic=01
 expect_render_failure alert-rules-without-scoped-monitor \
   --set prometheusRule.enabled=true \
   --set serviceMonitor.enabled=false

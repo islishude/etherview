@@ -4467,6 +4467,9 @@ type BillingConfig struct {
 	AssetEip712Version   *string                      `json:"asset_eip712_version,omitempty"`
 	AssetTransferMethods []BillingAssetTransferMethod `json:"asset_transfer_methods"`
 
+	// BasePriceAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BasePriceAtomic *Quantity `json:"base_price_atomic,omitempty"`
+
 	// MaximumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	MaximumTopupAmountAtomic *Quantity `json:"maximum_topup_amount_atomic,omitempty"`
 
@@ -4498,8 +4501,9 @@ type BillingConfigResponse struct {
 // BillingOperationPrice defines model for BillingOperationPrice.
 type BillingOperationPrice struct {
 	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	AmountAtomic Quantity `json:"amount_atomic"`
-	Operation    string   `json:"operation"`
+	AmountAtomic     Quantity `json:"amount_atomic"`
+	ComplexityWeight int      `json:"complexity_weight"`
+	Operation        string   `json:"operation"`
 }
 
 // BillingPayment defines model for BillingPayment.

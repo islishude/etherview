@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/apiops"
 	"github.com/islishude/etherview/internal/billing"
+	"github.com/islishude/etherview/internal/etherscanops"
 )
 
 const (
@@ -73,7 +73,7 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 		Scheme:               gen.BillingConfigSchemeExact,
 		X402Version:          gen.BillingConfigX402VersionN2,
 		AssetTransferMethods: make([]gen.BillingAssetTransferMethod, 0, len(h.cfg.Billing.AssetTransferMethods)),
-		Operations:           make([]gen.BillingOperationPrice, 0, len(h.cfg.Billing.Operations)),
+		Operations:           make([]gen.BillingOperationPrice, 0, len(etherscanops.EligibleIDs())),
 	}
 	if !data.ApiBillingEnabled {
 		writeJSON(w, http.StatusOK, gen.BillingConfigResponse{Data: data, Meta: h.meta(r)})
@@ -111,23 +111,17 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	operations := make([]string, 0, len(h.cfg.Billing.Operations))
-	for operation := range h.cfg.Billing.Operations {
-		operations = append(operations, operation)
+	prices, err := etherscanops.Prices(h.cfg.Billing.BasePriceAtomic)
+	if err != nil {
+		h.handleBillingFailure(w, r, "map public billing configuration", err)
+		return
 	}
-	sort.Strings(operations)
-	for _, operation := range operations {
-		operationConfig := h.cfg.Billing.Operations[operation]
-		if !canonicalPositiveUint256(operationConfig.AmountAtomic) {
-			h.handleBillingFailure(
-				w, r, "map public billing configuration",
-				errors.New("configured billing route is invalid"),
-			)
-			return
-		}
+	base := gen.Quantity(h.cfg.Billing.BasePriceAtomic)
+	data.BasePriceAtomic = &base
+	for _, operation := range etherscanops.EligibleIDs() {
+		spec, _ := etherscanops.Lookup(operation)
 		data.Operations = append(data.Operations, gen.BillingOperationPrice{
-			Operation:    operation,
-			AmountAtomic: gen.Quantity(operationConfig.AmountAtomic),
+			Operation: operation, AmountAtomic: gen.Quantity(prices[operation]), ComplexityWeight: int(spec.ComplexityWeight),
 		})
 	}
 	writeJSON(w, http.StatusOK, gen.BillingConfigResponse{Data: data, Meta: h.meta(r)})

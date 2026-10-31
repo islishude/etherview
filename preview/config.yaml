@@ -160,9 +160,7 @@ billing:
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
-  operations:
-    etherscan.account.balance: { amount_atomic: "1" }
-    etherscan.contract.getabi: { amount_atomic: "1" }
+  base_price_atomic: "1"
 
 ens:
   policy_digest: "0x6d94e1acb808af0f86043074183b6e26069550f2f2a0501c67b3e350f75d44c6"

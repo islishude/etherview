@@ -3009,8 +3009,12 @@ components:
     BillingOperationPrice:
       type: object
       additionalProperties: false
-      required: [operation, amount_atomic]
+      required: [operation, amount_atomic, complexity_weight]
       properties:
+        complexity_weight:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
         operation:
           type: string
           minLength: 1
@@ -3028,6 +3032,8 @@ components:
         - asset_transfer_methods
         - operations
       properties:
+        base_price_atomic:
+          $ref: "#/components/schemas/Quantity"
         api_billing_enabled:
           type: boolean
         x402_topups_enabled:

@@ -1236,7 +1236,7 @@
             "max_payment_header_bytes",
             "max_buffered_response_bytes",
             "max_captured_header_bytes",
-            "operations"
+            "base_price_atomic"
           ],
           "properties": {
             "facilitator_url": {
@@ -1340,55 +1340,9 @@
               "minimum": 1024,
               "maximum": 65536
             },
-            "operations": {
-              "type": "object",
-              "propertyNames": {
-                "enum": [
-                  "etherscan.account.balance",
-                  "etherscan.account.balancemulti",
-                  "etherscan.account.txlist",
-                  "etherscan.account.txlistinternal",
-                  "etherscan.account.tokentx",
-                  "etherscan.account.tokennfttx",
-                  "etherscan.account.token1155tx",
-                  "etherscan.account.tokenbalance",
-                  "etherscan.account.getminedblocks",
-                  "etherscan.account.txsBeaconWithdrawal",
-                  "etherscan.account.addresstokenbalance",
-                  "etherscan.account.addresstokennftbalance",
-                  "etherscan.account.addresstokennftinventory",
-                  "etherscan.account.fundedby",
-                  "etherscan.contract.getabi",
-                  "etherscan.contract.getsourcecode",
-                  "etherscan.contract.getcontractcreation",
-                  "etherscan.transaction.getstatus",
-                  "etherscan.transaction.gettxreceiptstatus",
-                  "etherscan.logs.getLogs",
-                  "etherscan.block.getblocknobytime",
-                  "etherscan.block.getblockcountdown",
-                  "etherscan.block.getblocktxnscount",
-                  "etherscan.stats.ethprice",
-                  "etherscan.stats.tokensupply",
-                  "etherscan.token.tokensupply",
-                  "etherscan.token.tokenbalance",
-                  "etherscan.token.tokenholdercount",
-                  "etherscan.token.tokenholderlist",
-                  "etherscan.token.tokeninfo"
-                ]
-              },
-              "additionalProperties": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "amount_atomic"
-                ],
-                "properties": {
-                  "amount_atomic": {
-                    "type": "string",
-                    "pattern": "^[1-9][0-9]{0,77}$"
-                  }
-                }
-              }
+            "base_price_atomic": {
+              "type": "string",
+              "pattern": "^$|^[1-9][0-9]{0,77}$"
             }
           }
         },
@@ -2053,6 +2007,50 @@
             "required": [
               "x402FingerprintPepperRemoteKey"
             ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "config": {
+            "properties": {
+              "features": {
+                "properties": {
+                  "api_billing": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "api_billing"
+                ]
+              }
+            },
+            "required": [
+              "features"
+            ]
+          }
+        },
+        "required": [
+          "config"
+        ]
+      },
+      "then": {
+        "properties": {
+          "config": {
+            "properties": {
+              "billing": {
+                "properties": {
+                  "base_price_atomic": {
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "base_price_atomic"
+                ]
+              }
+            }
           }
         }
       }

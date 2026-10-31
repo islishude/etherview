@@ -186,9 +186,9 @@ func TestPreviewX402(t *testing.T) {
 			t.Fatal(err)
 		}
 		account := billingAccount(t, client, origin)
-		credit, debit := strconv.Itoa((index+1)*200), strconv.Itoa(index+1)
+		credit, debit := strconv.Itoa((index+1)*200), strconv.Itoa((index+1)*2)
 		recipient := tokenUintAt(t, rpcClient, token, "balanceOf", common.HexToAddress(recipientAddress))
-		if account.TotalCreditAtomic != credit || account.TotalDebitAtomic != debit || account.ReservedAtomic != "0" || recipient.String() != credit || account.AvailableAtomic != strconv.Itoa((index+1)*199) {
+		if account.TotalCreditAtomic != credit || account.TotalDebitAtomic != debit || account.ReservedAtomic != "0" || recipient.String() != credit || account.AvailableAtomic != strconv.Itoa((index+1)*198) {
 			t.Fatalf("%s chain/ledger mismatch: %+v recipient=%s", mode, account, recipient)
 		}
 		t.Logf("%s: credit=%s debit=%s available=%s recipient=%s; replay, exact allowance, recreation and outage passed", mode, credit, debit, account.AvailableAtomic, recipient)
@@ -246,7 +246,7 @@ func TestPreviewX402(t *testing.T) {
 	}
 	account := billingAccount(t, client, origin)
 	recipient := tokenUintAt(t, rpcClient, token, "balanceOf", common.HexToAddress(recipientAddress))
-	if account.TotalCreditAtomic != "401" || account.TotalDebitAtomic != "2" || account.AvailableAtomic != "399" || recipient.String() != "401" {
+	if account.TotalCreditAtomic != "401" || account.TotalDebitAtomic != "4" || account.AvailableAtomic != "397" || recipient.String() != "401" {
 		t.Fatalf("reconciled account=%+v recipient=%s", account, recipient)
 	}
 	t.Log("paused-chain pending hash, resumed receipt, one-shot reconciliation and replay passed")

@@ -603,6 +603,7 @@ features:
   api_billing: true
   x402_topups: true
 billing:
+  base_price_atomic: "1"
   facilitator_url: https://facilitator.example
   facilitator_allowed_cidrs: [203.0.113.0/24]
   network: eip155:84532

@@ -586,6 +586,25 @@ test("mempool details manually refresh from pending through replacement to inclu
   await pendingLink.click();
 
   await expect(page.getByRole("heading", { name: "Waiting for confirmation" })).toBeVisible();
+  const noticeLayout = await page.locator(".mempool-transaction-state").evaluate((element) => {
+    const panel = element.getBoundingClientRect();
+    const heading = element.querySelector("h2")!;
+    const title = heading.getBoundingClientRect();
+    const description = element.querySelector("p")!.getBoundingClientRect();
+    return {
+      leftInset: title.left - panel.left,
+      topInset: title.top - panel.top,
+      bottomInset: panel.bottom - description.bottom,
+      textAlignment: Math.abs(title.left - description.left),
+      headingSize: Number.parseFloat(getComputedStyle(heading).fontSize),
+    };
+  });
+  expect(noticeLayout.leftInset).toBeGreaterThanOrEqual(16);
+  expect(noticeLayout.topInset).toBeGreaterThanOrEqual(16);
+  expect(noticeLayout.bottomInset).toBeGreaterThanOrEqual(16);
+  expect(noticeLayout.textAlignment).toBe(0);
+  await expect(page.locator(".mempool-transaction-state .transaction-status")).toHaveCount(0);
+  expect(noticeLayout.headingSize).toBeLessThanOrEqual(18);
   const detailPendingStatus = page.locator('[data-status="pending"]').first();
   await expect(detailPendingStatus.locator("svg.lucide-clock-3")).toBeVisible();
   const pendingColor = await detailPendingStatus.evaluate(
@@ -2714,6 +2733,23 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     },
   ]);
 
+  for (const selector of [".authenticated-user", ".wallet-account"]) {
+    await activateInView(page.locator(".wallet-summary"));
+    const identityLink = page.locator(selector);
+    await expect(identityLink).toHaveAttribute("href", `/address/${walletAccount}`);
+    await identityLink.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/address/${walletAccount}`));
+    await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
+    await activateInView(page.locator(".wallet-summary"));
+    await expect(page.locator(".wallet-menu")).toHaveAttribute("open", "");
+    await activateInView(
+      page.locator(".wallet-popover").getByRole("link", { name: "Open account", exact: true }),
+    );
+    await expect(page).toHaveURL(/\/account$/);
+    await activateInView(page.locator(".wallet-summary"));
+  }
+
   const challengeRequest = authRequests.find(
     ({ pathname }) => pathname === "/api/v1/auth/challenge",
   );
@@ -2823,11 +2859,11 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
 
   await activateInView(accountSections.getByRole("link", { name: "Billing", exact: true }));
 
-  await page.getByRole("button", { name: "History", exact: true }).click();
+  await page.getByRole("tab", { name: "History", exact: true }).click();
   await page.getByRole("combobox", { name: "Record type" }).selectOption("payments");
   const personalHistory = page.locator(".billing-history-section");
   await expect(personalHistory.getByRole("heading", { name: "History" })).toBeVisible();
-  await expect(personalHistory.getByText(billingAmount, { exact: true })).toBeVisible();
+  await expect(personalHistory.getByText(`${billingAmount} atomic`, { exact: true })).toBeVisible();
   await expect(personalHistory).not.toContainText(billingHiddenUserID);
   await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);
   await expect(personalHistory.getByRole("columnheader", { name: "User ID" })).toHaveCount(0);

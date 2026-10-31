@@ -33,6 +33,8 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P60-T22 completed whole-token top-up input and mandatory complexity-weighted V2 query pricing with local browser, writer and all/split payment acceptance. P60-T17 remains an independent live-payment gate.
+
 ENS now indexes current-chain core block/log facts under enrich and serves
 published names through database-only reads (ADR-0058). P20-T27/T28/T29,
 P30-T149/T150/T151, P40-T27 and P50-T81 are done with
