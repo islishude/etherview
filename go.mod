@@ -15,7 +15,7 @@ require (
 	github.com/ensdomains/go-ens/v4 v4.0.0
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/fjl/geas v0.3.3
-	github.com/fxamacker/cbor/v2 v2.9.6
+	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/getkin/kin-openapi v0.152.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
