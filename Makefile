@@ -603,7 +603,7 @@ preview-verification-check: pnpm-install
 	$(NODE) --test preview/verification/verify.test.mjs
 
 # Explicit manual scenarios; never start or reset the daily Preview implicitly.
-.PHONY: preview-tool test-preview-tools test-preview-tools-e2e test-preview-tools-e2e-prebuilt
+.PHONY: preview-tool test-preview-tools test-preview-tools-e2e test-preview-tools-e2e-prebuilt test-preview-tools-e2e-full test-preview-tools-e2e-full-prebuilt
 preview-tool:
 	@NODE_EXTRA_CA_CERTS="$${NODE_EXTRA_CA_CERTS:-$(CURDIR)/$(PREVIEW_TLS_CA)}" $(NODE) preview/contracts/tools/cli.mjs $(ARGS)
 
@@ -615,6 +615,12 @@ test-preview-tools-e2e: pnpm-install preview-cert-check docker-build preview-ima
 	@$(MAKE) --no-print-directory test-preview-tools-e2e-prebuilt
 
 test-preview-tools-e2e-prebuilt: preview-e2e-check
-	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewTools$$' ./e2e/previewmetadata
+	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=15m -tags=previewmetadatae2e -run '^TestPreviewTools$$' ./e2e/previewmetadata
+
+test-preview-tools-e2e-full: pnpm-install preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-tools-e2e-full-prebuilt
+
+test-preview-tools-e2e-full-prebuilt: preview-e2e-check
+	PREVIEW_TOOLS_FULL=1 IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewToolsFull$$' ./e2e/previewmetadata
 
 check: test-preview-tools

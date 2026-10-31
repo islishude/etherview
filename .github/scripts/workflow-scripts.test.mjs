@@ -331,7 +331,7 @@ test("docs checker accepts aligned action tables and still rejects missing or un
   }
 });
 
-test("Preview acceptance suites run independently with complete coverage and isolated evidence", () => {
+test("Preview groups short checks and isolates heavy suites without losing failure coverage", () => {
   const workflow = readFileSync(join(root, ".github/workflows/ci-runtime.yml"), "utf8");
   const jobs = new Map(
     [
@@ -340,47 +340,56 @@ test("Preview acceptance suites run independently with complete coverage and iso
         .matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:\n|$(?![\s\S]))/gm),
     ].map(([, id, body]) => [id, body]),
   );
-  const suites = ["gateway-genesis", "metadata", "contracts", "x402", "tools", "consensus"];
-  assert.deepEqual([...jobs.keys()], ["runtime", ...suites.map((suite) => `preview-${suite}`)]);
-  const artifacts = new Set();
-  for (const suite of suites) {
+  assert.deepEqual(
+    [...jobs.keys()],
+    ["runtime", "preview-smoke", "preview-metadata", "preview-contracts", "preview-consensus"],
+  );
+  const smoke = jobs.get("preview-smoke");
+  assert.equal(smoke.split("uses: ./.github/actions/setup-preview").length - 1, 1);
+  assert.match(smoke, /id: setup/);
+  assert.doesNotMatch(
+    smoke,
+    /browser:|PLAYWRIGHT_USE_BUNDLED|tools-e2e-full|PREVIEW_TOOLS_FULL|continue-on-error/,
+  );
+  for (const command of [
+    "make preview-contracts-check",
+    "node preview/contracts/upstream.mjs --check",
+    "make test-preview-gateway",
+    "make test-preview-x402-prebuilt",
+    "make test-preview-tools-e2e-prebuilt",
+  ]) {
+    assert.equal(workflow.split(command).length - 1, 1, command);
+    const step = smoke.split(/^      - /m).find((part) => part.includes(command));
+    assert.ok(
+      step.includes("if: ${{ !cancelled() && steps.setup.outcome == 'success' }}"),
+      command,
+    );
+  }
+  assert.ok(smoke.includes("always() && steps.tools.outcome != 'skipped'"));
+  assert.ok(smoke.includes("name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}"));
+  for (const suite of ["smoke", "metadata", "contracts", "consensus"]) {
     const job = jobs.get(`preview-${suite}`);
     assert.doesNotMatch(job, /^    (needs|continue-on-error|if):/m);
     assert.match(job, /uses: actions\/checkout@/);
-    if (suite === "gateway-genesis") {
-      assert.doesNotMatch(job, /setup-preview|load-production-image|preview-images|playwright/i);
-      for (const command of [
-        "make preview-contracts-check",
-        "node preview/contracts/upstream.mjs --check",
-        "make test-preview-gateway",
-      ])
-        assert.equal(workflow.split(command).length - 1, 1, command);
-      continue;
-    }
-    const target = `make test-preview-${suite === "tools" ? "tools-e2e" : suite}-prebuilt`;
-    assert.equal(workflow.split(target).length - 1, 1, target);
-    assert.ok(job.includes(target));
     assert.match(job, /uses: docker\/setup-buildx-action@/);
     assert.match(job, /uses: \.\/\.github\/actions\/setup-preview/);
     assert.ok(job.includes("image-artifact-id: ${{ inputs.image-artifact-id }}"));
-    const browser = ["metadata", "contracts", "tools"].includes(suite);
+    const browser = ["metadata", "contracts"].includes(suite);
     assert.equal(job.includes('browser: "true"'), browser);
     assert.equal(job.includes('PLAYWRIGHT_USE_BUNDLED: "1"'), browser);
     assert.ok(job.includes("TMPDIR: ${{ runner.temp }}"));
-    if (suite === "x402") {
-      assert.doesNotMatch(job, /upload-artifact/);
-      continue;
-    }
-    assert.ok(job.includes("always() && steps.acceptance.outcome != 'skipped'"));
-    assert.match(job, /id: acceptance/);
     assert.match(job, /uses: actions\/upload-artifact@/);
-    const artifact = job.match(/name: (preview-.*\$\{\{ github.run_attempt \}\})/)[1];
-    assert.equal(artifact, `preview-${suite}-\${{ github.run_id }}-\${{ github.run_attempt }}`);
-    artifacts.add(artifact);
     assert.ok(job.includes("path: ${{ runner.temp }}/etherview-preview-metadata-*"));
     assert.match(job, /retention-days: 7/);
+    if (suite === "smoke") continue;
+    const target = `make test-preview-${suite}-prebuilt`;
+    assert.equal(workflow.split(target).length - 1, 1, target);
+    assert.ok(job.includes(target));
+    assert.ok(job.includes("always() && steps.acceptance.outcome != 'skipped'"));
+    assert.ok(
+      job.includes(`name: preview-${suite}-\${{ github.run_id }}-\${{ github.run_attempt }}`),
+    );
   }
-  assert.equal(artifacts.size, 4);
 });
 
 test("shared Preview setup preserves image identity and makes browser preparation optional", () => {

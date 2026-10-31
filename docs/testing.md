@@ -173,29 +173,36 @@ remain independent.
 
 The reusable [runtime workflow](../.github/workflows/ci-runtime.yml) consumes
 only the AMD64 image, without waiting for compiler packages or verification.
-Its schema/runtime job uses the prebuilt targets. Six independent Preview jobs
-run gateway/genesis checks, metadata, contracts/Bundler/ENS, x402,
-[manual tools CLI and browser](../preview/docs/tools.md#acceptance), and
-consensus/blob acceptance in parallel on separate runners. A failed suite does
-not skip the other suites, and each job can be retried independently.
-The five full Preview jobs share a local setup action that installs dependencies,
-loads the exact AMD64 production image, prepares ephemeral certificates, builds
-Rundler and Facilitator helpers, and pulls Caddy and external images per runner.
-Only metadata, contracts and manual tools install bundled Chromium. The
-gateway/genesis job needs only the toolchain, pnpm dependencies, pinned Anvil
-and Caddy. Metadata, contracts, manual tools and consensus upload their retained
-harness evidence on success or failure with suite-specific artifact names;
-x402 retains its existing log and cleanup behavior.
-All image consumers
-use the common load action with an exact producer artifact ID and validate
-source revision, architecture and image ID; none rebuilds a missing image.
+Its schema/runtime job uses the prebuilt targets. Four Preview jobs run on
+separate runners. The short gateway/genesis, x402 and
+[CLI smoke](../preview/docs/tools.md#acceptance) checks share one job and one
+Preview setup; metadata, contracts/Bundler/ENS and consensus/blob acceptance
+remain independent. The grouped checks run sequentially to avoid competing
+Compose stacks. After successful setup, each check runs even if a previous
+check fails; failures still fail the job. Cancellation or setup failure skips
+the remaining checks. Retrying the grouped job reruns its short checks.
+
+All four jobs share a local setup action that installs dependencies, loads the
+exact AMD64 production image, prepares ephemeral certificates, builds Rundler
+and Facilitator helpers, and pulls Caddy and external images per runner. Only
+metadata and contracts install bundled Chromium. CLI smoke runs one split-role
+transactions scenario; the full catalog, dual-layout and browser suite is opt-in
+via `make test-preview-tools-e2e-full` (or its `-prebuilt` variant), outside
+ordinary CI. Metadata, contracts, CLI tools and consensus upload retained harness
+evidence on success or failure with suite-specific artifact names; x402 retains
+its existing log and cleanup behavior.
+All image consumers use the common load action with an exact producer artifact
+ID and validate source revision, architecture and image ID; none rebuilds a
+missing image.
 
 Checks appear under `Checks / ...`. Runtime checks use `Runtime acceptance / ...`:
-`Production schema and runtime E2E`, `Preview gateway and genesis checks`,
-`Preview metadata E2E`, `Preview contracts, Bundler and ENS E2E`,
-`Preview x402 E2E`, `Preview manual tools and browser E2E`, and
-`Preview consensus and blobs E2E`. Required-check integrations must replace the
-former combined Preview check with all six Preview checks if configured.
+`Production schema and runtime E2E`,
+`Preview gateway, genesis, x402 and CLI smoke`, `Preview metadata E2E`,
+`Preview contracts, Bundler and ENS E2E`, and `Preview consensus and blobs E2E`.
+Required-check integrations must use these four Preview jobs. Replace separate
+`Preview gateway and genesis checks`, `Preview x402 E2E`, and
+`Preview manual tools and browser E2E` (or `Preview CLI smoke E2E`) requirements
+with the grouped `Preview gateway, genesis, x402 and CLI smoke` check.
 Foundry appears under each architecture's production verification call.
 Docker publication and automatic Vyper updates retain
 their separate triggers and permissions.

@@ -180,11 +180,35 @@ public-chain acceptance.
 ## Acceptance
 
 `make test-preview-tools` runs journal, input, artifact, privacy and blob-helper
-regressions. `make test-preview-tools-e2e` runs the actual CLI against a unique
-Geth/Lighthouse Compose project and disposable volumes for each split/all mode;
-`make test-preview-tools-e2e-prebuilt` uses already-built images. Its browser
-checks consume the same run reports and save screenshots. The isolated E2E
-config uses a 250ms runtime poll interval for the large catalog on three-second
+regressions.
+
+`make test-preview-tools-e2e` is the default CLI smoke gate. It creates one
+isolated split-role Geth/Lighthouse Compose project and runs only `transactions`
+with `--no-verify`: real transactions, receipts and public API checks, report
+creation, lifecycle continuation, completed-resume transaction identity and
+read-only `check` stability. It does not build the blob helper or launch a
+browser. The test-process deadline is 15 minutes. This still requires the real
+Preview stack; it is not a unit test.
+
+`make test-preview-tools-e2e-full` explicitly runs the full catalog and lifecycle
+in independent all/split projects, with initial/final English desktop and Chinese
+mobile browser assertions and screenshots. Its test-process deadline is 60
+minutes. Run it when changing scenario lifecycles, report-to-browser integration,
+or tool behavior across deployment layouts. It is opt-in and does not run in
+ordinary PR, push or scheduled CI. Browser prerequisites are described in
+[Preview testing](testing.md). The full Go test also requires
+`PREVIEW_TOOLS_FULL=1`, supplied by this Make target, so a broad tagged Go test
+cannot accidentally opt in.
+
+Both E2E targets have `-prebuilt` variants that use already-built images:
+`make test-preview-tools-e2e-prebuilt` and
+`make test-preview-tools-e2e-full-prebuilt`. CI runs the smoke variant without
+installing Chromium, shares its CI job with gateway/genesis and x402 checks,
+and retains CLI reports and diagnostics. Business acceptance
+remains in the metadata, contracts/Bundler/ENS, consensus/blob and runtime gates;
+UI coverage remains in the frontend/browser gates.
+
+The isolated E2E config uses a 250ms runtime poll interval for the large catalog on three-second
 slots; source discovery services stay disabled. Exact canonical binding checks
 remain enabled. The all-role subtest retains strict metadata network policy and
 uses a test-owned HTTPS gateway on an internal Docker subnet with addresses

@@ -85,6 +85,8 @@ for (const suite of [
   "preview-consensus",
   "preview-x402",
   "preview-contracts",
+  "preview-tools-e2e",
+  "preview-tools-e2e-full",
 ]) {
   const target = `test-${suite}`;
   const preview = suite.startsWith("preview-");
@@ -100,6 +102,16 @@ for (const suite of [
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
       assert.deepEqual(prebuilt.commands[1].args, ["image", "inspect", "caddy:2.11.7-alpine"]);
+    if (suite.startsWith("preview-tools-e2e")) {
+      const args = prebuilt.commands.at(-1).args;
+      const full = suite.endsWith("-full");
+      assert.equal(
+        args[args.indexOf("-run") + 1],
+        full ? "^TestPreviewToolsFull$" : "^TestPreviewTools$",
+      );
+      assert.ok(args.includes(full ? "-timeout=60m" : "-timeout=15m"));
+      assert.equal(prebuilt.stdout.includes("PREVIEW_TOOLS_FULL=1"), full);
+    }
     const ordinary = f.run(target);
     assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
     assert.equal(existsSync(join(f.dir, ".local/preview-push.env")), preview);

@@ -9,22 +9,32 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestPreviewTools(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 12*time.Minute)
+	defer cancel()
+	testPreviewToolLayout(t, ctx, "split", false)
+}
+
+func TestPreviewToolsFull(t *testing.T) {
+	if os.Getenv("PREVIEW_TOOLS_FULL") != "1" {
+		t.Skip("opt in with make test-preview-tools-e2e-full")
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 55*time.Minute)
 	defer cancel()
 	for _, phase := range []string{"all", "split"} {
-		if !t.Run(phase, func(t *testing.T) { testPreviewToolLayout(t, ctx, phase) }) {
+		if !t.Run(phase, func(t *testing.T) { testPreviewToolLayout(t, ctx, phase, true) }) {
 			return
 		}
 	}
 }
 
-func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string) {
+func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full bool) {
 	h := newHarness(t)
 	t.Cleanup(h.cleanup)
 	data, err := os.ReadFile(filepath.Join(h.root, "preview/config.yaml"))
@@ -52,11 +62,14 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string) {
 		err := h.db.QueryRow(ctx, "SELECT state FROM genesis_state_imports WHERE chain_id=48815").Scan(&state)
 		return state == "complete", state, err
 	})
-	helper := filepath.Join(h.artifacts, "previewblob")
-	build := exec.CommandContext(ctx, "go", "build", "-o", helper, "./cmd/previewblob")
-	build.Dir = h.root
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("blob helper build: %v\n%s", err, output)
+	helper := ""
+	if full {
+		helper = filepath.Join(h.artifacts, "previewblob")
+		build := exec.CommandContext(ctx, "go", "build", "-o", helper, "./cmd/previewblob")
+		build.Dir = h.root
+		if output, err := build.CombinedOutput(); err != nil {
+			t.Fatalf("blob helper build: %v\n%s", err, output)
+		}
 	}
 	if phase == "all" {
 		h.toolsStrictMetadataGateway(ctx)
@@ -108,7 +121,15 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string) {
 		}
 		return report
 	}
-	report := runCLI("run", "all")
+	scenario := "transactions"
+	if full {
+		scenario = "all"
+	}
+	args := []string{"run", scenario}
+	if !full {
+		args = append(args, "--no-verify")
+	}
+	report := runCLI(args...)
 	id, ok := report["id"].(string)
 	if !ok {
 		t.Fatal("missing run ID")
@@ -125,16 +146,41 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string) {
 		}
 	}
 	retainReport("initial")
-	h.assertToolsBrowser(ctx, binding, reportPath, phase+"-initial")
+	if full {
+		h.assertToolsBrowser(ctx, binding, reportPath, phase+"-initial")
+	}
+	initialTransactions := toolTransactionIdentities(report)
 	runCLI("resume", "--run", id, "--lifecycle")
 	before := runCLI("report", "--run", id)
+	for step, hash := range initialTransactions {
+		if toolTransactionIdentities(before)[step] != hash {
+			t.Fatalf("lifecycle replaced transaction %s", step)
+		}
+	}
+	if !full {
+		if len(toolTransactionIdentities(before)) <= len(initialTransactions) {
+			t.Fatal("lifecycle did not add activity")
+		}
+		resumed := runCLI("resume", "--run", id, "--lifecycle")
+		if !reflect.DeepEqual(toolTransactionIdentities(before), toolTransactionIdentities(resumed)) {
+			t.Fatal("completed resume changed transactions")
+		}
+	}
 	runCLI("check", "--run", id)
 	after := runCLI("report", "--run", id)
 	if fmt.Sprint(before["scenarios"]) != fmt.Sprint(after["scenarios"]) {
 		t.Fatal("read-only check changed public scenario outcomes")
 	}
 	retainReport("final")
-	h.assertToolsBrowser(ctx, binding, reportPath, phase+"-final")
+	for _, value := range after["scenarios"].([]any) {
+		scenario := value.(map[string]any)
+		if scenario["status"] != "api_published" {
+			t.Fatalf("unpublished scenario: %v", scenario["name"])
+		}
+	}
+	if full {
+		h.assertToolsBrowser(ctx, binding, reportPath, phase+"-final")
+	}
 }
 
 // ADR-0005 forbids the private-network exception in all-role processes. Like

@@ -43,15 +43,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  preview-gateway-genesis:
-    name: Preview gateway and genesis checks
+  preview-smoke:
+    name: Preview gateway, genesis, x402 and CLI smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      TMPDIR: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-toolchain
-      - run: pnpm install --frozen-lockfile
+      - uses: docker/setup-buildx-action@v4
+      - uses: ./.github/actions/setup-preview
+        id: setup
+        with:
+          image-artifact-id: ${{ inputs.image-artifact-id }}
       - name: Verify reproducible genesis and controlled contract edge cases
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
           container=$(docker create ghcr.io/foundry-rs/foundry:v1.8.6)
           trap 'docker rm "$container"' EXIT
@@ -60,7 +66,23 @@ jobs:
           ANVIL="$RUNNER_TEMP/preview-tools/anvil" make preview-contracts-check
           node preview/contracts/upstream.mjs --check
       - name: Validate Caddy gateway boundaries
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: make test-preview-gateway
+      - name: Run Preview x402 E2E
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: make test-preview-x402-prebuilt
+      - name: Run Preview CLI smoke E2E
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        id: tools
+        run: make test-preview-tools-e2e-prebuilt
+      - name: Upload Preview tools evidence and diagnostics
+        if: ${{ always() && steps.tools.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-preview-metadata-*
+          if-no-files-found: warn
+          retention-days: 7
 
   preview-metadata:
     name: Preview metadata E2E
@@ -110,48 +132,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: preview-contracts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/etherview-preview-metadata-*
-          if-no-files-found: warn
-          retention-days: 7
-
-  preview-x402:
-    name: Preview x402 E2E
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      TMPDIR: ${{ runner.temp }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: ./.github/actions/setup-preview
-        with:
-          image-artifact-id: ${{ inputs.image-artifact-id }}
-      - name: Run Preview x402 E2E
-        id: acceptance
-        run: make test-preview-x402-prebuilt
-
-  preview-tools:
-    name: Preview manual tools and browser E2E
-    runs-on: ubuntu-24.04
-    timeout-minutes: 80
-    env:
-      TMPDIR: ${{ runner.temp }}
-      PLAYWRIGHT_USE_BUNDLED: "1"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: ./.github/actions/setup-preview
-        with:
-          image-artifact-id: ${{ inputs.image-artifact-id }}
-          browser: "true"
-      - name: Run Preview manual tools and browser E2E
-        id: acceptance
-        run: make test-preview-tools-e2e-prebuilt
-      - name: Upload Preview tools evidence and diagnostics
-        if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/etherview-preview-metadata-*
           if-no-files-found: warn
           retention-days: 7

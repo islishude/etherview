@@ -203,6 +203,9 @@ compiler execution or durable publication.
 ## Manual scenario tool acceptance
 
 See [manual tools](tools.md#acceptance) for the journal and real Preview CLI gates.
-The tool gate exercises initial and final states in split/all roles and consumes
-the same public reports in browser checks. Reports retain manual wallet and
+The default `make test-preview-tools-e2e` runs a single split-role transactions
+scenario through the real CLI, including reports, read-only checks and resume
+identity checks, without a browser. Use `make test-preview-tools-e2e-full` on
+demand for the complete catalog, lifecycle and initial/final split/all browser
+checks. Both targets have `-prebuilt` variants. Reports retain manual wallet and
 provider-dependent checks as unverified.
