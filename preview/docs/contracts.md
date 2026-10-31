@@ -224,7 +224,7 @@ cast call 0x433709009b8330fda32311df1c2afa402ed8d009 'senderCreator()(address)' 
 
 `make preview-contracts-generate` explicitly regenerates checked-in allocations;
 `make preview-contracts-check` reproduces them and tests the real contracts.
-Use Anvil 1.8.6 and the locked pnpm workspace. Do not copy runtime bytecode to a
+Use Anvil 1.8.7 and the locked pnpm workspace. Do not copy runtime bytecode to a
 new address or manually edit storage: constructor immutables, child contracts,
 nonces and initializer state must remain together.
 

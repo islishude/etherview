@@ -540,7 +540,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   checksum-validates the official catalog artifact through the application;
   only the independent client's fixture compilation is offline.
 - `make test-foundry-offline-compile`: run the version-pinned Foundry
-  v1.8.6 client image with no network and force a Solidity 0.8.30 rebuild. The
+  v1.8.7 client image with no network and force a Solidity 0.8.30 rebuild. The
   image build already compiles once online and once offline, while this target
   independently proves the loaded client contains the complete compiler cache.
   Foundry's disposable project build cache is disabled: each Compose command
@@ -654,7 +654,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-six-application-role layouts. Each layout gets a
-  deterministic Prague chain from the default Foundry `v1.8.6` image and a
+  deterministic Prague chain from the default Foundry `v1.8.7` image and a
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
   type-4 transactions with go-ethereum, and deploys two delegate contracts; it

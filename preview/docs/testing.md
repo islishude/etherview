@@ -110,7 +110,7 @@ Run the metadata, consensus, contracts and x402 Preview gates, `make check`, `ma
 
 ## Preview application contracts acceptance
 
-`make preview-contracts-check` uses pinned Anvil 1.8.6 to reproduce the genesis
+`make preview-contracts-check` uses pinned Anvil 1.8.7 to reproduce the genesis
 allocations and exercise registration, commitment age/expiry, pricing, renewal,
 transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
 confined to this contract test; it does not establish PoS or Bundler acceptance.

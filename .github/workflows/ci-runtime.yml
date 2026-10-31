@@ -57,7 +57,7 @@ jobs:
       - name: Verify reproducible genesis and controlled contract edge cases
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: |
-          container=$(docker create ghcr.io/foundry-rs/foundry:v1.8.6)
+          container=$(docker create ghcr.io/foundry-rs/foundry:v1.8.7)
           trap 'docker rm "$container"' EXIT
           mkdir -p "$RUNNER_TEMP/preview-tools"
           docker cp "$container:/usr/local/bin/anvil" "$RUNNER_TEMP/preview-tools/anvil"
