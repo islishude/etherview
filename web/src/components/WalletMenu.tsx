@@ -52,6 +52,11 @@ export function WalletMenu() {
     return () => document.removeEventListener("pointerdown", dismissOnOutsidePointer);
   }, [open]);
 
+  const closeMenu = () => {
+    if (menuRef.current) menuRef.current.open = false;
+    setOpen(false);
+  };
+
   return (
     <>
       <details
@@ -107,7 +112,14 @@ export function WalletMenu() {
               {walletPrimaryName ? (
                 <bdi className="address-primary-name">{walletPrimaryName.name}</bdi>
               ) : null}
-              <code className="wallet-account">{wallet.active.account}</code>
+              <Link
+                className="wallet-account"
+                to="/address/$address"
+                params={{ address: wallet.active.account }}
+                onClick={closeMenu}
+              >
+                <code>{wallet.active.account}</code>
+              </Link>
               <button
                 className="button secondary full"
                 type="button"
@@ -170,7 +182,12 @@ export function WalletMenu() {
                 <p role="status">{t("auth.sessionState.checking")}</p>
               ) : auth.session.authenticated && auth.session.user ? (
                 <>
-                  <span className="authenticated-user">
+                  <Link
+                    className="authenticated-user"
+                    to="/address/$address"
+                    params={{ address: auth.session.user.address }}
+                    onClick={closeMenu}
+                  >
                     <UIIcon icon={CircleCheck} size={14} className="status-icon success" />
                     <span>
                       <strong>
@@ -180,7 +197,7 @@ export function WalletMenu() {
                       </strong>
                       <small>{t(`auth.role.${auth.session.user.role}`)}</small>
                     </span>
-                  </span>
+                  </Link>
                   <Link className="button secondary inline-button full" to="/account">
                     {t("auth.account.open")}
                   </Link>

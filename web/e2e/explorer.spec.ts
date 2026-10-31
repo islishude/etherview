@@ -2714,6 +2714,23 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
     },
   ]);
 
+  for (const selector of [".authenticated-user", ".wallet-account"]) {
+    await activateInView(page.locator(".wallet-summary"));
+    const identityLink = page.locator(selector);
+    await expect(identityLink).toHaveAttribute("href", `/address/${walletAccount}`);
+    await identityLink.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/address/${walletAccount}`));
+    await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
+    await activateInView(page.locator(".wallet-summary"));
+    await expect(page.locator(".wallet-menu")).toHaveAttribute("open", "");
+    await activateInView(
+      page.locator(".wallet-popover").getByRole("link", { name: "Open account", exact: true }),
+    );
+    await expect(page).toHaveURL(/\/account$/);
+    await activateInView(page.locator(".wallet-summary"));
+  }
+
   const challengeRequest = authRequests.find(
     ({ pathname }) => pathname === "/api/v1/auth/challenge",
   );
