@@ -36,8 +36,8 @@ const (
 	foundryCompilerDigest         = "81475c98b6d2094a821fd9d7b6278556d8095ccc23e0b8a1029b1c08a89cd4b2"
 	foundryConstructorWord        = "000000000000000000000000000000000000000000000000000000000000002a"
 	foundryDerivedConstructorWord = "000000000000000000000000000000000000000000000000000000000000002b"
-	foundryVersion                = "1.8.6"
-	foundryRevision               = "6bad0a66de7c83f7b33695044138f0f5fa4c5990"
+	foundryVersion                = "1.8.7"
+	foundryRevision               = "985eeea031d79922cd654d4e94e6c3701e1c7d73"
 )
 
 type foundryRuntime struct {
