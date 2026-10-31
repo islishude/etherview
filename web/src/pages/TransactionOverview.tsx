@@ -116,14 +116,8 @@ export function MempoolTransactionOverview({
         className={`panel mempool-transaction-state ${pending ? "pending" : "replaced"}`}
         role="status"
       >
-        <TransactionStatus
-          label={t(pending ? "transactionStatus.pending" : "transactionStatus.replaced")}
-          status={pending ? "pending" : "replaced"}
-        />
-        <div>
-          <h2>{t(pending ? "detail.pendingTitle" : "detail.replacedTitle")}</h2>
-          <p>{t(pending ? "detail.pendingDetail" : "detail.replacedDetail")}</p>
-        </div>
+        <h2>{t(pending ? "detail.pendingTitle" : "detail.replacedTitle")}</h2>
+        <p>{t(pending ? "detail.pendingDetail" : "detail.replacedDetail")}</p>
       </section>
       <section
         className="panel transaction-detail-card"

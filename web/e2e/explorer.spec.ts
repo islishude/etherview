@@ -586,6 +586,25 @@ test("mempool details manually refresh from pending through replacement to inclu
   await pendingLink.click();
 
   await expect(page.getByRole("heading", { name: "Waiting for confirmation" })).toBeVisible();
+  const noticeLayout = await page.locator(".mempool-transaction-state").evaluate((element) => {
+    const panel = element.getBoundingClientRect();
+    const heading = element.querySelector("h2")!;
+    const title = heading.getBoundingClientRect();
+    const description = element.querySelector("p")!.getBoundingClientRect();
+    return {
+      leftInset: title.left - panel.left,
+      topInset: title.top - panel.top,
+      bottomInset: panel.bottom - description.bottom,
+      textAlignment: Math.abs(title.left - description.left),
+      headingSize: Number.parseFloat(getComputedStyle(heading).fontSize),
+    };
+  });
+  expect(noticeLayout.leftInset).toBeGreaterThanOrEqual(16);
+  expect(noticeLayout.topInset).toBeGreaterThanOrEqual(16);
+  expect(noticeLayout.bottomInset).toBeGreaterThanOrEqual(16);
+  expect(noticeLayout.textAlignment).toBe(0);
+  await expect(page.locator(".mempool-transaction-state .transaction-status")).toHaveCount(0);
+  expect(noticeLayout.headingSize).toBeLessThanOrEqual(18);
   const detailPendingStatus = page.locator('[data-status="pending"]').first();
   await expect(detailPendingStatus.locator("svg.lucide-clock-3")).toBeVisible();
   const pendingColor = await detailPendingStatus.evaluate(
