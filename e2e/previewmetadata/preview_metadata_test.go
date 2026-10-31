@@ -249,6 +249,7 @@ func (h *harness) run(ctx context.Context) {
 
 func (h *harness) assertCompatibilityHoldings(ctx context.Context, contract common.Address) {
 	h.t.Helper()
+	user := h.fundHoldingsUser(ctx)
 	tests := []struct {
 		name, action string
 		parameters   url.Values
@@ -279,34 +280,50 @@ func (h *harness) assertCompatibilityHoldings(ctx context.Context, contract comm
 			},
 		},
 	}
-	for _, test := range tests {
-		values := url.Values{
-			"chainid": {previewChainID}, "module": {"account"}, "action": {test.action},
+	assertHoldings := func(kind, token string) int64 {
+		var successfulReads int64
+		for _, test := range tests {
+			values := url.Values{
+				"chainid": {previewChainID}, "module": {"account"}, "action": {test.action},
+			}
+			for name, items := range test.parameters {
+				values[name] = append([]string(nil), items...)
+			}
+			waitFor(h.t, ctx, kind+" "+test.name, func() (bool, string, error) {
+				request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/v2/api?"+values.Encode(), nil)
+				if err != nil {
+					return false, "", err
+				}
+				request.Header.Set("X-API-Key", token)
+				response, err := h.http.Do(request)
+				if err != nil {
+					return false, "", nil
+				}
+				defer response.Body.Close() //nolint:errcheck
+				if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+					return false, "", fmt.Errorf("holdings authentication failed: status=%d", response.StatusCode)
+				}
+				var envelope struct {
+					Status string          `json:"status"`
+					Result json.RawMessage `json:"result"`
+				}
+				if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+					return false, err.Error(), nil
+				}
+				if response.StatusCode == http.StatusOK && envelope.Status == "1" {
+					successfulReads++
+				}
+				ok := response.StatusCode == http.StatusOK && envelope.Status == "1" && test.assert(envelope.Result)
+				return ok, fmt.Sprintf("status=%d envelope=%s result=%s", response.StatusCode, envelope.Status, envelope.Result), nil
+			})
 		}
-		for name, items := range test.parameters {
-			values[name] = append([]string(nil), items...)
-		}
-		waitFor(h.t, ctx, test.name, func() (bool, string, error) {
-			request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/v2/api?"+values.Encode(), nil)
-			if err != nil {
-				return false, "", err
-			}
-			response, err := h.http.Do(request)
-			if err != nil {
-				return false, "", nil
-			}
-			defer response.Body.Close() //nolint:errcheck
-			var envelope struct {
-				Status string          `json:"status"`
-				Result json.RawMessage `json:"result"`
-			}
-			if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
-				return false, err.Error(), nil
-			}
-			ok := response.StatusCode == http.StatusOK && envelope.Status == "1" && test.assert(envelope.Result)
-			return ok, fmt.Sprintf("status=%d envelope=%s result=%s", response.StatusCode, envelope.Status, envelope.Result), nil
-		})
+		return successfulReads
 	}
+	reads := assertHoldings("user key", user.token)
+	// Both holdings actions cost 100 atomic units under the Preview price catalog.
+	before := user.assertDebited(ctx, reads*100)
+	assertHoldings("operator key", h.createHoldingsOperatorKey(ctx))
+	user.assertUnchanged(ctx, before)
 }
 
 func (h *harness) validateFixture() {
