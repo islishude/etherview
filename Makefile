@@ -254,7 +254,8 @@ license-check: license-tool-check web-install compiler-install
 .PHONY: test test-go web-test test-race test-workflow-scripts test-integration test-integration-race \
 	test-rustfs test-e2e test-schema-e2e test-schema-e2e-prebuilt test-runtime-e2e \
 	test-runtime-e2e-prebuilt test-preview-metadata preview-e2e-check test-preview-metadata-prebuilt \
-	test-preview-consensus test-preview-consensus-prebuilt test-hardhat3-provider-compat \
+	test-preview-consensus test-preview-consensus-prebuilt test-preview-consensus-full \
+	test-preview-consensus-full-prebuilt test-hardhat3-provider-compat \
 	test-hardhat3-e2e test-hardhat3-offline-compile test-hardhat3-e2e-prebuilt test-foundry-e2e \
 	test-foundry-offline-compile test-foundry-e2e-prebuilt test-vyper-e2e test-vyper-e2e-prebuilt \
 	test-vyper-matrix test-vyper-release test-vyper-wasm-candidate \
@@ -343,7 +344,14 @@ test-preview-consensus: preview-cert-check docker-build preview-images
 
 test-preview-consensus-prebuilt: preview-e2e-check
 	@PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run TestPreviewConsensus ./e2e/previewmetadata
+		$(GO) test -count=1 -v -timeout=10m -tags=previewmetadatae2e -run '^TestPreviewConsensus$$' ./e2e/previewmetadata
+
+test-preview-consensus-full: preview-cert-check docker-build preview-images
+	@$(MAKE) --no-print-directory test-preview-consensus-full-prebuilt
+
+test-preview-consensus-full-prebuilt: preview-e2e-check
+	@PREVIEW_CONSENSUS_FULL=1 PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
+		$(GO) test -count=1 -v -timeout=25m -tags=previewmetadatae2e -run '^TestPreviewConsensusFull$$' ./e2e/previewmetadata
 
 test-hardhat3-provider-compat: pnpm-install
 	$(NODE) --test e2e/hardhat3/safe-artifact.test.mjs e2e/hardhat3/transaction-sender.test.mjs

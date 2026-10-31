@@ -61,22 +61,37 @@ metadata acceptance and consensus acceptance share three-second slots. Both
 acceptance suites verify the live Beacon slot duration and record it in their
 reports. The generator is part of the network fingerprint, so older six-second
 bundles require explicit reinitialization rather than silent reuse.
-It checks real blob transactions with cell proofs, exact Beacon/execution associations,
-consensus-first slots, independent Beacon/S3/API byte readback, checksum and
-commitment identity, read-only API credentials, client/object-store outages,
-core recreation during archive outages in both role layouts, failed and repeated
-archive initialization, container recreation and monolith publication.
+The default target is a single split-role smoke test: send one real blob
+transaction with cell proofs, wait for publication, and check the exact
+Beacon/execution association, consensus-selected slot, execution requests,
+manifest checksum and KZG commitment, independent Beacon readback and archived
+API download bytes. It has an eight-minute scenario budget and a ten-minute
+process deadline. It does not wait for finality or exercise outages, restarts,
+permissions or the all-role layout.
+
+Run `make test-preview-consensus-full` on demand for the complete acceptance:
+read-only API credentials and independent S3 readback, client/object-store
+outages, core recreation during archive outages in both role layouts, failed
+and repeated archive initialization, container recreation, monolith publication
+and a nonzero finalized epoch. It retains the 22-minute scenario budget and
+25-minute process deadline. Use it when changing archive permissions,
+provisioning, outage/recovery behavior, deployment topology or finality handling.
+It is outside ordinary PR, push and scheduled CI. The Go test requires
+`PREVIEW_CONSENSUS_FULL=1`, supplied by the explicit full Make target.
+Both targets offer prebuilt variants: `make test-preview-consensus-prebuilt`
+and `make test-preview-consensus-full-prebuilt`.
+
 Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.4;
-the read-only denial check does not establish that property. Reevaluate 1.0.5
-against the [IAM clearing conditions](operations.md#preview-archive-iam-limitation);
+the full test's read-only denial check does not establish that property.
+Reevaluate 1.0.5 against the
+[IAM clearing conditions](operations.md#preview-archive-iam-limitation);
 a passing `make test-rustfs` establishes application conditional-create behavior,
 not writer-policy enforcement.
-The test waits for a nonzero
-finalized epoch rather than treating container readiness as consensus acceptance.
-It has a 22-minute scenario budget and a 25-minute test-process deadline.
 Diagnostics and `consensus-report.json` remain in the test's temporary artifacts
-directory. These local private-network results do not prove public historical
-retention, production backup/restore, or native CI execution.
+directory. The report identifies `smoke` or `full` mode; false finality, restart
+and permission flags in smoke mode mean those checks were not run. These local
+private-network results do not prove public historical retention, production
+backup/restore, or native CI execution.
 
 Preview lifecycle helpers and their unit tests live in `preview/scripts/`.
 `make preview-network-check` exercises immutable reuse, incomplete material,

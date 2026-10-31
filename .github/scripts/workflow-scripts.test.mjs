@@ -342,7 +342,7 @@ test("Preview groups short checks and isolates heavy suites without losing failu
   );
   assert.deepEqual(
     [...jobs.keys()],
-    ["runtime", "preview-smoke", "preview-metadata", "preview-contracts", "preview-consensus"],
+    ["runtime", "preview-smoke", "preview-metadata", "preview-contracts"],
   );
   const smoke = jobs.get("preview-smoke");
   assert.equal(smoke.split("uses: ./.github/actions/setup-preview").length - 1, 1);
@@ -357,6 +357,7 @@ test("Preview groups short checks and isolates heavy suites without losing failu
     "make test-preview-gateway",
     "make test-preview-x402-prebuilt",
     "make test-preview-tools-e2e-prebuilt",
+    "make test-preview-consensus-prebuilt",
   ]) {
     assert.equal(workflow.split(command).length - 1, 1, command);
     const step = smoke.split(/^      - /m).find((part) => part.includes(command));
@@ -367,7 +368,18 @@ test("Preview groups short checks and isolates heavy suites without losing failu
   }
   assert.ok(smoke.includes("always() && steps.tools.outcome != 'skipped'"));
   assert.ok(smoke.includes("name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}"));
-  for (const suite of ["smoke", "metadata", "contracts", "consensus"]) {
+  assert.match(smoke, /Run Preview consensus and blobs smoke/);
+  assert.doesNotMatch(smoke, /consensus-full|PREVIEW_CONSENSUS_FULL/);
+  assert.ok(smoke.includes("always() && steps.consensus.outcome != 'skipped'"));
+  assert.ok(smoke.includes("TMPDIR: ${{ runner.temp }}/preview-consensus"));
+  assert.ok(smoke.includes('mkdir -p "$TMPDIR"'));
+  assert.ok(
+    smoke.includes("name: preview-consensus-${{ github.run_id }}-${{ github.run_attempt }}"),
+  );
+  assert.ok(
+    smoke.includes("path: ${{ runner.temp }}/preview-consensus/etherview-preview-metadata-*"),
+  );
+  for (const suite of ["smoke", "metadata", "contracts"]) {
     const job = jobs.get(`preview-${suite}`);
     assert.doesNotMatch(job, /^    (needs|continue-on-error|if):/m);
     assert.match(job, /uses: actions\/checkout@/);

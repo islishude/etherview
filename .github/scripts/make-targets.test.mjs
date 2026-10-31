@@ -33,7 +33,7 @@ function fixture(t) {
       `#!${process.execPath}
 import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
-appendFileSync(process.env.COMMAND_LOG, JSON.stringify({ command: ${JSON.stringify(name)}, args }) + "\\n");
+appendFileSync(process.env.COMMAND_LOG, JSON.stringify({ command: ${JSON.stringify(name)}, args, consensusFull: process.env.PREVIEW_CONSENSUS_FULL }) + "\\n");
 if (${JSON.stringify(name)} === process.env.FAIL_COMMAND) process.exit(9);
 if (${JSON.stringify(name)} === "docker" && args[0] === "image" && args[1] === "inspect" && args[2] === process.env.MISSING_IMAGE) process.exit(1);
 if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAIL_OFFLINE) process.exit(7);
@@ -83,6 +83,7 @@ for (const suite of [
   "runtime-e2e",
   "preview-metadata",
   "preview-consensus",
+  "preview-consensus-full",
   "preview-x402",
   "preview-contracts",
   "preview-tools-e2e",
@@ -111,6 +112,16 @@ for (const suite of [
       );
       assert.ok(args.includes(full ? "-timeout=60m" : "-timeout=15m"));
       assert.equal(prebuilt.stdout.includes("PREVIEW_TOOLS_FULL=1"), full);
+    }
+    if (suite.startsWith("preview-consensus")) {
+      const args = prebuilt.commands.at(-1).args;
+      const full = suite.endsWith("-full");
+      assert.equal(
+        args[args.indexOf("-run") + 1],
+        full ? "^TestPreviewConsensusFull$" : "^TestPreviewConsensus$",
+      );
+      assert.ok(args.includes(full ? "-timeout=25m" : "-timeout=10m"));
+      assert.equal(prebuilt.commands.at(-1).consensusFull, full ? "1" : undefined);
     }
     const ordinary = f.run(target);
     assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);

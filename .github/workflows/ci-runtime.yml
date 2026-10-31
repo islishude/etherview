@@ -44,7 +44,7 @@ jobs:
           retention-days: 7
 
   preview-smoke:
-    name: Preview gateway, genesis, x402 and CLI smoke
+    name: Preview gateway, genesis, x402, CLI and consensus smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -81,6 +81,23 @@ jobs:
         with:
           name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/etherview-preview-metadata-*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Run Preview consensus and blobs smoke
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        id: consensus
+        env:
+          TMPDIR: ${{ runner.temp }}/preview-consensus
+        run: |
+          mkdir -p "$TMPDIR"
+          make test-preview-consensus-prebuilt
+      - name: Upload Preview consensus evidence and diagnostics
+        if: ${{ always() && steps.consensus.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-consensus-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/preview-consensus/etherview-preview-metadata-*
           if-no-files-found: warn
           retention-days: 7
 
@@ -132,30 +149,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: preview-contracts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/etherview-preview-metadata-*
-          if-no-files-found: warn
-          retention-days: 7
-
-  preview-consensus:
-    name: Preview consensus and blobs E2E
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    env:
-      TMPDIR: ${{ runner.temp }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
-      - uses: ./.github/actions/setup-preview
-        with:
-          image-artifact-id: ${{ inputs.image-artifact-id }}
-      - name: Run Preview consensus and blobs E2E
-        id: acceptance
-        run: make test-preview-consensus-prebuilt
-      - name: Upload Preview consensus evidence and diagnostics
-        if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: preview-consensus-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/etherview-preview-metadata-*
           if-no-files-found: warn
           retention-days: 7

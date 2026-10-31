@@ -35,7 +35,22 @@ import (
 )
 
 func TestPreviewConsensus(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 22*time.Minute)
+	testPreviewConsensus(t, false)
+}
+
+func TestPreviewConsensusFull(t *testing.T) {
+	if os.Getenv("PREVIEW_CONSENSUS_FULL") != "1" {
+		t.Skip("opt in with make test-preview-consensus-full")
+	}
+	testPreviewConsensus(t, true)
+}
+
+func testPreviewConsensus(t *testing.T, full bool) {
+	budget := 8 * time.Minute
+	if full {
+		budget = 22 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), budget)
 	defer cancel()
 	h := newHarness(t)
 	t.Cleanup(h.cleanup)
@@ -47,21 +62,37 @@ func TestPreviewConsensus(t *testing.T) {
 	h.connect(ctx)
 	h.assertSlotDuration(ctx)
 	h.assertPublicConfig(ctx)
-	h.assertAmsterdam(ctx, "0x1236")
+	if full {
+		h.assertAmsterdam(ctx, "0x1236")
+	}
 	receipt, blob := h.sendBlob(ctx, 7)
 	observation, refs := h.assertConsensusBlob(ctx, receipt, blob)
-	h.assertArchivePermissions(ctx, refs[0], blob)
-	h.assertPreviewRecovery(ctx, receipt, blob)
-	h.assertAmsterdamMonolith(ctx)
-	second, secondBlob := h.sendBlob(ctx, 9)
-	h.assertConsensusBlob(ctx, second, secondBlob)
-	h.assertArchiveOutageRecreate(ctx, second, []string{"api"}, "0x1239")
-	h.assertBlobDownload(ctx, second.BlockHash, secondBlob)
-	recovered, recoveredBlob := h.sendBlob(ctx, 11)
-	h.assertConsensusBlob(ctx, recovered, recoveredBlob)
-	h.t.Log("real blob publication, permissions, restart and both roles passed; waiting for finality")
-	h.waitFinality(ctx)
-	report := map[string]any{"execution_hash": receipt.BlockHash.Hex(), "beacon_root": observation.Root, "slot": observation.Slot, "blob_sha256": refs[0].SHA256, "monolith_execution_hash": second.BlockHash.Hex(), "lighthouse": "v8.3.2", "geth": "v1.17.10", "roles": []string{"distributed", "all"}, "slot_duration_ms": previewSlotDurationMillis, "finality": true, "restart": true, "archive_permissions": true, "execution_requests": true}
+	report := map[string]any{
+		"mode": "smoke", "execution_hash": receipt.BlockHash.Hex(),
+		"beacon_root": observation.Root, "slot": observation.Slot,
+		"blob_sha256": refs[0].SHA256, "lighthouse": "v8.3.2", "geth": "v1.17.10",
+		"roles": []string{"distributed"}, "slot_duration_ms": previewSlotDurationMillis,
+		"finality": false, "restart": false, "archive_permissions": false, "execution_requests": true,
+	}
+	if full {
+		h.assertArchivePermissions(ctx, refs[0], blob)
+		h.assertPreviewRecovery(ctx, receipt, blob)
+		h.assertAmsterdamMonolith(ctx)
+		second, secondBlob := h.sendBlob(ctx, 9)
+		h.assertConsensusBlob(ctx, second, secondBlob)
+		h.assertArchiveOutageRecreate(ctx, second, []string{"api"}, "0x1239")
+		h.assertBlobDownload(ctx, second.BlockHash, secondBlob)
+		recovered, recoveredBlob := h.sendBlob(ctx, 11)
+		h.assertConsensusBlob(ctx, recovered, recoveredBlob)
+		h.t.Log("real blob publication, permissions, restart and both roles passed; waiting for finality")
+		h.waitFinality(ctx)
+		report["mode"] = "full"
+		report["monolith_execution_hash"] = second.BlockHash.Hex()
+		report["roles"] = []string{"distributed", "all"}
+		report["finality"] = true
+		report["restart"] = true
+		report["archive_permissions"] = true
+	}
 	raw, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		t.Fatal(err)
