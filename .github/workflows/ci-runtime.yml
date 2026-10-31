@@ -43,37 +43,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  preview-metadata:
-    name: Preview metadata, consensus, blobs, and manual tools E2E
+  preview-gateway-genesis:
+    name: Preview gateway and genesis checks
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    env:
-      PLAYWRIGHT_USE_BUNDLED: "1"
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
       - uses: ./.github/actions/setup-toolchain
-      - name: Use Ubuntu archive mirrors for browser dependencies
-        # Slow successful Azure downloads do not trigger APT mirror failover.
-        # Keep the runner's official Ubuntu archive and security mirrors.
-        run: sudo sed -i '\|://azure\.archive\.ubuntu\.com/ubuntu/|d' /etc/apt/apt-mirrors.txt
-      - name: Install Preview browser dependencies
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm --dir web exec playwright install --with-deps chromium
-      - uses: ./.github/actions/load-production-image
-        with:
-          arch: amd64
-          image-artifact-id: ${{ inputs.image-artifact-id }}
-      - name: Install pinned local certificate tool
-        run: make install-preview-tools
-      - name: Create ephemeral Preview certificates
-        env:
-          CAROOT: ${{ runner.temp }}/preview-ca
-          TRUST_STORES: system
-        run: make preview-cert
-      - name: Prepare Preview gateway and external images once
-        run: make preview-images
+      - run: pnpm install --frozen-lockfile
       - name: Verify reproducible genesis and controlled contract edge cases
         run: |
           container=$(docker create ghcr.io/foundry-rs/foundry:v1.8.6)
@@ -84,30 +61,121 @@ jobs:
           node preview/contracts/upstream.mjs --check
       - name: Validate Caddy gateway boundaries
         run: make test-preview-gateway
-      - name: Run full Preview metadata acceptance
-        id: preview-metadata
-        env:
-          TMPDIR: ${{ runner.temp }}
+
+  preview-metadata:
+    name: Preview metadata E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TMPDIR: ${{ runner.temp }}
+      PLAYWRIGHT_USE_BUNDLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: ./.github/actions/setup-preview
+        with:
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          browser: "true"
+      - name: Run Preview metadata E2E
+        id: acceptance
         run: make test-preview-metadata-prebuilt
-      - name: Run Preview genesis contracts, Bundler and local ENS acceptance
-        env:
-          TMPDIR: ${{ runner.temp }}
-        run: make test-preview-contracts-prebuilt
-      - name: Run local Preview x402 acceptance
-        run: make test-preview-x402-prebuilt
-      - name: Run Preview manual tool and browser acceptance
-        env:
-          TMPDIR: ${{ runner.temp }}
-        run: make test-preview-tools-e2e-prebuilt
-      - name: Run real Preview consensus and blob acceptance
-        env:
-          TMPDIR: ${{ runner.temp }}
-        run: make test-preview-consensus-prebuilt
       - name: Upload Preview metadata evidence and diagnostics
-        if: ${{ always() && steps.preview-metadata.outcome != 'skipped' }}
+        if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
         uses: actions/upload-artifact@v7
         with:
           name: preview-metadata-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-preview-metadata-*
+          if-no-files-found: warn
+          retention-days: 7
+
+  preview-contracts:
+    name: Preview contracts, Bundler and ENS E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TMPDIR: ${{ runner.temp }}
+      PLAYWRIGHT_USE_BUNDLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: ./.github/actions/setup-preview
+        with:
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          browser: "true"
+      - name: Run Preview contracts, Bundler and ENS E2E
+        id: acceptance
+        run: make test-preview-contracts-prebuilt
+      - name: Upload Preview contracts evidence and diagnostics
+        if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-contracts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-preview-metadata-*
+          if-no-files-found: warn
+          retention-days: 7
+
+  preview-x402:
+    name: Preview x402 E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: ./.github/actions/setup-preview
+        with:
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+      - name: Run Preview x402 E2E
+        id: acceptance
+        run: make test-preview-x402-prebuilt
+
+  preview-tools:
+    name: Preview manual tools and browser E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      TMPDIR: ${{ runner.temp }}
+      PLAYWRIGHT_USE_BUNDLED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: ./.github/actions/setup-preview
+        with:
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+          browser: "true"
+      - name: Run Preview manual tools and browser E2E
+        id: acceptance
+        run: make test-preview-tools-e2e-prebuilt
+      - name: Upload Preview tools evidence and diagnostics
+        if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-tools-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/etherview-preview-metadata-*
+          if-no-files-found: warn
+          retention-days: 7
+
+  preview-consensus:
+    name: Preview consensus and blobs E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      TMPDIR: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: ./.github/actions/setup-preview
+        with:
+          image-artifact-id: ${{ inputs.image-artifact-id }}
+      - name: Run Preview consensus and blobs E2E
+        id: acceptance
+        run: make test-preview-consensus-prebuilt
+      - name: Upload Preview consensus evidence and diagnostics
+        if: ${{ always() && steps.acceptance.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: preview-consensus-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/etherview-preview-metadata-*
           if-no-files-found: warn
           retention-days: 7

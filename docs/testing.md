@@ -173,19 +173,31 @@ remain independent.
 
 The reusable [runtime workflow](../.github/workflows/ci-runtime.yml) consumes
 only the AMD64 image, without waiting for compiler packages or verification.
-Its schema/runtime job uses the prebuilt targets. Its Preview job prepares
-certificates, builds the Rundler and Facilitator helpers, and pulls the official
-Caddy and external images once. It then verifies reproducible genesis and Caddy
-boundaries, followed by metadata, contracts/Bundler/ENS, x402, the
+Its schema/runtime job uses the prebuilt targets. Six independent Preview jobs
+run gateway/genesis checks, metadata, contracts/Bundler/ENS, x402,
 [manual tools CLI and browser](../preview/docs/tools.md#acceptance), and
-consensus/blob acceptance in separate sequential steps. All image consumers
+consensus/blob acceptance in parallel on separate runners. A failed suite does
+not skip the other suites, and each job can be retried independently.
+The five full Preview jobs share a local setup action that installs dependencies,
+loads the exact AMD64 production image, prepares ephemeral certificates, builds
+Rundler and Facilitator helpers, and pulls Caddy and external images per runner.
+Only metadata, contracts and manual tools install bundled Chromium. The
+gateway/genesis job needs only the toolchain, pnpm dependencies, pinned Anvil
+and Caddy. Metadata, contracts, manual tools and consensus upload their retained
+harness evidence on success or failure with suite-specific artifact names;
+x402 retains its existing log and cleanup behavior.
+All image consumers
 use the common load action with an exact producer artifact ID and validate
 source revision, architecture and image ID; none rebuilds a missing image.
 
-Checks now appear under `Checks / ...`, and schema/runtime and Preview under
-`Runtime acceptance / ...` in GitHub. Foundry appears under each architecture's
-production verification call. Required-check integrations must use these new
-paths if configured. Docker publication and automatic Vyper updates retain
+Checks appear under `Checks / ...`. Runtime checks use `Runtime acceptance / ...`:
+`Production schema and runtime E2E`, `Preview gateway and genesis checks`,
+`Preview metadata E2E`, `Preview contracts, Bundler and ENS E2E`,
+`Preview x402 E2E`, `Preview manual tools and browser E2E`, and
+`Preview consensus and blobs E2E`. Required-check integrations must replace the
+former combined Preview check with all six Preview checks if configured.
+Foundry appears under each architecture's production verification call.
+Docker publication and automatic Vyper updates retain
 their separate triggers and permissions.
 
 Each application suite owns two isolated monolith/distributed environments and

@@ -330,3 +330,80 @@ test("docs checker accepts aligned action tables and still rejects missing or un
     assert.match(result.stderr, /action map and compatibility matrix drift/);
   }
 });
+
+test("Preview acceptance suites run independently with complete coverage and isolated evidence", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci-runtime.yml"), "utf8");
+  const jobs = new Map(
+    [
+      ...workflow
+        .split("\njobs:\n")[1]
+        .matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:\n|$(?![\s\S]))/gm),
+    ].map(([, id, body]) => [id, body]),
+  );
+  const suites = ["gateway-genesis", "metadata", "contracts", "x402", "tools", "consensus"];
+  assert.deepEqual([...jobs.keys()], ["runtime", ...suites.map((suite) => `preview-${suite}`)]);
+  const artifacts = new Set();
+  for (const suite of suites) {
+    const job = jobs.get(`preview-${suite}`);
+    assert.doesNotMatch(job, /^    (needs|continue-on-error|if):/m);
+    assert.match(job, /uses: actions\/checkout@/);
+    if (suite === "gateway-genesis") {
+      assert.doesNotMatch(job, /setup-preview|load-production-image|preview-images|playwright/i);
+      for (const command of [
+        "make preview-contracts-check",
+        "node preview/contracts/upstream.mjs --check",
+        "make test-preview-gateway",
+      ])
+        assert.equal(workflow.split(command).length - 1, 1, command);
+      continue;
+    }
+    const target = `make test-preview-${suite === "tools" ? "tools-e2e" : suite}-prebuilt`;
+    assert.equal(workflow.split(target).length - 1, 1, target);
+    assert.ok(job.includes(target));
+    assert.match(job, /uses: docker\/setup-buildx-action@/);
+    assert.match(job, /uses: \.\/\.github\/actions\/setup-preview/);
+    assert.ok(job.includes("image-artifact-id: ${{ inputs.image-artifact-id }}"));
+    const browser = ["metadata", "contracts", "tools"].includes(suite);
+    assert.equal(job.includes('browser: "true"'), browser);
+    assert.equal(job.includes('PLAYWRIGHT_USE_BUNDLED: "1"'), browser);
+    assert.ok(job.includes("TMPDIR: ${{ runner.temp }}"));
+    if (suite === "x402") {
+      assert.doesNotMatch(job, /upload-artifact/);
+      continue;
+    }
+    assert.ok(job.includes("always() && steps.acceptance.outcome != 'skipped'"));
+    assert.match(job, /id: acceptance/);
+    assert.match(job, /uses: actions\/upload-artifact@/);
+    const artifact = job.match(/name: (preview-.*\$\{\{ github.run_attempt \}\})/)[1];
+    assert.equal(artifact, `preview-${suite}-\${{ github.run_id }}-\${{ github.run_attempt }}`);
+    artifacts.add(artifact);
+    assert.ok(job.includes("path: ${{ runner.temp }}/etherview-preview-metadata-*"));
+    assert.match(job, /retention-days: 7/);
+  }
+  assert.equal(artifacts.size, 4);
+});
+
+test("shared Preview setup preserves image identity and makes browser preparation optional", () => {
+  const action = readFileSync(join(root, ".github/actions/setup-preview/action.yml"), "utf8");
+  assert.match(action, /using: composite/);
+  assert.match(action, /browser:\n\s+required: false\n\s+default: "false"/);
+  assert.ok(action.includes("image-artifact-id: ${{ inputs.image-artifact-id }}"));
+  assert.match(action, /arch: amd64/);
+  assert.match(action, /uses: \.\/\.github\/actions\/load-production-image/);
+  assert.doesNotMatch(action, /docker-build|actions\/checkout|setup-buildx-action/);
+  const steps = action.split(/^    - /m).slice(1);
+  for (const step of steps) {
+    if (step.includes("run:")) assert.match(step, /shell: bash/);
+    if (/playwright install|sudo sed/.test(step))
+      assert.ok(step.includes("if: ${{ inputs.browser == 'true' }}"));
+  }
+  for (const command of [
+    "pnpm install --frozen-lockfile",
+    "make install-preview-tools",
+    "make preview-cert",
+    "make preview-images",
+  ])
+    assert.equal(action.split(command).length - 1, 1, command);
+  assert.ok(action.includes("CAROOT: ${{ runner.temp }}/preview-ca"));
+  assert.match(action, /TRUST_STORES: system/);
+});
