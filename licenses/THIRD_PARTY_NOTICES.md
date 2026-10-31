@@ -194,8 +194,6 @@ license text in source comments. `ERC1820Registry.json` retains Jordi Baylina's
 ERC-1820 source and its CC0 dedication. Each snapshot records its source URL.
 The `sys-asm.json` bundle pins ethereum/sys-asm revision
 f808a29f280f0b844d83fec592d3e1c592d1c92a and retains its complete MIT license.
-Its BeaconRoots source explicitly uses PUSH3 for the deployed EIP-4788 constant;
-this adaptation is recorded alongside the upstream revision.
 
 ### Preview manual tool fixtures
 

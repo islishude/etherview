@@ -205,9 +205,8 @@ The SimpleAccount implementation shares its factory's compilation unit, using
 the pinned account-abstraction revision and OpenZeppelin 5.0.2. The historical
 deployment JSON at that revision contains older account sources and a different
 OpenZeppelin version; it must not replace the matching checked-in input.
-The system assembly bundle records its explicit PUSH3 adaptation for the
-historically deployed BeaconRoots bytecode; local compilation must match the
-actual genesis bytes exactly.
+Local compilation of the system assembly bundle must match the actual genesis
+bytes exactly.
 
 Real acceptance runs `make verify-preview-genesis` against Geth/Lighthouse and
 the production API, requiring all 24 non-empty allocations to publish, then
