@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -69,7 +69,10 @@ beforeEach(async () => {
   authState.session.expires_at = "one";
   await i18n.changeLanguage("en");
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 function renderBlobs({
   metadata = data,
@@ -255,7 +258,10 @@ it.each(["en", "zh"])(
     const create = vi.fn((_blob: Blob) => "blob:test");
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    const reads = renderBlobs({ index: "42" });
+    const bytes = new Uint8Array(131072).fill(7);
+    bytes[1024] = 0xab;
+    bytes[131071] = 0xff;
+    const reads = renderBlobs({ index: "42", content: async () => new Response(bytes) });
     const user = userEvent.setup();
     const label = i18n.t("consensus.download");
     await user.click(await screen.findByRole("button", { name: i18n.t("consensus.preview") }));
@@ -263,14 +269,33 @@ it.each(["en", "zh"])(
     expect(download).toHaveAttribute("title", label);
     expect(download).toHaveTextContent("");
     expect(download.closest(".blob-preview")).toBeVisible();
+    const actions = within(download.closest(".blob-preview-actions")! as HTMLElement);
+    const copy = actions.getByRole("button", { name: i18n.t("common.copy") });
+    expect(screen.getByLabelText(i18n.t("consensus.hexPreview"))).toHaveTextContent(
+      "07".repeat(1024),
+    );
+    copy.focus();
+    await user.keyboard("{Enter}");
+    expect(await navigator.clipboard.readText()).toBe(
+      "07".repeat(1024) + "ab" + "07".repeat(131072 - 1026) + "ff",
+    );
+    expect(copy).toHaveAccessibleName(i18n.t("common.copied"));
     await user.click(download);
     expect(create).toHaveBeenCalledOnce();
     expect(create.mock.calls[0]![0].size).toBe(131072);
     expect(click.mock.instances[0]).toHaveAttribute("download", "blob-9007199254740993-42.bin");
     await user.click(screen.getByRole("button", { name: i18n.t("consensus.hidePreview") }));
     expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    expect(copy).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: i18n.t("consensus.preview") }));
     expect(screen.getByRole("button", { name: label })).toBeVisible();
+    const reopenedCopy = within(
+      screen.getByRole("button", { name: label }).closest(".blob-preview-actions")! as HTMLElement,
+    ).getByRole("button", { name: i18n.t("common.copy") });
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied"));
+    await user.click(reopenedCopy);
+    expect(await screen.findByRole("alert")).toHaveTextContent(i18n.t("common.copyFailed"));
+    expect(reopenedCopy).toHaveAccessibleName(i18n.t("common.copy"));
     expect(reads).toHaveLength(1);
     click.mockRestore();
   },
@@ -292,8 +317,10 @@ it("discards cached bytes when the session changes", async () => {
       "Only the first 1024 bytes are shown. Download for the complete content.",
     ),
   ).toBeVisible();
+  const oldCopy = screen.getByRole("button", { name: "Copy" });
   authState.session.expires_at = "two";
   view.rerender(<BlobActions hash={block} index="42" />);
+  expect(oldCopy).not.toBeInTheDocument();
   expect(
     screen.getByLabelText(
       "Only the first 1024 bytes are shown. Download for the complete content.",

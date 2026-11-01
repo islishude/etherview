@@ -118,6 +118,34 @@ for (const { width, language, theme } of appearanceCases) {
     expect(detailScan.violations).toEqual([]);
     await page.screenshot({ path: testInfo.outputPath("blob-detail.png"), fullPage: true });
     expect(reads).toEqual([]);
+    await page
+      .getByRole("button", { name: language === "en" ? "View content" : "查看内容" })
+      .click();
+    const actions = page.locator(".blob-preview-actions");
+    const copy = actions.getByRole("button", {
+      name: language === "en" ? "Copy" : "复制",
+      exact: true,
+    });
+    const download = actions.getByRole("button", {
+      name: language === "en" ? "Download blob" : "下载 Blob",
+    });
+    await expect(copy).toBeVisible();
+    const copyBox = (await copy.boundingBox())!;
+    const downloadBox = (await download.boundingBox())!;
+    expect(copyBox.x + copyBox.width).toBeLessThan(downloadBox.x);
+    expect(copyBox.y).toBe(downloadBox.y);
+    expect(copyBox.width).toBe(downloadBox.width);
+    expect(copyBox.height).toBe(downloadBox.height);
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+    expect(
+      (
+        await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+          .analyze()
+      ).violations,
+    ).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("blob-expanded.png"), fullPage: true });
+    expect(reads).toHaveLength(1);
     expect(errors).toEqual([]);
   });
 }
@@ -125,6 +153,7 @@ for (const { width, language, theme } of appearanceCases) {
 test("transaction preview and download use the exact block blob index and remain on demand", async ({
   page,
 }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const reads = await setupBlobs(page);
   await page.goto(`/tx/${transactionHash}?tab=blob`);
   await page.getByRole("link", { name: "View Blob 42" }).click();
@@ -136,6 +165,15 @@ test("transaction preview and download use the exact block blob index and remain
   await preview.focus();
   await page.keyboard.press("Enter");
   await expect(page.locator(".blob-preview pre")).toHaveText("07".repeat(1024));
+  const copy = page
+    .locator(".blob-preview-actions")
+    .getByRole("button", { name: "Copy", exact: true });
+  await copy.focus();
+  await page.keyboard.press("Enter");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("07".repeat(131072));
+  await expect(
+    page.locator(".blob-preview-actions").getByRole("button", { name: "Copied", exact: true }),
+  ).toHaveAttribute("title", "Copied");
   await page.getByRole("button", { name: "Hide preview" }).click();
   await expect(page.locator(".blob-preview")).toBeHidden();
   expect(reads).toHaveLength(1);

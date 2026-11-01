@@ -1,3 +1,4 @@
+import { CopyButton } from "@/components/CopyButton";
 import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
@@ -38,12 +39,12 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
     [],
   );
   const previewID = useId();
-  const [preview, setPreview] = useState("");
+  const [hexContent, setHexContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   async function load() {
-    if (preview) {
-      setPreview("");
+    if (hexContent) {
+      setHexContent("");
       return;
     }
     if (running.current) return;
@@ -59,10 +60,8 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
         cached.current = result;
       }
       const { data } = cached.current;
-      setPreview(
-        Array.from(new Uint8Array(data, 0, 1024), (byte) =>
-          byte.toString(16).padStart(2, "0"),
-        ).join(""),
+      setHexContent(
+        Array.from(new Uint8Array(data), (byte) => byte.toString(16).padStart(2, "0")).join(""),
       );
     } catch {
       if (!signal.aborted) setFailed("consensus.storageUnavailable");
@@ -90,28 +89,29 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
           className="button secondary blob-action-button"
           type="button"
           disabled={busy}
-          aria-expanded={Boolean(preview)}
+          aria-expanded={Boolean(hexContent)}
           aria-controls={previewID}
           onClick={() => void load()}
         >
-          {preview ? <UIIcon icon={EyeOff} size={16} /> : <UIIcon icon={Eye} size={16} />}
+          {hexContent ? <UIIcon icon={EyeOff} size={16} /> : <UIIcon icon={Eye} size={16} />}
           {t(
             busy
               ? "consensus.loadingPreview"
-              : preview
+              : hexContent
                 ? "consensus.hidePreview"
                 : "consensus.preview",
           )}
         </button>
       </div>
       {failed && <Message type="error">{t(failed)}</Message>}
-      <div id={previewID} hidden={!preview} className="blob-preview">
+      <div id={previewID} hidden={!hexContent} className="blob-preview">
         <span>{t("consensus.hexPreview")}</span>
         <pre tabIndex={0} aria-label={t("consensus.hexPreview")}>
-          {preview}
+          {hexContent.slice(0, 2048)}
         </pre>
-        {preview && (
+        {hexContent && (
           <div className="blob-preview-actions">
+            <CopyButton value={hexContent} className="button secondary blob-action-button" />
             <button
               className="button secondary blob-action-button"
               type="button"
