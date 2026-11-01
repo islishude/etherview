@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { toHex } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as billingAPI from "@/api/billing";
 import type { AuthChallenge } from "@/api/auth";
 import {
   assertWalletChain,
@@ -50,6 +51,124 @@ afterEach(() => {
 });
 
 describe("EIP-6963 wallet boundary", () => {
+  it.each([
+    "event",
+    "no-event",
+    "same-account-event",
+    "late-chain-event",
+    "chain-aba",
+    "account-change",
+    "unexpected-chain",
+    "restore-rejected",
+    "switch-rejected",
+  ])("fences payment chain transitions: %s", async (scenario) => {
+    vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue({
+      x402_topups_enabled: true,
+      network: "eip155:11155111",
+    } as billingAPI.BillingConfig);
+    const fake = createFakeProvider({ eth_signTypedData_v4: walletSignature });
+    fake.setResponse("wallet_switchEthereumChain", ({ params }: EIP1193RequestArguments) => {
+      const chain = (params as [{ chainId: string }])[0].chainId;
+      if (scenario === "switch-rejected" || (scenario === "restore-rejected" && chain === "0x1")) {
+        throw { code: 4001 };
+      }
+      fake.setResponse("eth_chainId", chain);
+      if (scenario !== "no-event") fake.emit("chainChanged", chain);
+      return null;
+    });
+    registerProvider(providerDetail(fake.provider));
+    let current!: ReturnType<typeof useWallet>;
+    function Capture() {
+      current = useWallet();
+      return null;
+    }
+    renderWallet(<Capture />);
+    await waitFor(() => expect(current.providers).toHaveLength(1));
+    await act(async () => {
+      await current.connect(providerUUID);
+    });
+    const original = current.active!;
+    const operation = vi.fn(async (selected) => {
+      expect(selected.chainID).toBe("11155111");
+      expect(selected.authChainID).toBe("1");
+      expect(selected.authRevision).toBe(original.authRevision);
+      expect(current.isActiveWallet(original)).toBe(false);
+      if (scenario === "same-account-event") fake.emit("accountsChanged", [accountA]);
+      if (scenario === "late-chain-event") fake.emit("chainChanged", "0xaa36a7");
+      if (scenario === "chain-aba") {
+        fake.emit("chainChanged", "0x2");
+        fake.emit("chainChanged", "0xaa36a7");
+      }
+      await new ExactEvmScheme({
+        address: selected.account,
+        signTypedData: (data) =>
+          current.signBillingTypedData!(
+            data,
+            {
+              method: "eip3009",
+              chainID: "11155111",
+              account: accountA,
+              asset: target,
+              recipient: accountB,
+              amountAtomic: "1000",
+              assetName: "USDC",
+              assetVersion: "2",
+            },
+            selected,
+          ),
+      }).createPaymentPayload(2, {
+        scheme: "exact",
+        network: "eip155:11155111",
+        asset: target,
+        amount: "1000",
+        payTo: accountB,
+        maxTimeoutSeconds: 60,
+        extra: { name: "USDC", version: "2", assetTransferMethod: "eip3009" },
+      });
+      const signed = fake.request.mock.calls.find(
+        ([request]) => request.method === "eth_signTypedData_v4",
+      );
+      expect(JSON.parse((signed![0].params as string[])[1]!).domain.chainId).toBe(11155111);
+
+      if (scenario === "account-change") fake.emit("accountsChanged", [accountB]);
+      if (scenario === "unexpected-chain") fake.emit("chainChanged", "0x2");
+      return "settled";
+    });
+    let outcome: unknown;
+    await act(async () => {
+      try {
+        outcome = await current.withBillingChain!("eip155:11155111", operation);
+      } catch (error) {
+        outcome = error;
+      }
+    });
+    if (
+      ["event", "no-event", "same-account-event", "late-chain-event", "restore-rejected"].includes(
+        scenario,
+      )
+    ) {
+      expect(outcome).toBe("settled");
+    } else expect(outcome).toBeInstanceOf(WalletBoundaryError);
+    if (scenario === "restore-rejected") expect(current.active).toBeUndefined();
+    if (
+      ["event", "no-event", "same-account-event", "late-chain-event", "switch-rejected"].includes(
+        scenario,
+      )
+    ) {
+      expect(current.active?.chainID).toBe("1");
+      expect(current.active?.authRevision).toBe(original.authRevision);
+      const restoredRevision = current.active?.revision;
+      await act(async () => {
+        fake.emit("chainChanged", "0x1");
+        fake.emit("accountsChanged", [accountA]);
+      });
+      expect(current.active?.authRevision).toBe(original.authRevision);
+      expect(current.active?.revision).toBe(restoredRevision);
+    }
+    expect(operation).toHaveBeenCalledTimes(scenario === "switch-rejected" ? 0 : 1);
+    vi.restoreAllMocks();
+  });
+
   it.each(["eip3009", "permit2"] as const)(
     "sends the complete %s domain schema to the injected provider",
     async (method) => {
@@ -290,6 +409,8 @@ describe("EIP-6963 wallet boundary", () => {
         account: accountA,
         chainID: "1",
         revision: 1,
+        authRevision: 1,
+        authChainID: "1",
       }),
     );
   });

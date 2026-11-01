@@ -139,3 +139,15 @@ excess fractional digits, zero, negative values and uint256 overflow without rou
 Wire, ledger and wallet authorization values remain atomic integer strings. Historical
 records with a different asset/network or unavailable precision are explicitly shown
 in atomic units rather than converted with unrelated asset metadata.
+
+## Separate explorer and payment chains
+
+The payment network may differ from the indexed explorer chain. Browser top-ups
+use the explicit wallet payment-chain scope in ADR-0020; only the generated
+same-origin billing configuration selects that network. Typed-data domains,
+allowances and transaction receipts bind the payment chain, while SIWE, API keys
+and account ownership remain bound to the explorer chain. Existing payment-only
+accounts are not transferred into a new indexed deployment. Live acceptance for
+the new identity includes new operator-driven payments and real successful priced
+queries; Anvil facts must be produced and indexed normally, never inserted as
+synthetic database records.

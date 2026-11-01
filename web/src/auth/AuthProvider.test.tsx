@@ -51,7 +51,8 @@ vi.mock("@/api/publicConfig", () => ({
   usePublicConfig: () => mocks.publicConfig,
 }));
 
-vi.mock("@/wallet/WalletProvider", () => ({
+vi.mock("@/wallet/WalletProvider", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/wallet/WalletProvider")>()),
   useWallet: () => mocks.wallet,
 }));
 
@@ -84,6 +85,26 @@ describe("AuthProvider", () => {
     });
     mocks.updateAdminUser.mockResolvedValue(userRecord());
     mocks.revokeAdminUserSessions.mockResolvedValue("1");
+  });
+
+  it("retains the site session during a scoped payment transition, but rejects unexpected identity changes", async () => {
+    mocks.getAuthSession.mockResolvedValue(authenticatedSession());
+    const view = renderAuth();
+    expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
+    mocks.wallet.active = {
+      ...initialWallet(),
+      chainID: "11155111",
+      revision: 2,
+      authChainID: "1",
+      authRevision: 1,
+    } as ReturnType<typeof initialWallet>;
+    view.rerender(authTree());
+    expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
+    expect(mocks.logoutAuthSession).not.toHaveBeenCalled();
+    mocks.wallet.active = { ...initialWallet(), revision: 3 };
+    view.rerender(authTree());
+    await waitFor(() => expect(mocks.logoutAuthSession).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("auth-state")).toHaveTextContent("anonymous");
   });
 
   it("keeps CSRF only in provider memory and sends it on generated-client writes", async () => {

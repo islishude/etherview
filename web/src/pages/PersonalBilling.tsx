@@ -27,7 +27,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { formatTimestamp } from "@/components/format";
 import { SelectControl } from "@/components/SelectControl";
 import { UIIcon } from "@/components/UIIcon";
-import { useWallet } from "@/wallet/WalletProvider";
+import { type ActiveWallet, useWallet } from "@/wallet/WalletProvider";
 import { chainsMatch } from "@/wallet/eip6963";
 import { BillingLoadError, BillingPagination } from "./BillingPages";
 
@@ -129,18 +129,29 @@ export function PersonalBilling() {
     void client.invalidateQueries({ queryKey: ["private-account", identity, "billing"] });
   }, [client, config.data, identity, pending.data, pendingID, t]);
 
+  const onPaymentChain = Boolean(
+    wallet.active &&
+    config.data?.network &&
+    chainsMatch(wallet.active.chainID, config.data.network.slice("eip155:".length)),
+  );
+  const crossChain = Boolean(wallet.withBillingChain && !onPaymentChain);
   const walletReady = Boolean(
     wallet.active &&
     auth.session.user &&
     wallet.active.account.toLowerCase() === auth.session.user.address.toLowerCase() &&
     config.data?.network &&
-    chainsMatch(wallet.active.chainID, config.data.network.slice("eip155:".length)) &&
+    (onPaymentChain || wallet.withBillingChain) &&
     wallet.signBillingTypedData &&
     wallet.waitForBillingTransaction,
   );
   const walletKey = JSON.stringify([
     identity,
-    wallet.active,
+    wallet.active && [
+      wallet.active.uuid,
+      wallet.active.account,
+      wallet.active.authChainID ?? wallet.active.chainID,
+      wallet.active.authRevision ?? wallet.active.revision,
+    ],
     config.data?.network,
     config.data?.asset,
     config.data?.recipient,
@@ -156,7 +167,8 @@ export function PersonalBilling() {
         config.data!.asset!,
         config.data!.network!.slice("eip155:".length),
       ),
-    enabled: walletReady && Boolean(config.data?.x402_topups_enabled),
+    enabled:
+      walletReady && onPaymentChain && !submitting && Boolean(config.data?.x402_topups_enabled),
     retry: false,
     staleTime: 0,
   });
@@ -165,7 +177,9 @@ export function PersonalBilling() {
     balance.data !== undefined &&
     atomicAmount !== undefined &&
     balance.data >= BigInt(atomicAmount);
-  const balanceBlocked = !enoughBalance || balance.isFetching || Boolean(balance.error);
+  const balanceBlocked = crossChain
+    ? atomicAmount === undefined
+    : !enoughBalance || balance.isFetching || Boolean(balance.error);
   const waiting = Boolean(pendingID || recoverable);
   const pendingHash =
     pending.data?.transaction_hash ??
@@ -202,43 +216,50 @@ export function PersonalBilling() {
         if (currentWalletKey.current !== walletKey) throw new TopupBalanceError("unavailable");
       };
       assertCurrent();
-      await checkTopupBalance(
-        wallet.readContract,
-        wallet.active.account,
-        config.data.asset!,
-        config.data.network!.slice("eip155:".length),
-        atomic,
-      );
-      assertCurrent();
-      const intent = await createBillingTopupIntent(atomic, auth.session.csrf_token);
-      assertCurrent();
-      const receipt = await payBillingTopup({
-        config: config.data,
-        intent,
-        method,
-        csrfToken: auth.session.csrf_token,
-        wallet: {
-          active: wallet.active,
-          readContract: (...args) => {
-            assertCurrent();
-            return wallet.readContract(...args);
+      const paymentConfig = config.data;
+      const csrfToken = auth.session.csrf_token;
+      const execute = async (selected: ActiveWallet) => {
+        await checkTopupBalance(
+          wallet.readContract,
+          selected.account,
+          paymentConfig.asset!,
+          paymentConfig.network!.slice("eip155:".length),
+          atomic,
+        );
+        assertCurrent();
+        const intent = await createBillingTopupIntent(atomic, csrfToken);
+        assertCurrent();
+        return await payBillingTopup({
+          config: paymentConfig,
+          intent,
+          method,
+          csrfToken: csrfToken,
+          wallet: {
+            active: selected,
+            readContract: (...args) => {
+              assertCurrent();
+              return wallet.readContract(...args);
+            },
+            sendTransaction: (...args) => {
+              assertCurrent();
+              return wallet.sendTransaction(...args);
+            },
+            signBillingTypedData: async (...args) => {
+              assertCurrent();
+              const signature = await wallet.signBillingTypedData!(...args);
+              assertCurrent();
+              return signature;
+            },
+            waitForBillingTransaction: (...args) => {
+              assertCurrent();
+              return wallet.waitForBillingTransaction!(...args);
+            },
           },
-          sendTransaction: (...args) => {
-            assertCurrent();
-            return wallet.sendTransaction(...args);
-          },
-          signBillingTypedData: async (...args) => {
-            assertCurrent();
-            const signature = await wallet.signBillingTypedData!(...args);
-            assertCurrent();
-            return signature;
-          },
-          waitForBillingTransaction: (...args) => {
-            assertCurrent();
-            return wallet.waitForBillingTransaction!(...args);
-          },
-        },
-      });
+        });
+      };
+      const receipt = wallet.withBillingChain
+        ? await wallet.withBillingChain(paymentConfig.network!, execute)
+        : await execute(wallet.active);
       signal.throwIfAborted();
       completed.current.add(receipt.intent.id);
       setFinished(true);
@@ -349,19 +370,23 @@ export function PersonalBilling() {
                       wallet.active && (
                         <div role="status" className="billing-wallet-balance">
                           <span>{t("billing.guide.walletBalance")}</span>{" "}
-                          {walletReady
-                            ? balance.isPending
-                              ? t("billing.guide.loading")
-                              : balance.error
-                                ? t("billing.guide.unavailable")
-                                : displayBillingAmount(balance.data!.toString(), config.data)
-                            : t("billing.topup.walletRequired")}
+                          {crossChain && walletReady
+                            ? t("billing.guide.switchNetwork")
+                            : walletReady
+                              ? balance.isPending
+                                ? t("billing.guide.loading")
+                                : balance.error
+                                  ? t("billing.guide.unavailable")
+                                  : displayBillingAmount(balance.data!.toString(), config.data)
+                              : t("billing.topup.walletRequired")}
                           <button
                             type="button"
                             className="billing-balance-refresh"
                             aria-label={t("billing.guide.refresh")}
                             title={t("billing.guide.refresh")}
-                            disabled={!walletReady || balance.isFetching || submitting}
+                            disabled={
+                              !walletReady || !onPaymentChain || balance.isFetching || submitting
+                            }
                             onClick={() => void balance.refetch()}
                           >
                             <UIIcon

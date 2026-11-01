@@ -862,26 +862,27 @@ Use `ETHERVIEW_LOAD_API_KEY_FILE` or the process environment
 `ETHERVIEW_LOAD_API_KEY` for an authenticated profile. Never place a key in a
 URL, route argument, report metadata, or command-line value.
 
-## Real prepaid x402 Base Sepolia gate
+## Real prepaid x402 Ethereum Sepolia gate
 
-The live release gate is separate from local and ordinary CI. It must create
-two independently preserved reports, one for EIP-3009 and one for Permit2.
-Each report covers the complete staging sequence:
+The live release gate is separate from local and ordinary CI. Both EIP-3009
+and Permit2 require independent verification of the complete staging sequence:
 
 1. SIWE authenticates the funded payer.
 2. The Account endpoint creates and settles one bounded top-up intent.
 3. The writer commits exactly one account credit.
 4. A newly issued user-owned `api:read` key commits one priced
    `/v2/api` debit.
-5. Independent writer and Base Sepolia RPC checks reconcile the payment,
+5. Independent writer and Ethereum Sepolia RPC checks reconcile the payment,
    credit entry, usage entry, transaction hash, payer, recipient, asset, and
    amount.
 
-The gate is one-shot and non-retrying. All payer keys, independent RPC URLs,
-and writer URLs are file-only `0600` inputs. The operator must also record the
+The gate is one-shot and non-retrying. Payer signing may remain entirely in MetaMask; do not export its key.
+Facilitator keys, independent RPC URLs and writer URLs are file-only `0600` inputs. The operator must also record the
 staging Facilitator identity and deployed production image digest. Missing
 funds, credentials, staging Facilitator, writer, independent RPC, or image
-digest leaves P60-T17 blocked. Local Anvil evidence never closes this gate.
+digest prevents acceptance. Local-only Anvil evidence never closes this gate;
+Anvil-indexed queries may be combined with real Sepolia payments and independent
+RPC reconciliation as described in the runbook.
 After an unknown or incomplete attempt, inspect and reconcile that exact
 payment before authorizing any new attempt.
 
@@ -1360,3 +1361,18 @@ objects before comparison. Browser tests must assert a single fetch for both
 preview-then-download and collapse/reopen, show the download icon only in
 expanded details, and discard content on identity changes. Apply the
 consensus/blob acceptance gates above.
+
+### Separate payment-chain wallet acceptance
+
+P60-T24 adds an explicit top-up scope: the injected wallet changes operation
+revision on expected payment-chain transitions while keeping site-bound SIWE
+identity. Run `make web-test`, `make web-lint`, `make test-e2e`,
+`make generate-check`, `make docs-check` and `make plan-check`. Focused coverage
+is in `wallet/eip6963.test.tsx`, `auth/AuthProvider.test.tsx` and
+`pages/PersonalBilling.test.tsx`: exact expected transitions, missing events,
+account/network changes, rejected entry/restoration, stable authentication,
+and balance checks only after explicit confirmation. Automated tests never
+spend Sepolia funds. Real payment and API-debit acceptance is documented in
+[P60](plans/P60-user-auth-billing.md#final-live-payment-and-api-debit-acceptance-p60-t17--p60-t24).
+Its one-shot local harness and detailed local records were deleted after
+acceptance at the operator's request; the plan retains the acceptance conclusion.

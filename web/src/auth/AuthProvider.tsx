@@ -30,7 +30,7 @@ import {
   type WalletBoundaryErrorCode,
   walletErrorTranslationKey,
 } from "@/wallet/eip6963";
-import { type ActiveWallet, useWallet } from "@/wallet/WalletProvider";
+import { type ActiveWallet, authenticationWallet, useWallet } from "@/wallet/WalletProvider";
 
 export type AuthErrorCode =
   | WalletBoundaryErrorCode
@@ -92,6 +92,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const generationRef = useRef(0);
   const sessionRef = useRef<AuthSession>(unauthenticatedSession);
   const activeWalletRef = useRef(wallet.active);
+  const authWallet = authenticationWallet(wallet.active);
+  const authWalletRef = useRef(authWallet);
+  authWalletRef.current = authWallet;
   const priorWalletIdentityRef = useRef<string | undefined>(undefined);
   const loginAttemptRef = useRef<LoginAttempt | undefined>(undefined);
   activeWalletRef.current = wallet.active;
@@ -119,8 +122,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (generationRef.current !== generation) return;
       if (
         next.authenticated &&
-        activeWalletRef.current !== undefined &&
-        !sessionMatchesWallet(next, activeWalletRef.current)
+        authWalletRef.current !== undefined &&
+        !sessionMatchesWallet(next, authWalletRef.current)
       ) {
         bestEffortLogout(next);
         commitSession(unauthenticatedSession);
@@ -162,13 +165,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => clearTimeout(timer);
   }, [commitSession, session.authenticated, session.expires_at]);
 
-  const walletIdentity = wallet.active
-    ? [
-        wallet.active.uuid,
-        wallet.active.account,
-        wallet.active.chainID,
-        wallet.active.revision,
-      ].join(":")
+  const walletIdentity = authWallet
+    ? [authWallet.uuid, authWallet.account, authWallet.chainID, authWallet.revision].join(":")
     : "disconnected";
 
   useEffect(() => {
@@ -177,7 +175,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (previous === undefined || previous === walletIdentity) return;
 
     const attempt = loginAttemptRef.current;
-    const currentWallet = activeWalletRef.current;
+    const currentWallet = authWalletRef.current;
     const firstObservedConnection = previous === "disconnected" && currentWallet !== undefined;
     const allowedLoginConnection =
       firstObservedConnection &&

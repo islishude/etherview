@@ -89,3 +89,26 @@ The status projection and shared execution rules are defined in
   reauthentication.
 - Adding contract-wallet authentication, cross-origin login, or federated
   identity requires a new decision.
+
+## Explicit payment-chain scope
+
+SIWE and user/API-key ownership remain bound to the configured explorer chain.
+A user-initiated top-up may temporarily switch the same injected provider and
+account to the payment network returned by the same-origin billing configuration.
+Only the expected, single chain transition into that scope and its return to the
+site chain preserve the authentication identity. Wallet operation revisions still
+advance, so outstanding operations cannot survive a chain ABA transition.
+Redundant observations of the same selected account or current chain do not
+create a new identity transition, including delayed restoration acknowledgements. A real chain/account ABA still
+invalidates the scope on its first unexpected transition.
+Account/provider changes, disconnects and unexpected chain events invalidate
+the payment scope and retain normal session revocation. Concurrent payment scopes
+are rejected.
+
+Balance reads, exact approvals, receipt polling and EIP-712 signing inside the
+scope bind the payment chain. SIWE and unrelated wallet work still require the
+site chain. The scope attempts restoration after completion or failure; failed
+restoration disconnects the local wallet/authentication state without retrying or
+misrepresenting a possibly settled payment. Reload does not restore a scope.
+Server sessions, CSRF and ledger identities are unchanged, and balances are never
+copied between site-chain identities.

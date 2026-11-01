@@ -24,6 +24,8 @@ export const billingPriceResources = {
         enter: "Enter amount",
         review: "Wallet authorization",
         confirm: "Top up & authorize",
+        switchNetwork:
+          "Confirm to switch to the payment network and check your balance. The wallet returns to the explorer network afterward.",
         authorization: "Your signature authorizes a token payment to fund your API balance.",
         permit2:
           "Permit2 may first require an exact-amount token approval transaction, paid with your wallet’s gas, followed by a payment signature.",
@@ -60,6 +62,7 @@ export const billingPriceResources = {
         enter: "填写金额",
         review: "钱包授权",
         confirm: "充值并授权",
+        switchNetwork: "确认后将切换到支付网络并检查余额，支付结束后切回浏览器所在网络。",
         authorization: "签名将授权实际扣除代币，用于增加站内 API 余额。",
         permit2: "Permit2 可能先要求发送精确金额的代币授权交易，由钱包支付 Gas，然后签署付款授权。",
       },

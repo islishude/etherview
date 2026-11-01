@@ -10,6 +10,7 @@ import {
 } from "react";
 import { getAddress, isAddress, toHex, type Address, type Hex } from "viem";
 
+import { getBillingConfig } from "@/api/billing";
 import type { AuthChallenge } from "@/api/auth";
 import { usePublicConfig } from "@/api/publicConfig";
 import {
@@ -48,6 +49,8 @@ interface InternalActiveWallet {
   account: Address;
   chainID: string;
   revision: number;
+  authRevision?: number;
+  authChainID?: string;
 }
 
 interface WalletOption {
@@ -62,9 +65,15 @@ export interface ActiveWallet {
   account: Address;
   chainID: string;
   revision: number;
+  authRevision?: number;
+  authChainID?: string;
 }
 
 interface WalletContextValue {
+  withBillingChain?: <T>(
+    network: string,
+    operation: (wallet: ActiveWallet) => Promise<T>,
+  ) => Promise<T>;
   providers: WalletOption[];
   active?: ActiveWallet;
   connecting: boolean;
@@ -107,10 +116,26 @@ export function WalletProvider({ children }: PropsWithChildren) {
   const activeRef = useRef<InternalActiveWallet | undefined>(undefined);
   const connectionAttemptRef = useRef(0);
   const walletRevisionRef = useRef(0);
+  const billingScopeRef = useRef<
+    { original: InternalActiveWallet; expectedChain?: string; paymentChain: string } | undefined
+  >(undefined);
 
-  const commitActive = useCallback((next: InternalActiveWallet | undefined) => {
+  const commitActive = useCallback((next: InternalActiveWallet | undefined, controlled = false) => {
+    const scope = controlled ? billingScopeRef.current : undefined;
+    if (!controlled) billingScopeRef.current = undefined;
     walletRevisionRef.current += 1;
-    const committed = next ? { ...next, revision: walletRevisionRef.current } : undefined;
+    const committed = next
+      ? {
+          ...next,
+          revision: walletRevisionRef.current,
+          authRevision: scope
+            ? (scope.original.authRevision ?? scope.original.revision)
+            : walletRevisionRef.current,
+          authChainID: scope
+            ? (scope.original.authChainID ?? scope.original.chainID)
+            : next.chainID,
+        }
+      : undefined;
     activeRef.current = committed;
     setInternalActive(committed);
     return committed;
@@ -212,6 +237,9 @@ export function WalletProvider({ children }: PropsWithChildren) {
       }
       const current = activeRef.current;
       if (!current) return;
+      // Some providers announce the same selected account during a chain switch.
+      // This is not an identity transition; real changes still revoke the session.
+      if (current.account === accounts[0]) return;
       commitActive({ ...current, account: accounts[0]! });
       setError(undefined);
     };
@@ -224,7 +252,17 @@ export function WalletProvider({ children }: PropsWithChildren) {
       }
       const current = activeRef.current;
       if (!current) return;
-      commitActive({ ...current, chainID });
+      const scope = billingScopeRef.current;
+      // The verified RPC fallback may precede its delayed chainChanged event.
+      // This acknowledgement may also arrive after restoration closes the scope.
+      if (current.chainID === chainID) return;
+      const controlled =
+        scope !== undefined &&
+        scope.expectedChain === chainID &&
+        current.detail.provider === scope.original.detail.provider &&
+        current.account === scope.original.account;
+      if (controlled) scope.expectedChain = undefined;
+      commitActive({ ...current, chainID }, controlled);
       setError(undefined);
     };
     const disconnected = () => failClosed("PROVIDER_DISCONNECTED");
@@ -377,6 +415,15 @@ export function WalletProvider({ children }: PropsWithChildren) {
     [commitActive, failActiveSession, requestActiveProvider],
   );
 
+  const withBillingChain = useBillingChain({
+    activeRef,
+    billingScopeRef,
+    commitActive,
+    configuredChainID,
+    requireProvider,
+    setError,
+  });
+
   const {
     readContract,
     sendTransaction,
@@ -389,6 +436,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
     requestActiveProvider,
     requireProvider,
     markTransactionOutcomeUnknown,
+    billingScopeRef,
   });
 
   const disconnect = useCallback(() => {
@@ -400,6 +448,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<WalletContextValue>(
     () => ({
+      withBillingChain,
       providers: [...providersByID.values()]
         .map(({ info }) => ({ uuid: info.uuid, name: info.name, rdns: info.rdns }))
         .sort(
@@ -425,6 +474,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       waitForBillingTransaction,
     }),
     [
+      withBillingChain,
       connect,
       addChain,
       addingChain,
@@ -447,13 +497,111 @@ export function WalletProvider({ children }: PropsWithChildren) {
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
 }
 
+function useBillingChain({
+  activeRef,
+  billingScopeRef,
+  commitActive,
+  configuredChainID,
+  requireProvider,
+  setError,
+}: {
+  activeRef: React.RefObject<InternalActiveWallet | undefined>;
+  billingScopeRef: React.RefObject<
+    { original: InternalActiveWallet; expectedChain?: string; paymentChain: string } | undefined
+  >;
+  commitActive: (wallet: InternalActiveWallet | undefined, controlled?: boolean) => void;
+  configuredChainID: string | undefined;
+  requireProvider: (chainID: string | undefined) => Promise<InternalActiveWallet>;
+  setError: (error: WalletBoundaryError["code"] | undefined) => void;
+}) {
+  return useCallback(
+    async <T,>(network: string, operation: (wallet: ActiveWallet) => Promise<T>): Promise<T> => {
+      if (billingScopeRef.current) throw new WalletBoundaryError("INVALID_REQUEST");
+      const original = await requireProvider(configuredChainID);
+      const config = await getBillingConfig();
+      assertCurrentWallet(activeRef.current, original);
+      if (
+        !config.x402_topups_enabled ||
+        config.network !== network ||
+        !/^eip155:[1-9][0-9]*$/u.test(network) ||
+        !normalizeChainID(network.slice("eip155:".length))
+      ) {
+        throw new WalletBoundaryError("INVALID_REQUEST");
+      }
+      const paymentChain = network.slice("eip155:".length);
+      if (paymentChain === original.chainID) return operation(publicActiveWallet(original));
+      if (billingScopeRef.current) throw new WalletBoundaryError("INVALID_REQUEST");
+      const scope = { original, paymentChain, expectedChain: undefined as string | undefined };
+      billingScopeRef.current = scope;
+      const assertScope = () => {
+        const current = activeRef.current;
+        if (
+          billingScopeRef.current !== scope ||
+          !current ||
+          current.detail.provider !== original.detail.provider ||
+          current.account !== original.account
+        ) {
+          throw new WalletBoundaryError("SESSION_CHANGED");
+        }
+        return current;
+      };
+      const switchTo = async (chainID: string) => {
+        assertScope();
+        scope.expectedChain = chainID;
+        const result = await requestProvider(original.detail.provider, {
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: toHex(BigInt(chainID)) }],
+        });
+        const current = assertScope();
+        if (result !== null) throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+        const observed = await requestProvider(original.detail.provider, { method: "eth_chainId" });
+        assertScope();
+        if (normalizeProviderChainID(observed) !== chainID)
+          throw new WalletBoundaryError("CHAIN_MISMATCH");
+        // A provider may omit chainChanged. Commit the verified transition once.
+        if (scope.expectedChain === chainID) {
+          scope.expectedChain = undefined;
+          commitActive({ ...current, chainID }, true);
+        }
+        const selected = await requireProvider(chainID);
+        assertScope();
+        return publicActiveWallet(selected);
+      };
+      try {
+        const selected = await switchTo(paymentChain);
+        const result = await operation(selected);
+        assertScope();
+        return result;
+      } finally {
+        if (billingScopeRef.current === scope) {
+          try {
+            const current = assertScope();
+            await requireProvider(current.chainID);
+            assertScope();
+            if (current.chainID !== original.chainID) await switchTo(original.chainID);
+            else await requireProvider(original.chainID);
+          } catch {
+            commitActive(undefined);
+            setError("CHAIN_MISMATCH");
+          } finally {
+            billingScopeRef.current = undefined;
+          }
+        }
+      }
+    },
+    [activeRef, billingScopeRef, commitActive, configuredChainID, requireProvider, setError],
+  );
+}
+
 function useWalletOperations({
   activeRef,
   configuredChainID,
   requestActiveProvider,
   requireProvider,
   markTransactionOutcomeUnknown,
+  billingScopeRef,
 }: {
+  billingScopeRef: React.RefObject<{ paymentChain: string } | undefined>;
   activeRef: React.RefObject<InternalActiveWallet | undefined>;
   configuredChainID: string | undefined;
   requestActiveProvider: (
@@ -567,7 +715,9 @@ function useWalletOperations({
   const signBillingTypedData = useCallback(
     async (typedData: BillingTypedData, binding: BillingSigningBinding, expected: ActiveWallet) => {
       const { encodeBillingTypedData } = await import("./billing");
-      const wallet = await requireProvider(configuredChainID);
+      const wallet = await requireProvider(
+        billingScopeRef.current?.paymentChain ?? configuredChainID,
+      );
       assertExpectedWalletIdentity(wallet, expected);
       if (binding.account !== wallet.account || binding.chainID !== wallet.chainID) {
         throw new WalletBoundaryError("INVALID_REQUEST");
@@ -578,7 +728,9 @@ function useWalletOperations({
         params: [wallet.account, encoded],
       });
       assertCompletedWalletOperation(activeRef.current, wallet);
-      const completed = await requireProvider(configuredChainID);
+      const completed = await requireProvider(
+        billingScopeRef.current?.paymentChain ?? configuredChainID,
+      );
       assertCompletedWalletOperation(completed, wallet);
       assertExpectedWalletIdentity(completed, expected);
       if (!isWalletSignature(result)) {
@@ -586,7 +738,7 @@ function useWalletOperations({
       }
       return result;
     },
-    [activeRef, configuredChainID, requestActiveProvider, requireProvider],
+    [activeRef, billingScopeRef, configuredChainID, requestActiveProvider, requireProvider],
   );
 
   const waitForBillingTransaction = useCallback(
@@ -594,7 +746,9 @@ function useWalletOperations({
       if (!isTransactionHash(transactionHash)) {
         throw new WalletBoundaryError("INVALID_REQUEST");
       }
-      const wallet = await requireProvider(configuredChainID);
+      const wallet = await requireProvider(
+        billingScopeRef.current?.paymentChain ?? configuredChainID,
+      );
       assertExpectedWalletIdentity(wallet, expected);
       for (let attempt = 0; attempt < 120; attempt += 1) {
         const receipt = await requestActiveProvider(wallet, {
@@ -606,7 +760,9 @@ function useWalletOperations({
           if (typeof receipt !== "object" || !("status" in receipt) || receipt.status !== "0x1") {
             throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
           }
-          const completed = await requireProvider(configuredChainID);
+          const completed = await requireProvider(
+            billingScopeRef.current?.paymentChain ?? configuredChainID,
+          );
           assertExpectedWalletIdentity(completed, expected);
           return;
         }
@@ -614,7 +770,7 @@ function useWalletOperations({
       }
       throw new WalletBoundaryError("TRANSACTION_OUTCOME_UNKNOWN");
     },
-    [activeRef, configuredChainID, requestActiveProvider, requireProvider],
+    [activeRef, billingScopeRef, configuredChainID, requestActiveProvider, requireProvider],
   );
 
   return {
@@ -699,6 +855,8 @@ function publicActiveWallet(wallet: InternalActiveWallet): ActiveWallet {
     account: wallet.account,
     chainID: wallet.chainID,
     revision: wallet.revision,
+    authRevision: wallet.authRevision,
+    authChainID: wallet.authChainID,
   });
 }
 
@@ -734,4 +892,16 @@ export function useWallet(): WalletContextValue {
   const context = useContext(WalletContext);
   if (!context) throw new Error("useWallet must be used inside WalletProvider");
   return context;
+}
+
+// Authentication survives only the provider-owned, explicitly expected payment
+// transitions; operation identity always retains the actual chain and revision.
+export function authenticationWallet(wallet: ActiveWallet | undefined): ActiveWallet | undefined {
+  return wallet
+    ? {
+        ...wallet,
+        chainID: wallet.authChainID ?? wallet.chainID,
+        revision: wallet.authRevision ?? wallet.revision,
+      }
+    : undefined;
 }

@@ -1261,13 +1261,13 @@ It uses Anvil, PostgreSQL 18, the production Etherview image, and separate
 test-only contract/facilitator images. Its deterministic development keys and
 fixtures must never be used outside that environment.
 
-### Base Sepolia prepaid release gate
+### Ethereum Sepolia prepaid release gate
 
 The release gate is a one-shot pair of real EIP-3009 and Permit2 reports. Each
 must cover SIWE, top-up settlement, account credit, user-owned API-key debit,
 and writer/chain reconciliation. It remains blocked without operator funds,
-file-only payer credentials, a staging facilitator, writer access, an
-independent RPC, and the deployed image digest. Local Anvil evidence cannot
+MetaMask-held payer credentials, a compatible facilitator, writer access, an
+independent RPC, and the deployed image digest. Local-only Anvil payments cannot
 close it, and failed or unknown real-payment attempts must never be retried
 automatically.
 

@@ -14,6 +14,8 @@ const state = vi.hoisted(() => ({
   connect: vi.fn(),
   chainID: "1",
   readContract: vi.fn(),
+  crossChain: false,
+  withBillingChain: vi.fn(),
 }));
 vi.mock("@/auth/AuthProvider", () => ({
   useAuth: () => ({
@@ -35,6 +37,7 @@ vi.mock("@/wallet/WalletProvider", () => ({
     discover: vi.fn(),
     connecting: false,
     readContract: state.readContract,
+    withBillingChain: state.crossChain ? state.withBillingChain : undefined,
     sendTransaction: vi.fn(),
     signBillingTypedData: vi.fn(),
     waitForBillingTransaction: vi.fn(),
@@ -150,6 +153,7 @@ describe("personal billing workspace", () => {
     state.connected = true;
     state.connect.mockResolvedValue(undefined);
     state.chainID = "1";
+    state.crossChain = false;
     state.readContract.mockResolvedValue(encodeAbiParameters([{ type: "uint256" }], [10n ** 40n]));
     await i18n.changeLanguage("en");
     vi.mocked(billing.getBillingConfig).mockResolvedValue(config);
@@ -161,6 +165,23 @@ describe("personal billing workspace", () => {
       intent: { ...intent, state: "credited" },
       account,
     });
+  });
+
+  it("checks payment-network funds only after explicit cross-chain confirmation", async () => {
+    state.chainID = "31337";
+    state.crossChain = true;
+    state.withBillingChain.mockImplementation(async (_network, operation) => {
+      return operation({ account: address, chainID: "1", revision: 2 });
+    });
+    const { user } = setup();
+    await ready();
+    expect(state.readContract).not.toHaveBeenCalled();
+    await user.type(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" }), "1");
+    await user.click(screen.getByRole("button", { name: "Top up & authorize" }));
+    await waitFor(() => expect(payBillingTopup).toHaveBeenCalledTimes(1));
+    expect(state.withBillingChain).toHaveBeenCalledWith("eip155:1", expect.any(Function));
+    expect(state.readContract).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(payBillingTopup).mock.calls[0]![0].wallet.active.chainID).toBe("1");
   });
 
   it("offers wallet connection without signing or creating a payment", async () => {
