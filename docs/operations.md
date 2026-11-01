@@ -1860,3 +1860,31 @@ fresh-database baseline; no startup backfill or legacy readiness path is added.
 Existing balances, holder totals, CSV exports and Etherscan reads retain their
 strict exact-state/coverage rules. Partial browsing is not evidence that a
 release synchronization or payment acceptance gate has passed.
+
+## Blob content access and compressed archive format
+
+The archive writes S2 blocks under `blobs/v2/.../<raw-sha256>.s2` using the pinned
+klauspost/compress dependency. Database manifests retain original-byte hashes
+and sizes; S3 checksums cover encoded bytes. Both database and archive backups
+remain required. Preserve read-only API credentials and enrich read/write
+credentials, conditional creation and the no-expiry policy.
+
+This fresh-database format has no old `.bin` reader, startup conversion or
+backfill. Reinitialize the development database and recollect into the new
+namespace when adopting it; do not delete old archives automatically. Confirm
+upstream retention before relying on recollection of historical bodies.
+
+External clients use `/v2/api?chainid=<id>&module=blob&action=getblob&blockhash=<hash>&index=<index>`
+with an `api:read` key, preferably in `X-API-Key`. The fixed weight is 5, multiplied
+by the configured base atomic price. User keys spend their owner's balance;
+operator keys and billing-disabled deployments retain free exceptions.
+
+Anonymous blob content access is unavailable. The former browser POST is removed.
+The free browser GET `/api/v1/blocks/{hash}/blobs/{index}/content` requires
+SIWE and a session-bound CSRF header. Origin may be omitted; when present it
+must match the configured origin. Sec-Fetch-Site, when present, must be
+`same-origin`. Blob content does not require Turnstile, even
+when the global switch is enabled. The expanded details provide a download
+icon that saves the cached complete blob without another request or fee.
+The browser saves previously fetched content locally without another charge
+or token validation. Account/session changes and navigation discard that buffer.

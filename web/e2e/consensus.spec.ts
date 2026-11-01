@@ -1,3 +1,4 @@
+import { installVerificationSession } from "./verification-session";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -7,11 +8,13 @@ const blockHash = `0x${"1".repeat(64)}`;
 const hash = `0x${"2".repeat(64)}`;
 
 test("consensus slots and blob content remain exact, optional and on demand", async ({ page }) => {
+  await installVerificationSession(page);
   let reads = 0;
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
     body.data.features.consensus = true;
+    body.data.features.user_auth = true;
     body.data.features.blobs = true;
     await route.fulfill({ response, json: body });
   });
@@ -68,7 +71,7 @@ test("consensus slots and blob content remain exact, optional and on demand", as
   );
   await page.route("**/api/v1/blocks/*/blobs/0/content", async (route) => {
     reads++;
-    expect(route.request().url()).toContain(`/blocks/${blockHash}/`);
+    expect(route.request().url()).toContain(`/blocks/${blockHash}/blobs/`);
     await route.fulfill({
       contentType: "application/octet-stream",
       headers: { "Content-Disposition": "attachment; filename=blob-1-0.bin" },
@@ -82,7 +85,7 @@ test("consensus slots and blob content remain exact, optional and on demand", as
   await expect(page.getByRole("tabpanel")).toContainText("Consensus and execution slots differ");
   await page.getByRole("tab", { name: "Blobs", exact: true }).click();
   await page.getByRole("link", { name: "View Blob 0" }).click();
-  const preview = page.getByRole("button", { name: "Preview first 1 KiB" });
+  const preview = page.getByRole("button", { name: "View content" });
   await expect(preview).toBeVisible();
   expect(reads).toBe(0);
   await preview.click();
@@ -90,7 +93,7 @@ test("consensus slots and blob content remain exact, optional and on demand", as
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download blob", exact: true }).click();
   expect((await download).suggestedFilename()).toBe("blob-1-0.bin");
-  expect(reads).toBe(2);
+  expect(reads).toBe(1);
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
 });
@@ -102,6 +105,7 @@ test("archive history and capability failures retain metadata without downloads"
     const response = await route.fetch();
     const body = await response.json();
     body.data.features.consensus = true;
+    body.data.features.user_auth = true;
     body.data.features.blobs = true;
     await route.fulfill({ response, json: body });
   });

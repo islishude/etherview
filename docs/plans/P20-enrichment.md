@@ -71,8 +71,11 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 | P20-T29 | done   | P20-T28                            | Exact resolution independent of directory coverage, bounded refresh and atomic publication                                                                       | Lagging coverage, stale events, expiry, leases, canonical and publication races                                 |
 | P20-T30 | done   | P20-T29                            | Independent exact registration profiles and canonical known-name directory; remove ENS source classifications                                                    | Protocol ownership/expiry/permissions, lifecycle, canonical publication and PostgreSQL race                     |
 | P20-T31 | done   | P20-T30                            | Canonical ENS operation history with temporal name associations and bounded recovery                                                                             | ENS history regressions, generated contracts and applicable production/browser gates                            |
+| P20-T32 | done   | P20-T20                            | S2-compressed immutable blob archives with bounded decoding and verified replay                                                                                  | S2 bounds/integrity, PostgreSQL race, RustFS, production runtime and full Lighthouse acceptance                 |
 
 ## Acceptance
+
+- [x] P20-T32: S2 archives preserve raw content identity, bound decoding, and pass replay/reorg and full local archive acceptance.
 
 - [x] P20-T30: Independent exact registration profiles and canonical known-name directory; remove ENS source classifications. Protocol ownership/expiry/permissions, lifecycle, canonical publication and PostgreSQL race. Existing historical reports do not validate this extension.
 
@@ -233,3 +236,27 @@ registration-expiry pagination also passed, followed by the full PostgreSQL
 race suite; see the [extension report](../reviews/ens-name-details-acceptance.md).
 
 P20-T31: Canonical event facts retain source, block and log identity; event-time v2 associations exclude later aliases and recover persisted pending work after restart. Verified by the ENS PostgreSQL race suite, temporal/restart regressions and fresh production-schema gate.
+
+### Blob access and archive update
+
+P20-T32: `make check` (including source, generation, lint, unit/race, security,
+license and deployment checks), `make test-integration-race`,
+`CI=true make test-e2e` (225 tests), `make test-rustfs`, `make test-schema-e2e`,
+`make test-runtime-e2e` and `make test-preview-consensus-full` passed.
+The frontend unit suite passed 896 tests. The S2 roundtrip/bounds regression
+measured 131072 raw bytes as 12 bytes for zero, 18 for sparse and 131079 for
+seeded random content; malformed, truncated, oversized and digest/length
+mismatches are rejected.
+
+Evidence environment: macOS arm64 with Docker Desktop Linux arm64, revision
+`88c6d576` plus the reviewed browser GET change and its route-test correction.
+Runtime and full Lighthouse builds used production image config
+`sha256:532c4f544adb6a56317d97d04425a637a87d28fc207d27e0bbae9d02d3f79258`.
+Full Lighthouse acceptance verified independent archive readback, read-only API
+permissions, outage/recreation recovery, both role layouts and nonzero finality.
+Runtime acceptance also passed local EIP-3009/Permit2 settlement and debit in
+both layouts. These results do not establish live payments, public Beacon
+historical retention, production backup/restore or native Linux host cleanup.
+The RustFS writer-IAM limitation remains separately documented in Preview operations.
+Security gates passed their existing thresholds: npm reported two moderate
+advisories; govulncheck reported no affected code, with one unused-module advisory.

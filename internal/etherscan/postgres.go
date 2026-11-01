@@ -15,6 +15,7 @@ import (
 
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/contractartifact"
+	"github.com/islishude/etherview/internal/publicquery"
 )
 
 // ErrInvalidParameter is returned when Execute is used without the Handler's
@@ -49,6 +50,7 @@ type StateProvider interface {
 }
 
 type PostgresOptions struct {
+	BlobReader                publicquery.ConsensusReader
 	ChainID                   uint64
 	Supply                    SupplyProvider
 	Price                     PriceProvider
@@ -63,6 +65,7 @@ type PostgresOptions struct {
 // PostgresBackend serves the Etherscan-compatible subset that can be proven
 // from canonical core rows and verified-contract records.
 type PostgresBackend struct {
+	blobReader                publicquery.ConsensusReader
 	db                        dbaccess.Database
 	chainID                   uint64
 	chain                     string
@@ -98,7 +101,7 @@ func NewPostgresBackend(db dbaccess.Database, options PostgresOptions) (*Postgre
 		}
 	}
 	return &PostgresBackend{
-		db: db, chainID: options.ChainID,
+		db: db, chainID: options.ChainID, blobReader: options.BlobReader,
 		chain: strconv.FormatUint(options.ChainID, 10), supply: options.Supply, price: options.Price, state: options.State,
 		erc20State: options.ERC20State, nftState: options.NFTState,
 		verification: options.Verification, artifacts: artifacts,
@@ -114,6 +117,8 @@ func (b *PostgresBackend) Execute(ctx context.Context, request Request) (any, er
 		request.Values = make(url.Values)
 	}
 	switch request.Module + "." + request.Action {
+	case "blob.getblob":
+		return b.blobContent(ctx, request.Values)
 	case "account.balance":
 		return b.nativeBalance(ctx, request.Values)
 	case "account.balancemulti":

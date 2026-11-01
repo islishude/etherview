@@ -1192,15 +1192,20 @@ observations and `blob@1` manifests through the same generation/lease protocol
 as other stages. Discovery supplements already-published core outbox history.
 A leased overview publisher pins the head and state roots and atomically stores
 its observation with a runtime invalidation event. PostgreSQL remains the
-identity/publication authority; the dedicated blob bucket durably owns raw
-binary bodies. Objects are KZG-bound to authenticated transaction hashes and
+identity/publication authority; the dedicated blob bucket durably owns S2-compressed
+binary bodies with raw-byte manifest identities. Objects are KZG-bound to authenticated transaction hashes and
 independently read back before their manifest can publish. No object operation
 holds a database snapshot. Reorgs retain immutable content and orphan metadata.
 
 Block models select consensus slots when enabled and published, with explicit
 execution-header fallback and `slot_number_source`. Consensus and blob HTTP
-metadata reads do not contact upstream nodes. Exact-hash downloads recheck the
-published manifest after object retrieval. Core execution readiness and fork
+metadata reads do not contact upstream nodes. Exact-hash content reads decompress and validate the object, then recheck the
+published manifest. V2 `blob.getblob` uses API-key prepaid billing with weight 5.
+Anonymous V1 content access is unavailable; the free browser-only content GET
+requires SIWE and CSRF, without Turnstile. Origin may be omitted; when supplied
+it must match. Sec-Fetch-Site, when supplied, must be `same-origin`. The expanded content details
+provide a bottom-right download icon that saves the already loaded bytes.
+Preview and file saving share a session-scoped in-memory byte buffer. Core execution readiness and fork
 choice never depend on either optional upstream.
 
 Consensus body decoding verifies the complete fork-specific SSZ root before the

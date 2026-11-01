@@ -124,8 +124,8 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 		*response.Data.Asset != "0x52908400098527886E0F7030069857D2E4169EE7" ||
 		response.Data.Recipient == nil ||
 		*response.Data.Recipient != "0xde709f2102306220921060314715629080e2fb77" ||
-		len(response.Data.Operations) != 30 ||
-		response.Data.Operations[0].Operation != "etherscan.account.addresstokenbalance" ||
+		len(response.Data.Operations) != 31 ||
+		response.Data.Operations[0].Operation != "etherview.account.addresstokenbalance" ||
 		response.Data.Operations[0].AmountAtomic != "500" ||
 		response.Data.Operations[0].ComplexityWeight != 100 ||
 		response.Data.BasePriceAtomic == nil || *response.Data.BasePriceAtomic != "5" {

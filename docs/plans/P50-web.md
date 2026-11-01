@@ -65,8 +65,11 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T82 | done   | P40-T28                            | Bilingual name detail, name search and primary-name links without source badges                                                                                                                        | Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions                               |
 | P50-T83 | done   | P40-T29                            | Compact name overview and bilingual expandable ENS transaction history                                                                                                                                 | ENS history regressions, generated contracts and applicable production/browser gates                                           |
 | P50-T84 | done   | P50-T11, P50-T81, P50-T83          | Explicit live-refresh allowlist and page-scoped manual browsing refresh with invalidation notices                                                                                                      | Frontend, embedded browser, generation, docs and plan gates                                                                    |
+| P50-T85 | done   | P40-T32, P50-T75, P60-T05          | Session-only blob preview with an expanded-detail download icon and reusable in-memory content                                                                                                         | Bilingual browser, single-fetch saving, identity-change cleanup and cancellation regressions                                   |
 
 ## Acceptance
+
+- [x] P50-T85: Blob viewing requires login and deliberate action; the expanded-detail icon saves complete cached bytes without another request.
 
 - [x] P50-T82: Bilingual name detail, name search and primary-name links without source badges. Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions. Existing historical reports do not validate this extension.
 
@@ -233,3 +236,12 @@ and the separate Mainnet/release evidence boundary.
 P50-T83: Compact overview and lazy expandable history support both languages/themes and 390px/1440px layouts. All 161 embedded-browser scenarios passed, including accessibility, inert record values, pagination and single-SSE refresh; production all/split runtime checks, Preview contracts and `make check` passed. Local fixtures do not establish complete live history coverage.
 
 P50-T84: Local acceptance passed 780 frontend tests, 39 tooling tests and all 170 embedded Chromium scenarios, including nine Address tabs, manual refresh races/failures, ENS withdrawal, single-SSE recovery and keyboard/mobile heading controls. `make web-test`, `make web-lint`, `make test-e2e`, `make generate-check`, `make docs-check` and `make plan-check` passed. Remote CI was not run; local browser fixtures do not establish live chain acceptance.
+
+P50-T85: Viewing requires login and a deliberate click. The expanded preview shows the
+first 1024 bytes and offers an icon that saves the complete cached blob without
+another request. Identity changes/unmount discard bytes and cancel pending reads.
+Bilingual desktop/mobile browser coverage passed in the full 225-test suite.
+
+Shared commands, revision/image identity, environment and limits are recorded
+once in [P20-T32 acceptance](P20-enrichment.md#blob-access-and-archive-update).
+The completed local gates do not close independent live-payment or release blockers.

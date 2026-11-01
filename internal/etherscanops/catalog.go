@@ -22,6 +22,7 @@ type Spec struct {
 }
 
 var catalog = []Spec{
+	billable("blob", "getblob", 5, "fixed-size large blob artifact with archive integrity validation"),
 	billable("account", "balance", 2, "exact state or bounded composite lookup"),
 	billable("account", "balancemulti", 40, "up to 20 exact account balances"),
 	billable("account", "txlist", 5, "paged records or large artifact"),
@@ -61,7 +62,7 @@ var catalog = []Spec{
 
 func billable(module, action string, weight uint64, reason string) Spec {
 	return Spec{
-		ID:     "etherscan." + module + "." + action,
+		ID:     "etherview." + module + "." + action,
 		Module: module, Action: action, BillingEligible: true,
 		MaxResponseBytes: DefaultMaxResponseBytes,
 		ComplexityWeight: weight, CostReason: reason, Classification: "query",
@@ -69,7 +70,7 @@ func billable(module, action string, weight uint64, reason string) Spec {
 }
 
 func nonBillable(classification, module, action string) Spec {
-	return Spec{ID: "etherscan." + module + "." + action, Module: module, Action: action, Classification: classification}
+	return Spec{ID: "etherview." + module + "." + action, Module: module, Action: action, Classification: classification}
 }
 
 func Lookup(id string) (Spec, bool) {

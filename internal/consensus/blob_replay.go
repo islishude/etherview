@@ -9,7 +9,7 @@ import (
 )
 
 func blobObjectKey(namespace, versionedHash, digest string) string {
-	return fmt.Sprintf("blobs/v1/%s/%s/%s.bin", namespace, strings.TrimPrefix(versionedHash, "0x"), strings.TrimPrefix(digest, "0x"))
+	return fmt.Sprintf("blobs/v2/%s/%s/%s.s2", namespace, strings.TrimPrefix(versionedHash, "0x"), strings.TrimPrefix(digest, "0x"))
 }
 
 // RestoreReferences reads private retained evidence, never publication authority.

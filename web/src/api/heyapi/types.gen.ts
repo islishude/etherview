@@ -212,6 +212,9 @@ export type BillingPaymentState = 'reserved' | 'verified' | 'settling' | 'settle
 
 export type BillingOperationPrice = {
     complexity_weight: number;
+    /**
+     * Etherview operation ID in the etherview.<module>.<action> namespace.
+     */
     operation: string;
     amount_atomic: Quantity;
 };
@@ -284,6 +287,9 @@ export type BillingUsage = {
     user_id: string;
     api_key_prefix: string;
     method: 'GET' | 'POST';
+    /**
+     * Etherview operation ID in the etherview.<module>.<action> namespace.
+     */
     operation: string;
     amount_atomic: Quantity;
     state: BillingUsageState;
@@ -3744,8 +3750,11 @@ export type GetBlockBlobsResponses = {
 
 export type GetBlockBlobsResponse = GetBlockBlobsResponses[keyof GetBlockBlobsResponses];
 
-export type GetBlobContentData = {
+export type GetBrowserBlobContentData = {
     body?: never;
+    headers: {
+        'X-CSRF-Token': string;
+    };
     path: {
         hash: Hash;
         index: Quantity;
@@ -3754,23 +3763,23 @@ export type GetBlobContentData = {
     url: '/blocks/{hash}/blobs/{index}/content';
 };
 
-export type GetBlobContentErrors = {
+export type GetBrowserBlobContentErrors = {
     /**
      * Machine-readable error.
      */
     default: ErrorResponse;
 };
 
-export type GetBlobContentError = GetBlobContentErrors[keyof GetBlobContentErrors];
+export type GetBrowserBlobContentError = GetBrowserBlobContentErrors[keyof GetBrowserBlobContentErrors];
 
-export type GetBlobContentResponses = {
+export type GetBrowserBlobContentResponses = {
     /**
      * Verified raw blob bytes.
      */
     200: Blob | File;
 };
 
-export type GetBlobContentResponse = GetBlobContentResponses[keyof GetBlobContentResponses];
+export type GetBrowserBlobContentResponse = GetBrowserBlobContentResponses[keyof GetBrowserBlobContentResponses];
 
 export type ListGenesisAccountsData = {
     body?: never;

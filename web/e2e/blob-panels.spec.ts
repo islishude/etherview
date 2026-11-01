@@ -1,3 +1,4 @@
+import { installVerificationSession } from "./verification-session";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -9,6 +10,7 @@ const versionedHash = `0x01${"bc".repeat(31)}`;
 const commitment = `0x${"cd".repeat(48)}`;
 
 async function setupBlobs(page: Page, enabled = true, count = 1) {
+  await installVerificationSession(page);
   const hashes = Array.from({ length: count }, (_, index) =>
     index === 0 ? versionedHash : `0x01${String(index).repeat(62)}`,
   );
@@ -17,6 +19,7 @@ async function setupBlobs(page: Page, enabled = true, count = 1) {
     const response = await route.fetch();
     const body = await response.json();
     body.data.features.consensus = enabled;
+    body.data.features.user_auth = true;
     body.data.features.blobs = enabled;
     await route.fulfill({ response, json: body });
   });
@@ -107,7 +110,7 @@ for (const { width, language, theme } of appearanceCases) {
     await expect(page.getByText(commitment, { exact: true })).toBeVisible();
     await expect(
       page.getByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
     const detailScan = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -127,7 +130,7 @@ test("transaction preview and download use the exact block blob index and remain
   await page.getByRole("link", { name: "View Blob 42" }).click();
   await expect(page).toHaveURL(`/blocks/${blockHash}/blobs/42`);
   await page.reload();
-  const preview = page.getByRole("button", { name: "Preview first 1 KiB" });
+  const preview = page.getByRole("button", { name: "View content" });
   await expect(preview).toBeVisible();
   expect(reads).toEqual([]);
   await preview.focus();
@@ -136,14 +139,19 @@ test("transaction preview and download use the exact block blob index and remain
   await page.getByRole("button", { name: "Hide preview" }).click();
   await expect(page.locator(".blob-preview")).toBeHidden();
   expect(reads).toHaveLength(1);
+  await expect(page.getByRole("button", { name: "Download blob" })).toHaveCount(0);
+  await preview.click();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download blob" }).click();
+  const downloadButton = page.getByRole("button", { name: "Download blob" });
+  await expect(downloadButton).toHaveAttribute("title", "Download blob");
+  await downloadButton.focus();
+  await page.keyboard.press("Enter");
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("blob-9007199254740993-42.bin");
   const downloadedBytes: Buffer[] = [];
   for await (const chunk of await download.createReadStream()) downloadedBytes.push(chunk);
   expect(Buffer.concat(downloadedBytes).equals(Buffer.alloc(131072, 7))).toBe(true);
-  expect(reads).toEqual(Array(2).fill(`/api/v1/blocks/${blockHash}/blobs/42/content`));
+  expect(reads).toEqual(Array(1).fill(`/api/v1/blocks/${blockHash}/blobs/42/content`));
   await expect(page.getByRole("link", { name: "View block blobs" })).toHaveAttribute(
     "href",
     `/blocks/${blockHash}?tab=blobs`,

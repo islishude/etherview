@@ -41,12 +41,20 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 	}
 
 	genesis := testBundle(0, testHash(150_000), testHash(0), testHash(151_000), "etherscan-holding-genesis")
-	tip := testBundle(1, testHash(150_001), testHash(150_000), testHash(151_001), "etherscan-holding-tip")
-	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis, tip}); err != nil {
+	// Cross the decimal-width boundary so a text-sorted snapshot would select
+	// block 9 instead of the numerically latest block 10.
+	segment := []chainbundle.Bundle{genesis}
+	for number := uint64(1); number <= 10; number++ {
+		segment = append(segment, testBundle(number, testHash(150_000+number),
+			testHash(150_000+number-1), testHash(151_000+number), "etherscan-holding-tip"))
+	}
+	tip := segment[len(segment)-1]
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", segment); err != nil {
 		t.Fatal(err)
 	}
-	markTokenStageComplete(t, ctx, db, genesis)
-	markTokenStageComplete(t, ctx, db, tip)
+	for _, bundle := range segment {
+		markTokenStageComplete(t, ctx, db, bundle)
+	}
 
 	contract, owner := testAddress(3), testAddress(150_100)
 	insertTokenObservation(t, ctx, db, tip, contract, testHash(150_200), "Holding Token")
@@ -57,7 +65,7 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 			chain_id, block_number, block_hash, log_index, sub_index,
 			transaction_hash, token_address, standard, event_kind,
 			from_address, to_address, amount, canonical, confidence, raw
-		) VALUES (1, 1, $1, 0, 0, $2, $3, 'erc20', 'mint',
+		) VALUES (1, 10, $1, 0, 0, $2, $3, 'erc20', 'mint',
 			$4, $5, 7, TRUE, 'high', '{}'::jsonb)`,
 		mustBytes(t, reference.Hash), mustBytes(t, transactionHash), mustBytes(t, contract),
 		make([]byte, common.AddressLength), mustBytes(t, owner),
@@ -66,7 +74,7 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 		INSERT INTO token_balance_deltas (
 			chain_id, block_number, block_hash, log_index, sub_index,
 			token_address, owner_address, token_id, delta, canonical
-		) VALUES (1, 1, $1, 0, 0, $2, $3, NULL, 7, TRUE)`,
+		) VALUES (1, 10, $1, 0, 0, $2, $3, NULL, 7, TRUE)`,
 		mustBytes(t, reference.Hash), mustBytes(t, contract), mustBytes(t, owner),
 	)
 
@@ -139,7 +147,7 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 		t.Fatalf("cached compatibility holding made %d RPC calls", failing.calls)
 	}
 
-	next := testBundle(2, testHash(160_002), reference.Hash, testHash(161_002), "etherscan-holding-reclassified")
+	next := testBundle(11, testHash(160_002), reference.Hash, testHash(161_002), "etherscan-holding-reclassified")
 	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{next}); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +159,7 @@ func TestEtherscanERC20HoldingsUseExactPostgresCache(t *testing.T) {
 			name, symbol, decimals, total_supply, metadata_state,
 			observed_block_number, observed_block_hash
 		) VALUES (1, $1, $2, 'unknown', 'high',
-			NULL, NULL, NULL, NULL, 'complete', 2, $3)`,
+			NULL, NULL, NULL, NULL, 'complete', 11, $3)`,
 		mustBytes(t, contract), mustBytes(t, testHash(160_200)), mustBytes(t, nextReference.Hash),
 	)
 	if _, err := cachedBackend.Execute(ctx, etherscan.Request{

@@ -33,6 +33,14 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P20-T32, P40-T32, P50-T85 and P60-T23 are done: S2 blob archives, paid V2
+content, session/CSRF-protected browser GET with cached preview/download, and
+the `etherview.*` billing operation namespace passed full local acceptance.
+Aggregate checks, integration race, 225 browser tests, RustFS, production schema,
+all/split runtime with local payments, and full Lighthouse recovery/finality
+passed on 2026-11-01. [P20-T32](docs/plans/P20-enrichment.md#blob-access-and-archive-update)
+owns shared evidence and its limits. Independent release blockers remain open.
+
 P30-T152 completed the [Preview manual scenario CLI](preview/docs/tools.md) with
 proxy and EIP-7702 lifecycle controls, durable local run journals and inspection
 links. Isolated all/split CLI and bilingual desktop/mobile browser acceptance passed;

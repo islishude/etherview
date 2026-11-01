@@ -853,7 +853,7 @@ func topupTransitionError(action string, err error) error {
 }
 
 func validUsageOperation(value string) bool {
-	return strings.HasPrefix(value, "etherscan.") && len(value) > len("etherscan.") && len(value) <= 128
+	return strings.HasPrefix(value, "etherview.") && len(value) > len("etherview.") && len(value) <= 128
 }
 
 func accountFromValues(

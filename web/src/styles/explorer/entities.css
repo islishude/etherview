@@ -699,6 +699,12 @@
   border-radius: var(--radius-sm);
 }
 
+.blob-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
 .blob-preview pre {
   max-height: 18rem;
   overflow: auto;

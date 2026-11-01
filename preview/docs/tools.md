@@ -98,6 +98,9 @@ payloads, ENS commitment material and disposable keys. Do not share them.
 Reports intentionally omit this material. Large integers remain strings.
 `blobs/*.bin` contains the original unsigned 131072-byte blob bodies for manual
 download comparisons; the report records their SHA-256 and versioned hashes.
+CLI archive checks acquire a temporary operator `api:read` key, read the V2
+`blob.getblob` hex result and revoke the key afterward. Browser preview and
+download instead require login and the configured Turnstile challenge.
 
 The lifecycle distinguishes prepared/submitted transactions, mined receipts,
 API publication and manual inspection. Proxy verification can reject a stale

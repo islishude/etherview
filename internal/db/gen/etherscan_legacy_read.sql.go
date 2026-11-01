@@ -157,7 +157,7 @@ const etherscanCanonicalSnapshot = `-- name: EtherscanCanonicalSnapshot :one
 SELECT number::text, block_hash
 FROM canonical_blocks
 WHERE chain_id = $1::numeric
-ORDER BY number DESC
+ORDER BY canonical_blocks.number DESC
 LIMIT 1
 `
 

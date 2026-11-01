@@ -7,7 +7,23 @@ import i18n from "@/i18n";
 import type * as schemas from "@/api/heyapi/types.gen";
 import { BlobsPanel } from "./BlobsPanel";
 import { BlobPage } from "./BlobPage";
+import { BlobActions } from "./BlobActions";
 import { shorten } from "@/components/format";
+
+const authState = vi.hoisted(() => ({
+  enabled: true,
+  loading: false,
+  session: { authenticated: true, csrf_token: "csrf", expires_at: "one", user: { id: "user" } },
+}));
+vi.mock("@/auth/AuthProvider", () => ({ useAuth: () => authState }));
+vi.mock("@/components/SIWELoginControl", () => ({
+  SIWELoginControl: ({ label }: { label: string }) => <button>{label}</button>,
+}));
+vi.mock("@/components/TurnstileChallenge", () => ({
+  useTurnstile: () => {
+    throw new Error("Blob content must not use Turnstile");
+  },
+}));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -49,6 +65,8 @@ const data: schemas.BlockBlobs = {
 };
 
 beforeEach(async () => {
+  authState.session.authenticated = true;
+  authState.session.expires_at = "one";
   await i18n.changeLanguage("en");
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -129,8 +147,8 @@ it.each(["en", "zh"])("shows full %s metadata only on the detail page", async (l
   expect(screen.getByText(commitment)).toBeVisible();
   expect(screen.getByText(checksum)).toBeVisible();
   expect(
-    screen.getByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
-  ).toBeVisible();
+    screen.queryByRole("button", { name: language === "en" ? "Download blob" : "下载 Blob" }),
+  ).not.toBeInTheDocument();
   expect(reads).toEqual([]);
 });
 
@@ -144,13 +162,15 @@ it("previews only on demand, disables actions while loading, and hides without a
       }),
   });
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Preview first 1 KiB" }));
+  await user.click(await screen.findByRole("button", { name: "View content" }));
   expect(screen.getByRole("button", { name: "Loading preview…" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Download blob" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Download blob" })).not.toBeInTheDocument();
   await act(async () => {
     finish(new Response(new Uint8Array(131072).fill(7)));
   });
-  const preview = await screen.findByLabelText("Hex preview · first 1 KiB");
+  const preview = await screen.findByLabelText(
+    "Only the first 1024 bytes are shown. Download for the complete content.",
+  );
   expect(preview).toHaveTextContent("07".repeat(1024));
   expect(preview.textContent).toHaveLength(2048);
   expect(reads).toEqual([`/api/v1/blocks/${block}/blobs/42/content`]);
@@ -176,10 +196,14 @@ it("keeps content errors readable and allows retry without exposing a partial pr
     content: async () => new Response(new Uint8Array(++attempt === 1 ? 16 : 131072).fill(7)),
   });
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Preview first 1 KiB" }));
+  await user.click(await screen.findByRole("button", { name: "View content" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Blob storage is unavailable");
-  expect(screen.queryByLabelText("Hex preview · first 1 KiB")).not.toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Preview first 1 KiB" }));
+  expect(
+    screen.queryByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "View content" }));
   expect(await screen.findByRole("button", { name: "Hide preview" })).toBeEnabled();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
@@ -222,4 +246,90 @@ it("does not substitute another blob for an unknown index", async () => {
   expect(screen.queryByText(versionedHash)).not.toBeInTheDocument();
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
   expect(reads).toEqual([]);
+});
+
+it.each(["en", "zh"])(
+  "saves full cached content from the expanded detail icon (%s)",
+  async (language) => {
+    await i18n.changeLanguage(language);
+    const create = vi.fn((_blob: Blob) => "blob:test");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const reads = renderBlobs({ index: "42" });
+    const user = userEvent.setup();
+    const label = i18n.t("consensus.download");
+    await user.click(await screen.findByRole("button", { name: i18n.t("consensus.preview") }));
+    const download = screen.getByRole("button", { name: label });
+    expect(download).toHaveAttribute("title", label);
+    expect(download).toHaveTextContent("");
+    expect(download.closest(".blob-preview")).toBeVisible();
+    await user.click(download);
+    expect(create).toHaveBeenCalledOnce();
+    expect(create.mock.calls[0]![0].size).toBe(131072);
+    expect(click.mock.instances[0]).toHaveAttribute("download", "blob-9007199254740993-42.bin");
+    await user.click(screen.getByRole("button", { name: i18n.t("consensus.hidePreview") }));
+    expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: i18n.t("consensus.preview") }));
+    expect(screen.getByRole("button", { name: label })).toBeVisible();
+    expect(reads).toHaveLength(1);
+    click.mockRestore();
+  },
+);
+
+it("discards cached bytes when the session changes", async () => {
+  const fetch = vi.fn(
+    async () =>
+      new Response(new Uint8Array(131072).fill(7), {
+        headers: { "Content-Disposition": "attachment; filename=blob-1-42.bin" },
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const view = render(<BlobActions hash={block} index="42" />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "View content" }));
+  expect(
+    screen.getByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).toBeVisible();
+  authState.session.expires_at = "two";
+  view.rerender(<BlobActions hash={block} index="42" />);
+  expect(
+    screen.getByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).not.toBeVisible();
+  await user.click(screen.getByRole("button", { name: "View content" }));
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+it("aborts an in-flight request and ignores its bytes after logout", async () => {
+  let finish!: (response: Response) => void;
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((_request: unknown, options: RequestInit) => {
+      signal = options.signal ?? undefined;
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    }),
+  );
+  const view = render(<BlobActions hash={block} index="42" />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "View content" }));
+  authState.session.authenticated = false;
+  view.rerender(<BlobActions hash={block} index="42" />);
+  expect(signal?.aborted).toBe(true);
+  await act(async () => {
+    finish(
+      new Response(new Uint8Array(131072), {
+        headers: { "Content-Disposition": "attachment; filename=blob-1-42.bin" },
+      }),
+    );
+  });
+  expect(
+    screen.queryByLabelText(
+      "Only the first 1024 bytes are shown. Download for the complete content.",
+    ),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign in" })).toBeVisible();
 });

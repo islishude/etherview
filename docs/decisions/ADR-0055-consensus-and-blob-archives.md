@@ -35,7 +35,13 @@ uses that generation as a compare-and-set; discovery reuses canonical-attach
 replay identities so same-hash reattachments and dispatcher races are idempotent.
 
 Blob objects are a durable exception to ADR-0015's disposable cache contract.
-Their dedicated bucket has no expiry policy. The same AWS SDK transport and
+Their dedicated bucket has no expiry policy. Bodies use klauspost/compress/s2
+block encoding with EncodeBetter under `blobs/v2/<chain-namespace>/<versioned-hash>/<raw-sha256>.s2`.
+The manifest SHA-256 and size describe the original 131072-byte blob; the S3
+upload checksum describes the encoded object. Reads bound encoded size by
+`s2.MaxEncodedLen(131072)`, require the declared decoded length to equal 131072,
+and verify the decoded length and raw SHA-256 before returning content.
+There is no legacy raw-object fallback or automatic conversion. The same AWS SDK transport and
 credential rules apply, but trace cache objects and archive objects never share
 a bucket. Each object binds chain identity, versioned hash and SHA-256. KZG
 commitments bind bytes to execution transaction references and Beacon metadata.
@@ -51,7 +57,19 @@ are both required; pruned upstream data may be impossible to recover.
 
 API processes read metadata from PostgreSQL, close snapshots before object
 access, validate object integrity, then recheck publication identity before
-returning bytes. Downloads use exact block hashes and same-origin HTTP. Credentials
+returning bytes. Content acquisition uses exact block hashes. Anonymous V1 content
+access is unavailable. The free browser-only GET at
+`/api/v1/blocks/{hash}/blobs/{index}/content` requires a writer-authoritative
+SIWE session and a session-bound CSRF header. Origin may be omitted for
+same-origin GETs; if supplied it must match the configured origin.
+Sec-Fetch-Site, when supplied, must be `same-origin`. The former POST is removed. Turnstile is not required, even when
+globally enabled. API keys cannot replace sessions.
+The browser retains content only in session-scoped component memory and reuses
+it for preview and local file saving through a download icon at the bottom right
+of the expanded content details; changing identity or leaving the blob
+page clears it. Responses are no-store, including failures.
+API clients use the `blob.getblob` V2 extension governed by ADR-0044, returning
+raw bytes as a 0x-prefixed hex result after the same integrity/publication checks. Credentials
 and object URLs are never public. Enrich has archive read/write permissions;
 API has read permissions. Optional-service outages affect only their capability.
 

@@ -73,7 +73,7 @@ const config: billing.BillingConfig = {
   maximum_topup_amount_atomic: amount,
   asset_decimals: 6,
   operations: [
-    { operation: "etherscan.account.balance", amount_atomic: "2", complexity_weight: 2 },
+    { operation: "etherview.account.balance", amount_atomic: "2", complexity_weight: 2 },
   ],
 };
 const account: billing.BillingAccount = {
@@ -196,6 +196,8 @@ describe("personal billing workspace", () => {
     expect(document.querySelectorAll(".billing-step.success")).toHaveLength(0);
     await user.click(screen.getByRole("tab", { name: "Query prices" }));
     expect(screen.getByRole("heading", { name: "Query prices" })).toBeVisible();
+    expect(screen.getByText("etherview.account.balance")).toBeVisible();
+    expect(screen.queryByText(/etherscan\./)).not.toBeInTheDocument();
     await user.keyboard("{Home}");
     expect(screen.getByRole("tab", { name: "Payment" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "Top up & authorize" })).toBeVisible();

@@ -109,7 +109,7 @@ for (const appearance of appearanceCases) {
             asset_decimals: 6,
             base_price_atomic: "1",
             operations: [
-              { operation: "etherscan.account.balance", complexity_weight: 2, amount_atomic: "2" },
+              { operation: "etherview.account.balance", complexity_weight: 2, amount_atomic: "2" },
             ],
           }),
         });
