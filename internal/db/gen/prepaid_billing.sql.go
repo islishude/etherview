@@ -156,7 +156,7 @@ func (q *Queries) BeginBillingTopupSettlement(ctx context.Context, arg BeginBill
 
 const claimBillingTopupIntent = `-- name: ClaimBillingTopupIntent :one
 UPDATE billing_topup_intents
-SET state = 'processing', active_payment_id = $1::uuid,
+SET submission_progress = 'submitting', submission_transaction_hash = NULL, state = 'processing', active_payment_id = $1::uuid,
     processing_at = $2, updated_at = $2
 WHERE id = $3::uuid
   AND user_id = $4::uuid
@@ -320,7 +320,7 @@ WHERE users.id = $10::uuid
   AND users.chain_id = $11::numeric
   AND users.address = $12
   AND users.status = 'active'
-RETURNING id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+RETURNING id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, submission_progress, submission_transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 `
 
 type CreateBillingTopupIntentParams struct {
@@ -368,6 +368,8 @@ func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillin
 		&i.State,
 		&i.ActivePaymentID,
 		&i.TransactionHash,
+		&i.SubmissionProgress,
+		&i.SubmissionTransactionHash,
 		&i.FailureCode,
 		&i.ExpiresAt,
 		&i.ProcessingAt,
@@ -396,6 +398,7 @@ WITH candidate AS (
       AND payment.user_id IS NOT NULL
       AND intent.state = 'settling'
       AND intent.active_payment_id = payment.id
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = $3)
       AND intent.user_id = payment.user_id
     FOR UPDATE OF payment, intent
 ), payment_update AS (
@@ -554,6 +557,7 @@ WITH candidates AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= $2
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL, processing_at = NULL, settling_at = NULL,
         failure_code = CASE WHEN intent.expires_at <= $2
                             THEN 'topup_intent_expired' ELSE NULL END,
@@ -666,6 +670,7 @@ WITH payment_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= $2
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL,
         processing_at = NULL,
         failure_code = CASE WHEN intent.expires_at <= $2
@@ -728,6 +733,7 @@ WITH payment_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= $2
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL,
         processing_at = NULL,
         settling_at = NULL,
@@ -796,7 +802,7 @@ func (q *Queries) GetBillingAccount(ctx context.Context, userID pgtype.UUID, cha
 }
 
 const getBillingTopupIntent = `-- name: GetBillingTopupIntent :one
-SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, submission_progress, submission_transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -819,6 +825,8 @@ func (q *Queries) GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, cha
 		&i.State,
 		&i.ActivePaymentID,
 		&i.TransactionHash,
+		&i.SubmissionProgress,
+		&i.SubmissionTransactionHash,
 		&i.FailureCode,
 		&i.ExpiresAt,
 		&i.ProcessingAt,
@@ -867,7 +875,7 @@ func (q *Queries) GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, cha
 }
 
 const getUserBillingTopupIntent = `-- name: GetUserBillingTopupIntent :one
-SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, submission_progress, submission_transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -891,6 +899,8 @@ func (q *Queries) GetUserBillingTopupIntent(ctx context.Context, iD pgtype.UUID,
 		&i.State,
 		&i.ActivePaymentID,
 		&i.TransactionHash,
+		&i.SubmissionProgress,
+		&i.SubmissionTransactionHash,
 		&i.FailureCode,
 		&i.ExpiresAt,
 		&i.ProcessingAt,
@@ -960,7 +970,7 @@ func (q *Queries) ListAdminBillingAccounts(ctx context.Context, arg ListAdminBil
 }
 
 const listAdminBillingTopupIntents = `-- name: ListAdminBillingTopupIntents :many
-SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, submission_progress, submission_transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE chain_id = $1::numeric
   AND (
@@ -1009,6 +1019,8 @@ func (q *Queries) ListAdminBillingTopupIntents(ctx context.Context, arg ListAdmi
 			&i.State,
 			&i.ActivePaymentID,
 			&i.TransactionHash,
+			&i.SubmissionProgress,
+			&i.SubmissionTransactionHash,
 			&i.FailureCode,
 			&i.ExpiresAt,
 			&i.ProcessingAt,
@@ -1097,7 +1109,7 @@ func (q *Queries) ListAdminBillingUsage(ctx context.Context, arg ListAdminBillin
 }
 
 const listUserBillingTopupIntents = `-- name: ListUserBillingTopupIntents :many
-SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, submission_progress, submission_transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE chain_id = $1::numeric
   AND user_id = $2::uuid
@@ -1149,6 +1161,8 @@ func (q *Queries) ListUserBillingTopupIntents(ctx context.Context, arg ListUserB
 			&i.State,
 			&i.ActivePaymentID,
 			&i.TransactionHash,
+			&i.SubmissionProgress,
+			&i.SubmissionTransactionHash,
 			&i.FailureCode,
 			&i.ExpiresAt,
 			&i.ProcessingAt,
@@ -1251,10 +1265,15 @@ WITH payment_update AS (
       AND state = 'settling'
       AND failure_code IS NULL
       AND transaction_hash IS NULL
+      AND EXISTS (
+          SELECT 1 FROM billing_topup_intents AS intent
+          WHERE intent.id = $5::uuid
+            AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = $1)
+      )
     RETURNING id, topup_intent_id
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
-    SET failure_code = 'settlement_pending', transaction_hash = $1,
+    SET submission_progress = CASE WHEN submission_progress = 'confirming' THEN 'confirming' ELSE 'unknown' END, failure_code = 'settlement_pending', transaction_hash = $1,
         updated_at = $2
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
@@ -1306,7 +1325,7 @@ WITH payment_update AS (
     RETURNING id, topup_intent_id
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
-    SET failure_code = 'settlement_unknown', updated_at = $1
+    SET submission_progress = 'unknown', failure_code = 'settlement_unknown', updated_at = $1
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
       AND intent.state = 'settling'
@@ -1340,6 +1359,53 @@ func (q *Queries) MarkBillingTopupSettlementUnknown(ctx context.Context, arg Mar
 	var payment_id pgtype.UUID
 	err := row.Scan(&payment_id)
 	return payment_id, err
+}
+
+const observeBillingTopupProgress = `-- name: ObserveBillingTopupProgress :one
+WITH candidate AS (
+    SELECT payment.id, intent.id AS intent_id
+    FROM billing_payments AS payment
+    JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
+    WHERE payment.id = $4::uuid
+      AND payment.reservation_owner = $5::uuid
+      AND payment.purpose = 'account_topup'
+      AND payment.state = 'settling' AND payment.failure_code IS NULL
+      AND intent.id = $6::uuid
+      AND intent.active_payment_id = payment.id AND intent.state = 'settling'
+      AND intent.updated_at <= $3
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = $2::bytea)
+      AND (intent.submission_progress IS DISTINCT FROM 'confirming' OR $1::text = 'confirming')
+    FOR UPDATE OF payment, intent
+)
+UPDATE billing_topup_intents AS intent
+SET submission_progress = $1::text,
+    submission_transaction_hash = COALESCE(intent.submission_transaction_hash, $2::bytea),
+    updated_at = $3
+FROM candidate WHERE intent.id = candidate.intent_id
+RETURNING intent.id
+`
+
+type ObserveBillingTopupProgressParams struct {
+	Progress         string             `db:"progress" json:"progress"`
+	TransactionHash  []byte             `db:"transaction_hash" json:"transaction_hash"`
+	ObservedAt       pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
+	PaymentID        pgtype.UUID        `db:"payment_id" json:"payment_id"`
+	ReservationOwner pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
+	IntentID         pgtype.UUID        `db:"intent_id" json:"intent_id"`
+}
+
+func (q *Queries) ObserveBillingTopupProgress(ctx context.Context, arg ObserveBillingTopupProgressParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, observeBillingTopupProgress,
+		arg.Progress,
+		arg.TransactionHash,
+		arg.ObservedAt,
+		arg.PaymentID,
+		arg.ReservationOwner,
+		arg.IntentID,
+	)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const reconcileBillingTopupFailed = `-- name: ReconcileBillingTopupFailed :one
@@ -1441,6 +1507,7 @@ WITH candidate AS (
            OR payment.transaction_hash = $5)
       AND intent.state = 'settling'
       AND intent.active_payment_id = payment.id
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = $5)
       AND intent.user_id = payment.user_id
     FOR UPDATE OF payment, intent, account
 ), payment_update AS (

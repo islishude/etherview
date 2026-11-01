@@ -958,6 +958,12 @@ func topupIntentFromRow(row dbgen.BillingTopupIntent) (TopupIntent, error) {
 		return TopupIntent{}, ErrIntegrity
 	}
 	result.CreditAmountAtomic = credit
+	if row.SubmissionProgress != nil {
+		result.SubmissionProgress = *row.SubmissionProgress
+	}
+	if len(row.TransactionHash) == 0 {
+		row.TransactionHash = row.SubmissionTransactionHash
+	}
 	if len(row.TransactionHash) != 0 {
 		value, valueErr := transactionHashFromBytes(row.TransactionHash)
 		if valueErr != nil || zeroTransactionHash(value) {

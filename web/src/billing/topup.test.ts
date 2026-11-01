@@ -79,7 +79,11 @@ describe("Permit2 top-up approval", () => {
         amountAtomic: "1000",
       };
 
-      await ensureExactPermit2Allowance(wallet, binding);
+      const onProgress = vi.fn();
+      await ensureExactPermit2Allowance(wallet, binding, onProgress);
+      expect(onProgress.mock.calls.map(([progress]) => progress.stage)).toEqual(
+        allowance === 1000n ? [] : ["approval", "approvalConfirming"],
+      );
 
       if (allowance === 1000n) {
         expect(sendTransaction).not.toHaveBeenCalled();
@@ -287,6 +291,36 @@ describe("x402 SDK top-up flow", () => {
     );
   });
 
+  it("reports signing and submission at the actual boundaries", async () => {
+    const { options, fetch } = fixture("eip3009");
+    const stages: string[] = [];
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (request) => {
+      if (request.headers.has("PAYMENT-SIGNATURE"))
+        expect(stages).toEqual(["signing", "submitting"]);
+      return original(request);
+    });
+    await payBillingTopup({ ...options, onProgress: ({ stage }) => stages.push(stage) });
+    expect(stages).toEqual(["signing", "submitting"]);
+  });
+
+  it.each([false, true])(
+    "classifies malformed receipts based on actual signed submission (%s)",
+    async (submitted) => {
+      const { options, fetch } = fixture("eip3009");
+      const original = fetch.getMockImplementation()!;
+      fetch.mockImplementation(async (request) => {
+        if (!submitted || request.headers.has("PAYMENT-SIGNATURE"))
+          return Response.json({ data: {} });
+        return original(request);
+      });
+      await expect(payBillingTopup(options)).rejects.toBeInstanceOf(
+        submitted ? TopupPendingError : TopupAuthorizationError,
+      );
+      expect(options.wallet.signBillingTypedData).toHaveBeenCalledTimes(submitted ? 1 : 0);
+    },
+  );
+
   it("preserves uncertain outcomes once a signed payment is submitted", async () => {
     const { options, fetch } = fixture("eip3009");
     const original = fetch.getMockImplementation()!;
@@ -294,7 +328,7 @@ describe("x402 SDK top-up flow", () => {
       if (request.headers.has("PAYMENT-SIGNATURE")) throw new Error("response lost");
       return original(request);
     });
-    await expect(payBillingTopup(options)).rejects.toThrow("response lost");
+    await expect(payBillingTopup(options)).rejects.toBeInstanceOf(TopupPendingError);
   });
 
   it("preserves settlement-pending responses", async () => {

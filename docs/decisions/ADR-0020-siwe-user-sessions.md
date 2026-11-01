@@ -93,8 +93,9 @@ The status projection and shared execution rules are defined in
 ## Explicit payment-chain scope
 
 SIWE and user/API-key ownership remain bound to the configured explorer chain.
-A user-initiated top-up may temporarily switch the same injected provider and
-account to the payment network returned by the same-origin billing configuration.
+A user-initiated top-up or explicit top-up balance query may temporarily switch
+the same injected provider and account to the payment network returned by the
+same-origin billing configuration.
 Only the expected, single chain transition into that scope and its return to the
 site chain preserve the authentication identity. Wallet operation revisions still
 advance, so outstanding operations cannot survive a chain ABA transition.

@@ -112,6 +112,7 @@ func (fake *topupAccountLedgerFake) TopupIntent(
 }
 
 type topupFacilitatorFake struct {
+	progressFn  func(context.Context) (*x402wire.SettlementProgress, error)
 	verifyCalls int
 	settleCalls int
 	verify      *x402.VerifyResponse
@@ -334,5 +335,44 @@ func TestMultiTopupRouteRejectsChangedChain(t *testing.T) {
 		if recorder.Code != want {
 			t.Fatalf("network %s: %d", network, recorder.Code)
 		}
+	}
+}
+
+func (fake *topupFacilitatorFake) PaymentProgress(ctx context.Context, _ x402wire.Payment, _ x402wire.Requirement) (*x402wire.SettlementProgress, error) {
+	if fake.progressFn != nil {
+		return fake.progressFn(ctx)
+	}
+	return &x402wire.SettlementProgress{Stage: "submitting"}, nil
+}
+
+func (*topupAccountLedgerFake) ObserveTopupProgress(context.Context, string, string, string, x402wire.SettlementProgress, time.Time) error {
+	return nil
+}
+
+func TestTopupProgressObserverCancelsWithoutResubmitting(t *testing.T) {
+	dispatcher, payments, accounts, facilitator, _, intent := testTopupDispatcher(t)
+	entered := make(chan struct{})
+	exited := make(chan struct{})
+	facilitator.progressFn = func(ctx context.Context) (*x402wire.SettlementProgress, error) {
+		close(entered)
+		<-ctx.Done()
+		close(exited)
+		return nil, ctx.Err()
+	}
+	stop := dispatcher.observeProgress(t.Context(), x402wire.Payment{}, x402wire.Requirement{}, "payment", "owner", intent.ID)
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		stop()
+		t.Fatal("observer did not query")
+	}
+	stop()
+	select {
+	case <-exited:
+	default:
+		t.Fatal("observer was not joined")
+	}
+	if facilitator.settleCalls != 0 || payments.reserveCalls != 0 || accounts.creditCalls != 0 {
+		t.Fatal("progress mutated settlement")
 	}
 }

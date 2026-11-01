@@ -57,8 +57,15 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T25 | done   | P60-T24                             | Multi-chain, multi-token x402 funding with token-specific precision and fixed conversion into unified credit; persistent Preview Anvil payment chain behind the gateway | Four chain/token combinations, atomic credit and replay, browser selection, gateway, restart/outage and all/split acceptance; local acceptance only       |
 | P60-T26 | done   | P60-T25                             | Production standalone multi-chain facilitator, keystore/KMS, durable settlement and shared Preview                                                                      | Unit/race, durable journal and concurrent-chain recovery, standard-contract dual-chain, schema/runtime and deployment gates passed; local-only acceptance |
 | P60-T27 | todo   | P60-T26                             | Real AWS KMS and multi-network testnet facilitator acceptance                                                                                                           | Requires operator-provided KMS identity, funded testnet accounts and independent reconciliation                                                           |
+| P60-T28 | done   | P60-T26                             | Durable facilitator broadcast progress and bilingual top-up steps, including Permit2 approval and uncertain-outcome recovery                                            | Unit, PostgreSQL, delayed local-chain/browser and all/split regressions; generation, lint and governance gates                                            |
 
 ## Acceptance
+
+- [x] P60-T28: Durable broadcast-backed progress, bilingual top-up steps and
+      uncertain-response recovery passed 956 frontend tests, 234 browser tests,
+      Go/PostgreSQL race checks, delayed-mining Anvil all/split parity, fresh
+      production-image schema, generation, lint and governance gates. Local-only
+      acceptance; P60-T27 real-environment requirements remain separate.
 
 - [x] P60-T23: The etherview.* operation namespace is used end to end without legacy aliases or backfills; live payment acceptance remains separate.
 

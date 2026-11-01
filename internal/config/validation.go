@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/etherscanops"
@@ -520,6 +521,9 @@ func validateBillingConfig(cfg Config) error {
 	}
 	networks, ids := map[string]bool{}, map[string]bool{}
 	for _, chain := range billing.PaymentChains {
+		if len(chain.Name) == 0 || utf8.RuneCountInString(chain.Name) > 128 || strings.TrimSpace(chain.Name) == "" {
+			errs = append(errs, errors.New("payment chain name requires 1 to 128 characters and must not be blank"))
+		}
 		if !caip2EVMNetworkPattern.MatchString(chain.Network) || networks[chain.Network] {
 			errs = append(errs, errors.New("invalid or duplicate payment network"))
 		}

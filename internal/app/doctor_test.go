@@ -34,7 +34,7 @@ func TestBillingDoctorIsRoleAndFeatureScoped(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := config.Default()
-			cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532"}}
+			cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Name: "Base Sepolia", Network: "eip155:84532"}}
 			cfg.Features.X402Topups = test.enabled
 			called := false
 			err := checkBillingFacilitator(
@@ -55,7 +55,7 @@ func TestBillingDoctorIsRoleAndFeatureScoped(t *testing.T) {
 
 func TestBillingDoctorUsesRestrictedClientConfiguration(t *testing.T) {
 	cfg := config.Default()
-	cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532"}}
+	cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Name: "Base Sepolia", Network: "eip155:84532"}}
 	cfg.Features.X402Topups = true
 	cfg.Billing.PaymentChains[0].FacilitatorURL = "https://facilitator.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"192.0.2.0/24"}
@@ -121,7 +121,7 @@ func TestBillingDoctorReturnsOnlyClosedErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			checker := &doctorSupportChecker{err: test.err}
 			cfg := config.Default()
-			cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532"}}
+			cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Name: "Base Sepolia", Network: "eip155:84532"}}
 			cfg.Features.X402Topups = true
 			cfg.Billing.PaymentChains[0].Network = "eip155:84532"
 			err := checkBillingFacilitator(

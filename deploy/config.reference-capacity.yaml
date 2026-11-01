@@ -107,6 +107,7 @@ billing:
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
 
+  # Each chain requires name (1–128 nonblank characters), network, facilitator_url and tokens.
   payment_chains: []
 ens:
   gateways: ["https://ccip-v3.ens.xyz"]

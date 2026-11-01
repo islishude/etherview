@@ -17,6 +17,7 @@ import (
 type PaymentFacilitator interface {
 	VerifyPayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.VerifyResponse, error)
 	SettlePayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.SettleResponse, error)
+	PaymentProgress(context.Context, x402wire.Payment, x402wire.Requirement) (*x402wire.SettlementProgress, error)
 	OriginDigest() [32]byte
 }
 
@@ -53,6 +54,7 @@ type TopupPaymentLedger interface {
 }
 
 type TopupAccountLedger interface {
+	ObserveTopupProgress(context.Context, string, string, string, x402wire.SettlementProgress, time.Time) error
 	BeginTopupSettlement(context.Context, string, string, string, time.Time) error
 	MarkTopupSettlementUnknown(context.Context, string, string, string, time.Time) error
 	MarkTopupSettlementPending(context.Context, string, string, string, common.Hash, time.Time) error
@@ -268,12 +270,18 @@ func (dispatcher *TopupDispatcher) Serve(
 		writeError(writer, http.StatusServiceUnavailable, "topup_ledger_unavailable", "payment settlement cannot begin")
 		return
 	}
+	stopProgress := dispatcher.observeProgress(request.Context(), payment, requirement, paymentID, owner, intent.ID)
+	defer stopProgress()
 	settled, settleErr := dispatcher.facilitator.SettlePayment(request.Context(), payment, requirement)
+	stopProgress()
+	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(request.Context()), 2*time.Second)
+	defer finishCancel()
+
 	if settleErr != nil || settled == nil || !settled.Success {
 		if x402wire.IsFailure(settleErr, x402wire.FailureSettlementPending) && settled != nil {
 			hash, valid := transactionHashFromHex(settled.Transaction)
 			if valid && dispatcher.accounts.MarkTopupSettlementPending(
-				request.Context(), paymentID, owner, intent.ID, hash, dispatcher.now().UTC(),
+				finishCtx, paymentID, owner, intent.ID, hash, dispatcher.now().UTC(),
 			) == nil {
 				outcome = "settlement_pending"
 				if header, encodeErr := dispatcher.codec.EncodePaymentResponse(*settled); encodeErr == nil {
@@ -285,7 +293,7 @@ func (dispatcher *TopupDispatcher) Serve(
 		}
 		if x402wire.IsFailure(settleErr, x402wire.FailureRejected) {
 			if dispatcher.accounts.FailTopupSettlement(
-				request.Context(), paymentID, owner, intent.ID,
+				finishCtx, paymentID, owner, intent.ID,
 				x402wire.CodeFacilitatorRejected, dispatcher.now().UTC(),
 			) == nil {
 				outcome = "settle_rejected"
@@ -294,7 +302,7 @@ func (dispatcher *TopupDispatcher) Serve(
 			}
 		}
 		_ = dispatcher.accounts.MarkTopupSettlementUnknown(
-			request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC(),
+			finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC(),
 		)
 		outcome = "settlement_unknown"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
@@ -303,33 +311,33 @@ func (dispatcher *TopupDispatcher) Serve(
 	transactionHash, ok := transactionHashFromHex(settled.Transaction)
 	if !ok || !strings.EqualFold(settled.Payer, intent.Payer.Hex()) ||
 		string(settled.Network) != intent.Network {
-		_ = dispatcher.accounts.MarkTopupSettlementUnknown(request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC())
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "settlement_unknown"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
 		return
 	}
 	responseHeader, err := dispatcher.codec.EncodePaymentResponse(*settled)
 	if err != nil {
-		_ = dispatcher.accounts.MarkTopupSettlementUnknown(request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC())
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "settlement_unknown"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
 		return
 	}
 	account, err := dispatcher.accounts.CreditTopup(
-		request.Context(), paymentID, owner, transactionHash, dispatcher.now().UTC(),
+		finishCtx, paymentID, owner, transactionHash, dispatcher.now().UTC(),
 	)
 	if err != nil {
-		_ = dispatcher.accounts.MarkTopupSettlementUnknown(request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC())
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "ledger_unavailable"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "top-up credit outcome requires inspection")
 		return
 	}
-	updatedIntent, err := dispatcher.accounts.TopupIntent(request.Context(), intent.UserID, intent.ID)
+	updatedIntent, err := dispatcher.accounts.TopupIntent(finishCtx, intent.UserID, intent.ID)
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "topup_receipt_unavailable", "top-up was credited but its receipt is unavailable")
 		return
 	}
-	updatedPayment, err := dispatcher.payments.Get(request.Context(), paymentID)
+	updatedPayment, err := dispatcher.payments.Get(finishCtx, paymentID)
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "topup_receipt_unavailable", "top-up was credited but its receipt is unavailable")
 		return

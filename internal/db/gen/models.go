@@ -274,28 +274,30 @@ type BillingPaymentEvent struct {
 }
 
 type BillingTopupIntent struct {
-	ID                 pgtype.UUID        `db:"id" json:"id"`
-	UserID             pgtype.UUID        `db:"user_id" json:"user_id"`
-	ChainID            pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network            string             `db:"network" json:"network"`
-	Asset              []byte             `db:"asset" json:"asset"`
-	PaymentOption      []byte             `db:"payment_option" json:"payment_option"`
-	CreditAmountAtomic pgtype.Numeric     `db:"credit_amount_atomic" json:"credit_amount_atomic"`
-	AmountAtomic       pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
-	Recipient          []byte             `db:"recipient" json:"recipient"`
-	Payer              []byte             `db:"payer" json:"payer"`
-	State              string             `db:"state" json:"state"`
-	ActivePaymentID    pgtype.UUID        `db:"active_payment_id" json:"active_payment_id"`
-	TransactionHash    []byte             `db:"transaction_hash" json:"transaction_hash"`
-	FailureCode        *string            `db:"failure_code" json:"failure_code"`
-	ExpiresAt          pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ProcessingAt       pgtype.Timestamptz `db:"processing_at" json:"processing_at"`
-	SettlingAt         pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
-	CreditedAt         pgtype.Timestamptz `db:"credited_at" json:"credited_at"`
-	FailedAt           pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
-	ExpiredAt          pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
-	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                        pgtype.UUID        `db:"id" json:"id"`
+	UserID                    pgtype.UUID        `db:"user_id" json:"user_id"`
+	ChainID                   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Network                   string             `db:"network" json:"network"`
+	Asset                     []byte             `db:"asset" json:"asset"`
+	PaymentOption             []byte             `db:"payment_option" json:"payment_option"`
+	CreditAmountAtomic        pgtype.Numeric     `db:"credit_amount_atomic" json:"credit_amount_atomic"`
+	AmountAtomic              pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	Recipient                 []byte             `db:"recipient" json:"recipient"`
+	Payer                     []byte             `db:"payer" json:"payer"`
+	State                     string             `db:"state" json:"state"`
+	ActivePaymentID           pgtype.UUID        `db:"active_payment_id" json:"active_payment_id"`
+	TransactionHash           []byte             `db:"transaction_hash" json:"transaction_hash"`
+	SubmissionProgress        *string            `db:"submission_progress" json:"submission_progress"`
+	SubmissionTransactionHash []byte             `db:"submission_transaction_hash" json:"submission_transaction_hash"`
+	FailureCode               *string            `db:"failure_code" json:"failure_code"`
+	ExpiresAt                 pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ProcessingAt              pgtype.Timestamptz `db:"processing_at" json:"processing_at"`
+	SettlingAt                pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
+	CreditedAt                pgtype.Timestamptz `db:"credited_at" json:"credited_at"`
+	FailedAt                  pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	ExpiredAt                 pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type BillingUsageCharge struct {
@@ -1643,6 +1645,7 @@ type FacilitatorSettlement struct {
 	RawTransaction  []byte             `db:"raw_transaction" json:"raw_transaction"`
 	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
 	State           string             `db:"state" json:"state"`
+	BroadcastStatus string             `db:"broadcast_status" json:"broadcast_status"`
 	Response        []byte             `db:"response" json:"response"`
 	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`

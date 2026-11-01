@@ -76,7 +76,7 @@ LIMIT 1;
 
 -- name: ClaimBillingTopupIntent :one
 UPDATE billing_topup_intents
-SET state = 'processing', active_payment_id = sqlc.arg('payment_id')::uuid,
+SET submission_progress = 'submitting', submission_transaction_hash = NULL, state = 'processing', active_payment_id = sqlc.arg('payment_id')::uuid,
     processing_at = sqlc.arg('transitioned_at'), updated_at = sqlc.arg('transitioned_at')
 WHERE id = sqlc.arg('id')::uuid
   AND user_id = sqlc.arg('user_id')::uuid
@@ -139,7 +139,7 @@ WITH payment_update AS (
     RETURNING id, topup_intent_id
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
-    SET failure_code = 'settlement_unknown', updated_at = sqlc.arg('transitioned_at')
+    SET submission_progress = 'unknown', failure_code = 'settlement_unknown', updated_at = sqlc.arg('transitioned_at')
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
       AND intent.state = 'settling'
@@ -167,10 +167,15 @@ WITH payment_update AS (
       AND state = 'settling'
       AND failure_code IS NULL
       AND transaction_hash IS NULL
+      AND EXISTS (
+          SELECT 1 FROM billing_topup_intents AS intent
+          WHERE intent.id = sqlc.arg('intent_id')::uuid
+            AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.arg('transaction_hash'))
+      )
     RETURNING id, topup_intent_id
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
-    SET failure_code = 'settlement_pending', transaction_hash = sqlc.arg('transaction_hash'),
+    SET submission_progress = CASE WHEN submission_progress = 'confirming' THEN 'confirming' ELSE 'unknown' END, failure_code = 'settlement_pending', transaction_hash = sqlc.arg('transaction_hash'),
         updated_at = sqlc.arg('transitioned_at')
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
@@ -202,6 +207,7 @@ WITH candidate AS (
       AND payment.user_id IS NOT NULL
       AND intent.state = 'settling'
       AND intent.active_payment_id = payment.id
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.arg('transaction_hash'))
       AND intent.user_id = payment.user_id
     FOR UPDATE OF payment, intent
 ), payment_update AS (
@@ -327,6 +333,7 @@ WITH candidate AS (
            OR payment.transaction_hash = sqlc.arg('transaction_hash'))
       AND intent.state = 'settling'
       AND intent.active_payment_id = payment.id
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.arg('transaction_hash'))
       AND intent.user_id = payment.user_id
     FOR UPDATE OF payment, intent, account
 ), payment_update AS (
@@ -397,6 +404,7 @@ WITH payment_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= sqlc.arg('transitioned_at')
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL,
         processing_at = NULL,
         failure_code = CASE WHEN intent.expires_at <= sqlc.arg('transitioned_at')
@@ -437,6 +445,7 @@ WITH payment_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= sqlc.arg('transitioned_at')
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL,
         processing_at = NULL,
         settling_at = NULL,
@@ -771,6 +780,7 @@ WITH candidates AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= sqlc.arg('observed_at')
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL, processing_at = NULL, settling_at = NULL,
         failure_code = CASE WHEN intent.expires_at <= sqlc.arg('observed_at')
                             THEN 'topup_intent_expired' ELSE NULL END,
@@ -789,3 +799,26 @@ WITH candidates AS (
     FROM intent_update
 )
 SELECT count(*)::bigint AS expired_count FROM intent_update;
+
+-- name: ObserveBillingTopupProgress :one
+WITH candidate AS (
+    SELECT payment.id, intent.id AS intent_id
+    FROM billing_payments AS payment
+    JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
+    WHERE payment.id = sqlc.arg('payment_id')::uuid
+      AND payment.reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND payment.purpose = 'account_topup'
+      AND payment.state = 'settling' AND payment.failure_code IS NULL
+      AND intent.id = sqlc.arg('intent_id')::uuid
+      AND intent.active_payment_id = payment.id AND intent.state = 'settling'
+      AND intent.updated_at <= sqlc.arg('observed_at')
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.narg('transaction_hash')::bytea)
+      AND (intent.submission_progress IS DISTINCT FROM 'confirming' OR sqlc.arg('progress')::text = 'confirming')
+    FOR UPDATE OF payment, intent
+)
+UPDATE billing_topup_intents AS intent
+SET submission_progress = sqlc.arg('progress')::text,
+    submission_transaction_hash = COALESCE(intent.submission_transaction_hash, sqlc.narg('transaction_hash')::bytea),
+    updated_at = sqlc.arg('observed_at')
+FROM candidate WHERE intent.id = candidate.intent_id
+RETURNING intent.id;

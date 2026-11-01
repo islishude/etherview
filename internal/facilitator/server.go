@@ -263,6 +263,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("GET /supported", authenticated(s.supported))
 	mux.HandleFunc("POST /verify", authenticated(func(w http.ResponseWriter, r *http.Request) { s.payment(w, r, false) }))
 	mux.HandleFunc("POST /settle", authenticated(func(w http.ResponseWriter, r *http.Request) { s.payment(w, r, true) }))
+	mux.HandleFunc("POST /progress", authenticated(s.progress))
 	mux.HandleFunc("GET /metrics", authenticated(s.metrics))
 	return mux
 }

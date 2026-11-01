@@ -102,6 +102,7 @@ billing:
 
   payment_chains:
     - network: eip155:31337
+      name: Anvil
       facilitator_url: http://x402-facilitator:8081
       tokens:
         - id: default

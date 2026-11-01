@@ -384,6 +384,7 @@ type Querier interface {
 	ExportLock(ctx context.Context) error
 	ExportRelease(ctx context.Context, token pgtype.UUID) error
 	FacilitatorAcquireLock(ctx context.Context) (bool, error)
+	FacilitatorConfirmBroadcast(ctx context.Context, authorizationID string, transactionHash []byte) (int64, error)
 	FacilitatorFinish(ctx context.Context, authorizationID string, state string, response []byte) (int64, error)
 	FacilitatorGet(ctx context.Context, authorizationID string) (FacilitatorSettlement, error)
 	FacilitatorPending(ctx context.Context, network string) ([]FacilitatorSettlement, error)
@@ -595,6 +596,7 @@ type Querier interface {
 	NativeTransferSourceReceipts(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
 	NativeTransferTransactionBlock(ctx context.Context, chainID pgtype.Numeric, transactionHash []byte, snapshotNumber pgtype.Numeric) (NativeTransferTransactionBlockRow, error)
 	NativeTransferValidateSnapshot(ctx context.Context, chainID pgtype.Numeric, snapshotNumber pgtype.Numeric, snapshotHash []byte) (bool, error)
+	ObserveBillingTopupProgress(ctx context.Context, arg ObserveBillingTopupProgressParams) (pgtype.UUID, error)
 	OperationalMetricSnapshot(ctx context.Context, chainID pgtype.Numeric, settlementCrashDelayMicroseconds int64) ([]OperationalMetricSnapshotRow, error)
 	PruneSearchCatalog(ctx context.Context, chainID pgtype.Numeric, retentionGenerations int64) (int64, error)
 	PublishENSSyncObservation(ctx context.Context, arg PublishENSSyncObservationParams) (int64, error)

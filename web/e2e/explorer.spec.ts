@@ -248,6 +248,12 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
   page,
 }) => {
   const snapshots: string[] = [];
+  const normalizationRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.includes("/assets/ens-normalize-")) {
+      normalizationRequests.push(request.url());
+    }
+  });
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
     const payload = (await response.json()) as { data: { features: Record<string, boolean> } };
@@ -299,9 +305,11 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
   await page.goto("/transactions");
 
   const search = page.getByRole("searchbox", { name: "Search" });
+  expect(normalizationRequests).toEqual([]);
   await search.fill("RaFFY🚴‍♂️.eTh");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page).toHaveURL(/q=raffy/);
+  expect(normalizationRequests).toHaveLength(1);
   await expect(page.getByText("raffy🚴‍♂.eth", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });

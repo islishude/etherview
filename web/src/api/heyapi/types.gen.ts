@@ -236,6 +236,7 @@ export type BillingPaymentOption = {
 };
 
 export type BillingPaymentChain = {
+    name: string;
     network: string;
     tokens: Array<BillingPaymentOption>;
 };
@@ -288,6 +289,10 @@ export type BillingTopupIntent = {
     state: BillingTopupIntentState;
     payment_id?: string | null;
     transaction_hash?: Hash | null;
+    /**
+     * Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
+     */
+    submission_progress?: 'submitting' | 'confirming' | 'unknown';
     failure_code?: string | null;
     expires_at: string;
     credited_at?: string | null;

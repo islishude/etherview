@@ -188,7 +188,9 @@ func (c *chainClient) WriteContract(ctx context.Context, address string, raw []b
 	// Once durable, always return the original hash, even if broadcast is ambiguous.
 	// The receipt wait and outer journal then report settlement_pending.
 	if c.guard(ctx) == nil {
-		_ = c.client.SendTransaction(ctx, signed)
+		if c.client.SendTransaction(ctx, signed) == nil {
+			_, _ = c.queries.FacilitatorConfirmBroadcast(ctx, id, signed.Hash().Bytes())
+		}
 	}
 	return signed.Hash().Hex(), nil
 }
@@ -202,6 +204,9 @@ func (c *chainClient) WaitForTransactionReceipt(ctx context.Context, hash string
 			if e == nil && head >= r.BlockNumber.Uint64() && head-r.BlockNumber.Uint64()+1 >= c.config.Confirmations {
 				canonical, e := c.client.HeaderByNumber(ctx, r.BlockNumber)
 				if e == nil && canonical.Hash() == r.BlockHash && r.TxHash == common.HexToHash(hash) {
+					if id, ok := ctx.Value(authorizationContext{}).(string); ok && c.queries != nil {
+						_, _ = c.queries.FacilitatorConfirmBroadcast(ctx, id, r.TxHash.Bytes())
+					}
 					return &evm.TransactionReceipt{Status: r.Status, BlockNumber: r.BlockNumber.Uint64(), TxHash: r.TxHash.Hex(), Logs: r.Logs}, nil
 				}
 			}

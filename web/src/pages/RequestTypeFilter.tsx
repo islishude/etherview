@@ -1,6 +1,7 @@
+import { DropdownChevron } from "@/components/DropdownChevron";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronDown, ListFilter, Search } from "lucide-react";
+import { Check, ListFilter, Search } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ExecutionRequestType } from "@/api/heyapi/types.gen";
 import { formatInteger } from "@/components/format";
@@ -76,7 +77,7 @@ export function RequestTypeFilter({
         <UIIcon icon={ListFilter} size={16} />
         <span>{label(value)}</span>
         <span className="request-filter-count">{count(value)}</span>
-        <UIIcon icon={ChevronDown} size={16} />
+        <DropdownChevron />
       </button>
       {open && (
         <div className="request-filter-popover" id={id}>

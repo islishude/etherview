@@ -19,10 +19,26 @@ for (const appearance of appearanceCases) {
   }, testInfo) => {
     await configureAppearance(page, appearance);
     await page.addInitScript((account) => {
+      let chainID = "0x1";
+      let rejectSwitch = true;
       const provider = {
-        async request({ method }: { method: string }) {
+        async request({ method, params }: { method: string; params?: { chainId: string }[] }) {
           if (method === "eth_accounts" || method === "eth_requestAccounts") return [account];
-          if (method === "eth_chainId") return "0x1";
+          if (method === "eth_chainId") return chainID;
+          if (method === "wallet_switchEthereumChain") {
+            if (rejectSwitch) {
+              rejectSwitch = false;
+              throw { code: 4001, message: "private provider details" };
+            }
+            chainID = params![0]!.chainId;
+            return null;
+          }
+          if (method === "eth_signTypedData_v4") {
+            await new Promise<void>((resolve) =>
+              window.addEventListener("release-topup-signature", () => resolve(), { once: true }),
+            );
+            return `0x${"11".repeat(64)}1b`;
+          }
           if (method === "eth_call") return `0x${25000000n.toString(16).padStart(64, "0")}`;
           throw new Error(`Unexpected authorization: ${method}`);
         },
@@ -105,7 +121,7 @@ for (const appearance of appearanceCases) {
               x402_topups_enabled: true,
               x402_version: 2,
               scheme: "exact",
-              network: "eip155:1",
+              network: "eip155:31337",
               asset,
               recipient: address,
               asset_transfer_methods: ["eip3009", "permit2"],
@@ -192,6 +208,39 @@ for (const appearance of appearanceCases) {
     await page.locator(".billing-connect button").click();
     await expect(page.locator(".billing-connect")).toHaveCount(0);
     await page.locator(".billing-payment h2").click();
+    await expect(page.locator(".billing-wallet-balance")).not.toContainText("25");
+    await checkView("payment-before-balance");
+    await page
+      .getByRole("button", { name: appearance.language === "zh" ? "查询余额" : "Check balance" })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      appearance.language === "zh" ? "已取消网络切换" : "Network switch cancelled",
+    );
+    await expect(page.getByRole("alert")).not.toContainText("private provider details");
+    await expect(page.locator("#billing-payment-network")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#billing-network-error")).toContainText(
+      appearance.language === "zh" ? "已取消网络切换" : "Network switch cancelled",
+    );
+    await expect(page.locator(".billing-wallet-balance")).toContainText(
+      appearance.language === "zh" ? "不可用" : "Unavailable",
+    );
+    await expect(page.locator(".billing-wallet-balance")).not.toContainText(
+      appearance.language === "zh" ? "无法检查" : "Unable to check",
+    );
+    expect(writes).toEqual([]);
+    await checkView("payment-switch-rejected");
+    await page
+      .getByRole("button", {
+        name: appearance.language === "zh" ? "查询余额" : "Check balance",
+      })
+      .click();
+    await expect(page.locator("#billing-network-error")).toHaveCount(0);
+    await expect(page.locator(".billing-wallet-balance")).toContainText("25");
+    await expect(
+      page.getByRole("button", {
+        name: appearance.language === "zh" ? "刷新余额" : "Refresh balance",
+      }),
+    ).toBeEnabled();
     await checkView("payment");
     await expect(page.locator(".billing-balance-values dd").first()).toHaveText("25");
     await expect(page.locator(".billing-prices")).toHaveCount(0);
@@ -234,6 +283,150 @@ for (const appearance of appearanceCases) {
     await checkView("payment-history");
     await page.locator(".billing-view-switch button").first().click();
     await expect(amountInput).toHaveValue("1.25");
+    expect(writes).toEqual([]);
+    await expect(page.locator("#billing-payment-network")).toContainText(
+      "Test Network (eip155:31337)",
+    );
+    await expect(page.locator("#billing-payment-token option:checked")).toContainText(asset);
+    await expect(page.locator(".billing-payment-destination")).toHaveCount(0);
+    const paymentConfig = testBillingConfig({
+      network: "eip155:31337",
+      asset,
+      recipient: address,
+      asset_decimals: 6,
+      minimum_topup_amount_atomic: "1",
+      maximum_topup_amount_atomic: largeAmount,
+    });
+    const paymentIntent = {
+      id: "00000000-0000-7000-8000-000000000067",
+      user_id: "private-user",
+      amount_atomic: "1250000",
+      credit_amount_atomic: "1250000",
+      network: paymentConfig.network,
+      asset,
+      recipient: address,
+      payer: address,
+      state: "open",
+      created_at: timestamp,
+      updated_at: timestamp,
+      expires_at: "2099-01-01T00:00:00Z",
+      payment_option: paymentConfig.payment_chains[0]!.tokens[0],
+    };
+    let releaseCreation!: () => void;
+    const creationGate = new Promise<void>((resolve) => {
+      releaseCreation = resolve;
+    });
+    await page.route("**/api/v1/billing/topup-intents", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      await creationGate;
+      return route.fulfill({
+        json: envelope({
+          ...paymentIntent,
+          id: failPayment ? "00000000-0000-7000-8000-000000000068" : paymentIntent.id,
+        }),
+      });
+    });
+    let failPayment = false;
+    let submissionProgress = "submitting";
+    let releasePayment!: () => void;
+    const paymentGate = new Promise<void>((resolve) => {
+      releasePayment = resolve;
+    });
+    await page.route("**/api/v1/billing/topup-intents/*/pay", async (route) => {
+      if (failPayment)
+        return route.fulfill({ status: 500, json: { error: { code: "internal_error" } } });
+      if (!route.request().headers()["payment-signature"])
+        return route.fulfill({
+          status: 402,
+          headers: {
+            "PAYMENT-REQUIRED": Buffer.from(
+              JSON.stringify({
+                x402Version: 2,
+                resource: { url: route.request().url() },
+                accepts: [
+                  {
+                    scheme: "exact",
+                    network: paymentConfig.network,
+                    asset,
+                    payTo: address,
+                    amount: "1250000",
+                    maxTimeoutSeconds: 60,
+                    extra: {
+                      assetTransferMethod: "eip3009",
+                      name: paymentConfig.asset_eip712_name,
+                      version: paymentConfig.asset_eip712_version,
+                    },
+                  },
+                ],
+              }),
+            ).toString("base64"),
+          },
+        });
+      await paymentGate;
+      return route.fulfill({
+        json: envelope({
+          intent: { ...paymentIntent, state: "credited", transaction_hash: hash },
+          account: {},
+        }),
+      });
+    });
+    await page.route(`**/api/v1/billing/topup-intents/${paymentIntent.id}`, (route) =>
+      route.fulfill({
+        json: envelope({
+          ...paymentIntent,
+          state: "settling",
+          submission_progress: submissionProgress,
+          transaction_hash: submissionProgress === "confirming" ? hash : null,
+        }),
+      }),
+    );
+    const confirm = page.getByRole("button", {
+      name: appearance.language === "zh" ? "充值并授权" : "Top up & authorize",
+    });
+    const continueButton = page.getByRole("button", {
+      name: appearance.language === "zh" ? "继续充值" : "Continue topping up",
+    });
+    await confirm.click();
+    await expect(page.locator(".billing-topup-status.processing")).toBeVisible();
+    await expect(page.locator(".billing-steps, .billing-topup-form")).toHaveCount(0);
+    await checkView("topup-processing");
+    releaseCreation();
+    await expect(page.locator(".billing-topup-steps [aria-current=step]")).toContainText(
+      appearance.language === "zh" ? "等待用户签名" : "Waiting for your signature",
+    );
+    await checkView("topup-signing");
+    await page.evaluate(() => window.dispatchEvent(new Event("release-topup-signature")));
+    await expect(page.locator(".billing-topup-steps [aria-current=step]")).toContainText(
+      appearance.language === "zh" ? "等待协调人提交交易" : "Waiting for the facilitator",
+    );
+    submissionProgress = "confirming";
+    await expect(page.locator(".billing-topup-steps [aria-current=step]")).toContainText(
+      appearance.language === "zh" ? "等待交易确认" : "Waiting for transaction confirmation",
+    );
+    await checkView("topup-confirming");
+    releasePayment();
+    await expect(page.locator(".billing-topup-status.success")).toBeVisible();
+    await checkView("topup-success");
+    await page
+      .getByRole("button", {
+        name: appearance.language === "zh" ? "查看充值历史" : "View top-up history",
+      })
+      .click();
+    await expect(page.locator(".billing-history-controls select")).toHaveValue("topups");
+    await page.locator(".billing-view-switch button").first().click();
+    await expect(page.locator(".billing-topup-status.success")).toBeVisible();
+    await continueButton.click();
+    await expect(amountInput).toBeFocused();
+    await expect(amountInput).toHaveValue("");
+    failPayment = true;
+    await amountInput.fill("1.25");
+    await confirm.click();
+    await expect(page.locator(".billing-topup-status.failure")).toBeVisible();
+    await expect(page.locator(".billing-topup-form")).toHaveCount(0);
+    await checkView("topup-failure");
+    await continueButton.click();
+    await expect(amountInput).toBeFocused();
+    expect(writes).toHaveLength(5);
     await page.goto("/account");
     await expect(page.locator(".profile-details .account-address")).toHaveAttribute(
       "href",
@@ -241,7 +434,6 @@ for (const appearance of appearanceCases) {
     );
     await page.locator(".profile-details .account-address").click();
     await expect(page).toHaveURL(new RegExp(`/address/${address}`));
-    expect(writes).toEqual([]);
     expect(external).toEqual([]);
     expect(errors).toEqual([]);
   });

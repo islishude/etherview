@@ -183,3 +183,32 @@ uncertain payments still require reconciliation before any new attempt.
 multi-chain signing and durable transaction boundary. P60-T26 replaces the local
 custom Permit2 settlement fixture with the standard contract path. P60-T27 retains
 separate real AWS and multi-network acceptance.
+
+## Payment network display names
+
+Each configured payment chain requires a nonblank `name` of 1–128 characters.
+The billing configuration API exposes this name alongside its CAIP-2 `network`
+and token options. Names are presentation metadata only: wallet transitions,
+authorizations and immutable payment identities continue to use `network`.
+The UI displays token addresses beside selection and retains payer/recipient
+details in history. Loading and durable payment outcomes stay in the top-up
+card until the user chooses another top-up or views history.
+
+## Top-up progress observations
+
+A nullable submission progress observation (`submitting`, `confirming`, or
+`unknown`) and immutable observed transaction hash belong to the top-up intent,
+separately from the financial state. The API polls the authenticated facilitator
+progress endpoint at most once per second only while its original settlement
+request runs. Each query is bounded to one second. Writer updates lock the
+payment and intent, require the current reservation owner and active settling
+payment, reject older observations and hash changes, and cannot replace a terminal
+result. The observer is cancelled and joined before settlement publication.
+A final bounded writer operation records outcomes even if the browser disconnects.
+
+The browser starts three-second intent polling when the signed payment is sent.
+Wallet signing and optional exact Permit2 approval steps are local observations;
+reload recovers only durable server observations. A hash alone does not prove
+broadcast. Unknown transport outcomes retain the original intent and never
+automatically resubmit payment. Only the existing atomic credit publication
+completes the top-up. Progress observation never credits or reconciles an account.

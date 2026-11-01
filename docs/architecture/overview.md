@@ -1313,7 +1313,7 @@ to the operation.
 
 ### Multi-payment funding policy
 
-`billing.payment_chains` owns up to 32 payment networks, each with a server-side
+`billing.payment_chains` owns up to 32 payment networks, each with a required public display `name`, a server-side
 facilitator and up to 32 token options. Option IDs are globally unique; addresses
 are unique within a chain. Required precision is 0–255. Positive integer rate
 numerator/denominator converts token atomic units into six-decimal credit atomic
@@ -1333,3 +1333,14 @@ connection lock and per-chain queues prevent concurrent nonce allocation. Restar
 only reconciles original transaction hashes. Account credits remain owned by the
 existing API-side fenced ledger. Preview uses this same implementation with
 standard Permit2/proxy contracts on Geth and Anvil.
+
+### Top-up progress
+
+The account top-up card presents wallet signature, facilitator submission and
+transaction confirmation as distinct steps, with optional Permit2 approval
+steps and bilingual unknown-outcome guidance. The API observes the facilitator's
+authenticated read-only journal progress while the original settlement runs and
+publishes fenced observations on the intent. Browser intent polling begins at
+signed submission, preserves terminal results and known hashes, and restores
+durable observations on reload. Neither progress nor a transaction hash credits
+an account; ADR-0044 and ADR-0059 retain the settlement and publication boundaries.

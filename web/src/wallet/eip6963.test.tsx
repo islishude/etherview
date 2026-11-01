@@ -1,3 +1,4 @@
+import "@/i18n";
 import { testBillingConfig } from "@/billing/testFixtures";
 import { useState, type ReactNode } from "react";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
@@ -10,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as billingAPI from "@/api/billing";
 import type { AuthChallenge } from "@/api/auth";
 import {
+  BillingChainError,
   assertWalletChain,
   buildAddEthereumChainParameter,
   chainsMatch,
@@ -196,6 +198,13 @@ describe("EIP-6963 wallet boundary", () => {
     "unexpected-chain",
     "restore-rejected",
     "switch-rejected",
+    "switch-noop",
+    "switch-invalid",
+    "switch-failed",
+    "switch-account",
+    "switch-disconnect",
+    "restore-pending",
+    "restore-operation-failed",
   ])("fences payment chain transitions: %s", async (scenario) => {
     vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue(
       testBillingConfig({
@@ -206,7 +215,18 @@ describe("EIP-6963 wallet boundary", () => {
     const fake = createFakeProvider({ eth_signTypedData_v4: walletSignature });
     fake.setResponse("wallet_switchEthereumChain", ({ params }: EIP1193RequestArguments) => {
       const chain = (params as [{ chainId: string }])[0].chainId;
-      if (scenario === "switch-rejected" || (scenario === "restore-rejected" && chain === "0x1")) {
+      if (scenario === "switch-account") {
+        fake.emit("accountsChanged", [accountB]);
+        return null;
+      }
+      if (scenario === "switch-disconnect") {
+        fake.emit("disconnect", { code: 4900 });
+        return null;
+      }
+      if (scenario === "switch-noop") return null;
+      if (scenario === "switch-invalid") return "invalid";
+      if (scenario === "switch-failed") throw new Error("private provider URL");
+      if (scenario === "switch-rejected" || (scenario.startsWith("restore-") && chain === "0x1")) {
         throw { code: 4001 };
       }
       fake.setResponse("eth_chainId", chain);
@@ -269,6 +289,8 @@ describe("EIP-6963 wallet boundary", () => {
 
       if (scenario === "account-change") fake.emit("accountsChanged", [accountB]);
       if (scenario === "unexpected-chain") fake.emit("chainChanged", "0x2");
+      if (scenario === "restore-pending") throw new Error("payment pending");
+      if (scenario === "restore-operation-failed") throw new Error("payment failed");
       return "settled";
     });
     let outcome: unknown;
@@ -285,7 +307,24 @@ describe("EIP-6963 wallet boundary", () => {
       )
     ) {
       expect(outcome).toBe("settled");
+    } else if (scenario === "restore-pending" || scenario === "restore-operation-failed") {
+      expect(outcome).toEqual(
+        new Error(scenario === "restore-pending" ? "payment pending" : "payment failed"),
+      );
     } else expect(outcome).toBeInstanceOf(WalletBoundaryError);
+    if (scenario.startsWith("switch-")) {
+      expect(outcome).toBeInstanceOf(BillingChainError);
+      expect(outcome).toMatchObject({ stage: "entry", targetChainID: "11155111" });
+      expect(String(outcome)).not.toContain("private provider URL");
+      expect(
+        fake.request.mock.calls.some(([request]) => request.method === "eth_signTypedData_v4"),
+      ).toBe(false);
+    }
+    if (scenario.startsWith("restore-")) {
+      expect(current.active).toBeUndefined();
+      expect(await screen.findByRole("alert")).toHaveTextContent("Unable to return to network 1");
+      expect(screen.getByRole("alert")).toHaveTextContent("does not change the payment outcome");
+    }
     if (scenario === "restore-rejected") expect(current.active).toBeUndefined();
     if (
       ["event", "no-event", "same-account-event", "late-chain-event", "switch-rejected"].includes(
@@ -302,7 +341,7 @@ describe("EIP-6963 wallet boundary", () => {
       expect(current.active?.authRevision).toBe(original.authRevision);
       expect(current.active?.revision).toBe(restoredRevision);
     }
-    expect(operation).toHaveBeenCalledTimes(scenario === "switch-rejected" ? 0 : 1);
+    expect(operation).toHaveBeenCalledTimes(scenario.startsWith("switch-") ? 0 : 1);
     vi.restoreAllMocks();
   });
 

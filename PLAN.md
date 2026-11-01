@@ -105,3 +105,5 @@ ENS operation history and name-page redesign are complete under P20-T31 → P40-
 P40-T30 completed unified proxy browsing and interaction reads on the latest completed snapshot.
 
 P40-T31 completed latest-processed holder, NFT owner and statistics reads, including retained hourly rollups; wallet actions no longer inherit unrelated browsing invalidation.
+
+P60-T28 completed durable facilitator broadcast progress and a recoverable top-up step list with local acceptance; P60-T27 retains separate real-environment acceptance.

@@ -92,7 +92,7 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	cfg.Features.APIBilling = true
 	cfg.Features.X402Topups = true
 	decimals := uint8(6)
-	cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532", Tokens: []paymentoption.Option{{ID: "default", Name: "USDC", AssetDecimals: &decimals, AssetEIP712Name: "USDC", AssetEIP712Version: "2", CreditRateNumerator: "1", CreditRateDenominator: "1"}}}}
+	cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Name: "Base Sepolia", Network: "eip155:84532", Tokens: []paymentoption.Option{{ID: "default", Name: "USDC", AssetDecimals: &decimals, AssetEIP712Name: "USDC", AssetEIP712Version: "2", CreditRateNumerator: "1", CreditRateDenominator: "1"}}}}
 	cfg.Billing.PaymentChains[0].Tokens[0].AssetTransferMethods = []string{"eip3009", "permit2"}
 	cfg.Billing.PaymentChains[0].Tokens[0].MinimumTopupAmountAtomic = "1"
 	cfg.Billing.PaymentChains[0].Tokens[0].MaximumTopupAmountAtomic = "1000000"
@@ -124,6 +124,7 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 		response.Data.X402Version != 2 ||
 		response.Data.Scheme != gen.BillingConfigSchemeExact ||
 		len(response.Data.PaymentChains) != 1 ||
+		response.Data.PaymentChains[0].Name != "Base Sepolia" ||
 		response.Data.PaymentChains[0].Tokens[0].Asset != "0x52908400098527886E0F7030069857D2E4169EE7" ||
 		len(response.Data.PaymentChains[0].Tokens) != 1 ||
 		response.Data.PaymentChains[0].Tokens[0].Recipient != "0xde709f2102306220921060314715629080e2fb77" ||

@@ -77,6 +77,21 @@ paths:
           {
             description: "Unavailable, busy or awaiting reconciliation; do not automatically resubmit.",
           }
+  /progress:
+    post:
+      operationId: facilitatorProgress
+      requestBody: { $ref: "#/components/requestBodies/Payment" }
+      responses:
+        "200":
+          description: Read-only journal observation bound to the exact authorization and request digest. Never submits or reconciles a payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementProgress"
+        "400": { description: Invalid or unsupported payload. }
+        "401": { description: Invalid bearer credential. }
+        "409": { description: Conflicting authorization reuse. }
+        "503": { description: Journal unavailable. }
   /metrics:
     get:
       operationId: facilitatorMetrics
@@ -102,6 +117,18 @@ paths:
         "204": { description: Active and all configured chains healthy. }
         "503": { description: Degraded; healthy chains remain usable. }
 components:
+  schemas:
+    SettlementProgress:
+      type: object
+      additionalProperties: false
+      required: [stage]
+      properties:
+        stage:
+          type: string
+          enum: [submitting, confirming, unknown]
+        transaction:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{64}$"
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer }
   requestBodies:

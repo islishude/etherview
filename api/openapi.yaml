@@ -3105,8 +3105,13 @@ components:
     BillingPaymentChain:
       type: object
       additionalProperties: false
-      required: [network, tokens]
+      required: [name, network, tokens]
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: "\\S"
         network:
           type: string
           pattern: "^eip155:[1-9][0-9]*$"
@@ -3264,6 +3269,10 @@ components:
           allOf:
             - $ref: "#/components/schemas/Hash"
           nullable: true
+        submission_progress:
+          type: string
+          enum: [submitting, confirming, unknown]
+          description: Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
         failure_code:
           type: string
           nullable: true

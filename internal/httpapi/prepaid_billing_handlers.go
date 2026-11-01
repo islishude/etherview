@@ -554,6 +554,10 @@ func billingTopupIntentModel(
 		CreatedAt: intent.CreatedAt.UTC(), UpdatedAt: intent.UpdatedAt.UTC(),
 		FailureCode: intent.FailureCode, CreditedAt: intent.CreditedAt,
 	}
+	if intent.SubmissionProgress != "" {
+		progress := gen.BillingTopupIntentSubmissionProgress(intent.SubmissionProgress)
+		model.SubmissionProgress = &progress
+	}
 	if intent.ActivePaymentID != nil {
 		paymentID, paymentErr := uuid.Parse(*intent.ActivePaymentID)
 		if paymentErr != nil || paymentID.Version() != 4 {

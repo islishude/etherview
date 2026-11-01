@@ -85,7 +85,7 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 	ttl := int(h.cfg.Billing.TopupIntentTTL / time.Second)
 	data.TopupIntentTtlSeconds = &ttl
 	for _, chain := range h.cfg.Billing.PaymentChains {
-		public := gen.BillingPaymentChain{Network: chain.Network, Tokens: []gen.BillingPaymentOption{}}
+		public := gen.BillingPaymentChain{Name: chain.Name, Network: chain.Network, Tokens: []gen.BillingPaymentOption{}}
 		for _, token := range chain.Tokens {
 			token.Network = chain.Network
 			model, err := billingOptionModel(token)

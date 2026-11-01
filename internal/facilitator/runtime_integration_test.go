@@ -204,6 +204,45 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no broadcast")
 	}
+	// Progress remains available while settlement owns the per-chain gate.
+	progressRequest := func(in paymentRequest, authenticated bool) *httptest.ResponseRecorder {
+		body, _ := json.Marshal(in)
+		request := httptest.NewRequest(http.MethodPost, "/progress", bytes.NewReader(body))
+		if authenticated {
+			request.Header.Set("Authorization", "Bearer "+strings.Repeat("t", 32))
+		}
+		result := httptest.NewRecorder()
+		s.Handler().ServeHTTP(result, request)
+		return result
+	}
+	if w := progressRequest(first, false); w.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated progress: %d", w.Code)
+	}
+	progressDeadline := time.Now().Add(3 * time.Second)
+	for {
+		w := progressRequest(first, true)
+		var progress SettlementProgress
+		if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &progress) != nil {
+			t.Fatalf("progress failed: %d %s", w.Code, w.Body)
+		}
+		if progress.Stage == Confirming && progress.Transaction != nil {
+			break
+		}
+		if time.Now().After(progressDeadline) {
+			t.Fatalf("broadcast not observable: %+v", progress)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	changed := signedTestRequest(t, cfg.Chains[0].Network)
+	changed.PaymentPayload = first.PaymentPayload
+	changed.PaymentRequirements.Amount = "101"
+	changed.PaymentPayload.Accepted = changed.PaymentRequirements
+	if w := progressRequest(changed, true); w.Code != http.StatusConflict {
+		t.Fatalf("progress digest mismatch: %d %s", w.Code, w.Body)
+	}
+	if mocks[0].sends.Load() != 1 {
+		t.Fatal("progress broadcast another transaction")
+	}
 	busy := post(signedTestRequest(t, cfg.Chains[0].Network))
 	if busy.Code != http.StatusServiceUnavailable {
 		t.Fatalf("same-chain serialization failed: %d", busy.Code)

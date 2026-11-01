@@ -86,6 +86,10 @@ do not add a global icon registry. `UIIcon` hides decorative SVGs from assistive
 technology; buttons and links own translated names, titles and state. Icon-only
 controls retain visible keyboard focus, and state changes must also update text
 or accessible names. Containers own spacing and color, never SVG size overrides.
+Dropdown indicators use `DropdownChevron` with a 14px Lucide chevron and a 1.5px
+stroke. Form indicators sit 12px from the right edge with 36px text clearance.
+Custom dropdowns rotate from their actual expanded state over 180ms, respecting
+reduced motion; native selects keep a downward indicator.
 `SelectControl` retains a native select and adds the shared decorative chevron;
 forced-colors mode restores the browser arrow. Loading and disclosure icons
 respect reduced motion. Brand assets, wallet/provider imagery, QR payloads and

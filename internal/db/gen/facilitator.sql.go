@@ -22,6 +22,19 @@ func (q *Queries) FacilitatorAcquireLock(ctx context.Context) (bool, error) {
 	return pg_try_advisory_lock, err
 }
 
+const facilitatorConfirmBroadcast = `-- name: FacilitatorConfirmBroadcast :execrows
+UPDATE facilitator_settlements SET broadcast_status='confirmed',updated_at=now()
+WHERE authorization_id=$1 AND transaction_hash=$2 AND broadcast_status <> 'confirmed'
+`
+
+func (q *Queries) FacilitatorConfirmBroadcast(ctx context.Context, authorizationID string, transactionHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorConfirmBroadcast, authorizationID, transactionHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const facilitatorFinish = `-- name: FacilitatorFinish :execrows
 UPDATE facilitator_settlements SET state=$2,response=$3,updated_at=now()
 WHERE authorization_id=$1 AND state IN ('reserved','signed')
@@ -36,7 +49,7 @@ func (q *Queries) FacilitatorFinish(ctx context.Context, authorizationID string,
 }
 
 const facilitatorGet = `-- name: FacilitatorGet :one
-SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, response, created_at, updated_at FROM facilitator_settlements WHERE authorization_id=$1
+SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, broadcast_status, response, created_at, updated_at FROM facilitator_settlements WHERE authorization_id=$1
 `
 
 func (q *Queries) FacilitatorGet(ctx context.Context, authorizationID string) (FacilitatorSettlement, error) {
@@ -52,6 +65,7 @@ func (q *Queries) FacilitatorGet(ctx context.Context, authorizationID string) (F
 		&i.RawTransaction,
 		&i.TransactionHash,
 		&i.State,
+		&i.BroadcastStatus,
 		&i.Response,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -60,7 +74,7 @@ func (q *Queries) FacilitatorGet(ctx context.Context, authorizationID string) (F
 }
 
 const facilitatorPending = `-- name: FacilitatorPending :many
-SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, response, created_at, updated_at FROM facilitator_settlements WHERE network=$1 AND state IN ('reserved','signed') ORDER BY created_at LIMIT 32
+SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, broadcast_status, response, created_at, updated_at FROM facilitator_settlements WHERE network=$1 AND state IN ('reserved','signed') ORDER BY created_at LIMIT 32
 `
 
 func (q *Queries) FacilitatorPending(ctx context.Context, network string) ([]FacilitatorSettlement, error) {
@@ -82,6 +96,7 @@ func (q *Queries) FacilitatorPending(ctx context.Context, network string) ([]Fac
 			&i.RawTransaction,
 			&i.TransactionHash,
 			&i.State,
+			&i.BroadcastStatus,
 			&i.Response,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -135,7 +150,7 @@ func (q *Queries) FacilitatorReserve(ctx context.Context, arg FacilitatorReserve
 }
 
 const facilitatorSaveSigned = `-- name: FacilitatorSaveSigned :execrows
-UPDATE facilitator_settlements SET nonce=$2,raw_transaction=$3,transaction_hash=$4,state='signed',updated_at=now()
+UPDATE facilitator_settlements SET nonce=$2,raw_transaction=$3,transaction_hash=$4,broadcast_status='unknown',state='signed',updated_at=now()
 WHERE authorization_id=$1 AND state='reserved' AND raw_transaction IS NULL
 `
 

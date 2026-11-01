@@ -392,9 +392,6 @@ code {
 .navigation-trigger[aria-expanded="true"] {
   color: var(--brand);
 }
-.navigation-trigger[aria-expanded="true"] svg {
-  transform: rotate(180deg);
-}
 .navigation-popover {
   position: absolute;
   z-index: 30;

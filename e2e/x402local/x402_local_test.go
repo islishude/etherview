@@ -279,7 +279,45 @@ func topup(
 ) topupPayment {
 	t.Helper()
 	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, "100")
-	response := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+	// Hold real blocks so the production API must expose broadcast evidence
+	// before settlement returns. Both all and split topologies execute this path.
+	if err := rpcClient.Client().CallContext(t.Context(), nil, "evm_setAutomine", false); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = rpcClient.Client().CallContext(cleanup, nil, "evm_setAutomine", true)
+	}()
+	result := make(chan *http.Response, 1)
+	go func() { result <- postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header) }()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		var observation gen.BillingTopupIntentResponse
+		doJSON(t, client, http.MethodGet, origin+"/api/v1/billing/topup-intents/"+payment.intentID, origin, "", nil, http.StatusOK, &observation)
+		if observation.Data.SubmissionProgress != nil && *observation.Data.SubmissionProgress == gen.BillingTopupIntentSubmissionProgressConfirming {
+			if observation.Data.State != gen.BillingTopupIntentStateSettling || observation.Data.TransactionHash == nil {
+				t.Fatalf("invalid progress: %+v", observation.Data)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("broadcast progress not published: %+v", observation.Data)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err := rpcClient.Client().CallContext(t.Context(), nil, "evm_mine"); err != nil {
+		t.Fatal(err)
+	}
+	if err := rpcClient.Client().CallContext(t.Context(), nil, "evm_setAutomine", true); err != nil {
+		t.Fatal(err)
+	}
+	var response *http.Response
+	select {
+	case response = <-result:
+	case <-time.After(15 * time.Second):
+		t.Fatal("settlement did not finish after mining")
+	}
 	if response.StatusCode != http.StatusOK || response.Header.Get(x402wire.PaymentResponseHeader) == "" {
 		body, _ := io.ReadAll(response.Body)
 		t.Fatalf("%s top-up status=%d body=%s", method, response.StatusCode, body)

@@ -4,19 +4,21 @@ import type { LucideIcon } from "lucide-react";
 export function UIIcon({
   icon: Icon,
   size = 16,
-  className,
+  className = "",
+  strokeWidth = 2,
 }: {
   icon: LucideIcon;
   size?: 14 | 16 | 20 | 24;
   className?: string;
+  strokeWidth?: 1.5 | 2;
 }) {
   return (
     <Icon
       aria-hidden="true"
       focusable="false"
-      className={className ? `ui-icon ${className}` : "ui-icon"}
+      className={`ui-icon ${className}`}
       size={size}
-      strokeWidth={2}
+      strokeWidth={strokeWidth}
     />
   );
 }

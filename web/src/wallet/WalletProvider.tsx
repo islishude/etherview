@@ -10,9 +10,13 @@ import {
 } from "react";
 import { getAddress, isAddress, toHex, type Address, type Hex } from "viem";
 
+import { Message } from "@/components/Message";
+import { useTranslation } from "react-i18next";
+
 import type { AuthChallenge } from "@/api/auth";
 import { usePublicConfig } from "@/api/publicConfig";
 import {
+  BillingChainError,
   assertWalletChain,
   buildAddEthereumChainParameter,
   EIP6963_ANNOUNCE_EVENT,
@@ -104,6 +108,7 @@ const MAX_DISCOVERED_PROVIDERS = 32;
 const MAX_PROVIDER_ACCOUNTS = 256;
 
 export function WalletProvider({ children }: PropsWithChildren) {
+  const [restorationFailure, setRestorationFailure] = useState<BillingChainError>();
   const publicConfig = usePublicConfig();
   const configuredChainID = publicConfig.data?.chain_id;
   const [providersByID, setProvidersByID] = useState<Map<string, EIP6963ProviderDetail>>(
@@ -437,6 +442,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
     configuredChainID,
     requireProvider,
     setError,
+    setRestorationFailure,
   });
 
   const {
@@ -511,7 +517,21 @@ export function WalletProvider({ children }: PropsWithChildren) {
     ],
   );
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  return (
+    <WalletContext.Provider value={value}>
+      {restorationFailure && <BillingRestorationWarning error={restorationFailure} />}
+      {children}
+    </WalletContext.Provider>
+  );
+}
+
+function BillingRestorationWarning({ error }: { error: BillingChainError }) {
+  const { t } = useTranslation();
+  return (
+    <Message type="error">
+      {t("wallet.errors.restoreFailed", { network: error.targetChainID })}
+    </Message>
+  );
 }
 
 function useLoginPreparation({
@@ -654,6 +674,7 @@ function useBillingChain({
   configuredChainID,
   requireProvider,
   setError,
+  setRestorationFailure,
 }: {
   activeRef: React.RefObject<InternalActiveWallet | undefined>;
   billingScopeRef: React.RefObject<
@@ -662,6 +683,7 @@ function useBillingChain({
   commitActive: (wallet: InternalActiveWallet | undefined, controlled?: boolean) => void;
   configuredChainID: string | undefined;
   requireProvider: (chainID: string | undefined) => Promise<InternalActiveWallet>;
+  setRestorationFailure: (error: BillingChainError) => void;
   setError: (error: WalletBoundaryError["code"] | undefined) => void;
 }) {
   return useCallback(
@@ -719,7 +741,12 @@ function useBillingChain({
         return publicActiveWallet(selected);
       };
       try {
-        const selected = await switchTo(paymentChain);
+        let selected: ActiveWallet;
+        try {
+          selected = await switchTo(paymentChain);
+        } catch (cause) {
+          throw new BillingChainError("entry", paymentChain, toWalletBoundaryError(cause).code);
+        }
         const result = await operation(selected);
         assertScope();
         return result;
@@ -731,16 +758,27 @@ function useBillingChain({
             assertScope();
             if (current.chainID !== original.chainID) await switchTo(original.chainID);
             else await requireProvider(original.chainID);
-          } catch {
+          } catch (cause) {
+            setRestorationFailure(
+              new BillingChainError("restore", original.chainID, toWalletBoundaryError(cause).code),
+            );
             commitActive(undefined);
-            setError("CHAIN_MISMATCH");
+            setError(undefined);
           } finally {
             billingScopeRef.current = undefined;
           }
         }
       }
     },
-    [activeRef, billingScopeRef, commitActive, configuredChainID, requireProvider, setError],
+    [
+      activeRef,
+      billingScopeRef,
+      commitActive,
+      configuredChainID,
+      requireProvider,
+      setError,
+      setRestorationFailure,
+    ],
   );
 }
 

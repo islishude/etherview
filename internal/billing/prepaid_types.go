@@ -60,6 +60,7 @@ type TopupIntent struct {
 	Recipient          common.Address
 	Payer              common.Address
 	State              TopupIntentState
+	SubmissionProgress string
 	ActivePaymentID    *string
 	TransactionHash    *common.Hash
 	FailureCode        *string

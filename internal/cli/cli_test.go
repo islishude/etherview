@@ -607,6 +607,7 @@ billing:
   facilitator_allowed_cidrs: [203.0.113.0/24]
   payment_chains:
     - network: eip155:84532
+      name: Base Sepolia
       facilitator_url: https://facilitator.example
       tokens:
         - id: default

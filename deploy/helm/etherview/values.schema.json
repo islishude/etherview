@@ -1293,6 +1293,7 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
+                  "name",
                   "network",
                   "facilitator_url",
                   "tokens"
@@ -1388,6 +1389,12 @@
                         }
                       }
                     }
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "\\S"
                   }
                 }
               }

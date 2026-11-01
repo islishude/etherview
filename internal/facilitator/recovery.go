@@ -44,5 +44,9 @@ func (s *Service) Rebroadcast(ctx context.Context, id string) error {
 	if err = ch.adapter.client.SendTransaction(ctx, &tx); err != nil {
 		return errors.New("recovery_pending")
 	}
+	_, err = s.queries.FacilitatorConfirmBroadcast(ctx, id, row.TransactionHash)
+	if err != nil {
+		return errors.New("recovery_pending")
+	}
 	return nil
 }

@@ -38,3 +38,20 @@ P60-T26 owns automated local delivery. P60-T27 owns real AWS KMS and funded
 multi-network acceptance. Neither mocked KMS nor local-chain results establish
 production readiness. Existing funded testnet evidence does not cover this new
 facilitator implementation.
+
+## Read-only submission progress
+
+Authenticated `POST /progress` accepts the same bounded payment request as
+settlement and matches both authorization identity and canonical request digest.
+It reads PostgreSQL only, without acquiring the settlement gate, signing,
+broadcasting or reconciling. An absent reservation reports `submitting`; a
+signed transaction with no confirmed broadcast reports `unknown` with its hash.
+A successful RPC broadcast or matching confirmed receipt durably records broadcast
+evidence and permits `confirming`. Journaled signed bytes alone never imply
+submission. A successful settlement is also confirmation evidence. Progress
+responses contain only the closed stage and optional transaction hash, never
+authorization bodies, credentials or raw transactions.
+
+Progress uses the existing authenticated service transport and is observational;
+failures do not cancel settlement or authorize another attempt. Operator exact-byte
+rebroadcast also records confirmed broadcast evidence on success.

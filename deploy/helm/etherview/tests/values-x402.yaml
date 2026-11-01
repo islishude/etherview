@@ -9,6 +9,7 @@ config:
   billing:
     payment_chains:
       - network: eip155:84532
+        name: Base Sepolia
         facilitator_url: https://facilitator.example.com
         tokens:
           - id: default

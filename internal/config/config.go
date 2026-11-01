@@ -322,6 +322,7 @@ type UserAuthConfig struct {
 // FingerprintPepper and FacilitatorHeaders are Secret-only values and are
 // never accepted from YAML.
 type PaymentChainConfig struct {
+	Name           string                 `yaml:"name"`
 	Network        string                 `yaml:"network"`
 	FacilitatorURL string                 `yaml:"facilitator_url"`
 	Tokens         []paymentoption.Option `yaml:"tokens"`

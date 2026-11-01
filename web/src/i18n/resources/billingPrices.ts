@@ -3,6 +3,12 @@ import i18n from "../index";
 export const billingPriceResources = {
   en: {
     billing: {
+      result: {
+        success: "Top-up successful",
+        failure: "Top-up unsuccessful",
+        continue: "Continue topping up",
+        history: "View top-up history",
+      },
       guide: {
         steps: "Top-up progress",
         connectHint:
@@ -17,7 +23,20 @@ export const billingPriceResources = {
         wait: "Not started",
         walletBalance: "Available in wallet",
         refresh: "Refresh balance",
+        query: "Check balance",
+        queryNetwork: "Check balance to temporarily switch to the payment network, then return.",
         loading: "Checking balance…",
+        switchError: {
+          rejected:
+            "Network switch cancelled. Your wallet is not ready to sign payment on {{network}}. Confirm the switch in your wallet and retry.",
+          mismatch:
+            "Your wallet did not switch to {{network}}. Payment signing is blocked. Retry the network switch.",
+          invalid:
+            "Your wallet returned an invalid network-switch response for {{network}}. Payment signing is blocked. Retry the network switch.",
+          failed:
+            "Unable to switch to {{network}}. Your wallet is not ready to sign payment on this network. Confirm the switch in your wallet and retry.",
+        },
+        balanceUnavailable: "Unavailable",
         unavailable: "Unable to check wallet balance. Refresh to retry.",
         insufficient: "Wallet token balance is insufficient. Payment was not submitted.",
         shortfall: "Insufficient balance. Missing {{amount}} tokens.",
@@ -45,6 +64,12 @@ export const billingPriceResources = {
   },
   zh: {
     billing: {
+      result: {
+        success: "充值成功",
+        failure: "充值未完成",
+        continue: "继续充值",
+        history: "查看充值历史",
+      },
       guide: {
         steps: "充值进度",
         connectHint: "请先连接当前登录账户的钱包，以查看余额并充值。",
@@ -58,7 +83,18 @@ export const billingPriceResources = {
         wait: "未开始",
         walletBalance: "钱包可用",
         refresh: "刷新余额",
+        query: "查询余额",
+        queryNetwork: "点击查询余额，临时切换到支付网络，查询后返回原网络。",
         loading: "正在检查余额…",
+        switchError: {
+          rejected:
+            "已取消网络切换，钱包尚未准备好在 {{network}} 签署付款。请在钱包中确认切网后重试。",
+          mismatch: "钱包未实际切换到 {{network}}，暂时无法签署付款。请重试切换网络。",
+          invalid: "钱包切换到 {{network}} 时返回异常，暂时无法签署付款。请重试切换网络。",
+          failed:
+            "未能切换到 {{network}}，钱包尚未准备好在该网络签署付款。请在钱包中确认切网后重试。",
+        },
+        balanceUnavailable: "不可用",
         unavailable: "无法检查钱包余额，请刷新重试。",
         insufficient: "钱包代币余额不足，付款未提交。",
         shortfall: "余额不足，还差 {{amount}} 个代币。",

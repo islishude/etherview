@@ -212,6 +212,7 @@ billing:
   base_price_atomic: "1"
   payment_chains:
     - network: eip155:84532
+      name: Base Sepolia
       facilitator_url: https://facilitator.example
       tokens:
         - id: default
@@ -439,7 +440,7 @@ func validX402Config() Config {
 	cfg.Security.APIKeyPepper = strings.Repeat("k", 32)
 	cfg.UserAuth.SessionPepper = strings.Repeat("s", 32)
 	decimals := uint8(6)
-	cfg.Billing.PaymentChains = []PaymentChainConfig{{Network: "eip155:84532", Tokens: []paymentoption.Option{{ID: "default", Name: "USDC", AssetDecimals: &decimals, AssetEIP712Name: "USDC", AssetEIP712Version: "2", CreditRateNumerator: "1", CreditRateDenominator: "1"}}}}
+	cfg.Billing.PaymentChains = []PaymentChainConfig{{Name: "Base Sepolia", Network: "eip155:84532", Tokens: []paymentoption.Option{{ID: "default", Name: "USDC", AssetDecimals: &decimals, AssetEIP712Name: "USDC", AssetEIP712Version: "2", CreditRateNumerator: "1", CreditRateDenominator: "1"}}}}
 	cfg.Billing.PaymentChains[0].FacilitatorURL = "https://facilitator.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"203.0.113.0/24"}
 	cfg.Billing.PaymentChains[0].Network = "eip155:84532"
@@ -480,6 +481,21 @@ func TestHelmBillingBasePriceSchema(t *testing.T) {
 	}
 }
 
+func TestPaymentChainNameLength(t *testing.T) {
+	for _, name := range []string{"A", strings.Repeat("a", 128), strings.Repeat("链", 128)} {
+		cfg := validX402Config()
+		cfg.Billing.PaymentChains[0].Name = name
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("valid name rejected: %v", err)
+		}
+	}
+	cfg := validX402Config()
+	cfg.Billing.PaymentChains[0].Name = strings.Repeat("链", 129)
+	if cfg.Validate() == nil {
+		t.Fatal("accepted oversized Unicode name")
+	}
+}
+
 func TestMultiplePaymentOptions(t *testing.T) {
 	cfg := validX402Config()
 	second := cfg.Billing.PaymentChains[0]
@@ -494,6 +510,9 @@ func TestMultiplePaymentOptions(t *testing.T) {
 		name   string
 		change func(*Config)
 	}{
+		{"missing chain name", func(c *Config) { c.Billing.PaymentChains[0].Name = "" }},
+		{"blank chain name", func(c *Config) { c.Billing.PaymentChains[0].Name = " \t " }},
+		{"long chain name", func(c *Config) { c.Billing.PaymentChains[0].Name = strings.Repeat("a", 129) }},
 		{"duplicate chain", func(c *Config) { c.Billing.PaymentChains[1].Network = c.Billing.PaymentChains[0].Network }},
 		{"duplicate option", func(c *Config) { c.Billing.PaymentChains[1].Tokens[0].ID = c.Billing.PaymentChains[0].Tokens[0].ID }},
 		{"duplicate token", func(c *Config) {

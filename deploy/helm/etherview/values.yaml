@@ -418,6 +418,7 @@ config:
   # Fingerprint and facilitator-header secrets have no values keys and are
   # accepted only from API-role Secret-backed environment variables.
   billing:
+    # Each chain requires name (1–128 nonblank characters), network, facilitator_url and tokens.
     payment_chains: []
     facilitator_allowed_cidrs: []
     facilitator_timeout: 10s

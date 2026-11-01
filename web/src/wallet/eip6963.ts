@@ -296,6 +296,18 @@ export class WalletBoundaryError extends Error {
   }
 }
 
+// Safe metadata only: never retain provider messages, nested errors or credentials.
+export class BillingChainError extends WalletBoundaryError {
+  constructor(
+    readonly stage: "entry" | "restore",
+    readonly targetChainID: string,
+    code: WalletBoundaryErrorCode,
+  ) {
+    super(code);
+    this.name = "BillingChainError";
+  }
+}
+
 export function toWalletBoundaryError(cause: unknown): WalletBoundaryError {
   if (cause instanceof WalletBoundaryError) return cause;
 

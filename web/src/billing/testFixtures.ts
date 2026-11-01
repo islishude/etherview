@@ -26,7 +26,9 @@ export function testBillingConfig(value: Partial<BillingPaymentConfig> = {}): Bi
     ...value,
     ...option,
     credit_decimals: 6,
-    payment_chains: value.payment_chains ?? [{ network: option.network, tokens: [option] }],
+    payment_chains: value.payment_chains ?? [
+      { name: "Test Network", network: option.network, tokens: [option] },
+    ],
   };
 }
 export function testTopupIntent(

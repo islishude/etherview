@@ -154,6 +154,7 @@ billing:
 
   payment_chains:
     - network: eip155:48815
+      name: Etherview Preview
       facilitator_url: http://x402-facilitator:8081
       tokens:
         - id: default
@@ -181,6 +182,7 @@ billing:
           maximum_topup_amount_atomic: "1000000000000000000000000"
           asset_transfer_methods: [eip3009, permit2]
     - network: eip155:31337
+      name: Anvil
       facilitator_url: http://x402-facilitator:8081
       tokens:
         - id: anvil-usd6

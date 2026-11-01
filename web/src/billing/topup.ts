@@ -1,3 +1,4 @@
+import type { TopupProgress } from "./progress";
 import { checkTopupBalance, TopupBalanceError } from "./balance";
 import { x402Client } from "@x402/core/client";
 import type { Network, PaymentRequirements } from "@x402/core/types";
@@ -75,6 +76,7 @@ export async function payBillingTopup(options: {
   method: BillingTransferMethod;
   csrfToken: string;
   wallet: TopupWallet;
+  onProgress?: (progress: TopupProgress) => void;
 }): Promise<BillingTopupReceipt> {
   const { intent, method, csrfToken, wallet } = options;
   const snapshot = intent.payment_option;
@@ -128,7 +130,7 @@ export async function payBillingTopup(options: {
     );
   if (method === "permit2") {
     await checkBalance();
-    await ensureExactPermit2Allowance(wallet, binding);
+    await ensureExactPermit2Allowance(wallet, binding, options.onProgress);
   }
   let balanceError: TopupBalanceError | undefined;
   const signer = {
@@ -140,6 +142,7 @@ export async function payBillingTopup(options: {
         if (cause instanceof TopupBalanceError) balanceError = cause;
         throw cause;
       }
+      options.onProgress?.({ stage: "signing" });
       return wallet.signBillingTypedData(typedData, binding, wallet.active);
     },
   };
@@ -164,7 +167,10 @@ export async function payBillingTopup(options: {
   const fetchWithPayment = wrapFetchWithPayment((input, init) => {
     const request = new Request(input, init);
     // Mark before transport: a lost response does not prove settlement failed.
-    if (request.headers.has("PAYMENT-SIGNATURE")) paymentSubmitted = true;
+    if (request.headers.has("PAYMENT-SIGNATURE")) {
+      paymentSubmitted = true;
+      options.onProgress?.({ stage: "submitting" });
+    }
     return globalThis.fetch(request);
   }, client);
   const response = await fetchWithPayment(
@@ -178,23 +184,31 @@ export async function payBillingTopup(options: {
         "X-CSRF-Token": csrfToken,
       },
     },
-  ).catch((cause: unknown) => {
+  ).catch(() => {
     if (!paymentSubmitted && balanceError) throw balanceError;
     if (!paymentSubmitted) throw new TopupAuthorizationError();
-    throw cause;
+    throw new TopupPendingError(intent.id);
   });
-  if (response.status === 402 && response.headers.has("PAYMENT-RESPONSE")) {
+  if (paymentSubmitted && response.status === 402 && response.headers.has("PAYMENT-RESPONSE")) {
     throw new TopupPendingError(intent.id);
   }
-  if (!response.ok) throw new Error(`Top-up failed (${response.status})`);
-  const payload: unknown = await response.json();
-  if (!isReceiptEnvelope(payload)) throw new TypeError("Top-up response is invalid");
+  if (!response.ok) {
+    if (paymentSubmitted && response.status >= 500) throw new TopupPendingError(intent.id);
+    throw new Error(`Top-up failed (${response.status})`);
+  }
+  const invalidResponse = () =>
+    paymentSubmitted ? new TopupPendingError(intent.id) : new TopupAuthorizationError();
+  const payload: unknown = await response.json().catch(() => {
+    throw invalidResponse();
+  });
+  if (!isReceiptEnvelope(payload)) throw invalidResponse();
   return payload.data;
 }
 
 export async function ensureExactPermit2Allowance(
   wallet: TopupWallet,
   binding: BillingSigningBinding,
+  onProgress?: (progress: TopupProgress) => void,
 ): Promise<void> {
   const allowanceData = encodeFunctionData({
     abi: allowanceABI,
@@ -212,6 +226,7 @@ export async function ensureExactPermit2Allowance(
   });
   const amount = BigInt(binding.amountAtomic);
   if (allowance === amount) return;
+  onProgress?.({ stage: "approval" });
   const transaction = await wallet.sendTransaction(
     {
       to: binding.asset,
@@ -223,6 +238,7 @@ export async function ensureExactPermit2Allowance(
     },
     binding.chainID,
   );
+  onProgress?.({ stage: "approvalConfirming", approvalHash: transaction });
   await wallet.waitForBillingTransaction(transaction, wallet.active);
 }
 

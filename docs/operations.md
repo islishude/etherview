@@ -1891,7 +1891,10 @@ or token validation. Account/session changes and navigation discard that buffer.
 
 ## Multiple x402 payment options
 
-Configure `billing.payment_chains` with `network`, `facilitator_url` and `tokens`.
+Configure `billing.payment_chains` with `name`, `network`, `facilitator_url` and `tokens`.
+The required `name` is a nonblank display label of 1–128 characters; for example,
+`Base Sepolia` for `eip155:84532`. Network identity and authorization use `network`,
+never the display name.
 Each token requires `id`, `name`, `asset`, `asset_decimals`, `recipient`,
 `asset_transfer_methods`, `minimum_topup_amount_atomic`,
 `maximum_topup_amount_atomic`, `credit_rate_numerator` and

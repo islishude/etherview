@@ -182,6 +182,7 @@ billing:
   max_captured_header_bytes: 65536
   base_price_atomic: ""
 
+  # Each chain requires name (1–128 nonblank characters), network, facilitator_url and tokens.
   payment_chains: []
 # Official Ethereum Mainnet RPC endpoints are ENS-role secrets supplied through
 # ENS shares the current-chain RPC pool in enrich; the manifest is public.

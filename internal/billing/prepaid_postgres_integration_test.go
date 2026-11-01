@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	apiauth "github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/billing/paymentoption"
+	"github.com/islishude/etherview/internal/billing/x402wire"
 )
 
 func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
@@ -478,4 +479,56 @@ func TestMultiPaymentCreditsShareAccountAndFreezePolicy(t *testing.T) {
 		}
 	}
 	assertBillingAccountAmounts(t, prepaid, userID, "1200", "0", "1200")
+}
+
+func TestTopupProgressIsFencedAndDoesNotCredit(t *testing.T) {
+	db := newBillingPostgres(t)
+	userID := uuid.NewString()
+	payer := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	insertBillingUser(t, db, userID, payer)
+	prepaid := newTestPrepaidLedger(t, db)
+	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := testReserveInput().ObservedAt
+	intent, reservation := createReservedTopup(t, prepaid, payments, userID, payer, "50", base, 71)
+	_, err = payments.MarkVerified(t.Context(), VerifiedInput{PaymentID: reservation.Payment.ID, Owner: reservation.Owner, Payer: payer, UserID: &userID, ObservedAt: base.Add(time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = prepaid.BeginTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, base.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	hash := common.HexToHash("0x1234")
+	progress := x402wire.SettlementProgress{Stage: "confirming", Transaction: hash.Hex()}
+	observe := func(owner string, p x402wire.SettlementProgress, at time.Time) error {
+		return prepaid.ObserveTopupProgress(t.Context(), reservation.Payment.ID, owner, intent.ID, p, at)
+	}
+	if err = observe(uuid.NewString(), progress, base.Add(3*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("stale owner: %v", err)
+	}
+	if err = observe(reservation.Owner, progress, base.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := prepaid.TopupIntent(t.Context(), userID, intent.ID)
+	if err != nil || got.State != TopupIntentSettling || got.TransactionHash == nil || *got.TransactionHash != hash || got.SubmissionProgress != "confirming" {
+		t.Fatalf("progress: %+v %v", got, err)
+	}
+	if err = observe(reservation.Owner, x402wire.SettlementProgress{Stage: "submitting"}, base.Add(4*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("regression: %v", err)
+	}
+	if err = observe(reservation.Owner, progress, base.Add(time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("old observation: %v", err)
+	}
+	if _, err = prepaid.CreditTopup(t.Context(), reservation.Payment.ID, reservation.Owner, common.HexToHash("0x5678"), base.Add(4*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("different hash: %v", err)
+	}
+	account, err := prepaid.CreditTopup(t.Context(), reservation.Payment.ID, reservation.Owner, hash, base.Add(4*time.Second))
+	if err != nil || account.AvailableAtomic != "50" {
+		t.Fatalf("credit: %+v %v", account, err)
+	}
+	if err = observe(reservation.Owner, progress, base.Add(5*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("terminal overwrite: %v", err)
+	}
 }

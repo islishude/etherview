@@ -1371,8 +1371,11 @@ identity. Run `make web-test`, `make web-lint`, `make test-e2e`,
 is in `wallet/eip6963.test.tsx`, `auth/AuthProvider.test.tsx` and
 `pages/PersonalBilling.test.tsx`: exact expected transitions, missing events,
 account/network changes, rejected entry/restoration, stable authentication,
-and balance checks only after explicit confirmation. Automated tests never
-spend Sepolia funds. Real payment and API-debit acceptance is documented in
+and balance checks only after explicit confirmation. Explicit balance queries
+use the same temporary scope without creating intents or signing payments; cover
+restoration, retained and zero balances, retry, concurrent-action locking and
+stale-result rejection. Passive refresh must never trigger a chain switch.
+Automated tests never spend Sepolia funds. Real payment and API-debit acceptance is documented in
 [P60](plans/P60-user-auth-billing.md#final-live-payment-and-api-debit-acceptance-p60-t17--p60-t24).
 Its one-shot local harness and detailed local records were deleted after
 acceptance at the operator's request; the plan retains the acceptance conclusion.
@@ -1400,3 +1403,20 @@ all/split topologies. `node --test preview/anvil/test.mjs` verifies persisted
 standard Permit2 nonce bitmaps and exact approval consumption across restart.
 Run generation, lint, schema, deployment, docs and plan gates for this change.
 Mocked KMS and local chain evidence do not close P60-T27 real-environment acceptance.
+
+## Top-up progress
+
+P60-T28 adds wallet-bound progress callbacks, bilingual accessible step lists,
+response-order protection, and uncertain-response recovery tests. Run the
+focused billing/topup and PersonalBilling tests followed by `make web-test`,
+`make web-lint`, and `make test-e2e`; account billing browser tests hold signing
+and settlement responses to inspect every main step in both languages.
+
+Run `go run ./cmd/testintegration -packages "./internal/billing ./internal/facilitator"`
+for journal authentication/digest checks, concurrent read-only progress and
+writer ownership/hash/terminal fences. The x402 package in
+`make test-runtime-e2e` disables Anvil automining until broadcast progress is
+visible, then mines and verifies the existing exactly-once credit and all/split
+parity. These are local-chain and browser-fixture checks, not live-funded evidence.
+Schema changes also require `make test-schema-e2e`; run generation, Go lint,
+documentation and plan checks for the public/persistent contract changes.

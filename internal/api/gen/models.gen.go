@@ -504,6 +504,27 @@ func (e BillingPaymentState) Valid() bool {
 	}
 }
 
+// Defines values for BillingTopupIntentSubmissionProgress.
+const (
+	BillingTopupIntentSubmissionProgressConfirming BillingTopupIntentSubmissionProgress = "confirming"
+	BillingTopupIntentSubmissionProgressSubmitting BillingTopupIntentSubmissionProgress = "submitting"
+	BillingTopupIntentSubmissionProgressUnknown    BillingTopupIntentSubmissionProgress = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the BillingTopupIntentSubmissionProgress enum.
+func (e BillingTopupIntentSubmissionProgress) Valid() bool {
+	switch e {
+	case BillingTopupIntentSubmissionProgressConfirming:
+		return true
+	case BillingTopupIntentSubmissionProgressSubmitting:
+		return true
+	case BillingTopupIntentSubmissionProgressUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BillingTopupIntentState.
 const (
 	BillingTopupIntentStateCredited   BillingTopupIntentState = "credited"
@@ -4548,6 +4569,7 @@ type BillingPaymentPurpose string
 
 // BillingPaymentChain defines model for BillingPaymentChain.
 type BillingPaymentChain struct {
+	Name    string                 `json:"name"`
 	Network string                 `json:"network"`
 	Tokens  []BillingPaymentOption `json:"tokens"`
 }
@@ -4645,12 +4667,18 @@ type BillingTopupIntent struct {
 	PaymentOption BillingPaymentOption `json:"payment_option"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
-	Recipient       Address                 `json:"recipient"`
-	State           BillingTopupIntentState `json:"state"`
-	TransactionHash *Hash                   `json:"transaction_hash,omitempty"`
-	UpdatedAt       time.Time               `json:"updated_at"`
-	UserId          openapi_types.UUID      `json:"user_id"`
+	Recipient Address                 `json:"recipient"`
+	State     BillingTopupIntentState `json:"state"`
+
+	// SubmissionProgress Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
+	SubmissionProgress *BillingTopupIntentSubmissionProgress `json:"submission_progress,omitempty"`
+	TransactionHash    *Hash                                 `json:"transaction_hash,omitempty"`
+	UpdatedAt          time.Time                             `json:"updated_at"`
+	UserId             openapi_types.UUID                    `json:"user_id"`
 }
+
+// BillingTopupIntentSubmissionProgress Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
+type BillingTopupIntentSubmissionProgress string
 
 // BillingTopupIntentCreateRequest defines model for BillingTopupIntentCreateRequest.
 type BillingTopupIntentCreateRequest struct {
