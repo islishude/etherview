@@ -12,6 +12,11 @@ x-etherview-paths: &etherview-paths
     - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
 
 services:
+  nats:
+    extends:
+      file: preview/compose/storage.yaml
+      service: nats
+
   genesis-verify:
     image: etherview-preview-bundler:local
     profiles: ["genesis-verify"]
@@ -105,13 +110,24 @@ services:
       - ./preview/read.json:/policies/read.json:ro
       - ./preview/write.json:/policies/write.json:ro
 
+  anvil:
+    extends:
+      file: preview/compose/x402.yaml
+      service: anvil
+    volumes:
+      - anvil-data:/data
+      - ./preview/anvil/entrypoint.sh:/usr/local/bin/anvil-entrypoint.sh:ro
+      - ./preview/anvil/state.json:/config/anvil-state.json:ro
+
   x402-facilitator:
     extends:
       file: preview/compose/x402.yaml
       service: x402-facilitator
     build:
       context: .
-      dockerfile: e2e/x402local/facilitator.Dockerfile
+      dockerfile: deploy/facilitator/Dockerfile
+    volumes:
+      - ./preview/facilitator/config.yaml:/etc/etherview/facilitator.yaml:ro
 
   migration:
     <<: *etherview-paths
@@ -175,6 +191,21 @@ volumes:
   ipfs-data:
   postgres-data:
   geth-data:
+  anvil-data:
   lighthouse-data:
   validator-data:
   blob-data:
+
+secrets:
+  x402-db:
+    file: ${X402_FACILITATOR_DATABASE_URL_FILE:-./preview/facilitator/database-url}
+  x402-token:
+    file: ./preview/facilitator/token
+  x402-password:
+    file: ./preview/facilitator/password
+  x402-key:
+    file: ./preview/facilitator/keystore.json
+  x402-geth:
+    file: ./preview/facilitator/geth-rpc
+  x402-anvil:
+    file: ./preview/facilitator/anvil-rpc

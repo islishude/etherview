@@ -65,6 +65,7 @@ type TopupAccountLedger interface {
 type TopupSuccessWriter func(http.ResponseWriter, Account, TopupIntent, Payment)
 
 type TopupDispatcherOptions struct {
+	Network           string
 	Payments          TopupPaymentLedger
 	Accounts          TopupAccountLedger
 	Facilitator       PaymentFacilitator
@@ -81,6 +82,8 @@ type TopupDispatcherOptions struct {
 }
 
 type TopupDispatcher struct {
+	network           string
+	routes            map[string]*TopupDispatcher
 	payments          TopupPaymentLedger
 	accounts          TopupAccountLedger
 	facilitator       PaymentFacilitator
@@ -125,7 +128,7 @@ func NewTopupDispatcher(options TopupDispatcherOptions) (*TopupDispatcher, error
 		logger = slog.Default()
 	}
 	return &TopupDispatcher{
-		payments: options.Payments, accounts: options.Accounts,
+		network: options.Network, payments: options.Payments, accounts: options.Accounts,
 		facilitator: options.Facilitator, codec: options.Codec,
 		fingerprintPepper: append([]byte(nil), options.FingerprintPepper...),
 		publicOrigin:      strings.TrimSuffix(options.PublicOrigin, "/"),
@@ -142,6 +145,18 @@ func (dispatcher *TopupDispatcher) Serve(
 	success TopupSuccessWriter,
 	writeError UsageErrorWriter,
 ) {
+	if dispatcher != nil && dispatcher.routes != nil {
+		if writeError == nil {
+			writeError = writeUsageError
+		}
+		route := dispatcher.routes[intent.PaymentOption.ID]
+		if route == nil || route.network != intent.Network {
+			writeError(writer, http.StatusServiceUnavailable, "topup_payment_unavailable", "payment option is unavailable")
+			return
+		}
+		route.Serve(writer, request, intent, success, writeError)
+		return
+	}
 	observedMethod, outcome := "other", "invalid"
 	defer func() {
 		if dispatcher != nil && dispatcher.observer != nil {
@@ -329,8 +344,8 @@ func (dispatcher *TopupDispatcher) requirements(intent TopupIntent) ([]x402wire.
 		URL:      dispatcher.publicOrigin + "/api/v1/billing/topup-intents/" + intent.ID + "/pay",
 		MimeType: "application/json", ServiceName: "Etherview",
 	}
-	result := make([]x402wire.Requirement, len(dispatcher.methods))
-	for index, method := range dispatcher.methods {
+	result := make([]x402wire.Requirement, len(intent.PaymentOption.AssetTransferMethods))
+	for index, method := range intent.PaymentOption.AssetTransferMethods {
 		options := x402wire.RequirementOptions{
 			Network: intent.Network, Asset: intent.Asset.Hex(), Amount: intent.AmountAtomic,
 			PayTo: intent.Recipient.Hex(), MaxTimeoutSeconds: dispatcher.maxTimeoutSeconds,
@@ -338,8 +353,8 @@ func (dispatcher *TopupDispatcher) requirements(intent TopupIntent) ([]x402wire.
 			Resource: resource,
 		}
 		if method == x402wire.TransferMethodEIP3009 {
-			options.AssetEIP712Name = dispatcher.assetName
-			options.AssetEIP712Version = dispatcher.assetVersion
+			options.AssetEIP712Name = intent.PaymentOption.AssetEIP712Name
+			options.AssetEIP712Version = intent.PaymentOption.AssetEIP712Version
 		}
 		var err error
 		result[index], err = x402wire.NewRequirement(options)
@@ -380,4 +395,18 @@ func requirementForMethod(
 		}
 	}
 	return x402wire.Requirement{}, false
+}
+
+func NewMultiTopupDispatcher(routes map[string]*TopupDispatcher) (*TopupDispatcher, error) {
+	if len(routes) == 0 || len(routes) > 1024 {
+		return nil, ErrInvalidInput
+	}
+	result := &TopupDispatcher{routes: make(map[string]*TopupDispatcher, len(routes))}
+	for id, route := range routes {
+		if id == "" || route == nil || route.routes != nil {
+			return nil, ErrInvalidInput
+		}
+		result.routes[id] = route
+	}
+	return result, nil
 }

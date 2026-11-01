@@ -604,17 +604,23 @@ features:
   x402_topups: true
 billing:
   base_price_atomic: "1"
-  facilitator_url: https://facilitator.example
   facilitator_allowed_cidrs: [203.0.113.0/24]
-  network: eip155:84532
-  asset: "0x1111111111111111111111111111111111111111"
-  asset_decimals: 6
-  asset_eip712_name: USDC
-  asset_eip712_version: "2"
-  recipient: "0x2222222222222222222222222222222222222222"
-  minimum_topup_amount_atomic: "1"
-  maximum_topup_amount_atomic: "1000000"
-  asset_transfer_methods: [eip3009, permit2]
+  payment_chains:
+    - network: eip155:84532
+      facilitator_url: https://facilitator.example
+      tokens:
+        - id: default
+          name: Local USD
+          credit_rate_numerator: "1"
+          credit_rate_denominator: "1"
+          asset: "0x1111111111111111111111111111111111111111"
+          asset_decimals: 6
+          asset_eip712_name: USDC
+          asset_eip712_version: "2"
+          recipient: "0x2222222222222222222222222222222222222222"
+          minimum_topup_amount_atomic: "1"
+          maximum_topup_amount_atomic: "1000000"
+          asset_transfer_methods: [eip3009, permit2]
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}

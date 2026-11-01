@@ -111,8 +111,8 @@ func (b *Backend) adminBilling(
 		case "settled":
 			if current.Payment.Purpose == "account_topup" {
 				prepaid, configureErr := billing.NewPrepaidLedger(db, billing.PrepaidOptions{
-					ChainID: cfg.Chain.ID, Network: current.Payment.Network,
-					Asset: current.Payment.Asset, Recipient: current.Payment.Recipient,
+					ChainID: cfg.Chain.ID,
+
 					TopupTTL: cfg.Billing.TopupIntentTTL,
 					UsageTTL: cfg.Billing.UsageReservationTTL,
 				})
@@ -133,8 +133,8 @@ func (b *Backend) adminBilling(
 		case "failed":
 			if current.Payment.Purpose == "account_topup" {
 				prepaid, configureErr := billing.NewPrepaidLedger(db, billing.PrepaidOptions{
-					ChainID: cfg.Chain.ID, Network: current.Payment.Network,
-					Asset: current.Payment.Asset, Recipient: current.Payment.Recipient,
+					ChainID: cfg.Chain.ID,
+
 					TopupTTL: cfg.Billing.TopupIntentTTL,
 					UsageTTL: cfg.Billing.UsageReservationTTL,
 				})

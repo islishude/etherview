@@ -12,6 +12,8 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_PUSH_PUBLIC_KEY:
   ETHERVIEW_PUSH_CONTACT:
   ETHERVIEW_DATABASE_URL: postgres://etherview:${POSTGRES_PASSWORD:-etherview-dev-only}@postgres:5432/etherview?sslmode=disable
+  # An explicit empty value disables NATS while retaining PostgreSQL polling.
+  ETHERVIEW_NATS_URL: ${ETHERVIEW_NATS_URL-nats://nats:4222}
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
   # Keep authoritative HTTP polling and add a newHeads wake hint so locally
   # mined blocks do not wait for the normal polling interval.
@@ -35,6 +37,7 @@ x-etherview-api-env: &etherview-api-env
   ETHERVIEW_TURNSTILE_SECRET_KEY:
   ETHERVIEW_TURNSTILE_SECRET_KEY_FILE:
   ETHERVIEW_X402_FINGERPRINT_PEPPER: "preview-x402-fingerprint-dev-only-0000000000000000000000"
+  ETHERVIEW_X402_FACILITATOR_HEADERS: '{"eip155:48815":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"},"eip155:31337":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"}}'
   ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS:
   ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
   ETHERVIEW_VERIFICATION_WORKER_COUNT:

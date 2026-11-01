@@ -1888,3 +1888,80 @@ when the global switch is enabled. The expanded details provide a download
 icon that saves the cached complete blob without another request or fee.
 The browser saves previously fetched content locally without another charge
 or token validation. Account/session changes and navigation discard that buffer.
+
+## Multiple x402 payment options
+
+Configure `billing.payment_chains` with `network`, `facilitator_url` and `tokens`.
+Each token requires `id`, `name`, `asset`, `asset_decimals`, `recipient`,
+`asset_transfer_methods`, `minimum_topup_amount_atomic`,
+`maximum_topup_amount_atomic`, `credit_rate_numerator` and
+`credit_rate_denominator`; EIP-3009 also requires `asset_eip712_name` and
+`asset_eip712_version`. See the four concrete options in
+[Preview configuration](../preview/config.yaml). Ratios convert atomic token
+units to atomic credits: an 18-decimal token worth two credits uses numerator
+`2` and denominator `1000000000000`. All account, price and adjustment amounts
+are six-decimal credits. Chain credentials use the secret-only
+`ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE)` JSON map, for example
+`{"eip155:11155111":{"Authorization":"Bearer ..."}}`; each map key must identify
+a configured payment chain. Legacy flat payment YAML and environment keys are
+rejected. Use a fresh database; there is no old-balance conversion.
+
+Policy edits affect new intents only. Keep the option ID and chain facilitator
+available while old intents expire or settle; never reuse an ID for a different
+chain. Unknown settlements permit status recovery or explicit reconciliation,
+not automatic repayment. Disabling a payment chain does not disable existing
+credit consumption or explorer reads.
+
+## Standalone multi-chain facilitator
+
+The production `x402facilitator` process is separate from all explorer roles.
+Use `deploy/facilitator/config.example.yaml`, the standalone Compose definition,
+or the chart under `deploy/facilitator/helm`. Run the ordinary fresh-database
+migrations before starting it. Its database login needs access only to
+`facilitator_settlements` (SELECT, INSERT, UPDATE), schema USAGE and the advisory
+lock function; do not grant user-account credit writes. It shares the migrated
+PostgreSQL database, not API credentials. Each network/account must be reserved
+exclusively for this transaction sender.
+
+Mount the database URL, bearer token (at least 32 bytes), TLS key/certificate,
+RPC URLs and optional encrypted Ethereum keystore/password as separate read-only
+files. The production config must leave `unsafe_local_http` false. Bind the
+signer to its expected address. For AWS KMS use a fixed key ARN, region,
+`ECC_SECG_P256K1` and `SIGN_VERIFY`; give the facilitator workload only
+`kms:GetPublicKey` and `kms:Sign` for that key. Use workload identity, not static
+AWS keys in configuration. Only the facilitator receives this identity.
+
+Set each `billing.payment_chains[].facilitator_url` to this HTTPS origin and
+inject its bearer credential through the existing network-keyed
+`ETHERVIEW_X402_FACILITATOR_HEADERS_FILE` on API/all. Scope facilitator ingress to
+those callers, and egress to the configured PostgreSQL, RPC and KMS destinations.
+The Helm chart uses one replica and Recreate updates. Its Service publishes
+unready endpoints intentionally: a failed chain makes `/readyz` degraded while
+healthy chains remain available; `/healthz` remains the liveness probe.
+
+The service checks chain IDs and required code at startup, bounds gas and fees,
+and serializes each chain independently. Authenticated `/metrics` exposes per-chain
+health, pending journal count, success/failure counters and low native balance.
+Low balance compares available funds with the configured maximum transaction
+cost. No sensitive RPC or KMS errors are logged or returned.
+
+A signed transaction is committed before broadcast. A pending payment retains
+its exact hash and blocks new transactions on that chain until reconciled.
+Restart polls existing hashes; it never signs or broadcasts them again. A crash
+before signed bytes were committed is terminally rejected during recovery.
+Do not submit another authorization to resolve an uncertain existing payment.
+Inspect the journal and chain receipt. If the exact transaction needs manual
+rebroadcast, stop the normal process and run:
+
+```sh
+x402facilitator --config=/etc/etherview/facilitator.yaml --rebroadcast='AUTHORIZATION_ID'
+```
+
+This command acquires the same singleton lock and sends only the saved raw bytes;
+it cannot change nonce, fee, destination or calldata. Restart the normal service
+afterward. Account credit reconciliation remains the existing API-side operator
+procedure. Rotation of signer/network configuration requires resolving pending
+transactions first; never delete journal rows to bypass a pending payment.
+
+Local automated acceptance belongs to P60-T26. Real KMS signing and funded
+multi-network end-to-end acceptance remain P60-T27 and require separate evidence.

@@ -33,6 +33,9 @@ export const billingPriceResources = {
 
       workspace: {
         tokenAmount: "Token amount",
+        creditUnit: "Credits",
+        expectedCredit: "Expected credit: {{amount}} credits",
+        exchangeRate: "1 token = {{rate}} credits",
         prices: "Query prices",
         weight: "Complexity weight",
         pricePolicy:
@@ -69,6 +72,9 @@ export const billingPriceResources = {
 
       workspace: {
         tokenAmount: "代币数量",
+        creditUnit: "额度",
+        expectedCredit: "预计到账：{{amount}} 额度",
+        exchangeRate: "1 代币 = {{rate}} 额度",
         prices: "查询价格",
         weight: "复杂度权重",
         pricePolicy: "每次成功查询按固定复杂度权重 × 基价扣费，请求速率限制独立计算。",

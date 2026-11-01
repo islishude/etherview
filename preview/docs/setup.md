@@ -6,8 +6,12 @@
 
 `compose.yaml` runs a local Geth/Lighthouse PoS chain and all six
 application roles. It enables consensus, blob archives, public
-verification, Sourcify, NFT metadata, prepaid billing and local x402 top-ups. Optional NATS, Redis, and object storage accelerators are not part of
-this deployment.
+verification, Sourcify, NFT metadata, prepaid billing and local x402 top-ups.
+Core NATS is enabled by default for runtime wake notifications. Redis and the
+optional trace object cache are not part of this deployment. NATS has no
+persistent volume or published host port; applications connect internally at
+`nats://nats:4222`. See the [NATS runbook](operations.md#nats-wake-notifications)
+for overrides and outage behavior.
 
 UserOperations are enabled by default with the canonical v0.9 EntryPoint at
 block zero, and Rundler is available at `https://bundler.etherview.localhost`.
@@ -162,3 +166,11 @@ After chain readiness, startup verifies sources for every genesis contract.
 A failed verification step fails startup's Make target while retaining the
 running chain and completed publications. Resolve the reported failure and run
 `make verify-preview-genesis`; see the [operator procedure](operations.md#genesis-contract-source-verification).
+
+Preview uses one production `x402-facilitator` for both local payment chains.
+Its checked-in encrypted keystore and password are public development fixtures.
+For a custom PostgreSQL password, set `X402_FACILITATOR_DATABASE_URL_FILE` to a
+file containing the matching internal PostgreSQL URL. Updated standard
+Permit2/proxy genesis allocations require a fresh disposable network; existing
+volumes deliberately fail the fingerprint check rather than accepting changed
+chain state.

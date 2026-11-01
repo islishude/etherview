@@ -10,8 +10,9 @@ const directory = new URL("./", import.meta.url);
 const genesis = JSON.parse(fs.readFileSync(new URL("../genesis.json", import.meta.url)));
 const { inventory, bundles } = loadInventory(directory, genesis);
 test("inventory covers every code allocation including constructor children", () => {
-  assert.equal(inventory.contracts.length, 24);
-  for (const name of ["SenderCreator", "SimpleAccount", "LocalBillingToken", "BuilderExit"])
+  assert.equal(inventory.contracts.length, 27);
+  assert.equal(inventory.contracts.filter((c) => c.name === "LocalBillingToken").length, 2);
+  for (const name of ["SenderCreator", "SimpleAccount", "LocalBillingToken", "BuilderExit", "Permit2", "x402ExactPermit2Proxy"])
     assert.ok(inventory.contracts.some((c) => c.name === name));
   for (const c of inventory.contracts) {
     const body = submission(c, bundles);

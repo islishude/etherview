@@ -1,3 +1,4 @@
+import { testBillingConfig, testTopupIntent } from "@/billing/testFixtures";
 import { encodeAbiParameters } from "viem";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
@@ -63,7 +64,7 @@ vi.mock("@/billing/topup", () => ({
 const address = "0x1111111111111111111111111111111111111111";
 const amount = "340282366920938463463374607431768211455";
 const transactionHash = `0x${"6".repeat(64)}` as const;
-const config: billing.BillingConfig = {
+const config = testBillingConfig({
   api_billing_enabled: true,
   x402_topups_enabled: true,
   x402_version: 2,
@@ -78,11 +79,10 @@ const config: billing.BillingConfig = {
   operations: [
     { operation: "etherview.account.balance", amount_atomic: "2", complexity_weight: 2 },
   ],
-};
+});
 const account: billing.BillingAccount = {
   user_id: "user-a",
-  network: "eip155:1",
-  asset: address,
+
   available_atomic: amount,
   reserved_atomic: "0",
   total_credit_atomic: amount,
@@ -90,19 +90,22 @@ const account: billing.BillingAccount = {
   created_at: "2026-10-30T00:00:00Z",
   updated_at: "2026-10-30T00:00:00Z",
 };
-const intent: billing.BillingTopupIntent = {
-  id: "topup-a",
-  user_id: "user-a",
-  amount_atomic: "123",
-  network: "eip155:1",
-  asset: address,
-  recipient: address,
-  payer: address,
-  state: "open",
-  created_at: "2026-10-30T00:00:00Z",
-  updated_at: "2026-10-30T00:00:00Z",
-  expires_at: "2099-01-01T00:00:00Z",
-};
+const intent: billing.BillingTopupIntent = testTopupIntent(
+  {
+    id: "topup-a",
+    user_id: "user-a",
+    amount_atomic: "123",
+    network: "eip155:1",
+    asset: address,
+    recipient: address,
+    payer: address,
+    state: "open",
+    created_at: "2026-10-30T00:00:00Z",
+    updated_at: "2026-10-30T00:00:00Z",
+    expires_at: "2099-01-01T00:00:00Z",
+  },
+  config,
+);
 const payment: billing.BillingPayment = {
   id: "payment-a",
   amount_atomic: "456",
@@ -147,6 +150,40 @@ async function ready() {
 }
 
 describe("personal billing workspace", () => {
+  it("resets amount and token when choosing another payment chain", async () => {
+    const other = testBillingConfig({
+      id: "other",
+      name: "Other USD",
+      network: "eip155:31337",
+      asset_decimals: 18,
+      credit_rate_numerator: "2",
+      credit_rate_denominator: "1000000000000",
+    });
+    vi.mocked(billing.getBillingConfig).mockResolvedValue({
+      ...config,
+      payment_chains: [
+        {
+          ...config.payment_chains[0]!,
+          tokens: [
+            ...config.payment_chains[0]!.tokens,
+            { ...config.payment_chains[0]!.tokens[0]!, id: "second", name: "Second USD" },
+          ],
+        },
+        ...other.payment_chains,
+      ],
+    });
+    const { user } = setup();
+    await ready();
+    await user.type(screen.getByRole("textbox"), "1");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Asset" }), "second");
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    await user.type(screen.getByRole("textbox"), "2");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Network" }), "eip155:31337");
+    expect(screen.getByRole("combobox", { name: "Asset" })).toHaveValue("other");
+    expect(screen.getByRole("textbox")).toHaveValue("");
+    await user.type(screen.getByRole("textbox"), "1");
+    expect(screen.getByText("Expected credit: 2 credits")).toBeVisible();
+  });
   beforeEach(async () => {
     vi.resetAllMocks();
     state.userID = "user-a";
@@ -308,15 +345,17 @@ describe("personal billing workspace", () => {
     );
   });
 
-  it("shows unmatched historical assets in atomic units exactly once", async () => {
+  it("formats historical amounts using their immutable option snapshot", async () => {
     vi.mocked(billing.listCurrentBillingTopupIntents).mockResolvedValue(
       list([{ ...intent, network: "eip155:84532" }]),
     );
     const { user } = setup();
     await ready();
     await openHistory(user);
-    expect(await screen.findByText("123 atomic", { exact: true })).toBeVisible();
-    expect(document.querySelector(".billing-record-amount")?.textContent).toBe("123 atomic");
+    expect((await screen.findAllByText("0.000123", { exact: true }))[0]).toBeVisible();
+    expect(document.querySelector(".billing-record-amount")?.textContent).toBe(
+      "0.000123Token amount",
+    );
   });
 
   it("preserves the draft and exact balances while lazily switching histories and independent cursors", async () => {
@@ -334,13 +373,13 @@ describe("personal billing workspace", () => {
     await user.type(screen.getByRole("textbox"), "120");
     await user.selectOptions(screen.getByRole("combobox", { name: "Payment method" }), "permit2");
     await openHistory(user);
-    expect(await screen.findByText("0.000123", { exact: true })).toBeVisible();
+    expect((await screen.findAllByText("0.000123", { exact: true }))[0]).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() =>
       expect(billing.listCurrentBillingTopupIntents).toHaveBeenCalledWith(10, "topup/page 2"),
     );
     await user.selectOptions(screen.getByRole("combobox", { name: "Record type" }), "payments");
-    expect(await screen.findByText("0.000456", { exact: true })).toBeVisible();
+    expect(await screen.findByText("456 atomic", { exact: true })).toBeVisible();
     expect(screen.getByText("Page 1")).toBeVisible();
     await user.click(screen.getByText("Details", { exact: true }));
     expect(screen.getByText(transactionHash)).toBeVisible();
@@ -358,10 +397,12 @@ describe("personal billing workspace", () => {
   });
 
   it("keeps balance and histories available when funding is disabled", async () => {
-    vi.mocked(billing.getBillingConfig).mockResolvedValue({
-      ...config,
-      x402_topups_enabled: false,
-    });
+    vi.mocked(billing.getBillingConfig).mockResolvedValue(
+      testBillingConfig({
+        ...config,
+        x402_topups_enabled: false,
+      }),
+    );
     const { user } = setup();
     expect(await screen.findByText(/Top-ups are currently unavailable/)).toBeVisible();
     expect(screen.getByText("340282366920938463463374607431768.211455")).toBeVisible();
@@ -369,7 +410,7 @@ describe("personal billing workspace", () => {
     await openHistory(user);
     expect(await screen.findByText("No records yet.")).toBeVisible();
     await user.selectOptions(screen.getByRole("combobox"), "payments");
-    expect(await screen.findByText("0.000456")).toBeVisible();
+    expect(await screen.findByText("456 atomic")).toBeVisible();
   });
 
   it("retries balance and history failures without rendering false empty results", async () => {
@@ -390,7 +431,7 @@ describe("personal billing workspace", () => {
     const historyError = await screen.findByRole("alert");
     expect(screen.queryByText("No records yet.")).not.toBeInTheDocument();
     await user.click(within(historyError).getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("0.000456")).toBeVisible();
+    expect(await screen.findByText("456 atomic")).toBeVisible();
   });
 
   it("blocks new payments until recovery succeeds and keeps pending failures inspectable", async () => {
@@ -427,13 +468,16 @@ describe("personal billing workspace", () => {
   });
 
   it("shows a single method without a selector, validates bounds, and submits once", async () => {
-    vi.mocked(billing.getBillingConfig).mockResolvedValue({
-      ...config,
-      asset_transfer_methods: ["permit2"],
-    });
+    vi.mocked(billing.getBillingConfig).mockResolvedValue(
+      testBillingConfig({
+        ...config,
+        payment_chains: undefined,
+        asset_transfer_methods: ["permit2"],
+      }),
+    );
     const { user } = setup();
     await ready();
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Payment method" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("textbox"), "0.000009");
     expect(screen.getByRole("button", { name: "Top up & authorize" })).toBeDisabled();
     await user.clear(screen.getByRole("textbox"));
@@ -445,6 +489,7 @@ describe("personal billing workspace", () => {
     expect(billing.createBillingTopupIntent).toHaveBeenCalledExactlyOnceWith(
       "1250000",
       "test-csrf",
+      "default",
     );
     expect(payBillingTopup).toHaveBeenCalledWith(expect.objectContaining({ method: "permit2" }));
     expect(screen.getByRole("textbox")).toHaveValue("");

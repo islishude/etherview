@@ -46,7 +46,7 @@ test("manifest and allocation bind real genesis code and funded isolated identit
   ])
     assert.equal(genesis.alloc[address], undefined, "obsolete Alto allocation");
 
-  assert.equal(genesis.alloc["70997970c51812dc3a010c7d01b50e0d17dc79c8"].nonce, "0x1");
+  assert.equal(genesis.alloc["70997970c51812dc3a010c7d01b50e0d17dc79c8"].nonce, "0x2");
   assert.ok(BigInt(alloc[manifest.devAccounts.ensOwner.address.toLowerCase()].nonce) > 0n);
   assert.throws(() => localName("name.eth"));
   assert.throws(() => localName("x.test"));
@@ -191,6 +191,9 @@ test("Preview x402 code, constructor storage and settlement funds exist at genes
   assert.equal(token.nonce, "0x1");
   const storage = token.storage;
   const slot = (n) => "0x" + BigInt(n).toString(16).padStart(64, "0");
+  assert.equal(BigInt(storage[slot(7)]), 6n);
+  const token18 = genesis.alloc[contracts.LocalBillingToken18.address.slice(2).toLowerCase()];
+  assert.equal(BigInt(token18.storage[slot(7)]), 18n);
   assert.equal(BigInt(storage[slot(2)]), 1000000000000000000n);
   const balanceSlot = keccak256(
     encodeAbiParameters(

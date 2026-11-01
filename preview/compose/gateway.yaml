@@ -12,6 +12,7 @@ services:
             app.etherview.localhost,
             ipfs.etherview.localhost,
             geth.etherview.localhost,
+            anvil.etherview.localhost,
             beacon.etherview.localhost,
             bundler.etherview.localhost,
           ]

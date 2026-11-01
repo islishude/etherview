@@ -219,29 +219,41 @@ export type BillingOperationPrice = {
     amount_atomic: Quantity;
 };
 
+export type BillingPaymentOption = {
+    id: string;
+    name: string;
+    credit_rate_numerator: Quantity;
+    credit_rate_denominator: Quantity;
+    network: string;
+    asset: Address;
+    asset_decimals: number;
+    asset_eip712_name?: string;
+    asset_eip712_version?: string;
+    recipient: Address;
+    minimum_topup_amount_atomic: Quantity;
+    maximum_topup_amount_atomic: Quantity;
+    asset_transfer_methods: Array<BillingAssetTransferMethod>;
+};
+
+export type BillingPaymentChain = {
+    network: string;
+    tokens: Array<BillingPaymentOption>;
+};
+
 export type BillingConfig = {
+    credit_decimals: 6;
+    payment_chains: Array<BillingPaymentChain>;
     base_price_atomic?: Quantity;
     api_billing_enabled: boolean;
     x402_topups_enabled: boolean;
     x402_version: 2;
     scheme: 'exact';
-    network?: string;
-    asset?: Address;
-    asset_decimals?: number;
-    asset_eip712_name?: string;
-    asset_eip712_version?: string;
-    recipient?: Address;
-    minimum_topup_amount_atomic?: Quantity;
-    maximum_topup_amount_atomic?: Quantity;
     topup_intent_ttl_seconds?: number;
-    asset_transfer_methods: Array<BillingAssetTransferMethod>;
     operations: Array<BillingOperationPrice>;
 };
 
 export type BillingAccount = {
     user_id: string;
-    network: string;
-    asset: Address;
     total_credit_atomic: BillingAggregateQuantity;
     total_debit_atomic: BillingAggregateQuantity;
     reserved_atomic: BillingAggregateQuantity;
@@ -253,6 +265,7 @@ export type BillingAccount = {
 export type BillingTopupIntentState = 'open' | 'processing' | 'settling' | 'credited' | 'failed' | 'expired';
 
 export type BillingTopupIntentCreateRequest = {
+    payment_option_id: string;
     amount_atomic: Quantity;
 };
 
@@ -263,6 +276,8 @@ export type BillingAdjustmentRequest = {
 };
 
 export type BillingTopupIntent = {
+    payment_option: BillingPaymentOption;
+    credit_amount_atomic: Quantity;
     id: string;
     user_id: string;
     amount_atomic: Quantity;
@@ -322,6 +337,7 @@ export type BillingPayment = {
     state: BillingPaymentState;
     network: string;
     asset: Address;
+    payment_option?: BillingPaymentOption;
     amount_atomic: Quantity;
     recipient: Address;
     payer?: Address | null;

@@ -34,6 +34,7 @@ func TestBillingDoctorIsRoleAndFeatureScoped(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cfg := config.Default()
+			cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532"}}
 			cfg.Features.X402Topups = test.enabled
 			called := false
 			err := checkBillingFacilitator(
@@ -54,13 +55,14 @@ func TestBillingDoctorIsRoleAndFeatureScoped(t *testing.T) {
 
 func TestBillingDoctorUsesRestrictedClientConfiguration(t *testing.T) {
 	cfg := config.Default()
+	cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532"}}
 	cfg.Features.X402Topups = true
-	cfg.Billing.FacilitatorURL = "https://facilitator.example"
+	cfg.Billing.PaymentChains[0].FacilitatorURL = "https://facilitator.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"192.0.2.0/24"}
 	cfg.Billing.FacilitatorTimeout = 7
 	cfg.Billing.FacilitatorMaxResponseBytes = 1234
-	cfg.Billing.FacilitatorHeaders = map[string]string{"Authorization": "opaque"}
-	cfg.Billing.Network = "eip155:84532"
+	cfg.Billing.FacilitatorHeaders = map[string]map[string]string{"eip155:84532": {"Authorization": "opaque"}}
+	cfg.Billing.PaymentChains[0].Network = "eip155:84532"
 	checker := &doctorSupportChecker{}
 	var captured x402wire.ClientOptions
 	err := checkBillingFacilitator(
@@ -75,7 +77,7 @@ func TestBillingDoctorUsesRestrictedClientConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if captured.BaseURL != cfg.Billing.FacilitatorURL ||
+	if captured.BaseURL != cfg.Billing.PaymentChains[0].FacilitatorURL ||
 		strings.Join(captured.AllowedCIDRs, ",") != "192.0.2.0/24" ||
 		captured.Timeout != cfg.Billing.FacilitatorTimeout ||
 		captured.MaxResponseBytes != 1234 ||
@@ -119,8 +121,9 @@ func TestBillingDoctorReturnsOnlyClosedErrors(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			checker := &doctorSupportChecker{err: test.err}
 			cfg := config.Default()
+			cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532"}}
 			cfg.Features.X402Topups = true
-			cfg.Billing.Network = "eip155:84532"
+			cfg.Billing.PaymentChains[0].Network = "eip155:84532"
 			err := checkBillingFacilitator(
 				context.Background(),
 				cfg,

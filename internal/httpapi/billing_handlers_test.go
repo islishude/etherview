@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -90,16 +91,18 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	cfg := config.Default()
 	cfg.Features.APIBilling = true
 	cfg.Features.X402Topups = true
-	cfg.Billing.AssetTransferMethods = []string{"eip3009", "permit2"}
-	cfg.Billing.MinimumTopupAmountAtomic = "1"
-	cfg.Billing.MaximumTopupAmountAtomic = "1000000"
-	cfg.Billing.Asset = "0x52908400098527886e0f7030069857d2e4169ee7"
-	cfg.Billing.Recipient = "0xde709f2102306220921060314715629080e2fb77"
-	cfg.Billing.FacilitatorURL = "https://facilitator-secret.example"
+	decimals := uint8(6)
+	cfg.Billing.PaymentChains = []config.PaymentChainConfig{{Network: "eip155:84532", Tokens: []paymentoption.Option{{ID: "default", Name: "USDC", AssetDecimals: &decimals, AssetEIP712Name: "USDC", AssetEIP712Version: "2", CreditRateNumerator: "1", CreditRateDenominator: "1"}}}}
+	cfg.Billing.PaymentChains[0].Tokens[0].AssetTransferMethods = []string{"eip3009", "permit2"}
+	cfg.Billing.PaymentChains[0].Tokens[0].MinimumTopupAmountAtomic = "1"
+	cfg.Billing.PaymentChains[0].Tokens[0].MaximumTopupAmountAtomic = "1000000"
+	cfg.Billing.PaymentChains[0].Tokens[0].Asset = "0x52908400098527886e0f7030069857d2e4169ee7"
+	cfg.Billing.PaymentChains[0].Tokens[0].Recipient = "0xde709f2102306220921060314715629080e2fb77"
+	cfg.Billing.PaymentChains[0].FacilitatorURL = "https://facilitator-secret.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"203.0.113.0/24"}
-	cfg.Billing.FacilitatorHeaders = map[string]string{
+	cfg.Billing.FacilitatorHeaders = map[string]map[string]string{"eip155:84532": {
 		"Authorization": "Bearer facilitator-secret",
-	}
+	}}
 	cfg.Billing.BasePriceAtomic = "5"
 	handler, err := New(Options{Config: cfg, Reader: fakeReader{}})
 	if err != nil {
@@ -120,16 +123,25 @@ func TestBillingConfigIsFreeSortedAndSecretFree(t *testing.T) {
 	if !response.Data.ApiBillingEnabled || !response.Data.X402TopupsEnabled ||
 		response.Data.X402Version != 2 ||
 		response.Data.Scheme != gen.BillingConfigSchemeExact ||
-		response.Data.Asset == nil ||
-		*response.Data.Asset != "0x52908400098527886E0F7030069857D2E4169EE7" ||
-		response.Data.Recipient == nil ||
-		*response.Data.Recipient != "0xde709f2102306220921060314715629080e2fb77" ||
+		len(response.Data.PaymentChains) != 1 ||
+		response.Data.PaymentChains[0].Tokens[0].Asset != "0x52908400098527886E0F7030069857D2E4169EE7" ||
+		len(response.Data.PaymentChains[0].Tokens) != 1 ||
+		response.Data.PaymentChains[0].Tokens[0].Recipient != "0xde709f2102306220921060314715629080e2fb77" ||
 		len(response.Data.Operations) != 31 ||
 		response.Data.Operations[0].Operation != "etherview.account.addresstokenbalance" ||
 		response.Data.Operations[0].AmountAtomic != "500" ||
 		response.Data.Operations[0].ComplexityWeight != 100 ||
 		response.Data.BasePriceAtomic == nil || *response.Data.BasePriceAtomic != "5" {
 		t.Fatalf("unexpected enabled billing config: %#v", response.Data)
+	}
+	permit2 := cfg.Billing.PaymentChains[0].Tokens[0]
+	permit2.Network = cfg.Billing.PaymentChains[0].Network
+	permit2.AssetTransferMethods = []string{"permit2"}
+	permit2.AssetEIP712Name = ""
+	permit2.AssetEIP712Version = ""
+	model, err := billingOptionModel(permit2)
+	if err != nil || model.AssetEip712Name != nil || model.AssetEip712Version != nil {
+		t.Fatalf("Permit2-only public metadata: %+v %v", model, err)
 	}
 	body := recorder.Body.String()
 	for _, forbidden := range []string{

@@ -169,29 +169,20 @@ user_auth:
 # ETHERVIEW_X402_FINGERPRINT_PEPPER(_FILE) and optional
 # ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE) only to all/api processes.
 billing:
-  facilitator_url: ""
   facilitator_allowed_cidrs: []
   facilitator_timeout: 10s
   facilitator_max_response_bytes: 1048576
   facilitator_unsafe_allow_http: false
-  network: ""
-  asset: ""
-  asset_decimals: 0
-  asset_eip712_name: ""
-  asset_eip712_version: ""
-  recipient: ""
   requirement_max_timeout: 60s
   reservation_ttl: 2m
   topup_intent_ttl: 10m
   usage_reservation_ttl: 2m
-  minimum_topup_amount_atomic: ""
-  maximum_topup_amount_atomic: ""
-  asset_transfer_methods: []
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
   base_price_atomic: ""
 
+  payment_chains: []
 # Official Ethereum Mainnet RPC endpoints are ENS-role secrets supplied through
 # ENS shares the current-chain RPC pool in enrich; the manifest is public.
 ens:

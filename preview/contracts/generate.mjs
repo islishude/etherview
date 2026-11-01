@@ -24,6 +24,7 @@ import {
 import { entryPoint09Abi, entryPoint09Address } from "viem/account-abstraction";
 import { mnemonicToAccount } from "viem/accounts";
 
+import { standardPaymentContracts } from "./x402-standard.mjs";
 import { resolveENSImport } from "./ens-imports.mjs";
 const here = import.meta.dirname;
 const root = path.resolve(here, "../..");
@@ -309,13 +310,33 @@ try {
   const tokenReceipt = await wait(
     await createWalletClient({ chain, transport, account: tokenDeployer }).deployContract({
       ...artifacts.LocalBillingToken,
-      args: ["Local USD", "1", mnemonicToAccount(mnemonic).address, 1000000000000000000n],
+      args: ["Local USD", "1", mnemonicToAccount(mnemonic).address, 1000000000000000000n, 6],
       gas: 5000000n,
     }),
   );
   addresses.LocalBillingToken = tokenReceipt.contractAddress;
   if (addresses.LocalBillingToken.toLowerCase() !== "0x8464135c8f25da09e49bc8782676a84730c318bc")
     throw new Error("Local USD address mismatch");
+  const token18Receipt = await wait(
+    await createWalletClient({ chain, transport, account: tokenDeployer }).deployContract({
+      ...artifacts.LocalBillingToken,
+      args: [
+        "Local USD 18",
+        "1",
+        mnemonicToAccount(mnemonic).address,
+        1000000000000000000000000000000n,
+        18,
+      ],
+      gas: 5000000n,
+    }),
+  );
+  addresses.LocalBillingToken18 = token18Receipt.contractAddress;
+  artifacts.LocalBillingToken18 = artifacts.LocalBillingToken;
+  for (const contract of standardPaymentContracts(chain.id)) {
+    await rpc.request({method: "anvil_setCode", params: [contract.address, contract.code]});
+    addresses[contract.name] = contract.address;
+    artifacts[contract.name] = {abi: contract.abi};
+  }
   const encoded = await rpc.request({ method: "anvil_dumpState", params: [] });
   let bytes = Buffer.from(encoded.slice(2), "hex");
   if (bytes[0] === 31 && bytes[1] === 139) bytes = gunzipSync(bytes);

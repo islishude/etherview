@@ -6,7 +6,7 @@ import { wrapFetchWithPayment } from "@x402/fetch";
 import { decodeFunctionResult, encodeFunctionData, getAddress, type Address, type Hex } from "viem";
 
 import type {
-  BillingConfig,
+  BillingPaymentConfig,
   BillingTopupIntent,
   BillingTopupReceipt,
   BillingTransferMethod,
@@ -70,13 +70,31 @@ export class TopupAuthorizationError extends Error {
 }
 
 export async function payBillingTopup(options: {
-  config: BillingConfig;
+  config: BillingPaymentConfig;
   intent: BillingTopupIntent;
   method: BillingTransferMethod;
   csrfToken: string;
   wallet: TopupWallet;
 }): Promise<BillingTopupReceipt> {
-  const { config, intent, method, csrfToken, wallet } = options;
+  const { intent, method, csrfToken, wallet } = options;
+  const snapshot = intent.payment_option;
+  const fields = [
+    "id",
+    "network",
+    "asset_decimals",
+    "asset_eip712_name",
+    "asset_eip712_version",
+    "credit_rate_numerator",
+    "credit_rate_denominator",
+  ] as const;
+  if (
+    fields.some((key) => snapshot[key] !== options.config[key]) ||
+    snapshot.asset.toLowerCase() !== options.config.asset.toLowerCase() ||
+    snapshot.recipient.toLowerCase() !== options.config.recipient.toLowerCase() ||
+    !options.config.asset_transfer_methods.includes(method)
+  )
+    throw new TopupAuthorizationError();
+  const config = { ...options.config, ...intent.payment_option };
   const network = required(config.network, "billing network") as Network;
   const asset = getAddress(required(config.asset, "billing asset"));
   const recipient = getAddress(required(config.recipient, "billing recipient"));

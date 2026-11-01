@@ -113,7 +113,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		t.Fatal(err)
 	}
 	if _, err := project.Run(ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "--remove-orphans"); err != nil {
-		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "metadata", "maintenance", "api")
+		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "etherview", "metadata", "maintenance", "api", "x402-facilitator")
 		t.Fatalf("%v\n%s", err, diagnostics)
 	}
 	t.Cleanup(func() {
@@ -298,9 +298,14 @@ func authorizeTopup(
 	method, amount string,
 ) topupPayment {
 	t.Helper()
+	return authorizeTopupOption(t, client, rpcClient, codec, origin, csrf, owner, method, amount, "default")
+}
+
+func authorizeTopupOption(t *testing.T, client *http.Client, rpcClient *ethclient.Client, codec *x402wire.Codec, origin, csrf string, owner common.Address, method, amount, optionID string) topupPayment {
+	t.Helper()
 	var intent gen.BillingTopupIntentResponse
 	doJSON(t, client, http.MethodPost, origin+"/api/v1/billing/topup-intents", origin, csrf,
-		map[string]string{"amount_atomic": amount}, http.StatusCreated, &intent)
+		map[string]string{"amount_atomic": amount, "payment_option_id": optionID}, http.StatusCreated, &intent)
 	challenge := postTopupPayment(t, client, origin, csrf, intent.Data.Id.String(), "")
 	if challenge.StatusCode != http.StatusPaymentRequired {
 		t.Fatalf("%s challenge status=%d", method, challenge.StatusCode)

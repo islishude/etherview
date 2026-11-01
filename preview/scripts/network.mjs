@@ -20,6 +20,7 @@ const inputs = [
   "preview/contracts/manifest.json",
   "preview/contracts/allocation.json",
   "preview/contracts/generate.mjs",
+  "preview/contracts/x402-standard.mjs",
   "e2e/x402local/contracts/LocalBillingToken.sol",
   "preview/contracts/upstream.mjs",
   "preview/contracts/ens-upstream.mjs",

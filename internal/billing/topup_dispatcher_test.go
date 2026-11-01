@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -255,6 +256,8 @@ func testTopupDispatcher(
 		Payer: topupTestAddress(0x33), State: TopupIntentOpen,
 		ExpiresAt: now.Add(10 * time.Minute), CreatedAt: now, UpdatedAt: now,
 	}
+	intent.PaymentOption = testPaymentOption(intent.Network, intent.Asset, intent.Recipient)
+	intent.CreditAmountAtomic = intent.AmountAtomic
 	payments := &topupPaymentLedgerFake{}
 	accounts := &topupAccountLedgerFake{intent: intent}
 	facilitator := &topupFacilitatorFake{}
@@ -304,4 +307,32 @@ func topupPaymentHeader(
 		t.Fatal(err)
 	}
 	return base64.StdEncoding.EncodeToString(encoded)
+}
+
+func testPaymentOption(network string, asset, recipient common.Address) paymentoption.Option {
+	decimals := uint8(6)
+	return paymentoption.Option{ID: "default", Name: "Local USD", Network: network, Asset: asset.Hex(), Recipient: recipient.Hex(), AssetDecimals: &decimals, AssetEIP712Name: "Local USD", AssetEIP712Version: "1", AssetTransferMethods: []string{"eip3009", "permit2"}, MinimumTopupAmountAtomic: "1", MaximumTopupAmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639935", CreditRateNumerator: "1", CreditRateDenominator: "1"}
+}
+
+func TestMultiTopupRouteRejectsChangedChain(t *testing.T) {
+	route, _, _, _, _, intent := testTopupDispatcher(t)
+	route.network = intent.Network
+	dispatcher, err := NewMultiTopupDispatcher(map[string]*TopupDispatcher{intent.PaymentOption.ID: route})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, network := range []string{intent.Network, "eip155:1"} {
+		candidate := intent
+		candidate.Network = network
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "http://localhost:8080/topup", nil)
+		dispatcher.Serve(recorder, request, candidate, func(http.ResponseWriter, Account, TopupIntent, Payment) {}, nil)
+		want := http.StatusPaymentRequired
+		if network != intent.Network {
+			want = http.StatusServiceUnavailable
+		}
+		if recorder.Code != want {
+			t.Fatalf("network %s: %d", network, recorder.Code)
+		}
+	}
 }

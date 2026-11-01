@@ -35,7 +35,7 @@ GOLANGCI_LINT_VERSION ?= v2.15.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 MKCERT_VERSION ?= v1.4.4
 
-GENERATED_PATHS := \
+GENERATED_PATHS := internal/facilitator/contract.gen.go \
 	internal/verify/vyper_runtime_policy_generated.go \
 	internal/api/gen/models.gen.go \
 	internal/db/gen \
@@ -54,7 +54,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := bundler x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := nats bundler x402-facilitator anvil geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -159,6 +159,7 @@ docs-check:
 
 openapi-check: pnpm-install
 	$(PNPM) --dir api run check:schema
+	$(NODE) api/check-schema.mjs api/facilitator.openapi.yaml
 	$(PNPM) --dir api run test
 
 source-check:
@@ -322,7 +323,7 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-local-facilitator:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-facilitator:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -450,7 +451,7 @@ test-soak:
 
 .PHONY: deployment-check docker-check docker-image-check compose-check helm-check
 
-deployment-check: docker-check compose-check helm-check
+deployment-check: docker-check compose-check helm-check facilitator-deployment-check
 
 docker-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
@@ -520,7 +521,7 @@ preview-x402-images:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-facilitator
 
 preview-images: preview-env preview-x402-images preview-bundler-image
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
@@ -590,11 +591,13 @@ preview-contracts-generate: pnpm-install
 	$(NODE) preview/contracts/ens-upstream.mjs
 	$(NODE) preview/contracts/upstream.mjs
 	$(NODE) preview/contracts/generate.mjs
+	$(NODE) preview/anvil/generate.mjs
 
 preview-contracts-check: pnpm-install
 	$(NODE) preview/contracts/generate.mjs --check
+	$(NODE) preview/anvil/generate.mjs --check
 	$(NODE) preview/verification/generate.mjs --check
-	$(NODE) --test preview/contracts/test.mjs
+	$(NODE) --test preview/contracts/test.mjs preview/anvil/test.mjs
 
 test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt
@@ -632,3 +635,8 @@ test-preview-tools-e2e-full-prebuilt: preview-e2e-check
 	PREVIEW_TOOLS_FULL=1 IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewToolsFull$$' ./e2e/previewmetadata
 
 check: test-preview-tools
+
+.PHONY: facilitator-deployment-check
+facilitator-deployment-check:
+	HELM="$(HELM)" deploy/facilitator/helm/test.sh
+	DOCKER="$(DOCKER)" $(BUILDX) build --check -f deploy/facilitator/Dockerfile .

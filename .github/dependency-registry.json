@@ -270,7 +270,7 @@
           "count": 1
         },
         {
-          "path": "e2e/x402local/facilitator.Dockerfile",
+          "path": "deploy/facilitator/Dockerfile",
           "template": "FROM golang:{{version}} AS build",
           "count": 1
         },
@@ -361,6 +361,16 @@
         {
           "path": "docs/operations.md",
           "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
+          "count": 1
+        },
+        {
+          "path": "preview/anvil/generate.mjs",
+          "template": "if (!execFileSync(binary, [\"--version\"], { encoding: \"utf8\" }).includes(\"{{version}}\"))",
+          "count": 1
+        },
+        {
+          "path": "preview/compose/x402.yaml",
+          "template": "    image: ghcr.io/foundry-rs/foundry:v{{version}}",
           "count": 1
         }
       ],

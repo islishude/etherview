@@ -1,0 +1,1 @@
+postgres://etherview:etherview-dev-only@postgres:5432/etherview?sslmode=disable

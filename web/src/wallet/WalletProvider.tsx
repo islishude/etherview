@@ -673,7 +673,7 @@ function useBillingChain({
       assertCurrentWallet(activeRef.current, original);
       if (
         !config.x402_topups_enabled ||
-        config.network !== network ||
+        config.payment_chains.every((chain) => chain.network !== network) ||
         !/^eip155:[1-9][0-9]*$/u.test(network) ||
         !normalizeChainID(network.slice("eip155:".length))
       ) {

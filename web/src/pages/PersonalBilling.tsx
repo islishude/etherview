@@ -18,6 +18,8 @@ import {
   listCurrentUserBillingPayments,
   type BillingAccount,
   type BillingConfig,
+  type BillingPaymentConfig,
+  type BillingPaymentOption,
   type BillingPayment,
   type BillingTopupIntent,
   type BillingTransferMethod,
@@ -33,6 +35,9 @@ import { BillingLoadError, BillingPagination } from "./BillingPages";
 
 import {
   amountInputLength,
+  creditAmount,
+  tokenCreditRate,
+  formatTokenAmount,
   displayBillingAmount,
   matchingAssetConfig,
   topupAmount,
@@ -53,7 +58,6 @@ export function PersonalBilling() {
   const client = useQueryClient();
   const [view, setView] = useState<"payment" | "history" | "prices">("payment");
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<BillingTransferMethod>("eip3009");
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [notice, setNotice] = useState<string>();
@@ -67,6 +71,15 @@ export function PersonalBilling() {
     queryFn: getBillingConfig,
     retry: false,
   });
+  const {
+    paymentChain,
+    paymentOption,
+    payment,
+    setPaymentNetwork,
+    setPaymentOptionID,
+    method,
+    setMethod,
+  } = usePaymentSelection(config.data);
   const account = useQuery({
     queryKey: [...prefix, "account"],
     queryFn: getCurrentBillingAccount,
@@ -98,11 +111,6 @@ export function PersonalBilling() {
   const refreshBilling = () => client.invalidateQueries({ queryKey: prefix });
 
   useEffect(() => {
-    const methods = config.data?.asset_transfer_methods;
-    if (methods?.length && !methods.includes(method)) setMethod(methods[0]!);
-  }, [config.data?.asset_transfer_methods, method]);
-
-  useEffect(() => {
     if (!pendingID && !submitting && recoverable) setPendingID(recoverable.id);
   }, [pendingID, recoverable, submitting]);
 
@@ -116,10 +124,7 @@ export function PersonalBilling() {
     if (intent.state === "credited") {
       setNotice(
         t("billing.topup.credited", {
-          amount: displayBillingAmount(
-            intent.amount_atomic,
-            matchingAssetConfig(intent, config.data),
-          ),
+          amount: displayBillingAmount(intent.credit_amount_atomic, { credit_decimals: 6 }),
         }),
       );
       setAmount("");
@@ -127,22 +132,12 @@ export function PersonalBilling() {
       setError(t("billing.topup.failed"));
     }
     void client.invalidateQueries({ queryKey: ["private-account", identity, "billing"] });
-  }, [client, config.data, identity, pending.data, pendingID, t]);
+  }, [client, identity, pending.data, pendingID, t]);
 
-  const onPaymentChain = Boolean(
-    wallet.active &&
-    config.data?.network &&
-    chainsMatch(wallet.active.chainID, config.data.network.slice("eip155:".length)),
-  );
-  const crossChain = Boolean(wallet.withBillingChain && !onPaymentChain);
-  const walletReady = Boolean(
-    wallet.active &&
-    auth.session.user &&
-    wallet.active.account.toLowerCase() === auth.session.user.address.toLowerCase() &&
-    config.data?.network &&
-    (onPaymentChain || wallet.withBillingChain) &&
-    wallet.signBillingTypedData &&
-    wallet.waitForBillingTransaction,
+  const { onPaymentChain, crossChain, walletReady } = walletFundingState(
+    wallet,
+    auth.session.user?.address,
+    payment,
   );
   const walletKey = JSON.stringify([
     identity,
@@ -152,9 +147,10 @@ export function PersonalBilling() {
       wallet.active.authChainID ?? wallet.active.chainID,
       wallet.active.authRevision ?? wallet.active.revision,
     ],
-    config.data?.network,
-    config.data?.asset,
-    config.data?.recipient,
+    payment?.network,
+    payment?.asset,
+    payment?.recipient,
+    payment?.id,
   ]);
   const currentWalletKey = useRef(walletKey);
   currentWalletKey.current = walletKey;
@@ -164,15 +160,14 @@ export function PersonalBilling() {
       readTopupBalance(
         wallet.readContract,
         wallet.active!.account,
-        config.data!.asset!,
-        config.data!.network!.slice("eip155:".length),
+        payment!.asset!,
+        payment!.network!.slice("eip155:".length),
       ),
-    enabled:
-      walletReady && onPaymentChain && !submitting && Boolean(config.data?.x402_topups_enabled),
+    enabled: walletReady && onPaymentChain && !submitting && Boolean(payment?.x402_topups_enabled),
     retry: false,
     staleTime: 0,
   });
-  const atomicAmount = config.data ? topupAmount(amount, config.data) : undefined;
+  const atomicAmount = payment ? topupAmount(amount, payment) : undefined;
   const enoughBalance =
     balance.data !== undefined &&
     atomicAmount !== undefined &&
@@ -199,12 +194,12 @@ export function PersonalBilling() {
       !wallet.signBillingTypedData ||
       !wallet.waitForBillingTransaction ||
       !auth.session.csrf_token ||
-      !config.data?.x402_topups_enabled
+      !payment?.x402_topups_enabled
     ) {
       setError(t("billing.topup.walletRequired"));
       return;
     }
-    const atomic = topupAmount(amount, config.data);
+    const atomic = topupAmount(amount, payment);
     if (!atomic) return;
     const signal = lifetime();
     submittingRef.current = true;
@@ -216,7 +211,7 @@ export function PersonalBilling() {
         if (currentWalletKey.current !== walletKey) throw new TopupBalanceError("unavailable");
       };
       assertCurrent();
-      const paymentConfig = config.data;
+      const paymentConfig = payment;
       const csrfToken = auth.session.csrf_token;
       const execute = async (selected: ActiveWallet) => {
         await checkTopupBalance(
@@ -227,7 +222,7 @@ export function PersonalBilling() {
           atomic,
         );
         assertCurrent();
-        const intent = await createBillingTopupIntent(atomic, csrfToken);
+        const intent = await createBillingTopupIntent(atomic, csrfToken, paymentConfig.id);
         assertCurrent();
         return await payBillingTopup({
           config: paymentConfig,
@@ -265,10 +260,7 @@ export function PersonalBilling() {
       setFinished(true);
       setNotice(
         t("billing.topup.credited", {
-          amount: displayBillingAmount(
-            receipt.intent.amount_atomic,
-            matchingAssetConfig(receipt.intent, config.data),
-          ),
+          amount: displayBillingAmount(receipt.intent.credit_amount_atomic, { credit_decimals: 6 }),
         }),
       );
       setAmount("");
@@ -310,10 +302,7 @@ export function PersonalBilling() {
           />
         )}
         {account.data && !account.error && (
-          <BalanceSummary
-            account={account.data}
-            config={matchingAssetConfig(account.data, config.data)}
-          />
+          <BalanceSummary account={account.data} config={config.data} />
         )}
       </section>
       <BillingTabs view={view} setView={setView} />
@@ -349,7 +338,7 @@ export function PersonalBilling() {
             )}
             {config.data &&
               !config.error &&
-              (config.data.x402_topups_enabled ? (
+              (config.data.x402_topups_enabled && payment ? (
                 <>
                   {recovery.error && (
                     <BillingError
@@ -362,8 +351,21 @@ export function PersonalBilling() {
                     complete={Boolean(notice)}
                     failed={Boolean(error) && !waiting}
                   />
-                  <TopupForm
+                  <PaymentSelectors
                     config={config.data}
+                    network={paymentChain!.network}
+                    optionID={paymentOption!.id}
+                    blocked={blocked}
+                    onChange={(network, optionID) => {
+                      setPaymentNetwork(network);
+                      setPaymentOptionID(optionID);
+                      setAmount("");
+                      setError(undefined);
+                      setNotice(undefined);
+                    }}
+                  />
+                  <TopupForm
+                    config={payment}
                     amount={amount}
                     method={method}
                     balance={
@@ -377,7 +379,7 @@ export function PersonalBilling() {
                                 ? t("billing.guide.loading")
                                 : balance.error
                                   ? t("billing.guide.unavailable")
-                                  : displayBillingAmount(balance.data!.toString(), config.data)
+                                  : displayBillingAmount(balance.data!.toString(), payment)
                               : t("billing.topup.walletRequired")}
                           <button
                             type="button"
@@ -403,7 +405,7 @@ export function PersonalBilling() {
                                 {t("billing.guide.shortfall", {
                                   amount: displayBillingAmount(
                                     (BigInt(atomicAmount) - balance.data).toString(),
-                                    config.data,
+                                    payment,
                                   ),
                                 })}
                               </p>
@@ -519,9 +521,7 @@ function BalanceSummary({ account, config }: { account: BillingAccount; config?:
           </div>
         ))}
       </dl>
-      <p className="billing-muted">
-        {t("billing.workspace.tokenAmount")} · <code>{account.asset}</code> · {account.network}
-      </p>
+      <p className="billing-muted">{t("billing.workspace.creditUnit")}</p>
     </>
   );
 }
@@ -543,7 +543,7 @@ function TopupForm({
   balance: ReactNode;
   payer?: string;
   balanceBlocked: boolean;
-  config: BillingConfig;
+  config: BillingPaymentConfig;
   amount: string;
   method: BillingTransferMethod;
   onAmount: (value: string) => void;
@@ -579,6 +579,14 @@ function TopupForm({
           onChange={(event) => onAmount(event.target.value)}
         />
         {balance}
+        <small>{t("billing.workspace.exchangeRate", { rate: tokenCreditRate(config) })}</small>
+        <p aria-live="polite">
+          {t("billing.workspace.expectedCredit", {
+            amount: topupAmount(amount, config)
+              ? formatTokenAmount(creditAmount(topupAmount(amount, config)!, config)!, 6)
+              : "—",
+          })}
+        </p>
         <small id="billing-amount-range">
           {t("billing.workspace.range", {
             min: config.minimum_topup_amount_atomic
@@ -766,7 +774,7 @@ function HistoryRecord({
 }: {
   record: BillingTopupIntent | BillingPayment;
   locale: string;
-  config?: BillingConfig;
+  config?: BillingPaymentOption;
 }) {
   const { t } = useTranslation();
   const state =
@@ -788,6 +796,12 @@ function HistoryRecord({
       <details className="billing-record-details">
         <summary>{t("billing.workspace.details")}</summary>
         <dl>
+          {"credit_amount_atomic" in record && (
+            <div>
+              <dt>{t("billing.workspace.creditUnit")}</dt>
+              <dd>{formatTokenAmount(record.credit_amount_atomic, 6)}</dd>
+            </div>
+          )}
           <div>
             <dt>{t("billing.fields.network")}</dt>
             <dd>{record.network}</dd>
@@ -839,4 +853,100 @@ function BillingError({ title, retry }: { title: string; retry: () => void }) {
   return (
     <BillingLoadError title={title} detail={t("billing.workspace.retryHint")} onRetry={retry} />
   );
+}
+
+function PaymentSelectors({
+  config,
+  network,
+  optionID,
+  blocked,
+  onChange,
+}: {
+  config: BillingConfig;
+  network: string;
+  optionID: string;
+  blocked: boolean;
+  onChange: (network: string, optionID: string) => void;
+}) {
+  const { t } = useTranslation();
+  const chain = config.payment_chains.find((value) => value.network === network);
+  return (
+    <div className="field-control">
+      <label htmlFor="billing-payment-network">{t("billing.fields.network")}</label>
+      <select
+        id="billing-payment-network"
+        disabled={blocked}
+        value={network}
+        onChange={(event) => onChange(event.target.value, "")}
+      >
+        {config.payment_chains.map((chain) => (
+          <option key={chain.network} value={chain.network}>
+            {chain.network}
+          </option>
+        ))}
+      </select>
+      <label htmlFor="billing-payment-token">{t("billing.fields.asset")}</label>
+      <select
+        id="billing-payment-token"
+        disabled={blocked}
+        value={optionID}
+        onChange={(event) => onChange(network, event.target.value)}
+      >
+        {chain?.tokens.map((token) => (
+          <option key={token.id} value={token.id}>
+            {token.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function usePaymentSelection(config: BillingConfig | undefined) {
+  const [paymentNetwork, setPaymentNetwork] = useState("");
+  const [paymentOptionID, setPaymentOptionID] = useState("");
+  const paymentChain =
+    config?.payment_chains.find((chain) => chain.network === paymentNetwork) ??
+    config?.payment_chains[0];
+  const paymentOption =
+    paymentChain?.tokens.find((token) => token.id === paymentOptionID) ?? paymentChain?.tokens[0];
+  const payment: BillingPaymentConfig | undefined =
+    config && paymentOption ? { ...config, ...paymentOption } : undefined;
+  const [method, setMethod] = useState<BillingTransferMethod>("eip3009");
+  useEffect(() => {
+    const methods = payment?.asset_transfer_methods;
+    if (methods?.length && !methods.includes(method)) setMethod(methods[0]!);
+  }, [payment?.asset_transfer_methods, method]);
+  return {
+    method,
+    setMethod,
+    paymentChain,
+    paymentOption,
+    payment,
+    setPaymentNetwork,
+    setPaymentOptionID,
+  };
+}
+
+function walletFundingState(
+  wallet: ReturnType<typeof useWallet>,
+  address: string | undefined,
+  payment: BillingPaymentConfig | undefined,
+) {
+  const onPaymentChain = Boolean(
+    wallet.active &&
+    payment?.network &&
+    chainsMatch(wallet.active.chainID, payment.network.slice("eip155:".length)),
+  );
+  const crossChain = Boolean(wallet.withBillingChain && !onPaymentChain);
+  const walletReady = Boolean(
+    wallet.active &&
+    address &&
+    wallet.active.account.toLowerCase() === address.toLowerCase() &&
+    payment?.network &&
+    (onPaymentChain || wallet.withBillingChain) &&
+    wallet.signBillingTypedData &&
+    wallet.waitForBillingTransaction,
+  );
+  return { onPaymentChain, crossChain, walletReady };
 }

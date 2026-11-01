@@ -186,7 +186,7 @@ mining and reconciles one credit without resending. Controlled RPC tests cover
 pre-broadcast rejection, receipt indexing, reverts, wrong hashes, broadcast
 uncertainty and receipt errors/timeouts. Its HTTP loopback test origin
 isolates payment/runtime acceptance; it does not establish browser wallet or
-production Permit2/proxy compatibility. The existing Preview metadata/browser
+funded public-network compatibility. The existing Preview metadata/browser
 and consensus gates remain required. The contract fixture
 checks genesis token storage, owner balance and Facilitator funding. No local test closes P60-T17.
 
@@ -226,3 +226,25 @@ identity checks, without a browser. Use `make test-preview-tools-e2e-full` on
 demand for the complete catalog, lifecycle and initial/final split/all browser
 checks. Both targets have `-prebuilt` variants. Reports retain manual wallet and
 provider-dependent checks as unverified.
+
+### Anvil payment fixture regressions
+
+`make preview-contracts-check` also verifies the deterministic Anvil seed and
+runs `preview/anvil/test.mjs` using the pinned local Foundry binaries. The test
+settles EIP-3009 and standard Permit2 transfers of both six- and eighteen-decimal
+tokens with exact allowance consumption, restarts the
+node and checks recipient balances, spent authorizations and unchanged native
+funds. It also rejects a changed seed. This fixture evidence does not establish
+multi-option account funding or unified credit; those are covered separately by
+`make test-preview-x402`. Local evidence does not replace real-network or AWS KMS acceptance.
+
+The gateway suite covers the Anvil host's HTTP routes, local-wallet CORS and WSS,
+request limits, scrubbed upstream failures and absence of write retries.
+
+Standard payment artifacts are rebuilt explicitly with
+`node preview/contracts/regenerate-x402.mjs`, using the pinned upstream commits,
+Forge 1.8.7 and upstream compiler settings. It also exports complete inline
+verification sources. Then run the contracts, Anvil and verification generators,
+and `node preview/contracts/x402-standard.mjs --write-fixture`. Constructor
+immutables are initialized to each chain ID and canonical address. Both standard
+contracts are included in the genesis verification inventory.

@@ -13,51 +13,45 @@ import (
 
 const adjustBillingAccount = `-- name: AdjustBillingAccount :one
 WITH locked AS (
-    SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
+    SELECT user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
     FROM billing_accounts
     WHERE user_id = $1::uuid
       AND chain_id = $2::numeric
-      AND billing_accounts.network = $3
-      AND billing_accounts.asset = $4
       AND (
-          $5 = 'credit'
+          $3 = 'credit'
           OR total_credit_atomic - total_debit_atomic - reserved_atomic
-              >= $6::numeric
+              >= $4::numeric
       )
     FOR UPDATE
 ), updated AS (
     UPDATE billing_accounts AS account
     SET total_credit_atomic = account.total_credit_atomic +
-            CASE WHEN $5 = 'credit'
-                THEN $6::numeric ELSE 0 END,
+            CASE WHEN $3 = 'credit'
+                THEN $4::numeric ELSE 0 END,
         total_debit_atomic = account.total_debit_atomic +
-            CASE WHEN $5 = 'debit'
-                THEN $6::numeric ELSE 0 END,
-        updated_at = $7
+            CASE WHEN $3 = 'debit'
+                THEN $4::numeric ELSE 0 END,
+        updated_at = $5
     FROM locked
     WHERE account.user_id = locked.user_id
       AND account.chain_id = locked.chain_id
-      AND account.network = locked.network
-      AND account.asset = locked.asset
-    RETURNING account.user_id, account.chain_id, account.network, account.asset, account.total_credit_atomic, account.total_debit_atomic, account.reserved_atomic, account.created_at, account.updated_at
+    RETURNING account.user_id, account.chain_id, account.total_credit_atomic, account.total_debit_atomic, account.reserved_atomic, account.created_at, account.updated_at
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, reason, occurred_at
     )
-    SELECT $8::uuid, user_id, chain_id, network, asset,
-           $5, 'adjustment', $6::numeric,
-           $9::uuid, $10, $7
+    SELECT $6::uuid, user_id, chain_id,
+           $3, 'adjustment', $4::numeric,
+           $7::uuid, $8, $5
     FROM updated
 )
-SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at FROM updated
+SELECT user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at FROM updated
 `
 
 type AdjustBillingAccountParams struct {
 	UserID       pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network      string             `db:"network" json:"network"`
-	Asset        []byte             `db:"asset" json:"asset"`
 	Direction    interface{}        `db:"direction" json:"direction"`
 	AmountAtomic pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
 	OccurredAt   pgtype.Timestamptz `db:"occurred_at" json:"occurred_at"`
@@ -69,8 +63,6 @@ type AdjustBillingAccountParams struct {
 type AdjustBillingAccountRow struct {
 	UserID            pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network           string             `db:"network" json:"network"`
-	Asset             []byte             `db:"asset" json:"asset"`
 	TotalCreditAtomic pgtype.Numeric     `db:"total_credit_atomic" json:"total_credit_atomic"`
 	TotalDebitAtomic  pgtype.Numeric     `db:"total_debit_atomic" json:"total_debit_atomic"`
 	ReservedAtomic    pgtype.Numeric     `db:"reserved_atomic" json:"reserved_atomic"`
@@ -82,8 +74,6 @@ func (q *Queries) AdjustBillingAccount(ctx context.Context, arg AdjustBillingAcc
 	row := q.db.QueryRow(ctx, adjustBillingAccount,
 		arg.UserID,
 		arg.ChainID,
-		arg.Network,
-		arg.Asset,
 		arg.Direction,
 		arg.AmountAtomic,
 		arg.OccurredAt,
@@ -95,8 +85,6 @@ func (q *Queries) AdjustBillingAccount(ctx context.Context, arg AdjustBillingAcc
 	err := row.Scan(
 		&i.UserID,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.TotalCreditAtomic,
 		&i.TotalDebitAtomic,
 		&i.ReservedAtomic,
@@ -204,7 +192,7 @@ func (q *Queries) ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingT
 
 const commitBillingUsage = `-- name: CommitBillingUsage :one
 WITH candidate AS (
-    SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
+    SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
     FROM billing_usage_charges
     WHERE id = $1::uuid
       AND reservation_owner = $2::uuid
@@ -219,15 +207,13 @@ WITH candidate AS (
     FROM candidate
     WHERE account.user_id = candidate.user_id
       AND account.chain_id = candidate.chain_id
-      AND account.network = candidate.network
-      AND account.asset = candidate.asset
-    RETURNING candidate.id, candidate.reservation_owner, candidate.user_id, candidate.api_key_prefix, candidate.chain_id, candidate.network, candidate.asset, candidate.method, candidate.operation, candidate.resource_digest, candidate.amount_atomic, candidate.state, candidate.failure_code, candidate.response_digest, candidate.response_bytes, candidate.reservation_expires_at, candidate.committed_at, candidate.released_at, candidate.expired_at, candidate.created_at, candidate.updated_at
+    RETURNING candidate.id, candidate.reservation_owner, candidate.user_id, candidate.api_key_prefix, candidate.chain_id, candidate.method, candidate.operation, candidate.resource_digest, candidate.amount_atomic, candidate.state, candidate.failure_code, candidate.response_digest, candidate.response_bytes, candidate.reservation_expires_at, candidate.committed_at, candidate.released_at, candidate.expired_at, candidate.created_at, candidate.updated_at
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, occurred_at
     )
-    SELECT $4::uuid, user_id, chain_id, network, asset,
+    SELECT $4::uuid, user_id, chain_id,
            'debit', 'usage', amount_atomic, id, $3
     FROM account_update
 ), updated AS (
@@ -239,9 +225,9 @@ WITH candidate AS (
         updated_at = $3
     FROM account_update
     WHERE charge.id = account_update.id
-    RETURNING charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.network, charge.asset, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
+    RETURNING charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
 )
-SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at FROM updated
+SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at FROM updated
 `
 
 type CommitBillingUsageParams struct {
@@ -259,8 +245,6 @@ type CommitBillingUsageRow struct {
 	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
 	ApiKeyPrefix         string             `db:"api_key_prefix" json:"api_key_prefix"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network              string             `db:"network" json:"network"`
-	Asset                []byte             `db:"asset" json:"asset"`
 	Method               string             `db:"method" json:"method"`
 	Operation            string             `db:"operation" json:"operation"`
 	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
@@ -293,8 +277,6 @@ func (q *Queries) CommitBillingUsage(ctx context.Context, arg CommitBillingUsage
 		&i.UserID,
 		&i.ApiKeyPrefix,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -316,7 +298,7 @@ func (q *Queries) CommitBillingUsage(ctx context.Context, arg CommitBillingUsage
 const createBillingTopupIntent = `-- name: CreateBillingTopupIntent :one
 INSERT INTO billing_topup_intents (
     id, user_id, chain_id, network, asset, amount_atomic, recipient, payer,
-    state, expires_at, created_at, updated_at
+    payment_option, credit_amount_atomic, state, expires_at, created_at, updated_at
 )
 SELECT
     $1::uuid,
@@ -327,29 +309,33 @@ SELECT
     $4::numeric,
     $5,
     users.address,
+    $6::jsonb,
+    $7::numeric,
     'open',
-    $6,
-    $7,
-    $7
+    $8,
+    $9,
+    $9
 FROM users
-WHERE users.id = $8::uuid
-  AND users.chain_id = $9::numeric
-  AND users.address = $10
+WHERE users.id = $10::uuid
+  AND users.chain_id = $11::numeric
+  AND users.address = $12
   AND users.status = 'active'
-RETURNING id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+RETURNING id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 `
 
 type CreateBillingTopupIntentParams struct {
-	ID           pgtype.UUID        `db:"id" json:"id"`
-	Network      string             `db:"network" json:"network"`
-	Asset        []byte             `db:"asset" json:"asset"`
-	AmountAtomic pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
-	Recipient    []byte             `db:"recipient" json:"recipient"`
-	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	CreatedAt    pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UserID       pgtype.UUID        `db:"user_id" json:"user_id"`
-	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Payer        []byte             `db:"payer" json:"payer"`
+	ID                 pgtype.UUID        `db:"id" json:"id"`
+	Network            string             `db:"network" json:"network"`
+	Asset              []byte             `db:"asset" json:"asset"`
+	AmountAtomic       pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	Recipient          []byte             `db:"recipient" json:"recipient"`
+	PaymentOption      []byte             `db:"payment_option" json:"payment_option"`
+	CreditAmountAtomic pgtype.Numeric     `db:"credit_amount_atomic" json:"credit_amount_atomic"`
+	ExpiresAt          pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	CreatedAt          pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UserID             pgtype.UUID        `db:"user_id" json:"user_id"`
+	ChainID            pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Payer              []byte             `db:"payer" json:"payer"`
 }
 
 func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillingTopupIntentParams) (BillingTopupIntent, error) {
@@ -359,6 +345,8 @@ func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillin
 		arg.Asset,
 		arg.AmountAtomic,
 		arg.Recipient,
+		arg.PaymentOption,
+		arg.CreditAmountAtomic,
 		arg.ExpiresAt,
 		arg.CreatedAt,
 		arg.UserID,
@@ -372,6 +360,8 @@ func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillin
 		&i.ChainID,
 		&i.Network,
 		&i.Asset,
+		&i.PaymentOption,
+		&i.CreditAmountAtomic,
 		&i.AmountAtomic,
 		&i.Recipient,
 		&i.Payer,
@@ -394,8 +384,8 @@ func (q *Queries) CreateBillingTopupIntent(ctx context.Context, arg CreateBillin
 const creditBillingTopup = `-- name: CreditBillingTopup :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.user_id,
-           payment.chain_id, payment.network, payment.asset,
-           payment.amount_atomic
+           payment.chain_id,
+           intent.credit_amount_atomic AS amount_atomic
     FROM billing_payments AS payment
     JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
     WHERE payment.id = $1::uuid
@@ -414,7 +404,7 @@ WITH candidate AS (
         settled_at = $4, updated_at = $4
     FROM candidate
     WHERE payment.id = candidate.id
-    RETURNING candidate.id, candidate.topup_intent_id, candidate.user_id, candidate.chain_id, candidate.network, candidate.asset, candidate.amount_atomic
+    RETURNING candidate.id, candidate.topup_intent_id, candidate.user_id, candidate.chain_id, candidate.amount_atomic
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = 'credited', failure_code = NULL,
@@ -422,7 +412,7 @@ WITH candidate AS (
         credited_at = $4, updated_at = $4
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
-    RETURNING payment_update.id, payment_update.topup_intent_id, payment_update.user_id, payment_update.chain_id, payment_update.network, payment_update.asset, payment_update.amount_atomic
+    RETURNING payment_update.id, payment_update.topup_intent_id, payment_update.user_id, payment_update.chain_id, payment_update.amount_atomic
 ), account_update AS (
     UPDATE billing_accounts AS account
     SET total_credit_atomic = account.total_credit_atomic + intent_update.amount_atomic,
@@ -430,16 +420,14 @@ WITH candidate AS (
     FROM intent_update
     WHERE account.user_id = intent_update.user_id
       AND account.chain_id = intent_update.chain_id
-      AND account.network = intent_update.network
-      AND account.asset = intent_update.asset
-    RETURNING account.user_id, account.chain_id, account.network, account.asset, account.total_credit_atomic, account.total_debit_atomic, account.reserved_atomic, account.created_at, account.updated_at, intent_update.id AS payment_id,
+    RETURNING account.user_id, account.chain_id, account.total_credit_atomic, account.total_debit_atomic, account.reserved_atomic, account.created_at, account.updated_at, intent_update.id AS payment_id,
               intent_update.amount_atomic AS topup_amount_atomic
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, occurred_at
     )
-    SELECT $5::uuid, user_id, chain_id, network, asset,
+    SELECT $5::uuid, user_id, chain_id,
            'credit', 'topup', topup_amount_atomic, payment_id, $4
     FROM account_update
 ), event AS (
@@ -450,7 +438,7 @@ WITH candidate AS (
            $3, $4
     FROM account_update
 )
-SELECT user_id, chain_id, network, asset, total_credit_atomic,
+SELECT user_id, chain_id, total_credit_atomic,
        total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM account_update
 `
@@ -466,8 +454,6 @@ type CreditBillingTopupParams struct {
 type CreditBillingTopupRow struct {
 	UserID            pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network           string             `db:"network" json:"network"`
-	Asset             []byte             `db:"asset" json:"asset"`
 	TotalCreditAtomic pgtype.Numeric     `db:"total_credit_atomic" json:"total_credit_atomic"`
 	TotalDebitAtomic  pgtype.Numeric     `db:"total_debit_atomic" json:"total_debit_atomic"`
 	ReservedAtomic    pgtype.Numeric     `db:"reserved_atomic" json:"reserved_atomic"`
@@ -487,8 +473,6 @@ func (q *Queries) CreditBillingTopup(ctx context.Context, arg CreditBillingTopup
 	err := row.Scan(
 		&i.UserID,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.TotalCreditAtomic,
 		&i.TotalDebitAtomic,
 		&i.ReservedAtomic,
@@ -501,40 +485,28 @@ func (q *Queries) CreditBillingTopup(ctx context.Context, arg CreditBillingTopup
 const ensureBillingAccount = `-- name: EnsureBillingAccount :one
 WITH inserted AS (
     INSERT INTO billing_accounts (
-        user_id, chain_id, network, asset, created_at, updated_at
+        user_id, chain_id, created_at, updated_at
     )
-    SELECT users.id, users.chain_id, $1, $2,
-           $3, $3
+    SELECT users.id, users.chain_id,
+           $1, $1
     FROM users
-    WHERE users.id = $4::uuid
-      AND users.chain_id = $5::numeric
+    WHERE users.id = $2::uuid
+      AND users.chain_id = $3::numeric
       AND users.status = 'active'
-    ON CONFLICT (user_id, chain_id, network, asset) DO NOTHING
-    RETURNING user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
+    ON CONFLICT (user_id, chain_id) DO NOTHING
+    RETURNING user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
 )
-SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at FROM inserted
+SELECT user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at FROM inserted
 UNION ALL
-SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at FROM billing_accounts
-WHERE user_id = $4::uuid
-  AND chain_id = $5::numeric
-  AND network = $1
-  AND asset = $2
+SELECT user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at FROM billing_accounts
+WHERE user_id = $2::uuid
+  AND chain_id = $3::numeric
 LIMIT 1
 `
-
-type EnsureBillingAccountParams struct {
-	Network   string             `db:"network" json:"network"`
-	Asset     []byte             `db:"asset" json:"asset"`
-	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
-	ChainID   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-}
 
 type EnsureBillingAccountRow struct {
 	UserID            pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network           string             `db:"network" json:"network"`
-	Asset             []byte             `db:"asset" json:"asset"`
 	TotalCreditAtomic pgtype.Numeric     `db:"total_credit_atomic" json:"total_credit_atomic"`
 	TotalDebitAtomic  pgtype.Numeric     `db:"total_debit_atomic" json:"total_debit_atomic"`
 	ReservedAtomic    pgtype.Numeric     `db:"reserved_atomic" json:"reserved_atomic"`
@@ -542,20 +514,12 @@ type EnsureBillingAccountRow struct {
 	UpdatedAt         pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) EnsureBillingAccount(ctx context.Context, arg EnsureBillingAccountParams) (EnsureBillingAccountRow, error) {
-	row := q.db.QueryRow(ctx, ensureBillingAccount,
-		arg.Network,
-		arg.Asset,
-		arg.CreatedAt,
-		arg.UserID,
-		arg.ChainID,
-	)
+func (q *Queries) EnsureBillingAccount(ctx context.Context, createdAt pgtype.Timestamptz, userID pgtype.UUID, chainID pgtype.Numeric) (EnsureBillingAccountRow, error) {
+	row := q.db.QueryRow(ctx, ensureBillingAccount, createdAt, userID, chainID)
 	var i EnsureBillingAccountRow
 	err := row.Scan(
 		&i.UserID,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.TotalCreditAtomic,
 		&i.TotalDebitAtomic,
 		&i.ReservedAtomic,
@@ -619,61 +583,41 @@ func (q *Queries) ExpireBillingTopupPayments(ctx context.Context, chainID pgtype
 
 const expireBillingUsageReservations = `-- name: ExpireBillingUsageReservations :one
 WITH candidates AS (
-    SELECT charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.network, charge.asset, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
+    SELECT charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
     FROM billing_usage_charges AS charge
     WHERE charge.chain_id = $1::numeric
-      AND charge.network = $2
-      AND charge.asset = $3
       AND charge.state = 'reserved'
-      AND charge.reservation_expires_at <= $4
+      AND charge.reservation_expires_at <= $2
     ORDER BY charge.reservation_expires_at, charge.id
     FOR UPDATE SKIP LOCKED
-    LIMIT $5
+    LIMIT $3
 ), totals AS (
-    SELECT user_id, chain_id, network, asset, sum(amount_atomic) AS amount_atomic
+    SELECT user_id, chain_id, sum(amount_atomic) AS amount_atomic
     FROM candidates
-    GROUP BY user_id, chain_id, network, asset
+    GROUP BY user_id, chain_id
 ), account_update AS (
     UPDATE billing_accounts AS account
     SET reserved_atomic = account.reserved_atomic - totals.amount_atomic,
-        updated_at = $4
+        updated_at = $2
     FROM totals
     WHERE account.user_id = totals.user_id
       AND account.chain_id = totals.chain_id
-      AND account.network = totals.network
-      AND account.asset = totals.asset
-    RETURNING account.user_id, account.chain_id, account.network, account.asset
+    RETURNING account.user_id, account.chain_id
 ), updated AS (
     UPDATE billing_usage_charges AS charge
     SET state = 'expired', failure_code = 'usage_reservation_expired',
-        expired_at = $4, updated_at = $4
+        expired_at = $2, updated_at = $2
     FROM candidates, account_update
     WHERE charge.id = candidates.id
       AND account_update.user_id = candidates.user_id
       AND account_update.chain_id = candidates.chain_id
-      AND account_update.network = candidates.network
-      AND account_update.asset = candidates.asset
     RETURNING charge.id
 )
 SELECT count(*)::bigint AS expired_count FROM updated
 `
 
-type ExpireBillingUsageReservationsParams struct {
-	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network     string             `db:"network" json:"network"`
-	Asset       []byte             `db:"asset" json:"asset"`
-	ObservedAt  pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
-	ExpireLimit int32              `db:"expire_limit" json:"expire_limit"`
-}
-
-func (q *Queries) ExpireBillingUsageReservations(ctx context.Context, arg ExpireBillingUsageReservationsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, expireBillingUsageReservations,
-		arg.ChainID,
-		arg.Network,
-		arg.Asset,
-		arg.ObservedAt,
-		arg.ExpireLimit,
-	)
+func (q *Queries) ExpireBillingUsageReservations(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error) {
+	row := q.db.QueryRow(ctx, expireBillingUsageReservations, chainID, observedAt, expireLimit)
 	var expired_count int64
 	err := row.Scan(&expired_count)
 	return expired_count, err
@@ -684,17 +628,15 @@ WITH candidates AS (
     SELECT intent.id
     FROM billing_topup_intents AS intent
     WHERE intent.chain_id = $1::numeric
-      AND intent.network = $2
-      AND intent.asset = $3
       AND intent.state = 'open'
-      AND intent.expires_at <= $4
+      AND intent.expires_at <= $2
     ORDER BY intent.expires_at, intent.id
     FOR UPDATE SKIP LOCKED
-    LIMIT $5
+    LIMIT $3
 ), updated AS (
     UPDATE billing_topup_intents AS intent
     SET state = 'expired', failure_code = 'topup_intent_expired',
-        expired_at = $4, updated_at = $4
+        expired_at = $2, updated_at = $2
     FROM candidates
     WHERE intent.id = candidates.id
     RETURNING intent.id
@@ -702,22 +644,8 @@ WITH candidates AS (
 SELECT count(*)::bigint AS expired_count FROM updated
 `
 
-type ExpireOpenBillingTopupIntentsParams struct {
-	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network     string             `db:"network" json:"network"`
-	Asset       []byte             `db:"asset" json:"asset"`
-	ObservedAt  pgtype.Timestamptz `db:"observed_at" json:"observed_at"`
-	ExpireLimit int32              `db:"expire_limit" json:"expire_limit"`
-}
-
-func (q *Queries) ExpireOpenBillingTopupIntents(ctx context.Context, arg ExpireOpenBillingTopupIntentsParams) (int64, error) {
-	row := q.db.QueryRow(ctx, expireOpenBillingTopupIntents,
-		arg.ChainID,
-		arg.Network,
-		arg.Asset,
-		arg.ObservedAt,
-		arg.ExpireLimit,
-	)
+func (q *Queries) ExpireOpenBillingTopupIntents(ctx context.Context, chainID pgtype.Numeric, observedAt pgtype.Timestamptz, expireLimit int32) (int64, error) {
+	row := q.db.QueryRow(ctx, expireOpenBillingTopupIntents, chainID, observedAt, expireLimit)
 	var expired_count int64
 	err := row.Scan(&expired_count)
 	return expired_count, err
@@ -846,34 +774,18 @@ func (q *Queries) FailBillingTopupSettlement(ctx context.Context, arg FailBillin
 }
 
 const getBillingAccount = `-- name: GetBillingAccount :one
-SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
+SELECT user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM billing_accounts
 WHERE user_id = $1::uuid
   AND chain_id = $2::numeric
-  AND network = $3
-  AND asset = $4
 `
 
-type GetBillingAccountParams struct {
-	UserID  pgtype.UUID    `db:"user_id" json:"user_id"`
-	ChainID pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	Network string         `db:"network" json:"network"`
-	Asset   []byte         `db:"asset" json:"asset"`
-}
-
-func (q *Queries) GetBillingAccount(ctx context.Context, arg GetBillingAccountParams) (BillingAccount, error) {
-	row := q.db.QueryRow(ctx, getBillingAccount,
-		arg.UserID,
-		arg.ChainID,
-		arg.Network,
-		arg.Asset,
-	)
+func (q *Queries) GetBillingAccount(ctx context.Context, userID pgtype.UUID, chainID pgtype.Numeric) (BillingAccount, error) {
+	row := q.db.QueryRow(ctx, getBillingAccount, userID, chainID)
 	var i BillingAccount
 	err := row.Scan(
 		&i.UserID,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.TotalCreditAtomic,
 		&i.TotalDebitAtomic,
 		&i.ReservedAtomic,
@@ -884,7 +796,7 @@ func (q *Queries) GetBillingAccount(ctx context.Context, arg GetBillingAccountPa
 }
 
 const getBillingTopupIntent = `-- name: GetBillingTopupIntent :one
-SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -899,6 +811,8 @@ func (q *Queries) GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, cha
 		&i.ChainID,
 		&i.Network,
 		&i.Asset,
+		&i.PaymentOption,
+		&i.CreditAmountAtomic,
 		&i.AmountAtomic,
 		&i.Recipient,
 		&i.Payer,
@@ -919,7 +833,7 @@ func (q *Queries) GetBillingTopupIntent(ctx context.Context, iD pgtype.UUID, cha
 }
 
 const getBillingUsageCharge = `-- name: GetBillingUsageCharge :one
-SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
+SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 FROM billing_usage_charges
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -934,8 +848,6 @@ func (q *Queries) GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, cha
 		&i.UserID,
 		&i.ApiKeyPrefix,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -955,7 +867,7 @@ func (q *Queries) GetBillingUsageCharge(ctx context.Context, iD pgtype.UUID, cha
 }
 
 const getUserBillingTopupIntent = `-- name: GetUserBillingTopupIntent :one
-SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -971,6 +883,8 @@ func (q *Queries) GetUserBillingTopupIntent(ctx context.Context, iD pgtype.UUID,
 		&i.ChainID,
 		&i.Network,
 		&i.Asset,
+		&i.PaymentOption,
+		&i.CreditAmountAtomic,
 		&i.AmountAtomic,
 		&i.Recipient,
 		&i.Payer,
@@ -991,26 +905,22 @@ func (q *Queries) GetUserBillingTopupIntent(ctx context.Context, iD pgtype.UUID,
 }
 
 const listAdminBillingAccounts = `-- name: ListAdminBillingAccounts :many
-SELECT user_id, chain_id, network, asset, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
+SELECT user_id, chain_id, total_credit_atomic, total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM billing_accounts
 WHERE chain_id = $1::numeric
-  AND network = $2
-  AND asset = $3
   AND (
-      $4::timestamptz IS NULL
+      $2::timestamptz IS NULL
       OR (updated_at, user_id) < (
-          $4::timestamptz,
-          $5::uuid
+          $2::timestamptz,
+          $3::uuid
       )
   )
 ORDER BY updated_at DESC, user_id DESC
-LIMIT $6
+LIMIT $4
 `
 
 type ListAdminBillingAccountsParams struct {
 	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network         string             `db:"network" json:"network"`
-	Asset           []byte             `db:"asset" json:"asset"`
 	BeforeUpdatedAt pgtype.Timestamptz `db:"before_updated_at" json:"before_updated_at"`
 	BeforeUserID    pgtype.UUID        `db:"before_user_id" json:"before_user_id"`
 	PageLimit       int32              `db:"page_limit" json:"page_limit"`
@@ -1019,8 +929,6 @@ type ListAdminBillingAccountsParams struct {
 func (q *Queries) ListAdminBillingAccounts(ctx context.Context, arg ListAdminBillingAccountsParams) ([]BillingAccount, error) {
 	rows, err := q.db.Query(ctx, listAdminBillingAccounts,
 		arg.ChainID,
-		arg.Network,
-		arg.Asset,
 		arg.BeforeUpdatedAt,
 		arg.BeforeUserID,
 		arg.PageLimit,
@@ -1035,8 +943,6 @@ func (q *Queries) ListAdminBillingAccounts(ctx context.Context, arg ListAdminBil
 		if err := rows.Scan(
 			&i.UserID,
 			&i.ChainID,
-			&i.Network,
-			&i.Asset,
 			&i.TotalCreditAtomic,
 			&i.TotalDebitAtomic,
 			&i.ReservedAtomic,
@@ -1054,26 +960,22 @@ func (q *Queries) ListAdminBillingAccounts(ctx context.Context, arg ListAdminBil
 }
 
 const listAdminBillingTopupIntents = `-- name: ListAdminBillingTopupIntents :many
-SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE chain_id = $1::numeric
-  AND network = $2
-  AND asset = $3
   AND (
-      $4::timestamptz IS NULL
+      $2::timestamptz IS NULL
       OR (created_at, id) < (
-          $4::timestamptz,
-          $5::uuid
+          $2::timestamptz,
+          $3::uuid
       )
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $6
+LIMIT $4
 `
 
 type ListAdminBillingTopupIntentsParams struct {
 	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network         string             `db:"network" json:"network"`
-	Asset           []byte             `db:"asset" json:"asset"`
 	BeforeCreatedAt pgtype.Timestamptz `db:"before_created_at" json:"before_created_at"`
 	BeforeID        pgtype.UUID        `db:"before_id" json:"before_id"`
 	PageLimit       int32              `db:"page_limit" json:"page_limit"`
@@ -1082,8 +984,6 @@ type ListAdminBillingTopupIntentsParams struct {
 func (q *Queries) ListAdminBillingTopupIntents(ctx context.Context, arg ListAdminBillingTopupIntentsParams) ([]BillingTopupIntent, error) {
 	rows, err := q.db.Query(ctx, listAdminBillingTopupIntents,
 		arg.ChainID,
-		arg.Network,
-		arg.Asset,
 		arg.BeforeCreatedAt,
 		arg.BeforeID,
 		arg.PageLimit,
@@ -1101,6 +1001,8 @@ func (q *Queries) ListAdminBillingTopupIntents(ctx context.Context, arg ListAdmi
 			&i.ChainID,
 			&i.Network,
 			&i.Asset,
+			&i.PaymentOption,
+			&i.CreditAmountAtomic,
 			&i.AmountAtomic,
 			&i.Recipient,
 			&i.Payer,
@@ -1128,26 +1030,22 @@ func (q *Queries) ListAdminBillingTopupIntents(ctx context.Context, arg ListAdmi
 }
 
 const listAdminBillingUsage = `-- name: ListAdminBillingUsage :many
-SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
+SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 FROM billing_usage_charges
 WHERE chain_id = $1::numeric
-  AND network = $2
-  AND asset = $3
   AND (
-      $4::timestamptz IS NULL
+      $2::timestamptz IS NULL
       OR (created_at, id) < (
-          $4::timestamptz,
-          $5::uuid
+          $2::timestamptz,
+          $3::uuid
       )
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $6
+LIMIT $4
 `
 
 type ListAdminBillingUsageParams struct {
 	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network         string             `db:"network" json:"network"`
-	Asset           []byte             `db:"asset" json:"asset"`
 	BeforeCreatedAt pgtype.Timestamptz `db:"before_created_at" json:"before_created_at"`
 	BeforeID        pgtype.UUID        `db:"before_id" json:"before_id"`
 	PageLimit       int32              `db:"page_limit" json:"page_limit"`
@@ -1156,8 +1054,6 @@ type ListAdminBillingUsageParams struct {
 func (q *Queries) ListAdminBillingUsage(ctx context.Context, arg ListAdminBillingUsageParams) ([]BillingUsageCharge, error) {
 	rows, err := q.db.Query(ctx, listAdminBillingUsage,
 		arg.ChainID,
-		arg.Network,
-		arg.Asset,
 		arg.BeforeCreatedAt,
 		arg.BeforeID,
 		arg.PageLimit,
@@ -1175,8 +1071,6 @@ func (q *Queries) ListAdminBillingUsage(ctx context.Context, arg ListAdminBillin
 			&i.UserID,
 			&i.ApiKeyPrefix,
 			&i.ChainID,
-			&i.Network,
-			&i.Asset,
 			&i.Method,
 			&i.Operation,
 			&i.ResourceDigest,
@@ -1203,7 +1097,7 @@ func (q *Queries) ListAdminBillingUsage(ctx context.Context, arg ListAdminBillin
 }
 
 const listUserBillingTopupIntents = `-- name: ListUserBillingTopupIntents :many
-SELECT id, user_id, chain_id, network, asset, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
+SELECT id, user_id, chain_id, network, asset, payment_option, credit_amount_atomic, amount_atomic, recipient, payer, state, active_payment_id, transaction_hash, failure_code, expires_at, processing_at, settling_at, credited_at, failed_at, expired_at, created_at, updated_at
 FROM billing_topup_intents
 WHERE chain_id = $1::numeric
   AND user_id = $2::uuid
@@ -1247,6 +1141,8 @@ func (q *Queries) ListUserBillingTopupIntents(ctx context.Context, arg ListUserB
 			&i.ChainID,
 			&i.Network,
 			&i.Asset,
+			&i.PaymentOption,
+			&i.CreditAmountAtomic,
 			&i.AmountAtomic,
 			&i.Recipient,
 			&i.Payer,
@@ -1274,7 +1170,7 @@ func (q *Queries) ListUserBillingTopupIntents(ctx context.Context, arg ListUserB
 }
 
 const listUserBillingUsage = `-- name: ListUserBillingUsage :many
-SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
+SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 FROM billing_usage_charges
 WHERE chain_id = $1::numeric
   AND user_id = $2::uuid
@@ -1318,8 +1214,6 @@ func (q *Queries) ListUserBillingUsage(ctx context.Context, arg ListUserBillingU
 			&i.UserID,
 			&i.ApiKeyPrefix,
 			&i.ChainID,
-			&i.Network,
-			&i.Asset,
 			&i.Method,
 			&i.Operation,
 			&i.ResourceDigest,
@@ -1521,16 +1415,14 @@ func (q *Queries) ReconcileBillingTopupFailed(ctx context.Context, arg Reconcile
 const reconcileBillingTopupSettled = `-- name: ReconcileBillingTopupSettled :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.user_id,
-           payment.chain_id, payment.network, payment.asset,
-           payment.amount_atomic, payment.failure_code,
+           payment.chain_id,
+           intent.credit_amount_atomic AS amount_atomic, payment.failure_code,
            payment.transaction_hash
     FROM billing_payments AS payment
     JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
     JOIN billing_accounts AS account
       ON account.user_id = payment.user_id
      AND account.chain_id = payment.chain_id
-     AND account.network = payment.network
-     AND account.asset = payment.asset
     WHERE payment.id = $1::uuid
       AND payment.chain_id = $2::numeric
       AND payment.purpose = 'account_topup'
@@ -1559,7 +1451,7 @@ WITH candidate AS (
         updated_at = $3
     FROM candidate
     WHERE payment.id = candidate.id
-    RETURNING candidate.id, candidate.topup_intent_id, candidate.user_id, candidate.chain_id, candidate.network, candidate.asset, candidate.amount_atomic, candidate.failure_code, candidate.transaction_hash
+    RETURNING candidate.id, candidate.topup_intent_id, candidate.user_id, candidate.chain_id, candidate.amount_atomic, candidate.failure_code, candidate.transaction_hash
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = 'credited', failure_code = NULL,
@@ -1567,7 +1459,7 @@ WITH candidate AS (
         credited_at = $3, updated_at = $3
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
-    RETURNING payment_update.id, payment_update.topup_intent_id, payment_update.user_id, payment_update.chain_id, payment_update.network, payment_update.asset, payment_update.amount_atomic, payment_update.failure_code, payment_update.transaction_hash
+    RETURNING payment_update.id, payment_update.topup_intent_id, payment_update.user_id, payment_update.chain_id, payment_update.amount_atomic, payment_update.failure_code, payment_update.transaction_hash
 ), account_update AS (
     UPDATE billing_accounts AS account
     SET total_credit_atomic = account.total_credit_atomic + intent_update.amount_atomic,
@@ -1575,18 +1467,16 @@ WITH candidate AS (
     FROM intent_update
     WHERE account.user_id = intent_update.user_id
       AND account.chain_id = intent_update.chain_id
-      AND account.network = intent_update.network
-      AND account.asset = intent_update.asset
-    RETURNING account.user_id, account.chain_id, account.network, account.asset, account.total_credit_atomic, account.total_debit_atomic, account.reserved_atomic, account.created_at, account.updated_at, intent_update.id AS payment_id,
+    RETURNING account.user_id, account.chain_id, account.total_credit_atomic, account.total_debit_atomic, account.reserved_atomic, account.created_at, account.updated_at, intent_update.id AS payment_id,
               intent_update.amount_atomic AS topup_amount_atomic,
               intent_update.failure_code AS prior_failure_code,
               intent_update.transaction_hash AS prior_transaction_hash
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, occurred_at
     )
-    SELECT $6::uuid, user_id, chain_id, network, asset,
+    SELECT $6::uuid, user_id, chain_id,
            'credit', 'topup', topup_amount_atomic, payment_id,
            $3
     FROM account_update
@@ -1602,7 +1492,7 @@ WITH candidate AS (
            $3
     FROM account_update
 )
-SELECT user_id, chain_id, network, asset, total_credit_atomic,
+SELECT user_id, chain_id, total_credit_atomic,
        total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM account_update
 `
@@ -1619,8 +1509,6 @@ type ReconcileBillingTopupSettledParams struct {
 type ReconcileBillingTopupSettledRow struct {
 	UserID            pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network           string             `db:"network" json:"network"`
-	Asset             []byte             `db:"asset" json:"asset"`
 	TotalCreditAtomic pgtype.Numeric     `db:"total_credit_atomic" json:"total_credit_atomic"`
 	TotalDebitAtomic  pgtype.Numeric     `db:"total_debit_atomic" json:"total_debit_atomic"`
 	ReservedAtomic    pgtype.Numeric     `db:"reserved_atomic" json:"reserved_atomic"`
@@ -1641,8 +1529,6 @@ func (q *Queries) ReconcileBillingTopupSettled(ctx context.Context, arg Reconcil
 	err := row.Scan(
 		&i.UserID,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.TotalCreditAtomic,
 		&i.TotalDebitAtomic,
 		&i.ReservedAtomic,
@@ -1654,7 +1540,7 @@ func (q *Queries) ReconcileBillingTopupSettled(ctx context.Context, arg Reconcil
 
 const releaseBillingUsage = `-- name: ReleaseBillingUsage :one
 WITH candidate AS (
-    SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
+    SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
     FROM billing_usage_charges
     WHERE id = $1::uuid
       AND reservation_owner = $2::uuid
@@ -1667,18 +1553,16 @@ WITH candidate AS (
     FROM candidate
     WHERE account.user_id = candidate.user_id
       AND account.chain_id = candidate.chain_id
-      AND account.network = candidate.network
-      AND account.asset = candidate.asset
-    RETURNING candidate.id, candidate.reservation_owner, candidate.user_id, candidate.api_key_prefix, candidate.chain_id, candidate.network, candidate.asset, candidate.method, candidate.operation, candidate.resource_digest, candidate.amount_atomic, candidate.state, candidate.failure_code, candidate.response_digest, candidate.response_bytes, candidate.reservation_expires_at, candidate.committed_at, candidate.released_at, candidate.expired_at, candidate.created_at, candidate.updated_at
+    RETURNING candidate.id, candidate.reservation_owner, candidate.user_id, candidate.api_key_prefix, candidate.chain_id, candidate.method, candidate.operation, candidate.resource_digest, candidate.amount_atomic, candidate.state, candidate.failure_code, candidate.response_digest, candidate.response_bytes, candidate.reservation_expires_at, candidate.committed_at, candidate.released_at, candidate.expired_at, candidate.created_at, candidate.updated_at
 ), updated AS (
     UPDATE billing_usage_charges AS charge
     SET state = 'released', failure_code = $4,
         released_at = $3, updated_at = $3
     FROM account_update
     WHERE charge.id = account_update.id
-    RETURNING charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.network, charge.asset, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
+    RETURNING charge.id, charge.reservation_owner, charge.user_id, charge.api_key_prefix, charge.chain_id, charge.method, charge.operation, charge.resource_digest, charge.amount_atomic, charge.state, charge.failure_code, charge.response_digest, charge.response_bytes, charge.reservation_expires_at, charge.committed_at, charge.released_at, charge.expired_at, charge.created_at, charge.updated_at
 )
-SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at FROM updated
+SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at FROM updated
 `
 
 type ReleaseBillingUsageParams struct {
@@ -1694,8 +1578,6 @@ type ReleaseBillingUsageRow struct {
 	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
 	ApiKeyPrefix         string             `db:"api_key_prefix" json:"api_key_prefix"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network              string             `db:"network" json:"network"`
-	Asset                []byte             `db:"asset" json:"asset"`
 	Method               string             `db:"method" json:"method"`
 	Operation            string             `db:"operation" json:"operation"`
 	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
@@ -1726,8 +1608,6 @@ func (q *Queries) ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsa
 		&i.UserID,
 		&i.ApiKeyPrefix,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -1748,45 +1628,41 @@ func (q *Queries) ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsa
 
 const reserveBillingUsage = `-- name: ReserveBillingUsage :one
 WITH eligible AS (
-    SELECT account.user_id, account.chain_id, account.network, account.asset
+    SELECT account.user_id, account.chain_id
     FROM billing_accounts AS account
     JOIN users ON users.id = account.user_id
     JOIN api_keys ON api_keys.prefix = $1
     WHERE account.user_id = $2::uuid
       AND account.chain_id = $3::numeric
-      AND account.network = $4
-      AND account.asset = $5
       AND users.status = 'active'
       AND api_keys.owner_user_id = account.user_id
       AND api_keys.revoked_at IS NULL
       AND api_keys.scopes @> ARRAY['api:read']::text[]
       AND account.total_credit_atomic - account.total_debit_atomic - account.reserved_atomic
-          >= $6::numeric
+          >= $4::numeric
     FOR UPDATE OF account
 ), inserted AS (
     INSERT INTO billing_usage_charges (
-        id, reservation_owner, user_id, api_key_prefix, chain_id, network,
-        asset, method, operation, resource_digest, amount_atomic, state,
+        id, reservation_owner, user_id, api_key_prefix, chain_id,
+        method, operation, resource_digest, amount_atomic, state,
         reservation_expires_at, created_at, updated_at
     )
     SELECT
-        $7::uuid,
-        $8::uuid,
+        $5::uuid,
+        $6::uuid,
         eligible.user_id,
         $1,
         eligible.chain_id,
-        eligible.network,
-        eligible.asset,
+        $7,
+        $8,
         $9,
+        $4::numeric,
+        'reserved',
         $10,
         $11,
-        $6::numeric,
-        'reserved',
-        $12,
-        $13,
-        $13
+        $11
     FROM eligible
-    RETURNING id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
+    RETURNING id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at
 ), updated AS (
     UPDATE billing_accounts AS account
     SET reserved_atomic = account.reserved_atomic + inserted.amount_atomic,
@@ -1794,18 +1670,16 @@ WITH eligible AS (
     FROM inserted
     WHERE account.user_id = inserted.user_id
       AND account.chain_id = inserted.chain_id
-      AND account.network = inserted.network
-      AND account.asset = inserted.asset
+
+
 )
-SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, network, asset, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at FROM inserted
+SELECT id, reservation_owner, user_id, api_key_prefix, chain_id, method, operation, resource_digest, amount_atomic, state, failure_code, response_digest, response_bytes, reservation_expires_at, committed_at, released_at, expired_at, created_at, updated_at FROM inserted
 `
 
 type ReserveBillingUsageParams struct {
 	ApiKeyPrefix         string             `db:"api_key_prefix" json:"api_key_prefix"`
 	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network              string             `db:"network" json:"network"`
-	Asset                []byte             `db:"asset" json:"asset"`
 	AmountAtomic         pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
 	ID                   pgtype.UUID        `db:"id" json:"id"`
 	ReservationOwner     pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
@@ -1822,8 +1696,6 @@ type ReserveBillingUsageRow struct {
 	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
 	ApiKeyPrefix         string             `db:"api_key_prefix" json:"api_key_prefix"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network              string             `db:"network" json:"network"`
-	Asset                []byte             `db:"asset" json:"asset"`
 	Method               string             `db:"method" json:"method"`
 	Operation            string             `db:"operation" json:"operation"`
 	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
@@ -1845,8 +1717,6 @@ func (q *Queries) ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsa
 		arg.ApiKeyPrefix,
 		arg.UserID,
 		arg.ChainID,
-		arg.Network,
-		arg.Asset,
 		arg.AmountAtomic,
 		arg.ID,
 		arg.ReservationOwner,
@@ -1863,8 +1733,6 @@ func (q *Queries) ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsa
 		&i.UserID,
 		&i.ApiKeyPrefix,
 		&i.ChainID,
-		&i.Network,
-		&i.Asset,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -1890,8 +1758,6 @@ SELECT count(*)::numeric AS account_count,
        COALESCE(sum(reserved_atomic), 0)::numeric AS reserved_atomic
 FROM billing_accounts
 WHERE chain_id = $1::numeric
-  AND network = $2
-  AND asset = $3
 `
 
 type SummarizeBillingAccountsRow struct {
@@ -1901,8 +1767,8 @@ type SummarizeBillingAccountsRow struct {
 	ReservedAtomic    pgtype.Numeric `db:"reserved_atomic" json:"reserved_atomic"`
 }
 
-func (q *Queries) SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric, network string, asset []byte) (SummarizeBillingAccountsRow, error) {
-	row := q.db.QueryRow(ctx, summarizeBillingAccounts, chainID, network, asset)
+func (q *Queries) SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric) (SummarizeBillingAccountsRow, error) {
+	row := q.db.QueryRow(ctx, summarizeBillingAccounts, chainID)
 	var i SummarizeBillingAccountsRow
 	err := row.Scan(
 		&i.AccountCount,

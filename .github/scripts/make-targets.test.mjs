@@ -140,7 +140,7 @@ for (const suite of [
           "etherview:local",
           "caddy:2.11.7-alpine",
           "etherview-preview-bundler:local",
-          "etherview-x402-local-facilitator:local",
+          "etherview-x402-facilitator:local",
         ]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });

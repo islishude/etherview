@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -207,18 +208,24 @@ features:
 server:
   public_url: https://explorer.example
 billing:
-  facilitator_url: https://facilitator.example
   facilitator_allowed_cidrs: [203.0.113.0/24]
-  network: eip155:84532
-  asset: "0x1111111111111111111111111111111111111111"
-  asset_decimals: 6
-  asset_eip712_name: USDC
-  asset_eip712_version: "2"
-  recipient: "0x2222222222222222222222222222222222222222"
-  minimum_topup_amount_atomic: "1"
-  maximum_topup_amount_atomic: "1000000"
-  asset_transfer_methods: [eip3009, permit2]
   base_price_atomic: "1"
+  payment_chains:
+    - network: eip155:84532
+      facilitator_url: https://facilitator.example
+      tokens:
+        - id: default
+          name: Local USD
+          credit_rate_numerator: "1"
+          credit_rate_denominator: "1"
+          asset: "0x1111111111111111111111111111111111111111"
+          asset_decimals: 6
+          asset_eip712_name: USDC
+          asset_eip712_version: "2"
+          recipient: "0x2222222222222222222222222222222222222222"
+          minimum_topup_amount_atomic: "1"
+          maximum_topup_amount_atomic: "1000000"
+          asset_transfer_methods: [eip3009, permit2]
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +422,7 @@ func TestX402FacilitatorHeadersAreStrictAndRedacted(t *testing.T) {
 	}
 
 	cfg := validX402Config()
-	cfg.Billing.FacilitatorHeaders = map[string]string{"Payment-Signature": "opaque"}
+	cfg.Billing.FacilitatorHeaders = map[string]map[string]string{"eip155:84532": {"Payment-Signature": "opaque"}}
 	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "forbidden") {
 		t.Fatalf("protocol header Secret passed: %v", err)
 	}
@@ -431,19 +438,21 @@ func validX402Config() Config {
 	cfg.Database.URL = "postgres://database.example/etherview"
 	cfg.Security.APIKeyPepper = strings.Repeat("k", 32)
 	cfg.UserAuth.SessionPepper = strings.Repeat("s", 32)
-	cfg.Billing.FacilitatorURL = "https://facilitator.example"
+	decimals := uint8(6)
+	cfg.Billing.PaymentChains = []PaymentChainConfig{{Network: "eip155:84532", Tokens: []paymentoption.Option{{ID: "default", Name: "USDC", AssetDecimals: &decimals, AssetEIP712Name: "USDC", AssetEIP712Version: "2", CreditRateNumerator: "1", CreditRateDenominator: "1"}}}}
+	cfg.Billing.PaymentChains[0].FacilitatorURL = "https://facilitator.example"
 	cfg.Billing.FacilitatorAllowedCIDRs = []string{"203.0.113.0/24"}
-	cfg.Billing.Network = "eip155:84532"
-	cfg.Billing.Asset = "0x1111111111111111111111111111111111111111"
-	cfg.Billing.AssetDecimals = 6
-	cfg.Billing.AssetEIP712Name = "USDC"
-	cfg.Billing.AssetEIP712Version = "2"
-	cfg.Billing.Recipient = "0x2222222222222222222222222222222222222222"
-	cfg.Billing.MinimumTopupAmountAtomic = "1"
-	cfg.Billing.MaximumTopupAmountAtomic = "1000000"
-	cfg.Billing.AssetTransferMethods = []string{"eip3009", "permit2"}
+	cfg.Billing.PaymentChains[0].Network = "eip155:84532"
+	cfg.Billing.PaymentChains[0].Tokens[0].Asset = "0x1111111111111111111111111111111111111111"
+	cfg.Billing.PaymentChains[0].Tokens[0].AssetDecimals = &decimals
+	cfg.Billing.PaymentChains[0].Tokens[0].AssetEIP712Name = "USDC"
+	cfg.Billing.PaymentChains[0].Tokens[0].AssetEIP712Version = "2"
+	cfg.Billing.PaymentChains[0].Tokens[0].Recipient = "0x2222222222222222222222222222222222222222"
+	cfg.Billing.PaymentChains[0].Tokens[0].MinimumTopupAmountAtomic = "1"
+	cfg.Billing.PaymentChains[0].Tokens[0].MaximumTopupAmountAtomic = "1000000"
+	cfg.Billing.PaymentChains[0].Tokens[0].AssetTransferMethods = []string{"eip3009", "permit2"}
 	cfg.Billing.FingerprintPepper = strings.Repeat("f", 32)
-	cfg.Billing.FacilitatorHeaders = map[string]string{"Authorization": "Bearer opaque"}
+	cfg.Billing.FacilitatorHeaders = map[string]map[string]string{"eip155:84532": {"Authorization": "Bearer opaque"}}
 	cfg.Billing.BasePriceAtomic = "1"
 	return cfg
 }
@@ -468,5 +477,44 @@ func TestHelmBillingBasePriceSchema(t *testing.T) {
 	prices, err := etherscanops.Prices("1")
 	if err != nil || len(prices) != 31 {
 		t.Fatalf("prices=%v error=%v", prices, err)
+	}
+}
+
+func TestMultiplePaymentOptions(t *testing.T) {
+	cfg := validX402Config()
+	second := cfg.Billing.PaymentChains[0]
+	second.Network = "eip155:31337"
+	second.Tokens = append([]paymentoption.Option(nil), second.Tokens...)
+	second.Tokens[0].ID = "second"
+	cfg.Billing.PaymentChains = append(cfg.Billing.PaymentChains, second)
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*Config)
+	}{
+		{"duplicate chain", func(c *Config) { c.Billing.PaymentChains[1].Network = c.Billing.PaymentChains[0].Network }},
+		{"duplicate option", func(c *Config) { c.Billing.PaymentChains[1].Tokens[0].ID = c.Billing.PaymentChains[0].Tokens[0].ID }},
+		{"duplicate token", func(c *Config) {
+			o := c.Billing.PaymentChains[0].Tokens[0]
+			o.ID = "another"
+			c.Billing.PaymentChains[0].Tokens = append(c.Billing.PaymentChains[0].Tokens, o)
+		}},
+		{"missing precision", func(c *Config) { c.Billing.PaymentChains[0].Tokens[0].AssetDecimals = nil }},
+		{"unknown credential chain", func(c *Config) {
+			c.Billing.FacilitatorHeaders = map[string]map[string]string{"eip155:999": {"Authorization": "secret"}}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := validX402Config()
+			b := second
+			b.Tokens = append([]paymentoption.Option(nil), second.Tokens...)
+			c.Billing.PaymentChains = append(c.Billing.PaymentChains, b)
+			tc.change(&c)
+			if c.Validate() == nil {
+				t.Fatal("accepted invalid option configuration")
+			}
+		})
 	}
 }

@@ -89,6 +89,8 @@ BEGIN
         OR NEW.chain_id IS DISTINCT FROM OLD.chain_id
         OR NEW.network IS DISTINCT FROM OLD.network
         OR NEW.asset IS DISTINCT FROM OLD.asset
+        OR NEW.payment_option IS DISTINCT FROM OLD.payment_option
+        OR NEW.credit_amount_atomic IS DISTINCT FROM OLD.credit_amount_atomic
         OR NEW.amount_atomic IS DISTINCT FROM OLD.amount_atomic
         OR NEW.recipient IS DISTINCT FROM OLD.recipient
         OR NEW.payer IS DISTINCT FROM OLD.payer
@@ -131,8 +133,6 @@ BEGIN
         OR NEW.user_id IS DISTINCT FROM OLD.user_id
         OR NEW.api_key_prefix IS DISTINCT FROM OLD.api_key_prefix
         OR NEW.chain_id IS DISTINCT FROM OLD.chain_id
-        OR NEW.network IS DISTINCT FROM OLD.network
-        OR NEW.asset IS DISTINCT FROM OLD.asset
         OR NEW.method IS DISTINCT FROM OLD.method
         OR NEW.operation IS DISTINCT FROM OLD.operation
         OR NEW.resource_digest IS DISTINCT FROM OLD.resource_digest
@@ -155,21 +155,17 @@ $$;
 CREATE TABLE billing_accounts (
     user_id uuid NOT NULL,
     chain_id numeric(78,0) NOT NULL,
-    network text NOT NULL,
-    asset bytea NOT NULL,
     total_credit_atomic numeric(78,0) DEFAULT 0 NOT NULL,
     total_debit_atomic numeric(78,0) DEFAULT 0 NOT NULL,
     reserved_atomic numeric(78,0) DEFAULT 0 NOT NULL,
     created_at timestamp with time zone NOT NULL,
     updated_at timestamp with time zone NOT NULL,
-    CONSTRAINT billing_accounts_asset_check CHECK ((octet_length(asset) = 20)),
     CONSTRAINT billing_accounts_check CHECK ((total_credit_atomic >= (total_debit_atomic + reserved_atomic))),
     CONSTRAINT billing_accounts_check1 CHECK ((updated_at >= created_at)),
-    CONSTRAINT billing_accounts_network_check CHECK (((network ~ '^eip155:[1-9][0-9]*$'::text) AND (length(network) <= 96))),
     CONSTRAINT billing_accounts_reserved_atomic_check CHECK ((reserved_atomic >= (0)::numeric)),
     CONSTRAINT billing_accounts_total_credit_atomic_check CHECK ((total_credit_atomic >= (0)::numeric)),
     CONSTRAINT billing_accounts_total_debit_atomic_check CHECK ((total_debit_atomic >= (0)::numeric)),
-    CONSTRAINT billing_accounts_pkey PRIMARY KEY (user_id, chain_id, network, asset),
+    CONSTRAINT billing_accounts_pkey PRIMARY KEY (user_id, chain_id),
     CONSTRAINT billing_accounts_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id),
     CONSTRAINT billing_accounts_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id)
 );
@@ -178,8 +174,6 @@ CREATE TABLE billing_account_entries (
     id uuid NOT NULL,
     user_id uuid NOT NULL,
     chain_id numeric(78,0) NOT NULL,
-    network text NOT NULL,
-    asset bytea NOT NULL,
     direction text NOT NULL,
     kind text NOT NULL,
     amount_atomic numeric(78,0) NOT NULL,
@@ -192,7 +186,7 @@ CREATE TABLE billing_account_entries (
     CONSTRAINT billing_account_entries_kind_check CHECK ((kind = ANY (ARRAY['topup'::text, 'usage'::text, 'adjustment'::text]))),
     CONSTRAINT billing_account_entries_pkey PRIMARY KEY (id),
     CONSTRAINT billing_account_entries_source_id_key UNIQUE (source_id),
-    CONSTRAINT billing_account_entries_user_id_chain_id_network_asset_fkey FOREIGN KEY (user_id, chain_id, network, asset) REFERENCES billing_accounts(user_id, chain_id, network, asset)
+    CONSTRAINT billing_account_entries_user_id_chain_id_fkey FOREIGN KEY (user_id, chain_id) REFERENCES billing_accounts(user_id, chain_id)
 );
 
 CREATE TABLE billing_topup_intents (
@@ -201,6 +195,20 @@ CREATE TABLE billing_topup_intents (
     chain_id numeric(78,0) NOT NULL,
     network text NOT NULL,
     asset bytea NOT NULL,
+    payment_option jsonb NOT NULL,
+    credit_amount_atomic numeric(78,0) NOT NULL,
+    CONSTRAINT billing_topup_credit_check CHECK (credit_amount_atomic > 0 AND credit_amount_atomic <= 115792089237316195423570985008687907853269984665640564039457584007913129639935),
+    CONSTRAINT billing_topup_snapshot_check CHECK (
+        jsonb_typeof(payment_option) = 'object'
+        AND payment_option ?& ARRAY['id', 'network', 'asset', 'recipient', 'asset_decimals', 'credit_rate_numerator', 'credit_rate_denominator']
+        AND (payment_option->>'network' = network) IS TRUE
+        AND (lower(payment_option->>'asset') = '0x' || encode(asset, 'hex')) IS TRUE
+        AND (lower(payment_option->>'recipient') = '0x' || encode(recipient, 'hex')) IS TRUE
+        AND ((payment_option->>'asset_decimals')::integer BETWEEN 0 AND 255) IS TRUE
+        AND (payment_option->>'credit_rate_numerator' ~ '^[1-9][0-9]{0,77}$') IS TRUE
+        AND (payment_option->>'credit_rate_denominator' ~ '^[1-9][0-9]{0,77}$') IS TRUE
+    ),
+    CONSTRAINT billing_topup_conversion_check CHECK (amount_atomic * (payment_option->>'credit_rate_numerator')::numeric = credit_amount_atomic * (payment_option->>'credit_rate_denominator')::numeric),
     amount_atomic numeric(78,0) NOT NULL,
     recipient bytea NOT NULL,
     payer bytea NOT NULL,
@@ -337,8 +345,6 @@ CREATE TABLE billing_usage_charges (
     user_id uuid NOT NULL,
     api_key_prefix text NOT NULL,
     chain_id numeric(78,0) NOT NULL,
-    network text NOT NULL,
-    asset bytea NOT NULL,
     method text NOT NULL,
     operation text NOT NULL,
     resource_digest bytea NOT NULL,
@@ -366,7 +372,7 @@ CREATE TABLE billing_usage_charges (
     CONSTRAINT billing_usage_charges_state_check CHECK ((state = ANY (ARRAY['reserved'::text, 'committed'::text, 'released'::text, 'expired'::text]))),
     CONSTRAINT billing_usage_charges_pkey PRIMARY KEY (id),
     CONSTRAINT billing_usage_charges_api_key_prefix_fkey FOREIGN KEY (api_key_prefix) REFERENCES api_keys(prefix),
-    CONSTRAINT billing_usage_charges_user_id_chain_id_network_asset_fkey FOREIGN KEY (user_id, chain_id, network, asset) REFERENCES billing_accounts(user_id, chain_id, network, asset)
+    CONSTRAINT billing_usage_charges_user_id_chain_id_fkey FOREIGN KEY (user_id, chain_id) REFERENCES billing_accounts(user_id, chain_id)
 );
 
 
@@ -421,3 +427,29 @@ CREATE TRIGGER billing_payments_guard BEFORE DELETE OR UPDATE ON billing_payment
 CREATE TRIGGER billing_topup_intents_guard BEFORE DELETE OR UPDATE ON billing_topup_intents FOR EACH ROW EXECUTE FUNCTION guard_billing_topup_intent_mutation();
 
 CREATE TRIGGER billing_usage_charges_guard BEFORE DELETE OR UPDATE ON billing_usage_charges FOR EACH ROW EXECUTE FUNCTION guard_billing_usage_charge_mutation();
+
+-- Standalone facilitator journal; never used as an account credit ledger.
+CREATE TABLE facilitator_settlements (
+    authorization_id text PRIMARY KEY,
+    request_digest bytea NOT NULL CHECK (octet_length(request_digest) = 32),
+    request_body jsonb NOT NULL,
+    network text NOT NULL,
+    signer_address bytea NOT NULL CHECK (octet_length(signer_address) = 20),
+    nonce numeric(20,0),
+    raw_transaction bytea,
+    transaction_hash bytea CHECK (octet_length(transaction_hash) = 32),
+    state text NOT NULL DEFAULT 'reserved' CHECK (state IN ('reserved','signed','succeeded','failed')),
+    response jsonb,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (network, signer_address, nonce),
+    CHECK (nonce IS NULL OR nonce >= 0),
+    CHECK (state NOT IN ('signed','succeeded') OR transaction_hash IS NOT NULL),
+    CHECK (state <> 'reserved' OR transaction_hash IS NULL),
+    CHECK (raw_transaction IS NULL OR octet_length(raw_transaction) BETWEEN 1 AND 1048576),
+    CHECK ((raw_transaction IS NULL AND transaction_hash IS NULL AND nonce IS NULL) OR
+           (raw_transaction IS NOT NULL AND transaction_hash IS NOT NULL AND nonce IS NOT NULL))
+);
+CREATE INDEX facilitator_pending_by_network
+    ON facilitator_settlements (network, created_at)
+    WHERE state IN ('reserved','signed');

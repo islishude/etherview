@@ -3,6 +3,9 @@ info:
   title: Etherview API
   version: 0.1.0
   description: Versioned native API for a single-chain Etherview deployment.
+x-standalone-services:
+  x402-facilitator:
+    specification: ./facilitator.openapi.yaml
 servers:
   - url: /api/v1
 paths:
@@ -3040,30 +3043,35 @@ components:
           maxLength: 128
         amount_atomic:
           $ref: "#/components/schemas/Quantity"
-    BillingConfig:
+    BillingPaymentOption:
       type: object
       additionalProperties: false
       required:
-        - api_billing_enabled
-        - x402_topups_enabled
-        - x402_version
-        - scheme
-        - asset_transfer_methods
-        - operations
+        [
+          id,
+          name,
+          network,
+          asset,
+          asset_decimals,
+          recipient,
+          minimum_topup_amount_atomic,
+          maximum_topup_amount_atomic,
+          asset_transfer_methods,
+          credit_rate_numerator,
+          credit_rate_denominator,
+        ]
       properties:
-        base_price_atomic:
-          $ref: "#/components/schemas/Quantity"
-        api_billing_enabled:
-          type: boolean
-        x402_topups_enabled:
-          type: boolean
-        x402_version:
-          type: integer
-          enum: [2]
-        scheme:
+        id:
           type: string
-          enum: [exact]
-          x-enum-varnames: [BillingConfigSchemeExact]
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        credit_rate_numerator:
+          $ref: "#/components/schemas/Quantity"
+        credit_rate_denominator:
+          $ref: "#/components/schemas/Quantity"
         network:
           type: string
           pattern: "^eip155:[1-9][0-9]*$"
@@ -3088,16 +3096,65 @@ components:
           $ref: "#/components/schemas/Quantity"
         maximum_topup_amount_atomic:
           $ref: "#/components/schemas/Quantity"
-        topup_intent_ttl_seconds:
-          type: integer
-          minimum: 60
-          maximum: 3600
         asset_transfer_methods:
           type: array
           maxItems: 2
           uniqueItems: true
           items:
             $ref: "#/components/schemas/BillingAssetTransferMethod"
+    BillingPaymentChain:
+      type: object
+      additionalProperties: false
+      required: [network, tokens]
+      properties:
+        network:
+          type: string
+          pattern: "^eip155:[1-9][0-9]*$"
+        tokens:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/BillingPaymentOption"
+    BillingConfig:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          api_billing_enabled,
+          x402_topups_enabled,
+          x402_version,
+          scheme,
+          credit_decimals,
+          payment_chains,
+          operations,
+        ]
+      properties:
+        credit_decimals:
+          type: integer
+          enum: [6]
+        payment_chains:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/BillingPaymentChain"
+        base_price_atomic:
+          $ref: "#/components/schemas/Quantity"
+        api_billing_enabled:
+          type: boolean
+        x402_topups_enabled:
+          type: boolean
+        x402_version:
+          type: integer
+          enum: [2]
+        scheme:
+          type: string
+          enum: [exact]
+          x-enum-varnames: [BillingConfigSchemeExact]
+        topup_intent_ttl_seconds:
+          type: integer
+          minimum: 60
+          maximum: 3600
         operations:
           type: array
           maxItems: 31
@@ -3108,8 +3165,6 @@ components:
       additionalProperties: false
       required:
         - user_id
-        - network
-        - asset
         - total_credit_atomic
         - total_debit_atomic
         - reserved_atomic
@@ -3120,11 +3175,6 @@ components:
         user_id:
           type: string
           format: uuid
-        network:
-          type: string
-          pattern: "^eip155:[1-9][0-9]*$"
-        asset:
-          $ref: "#/components/schemas/Address"
         total_credit_atomic:
           $ref: "#/components/schemas/BillingAggregateQuantity"
         total_debit_atomic:
@@ -3145,8 +3195,11 @@ components:
     BillingTopupIntentCreateRequest:
       type: object
       additionalProperties: false
-      required: [amount_atomic]
+      required: [payment_option_id, amount_atomic]
       properties:
+        payment_option_id:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9_-]{0,63}$"
         amount_atomic:
           $ref: "#/components/schemas/Quantity"
     BillingAdjustmentRequest:
@@ -3170,6 +3223,8 @@ components:
         - id
         - user_id
         - amount_atomic
+        - payment_option
+        - credit_amount_atomic
         - network
         - asset
         - recipient
@@ -3179,6 +3234,10 @@ components:
         - created_at
         - updated_at
       properties:
+        payment_option:
+          $ref: "#/components/schemas/BillingPaymentOption"
+        credit_amount_atomic:
+          $ref: "#/components/schemas/Quantity"
         id:
           type: string
           format: uuid
@@ -3345,6 +3404,8 @@ components:
           maxLength: 96
         asset:
           $ref: "#/components/schemas/Address"
+        payment_option:
+          $ref: "#/components/schemas/BillingPaymentOption"
         amount_atomic:
           $ref: "#/components/schemas/Quantity"
         recipient:

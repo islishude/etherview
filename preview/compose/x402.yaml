@@ -1,18 +1,36 @@
 services:
   x402-facilitator:
-    image: etherview-x402-local-facilitator:local
-    environment:
-      X402_LOCAL_RPC_URL: http://geth:8545
-      X402_LOCAL_NETWORK: eip155:48815
-      X402_LOCAL_TOKEN: "0x8464135c8F25Da09e49BC8782676a84730C318bC"
-      # Public development key, funded only on the local Preview chain.
-      X402_LOCAL_FACILITATOR_PRIVATE_KEY: 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+    image: etherview-x402-facilitator:local
+    command: [--config=/etc/etherview/facilitator.yaml]
+    secrets: [x402-db, x402-token, x402-key, x402-password, x402-geth, x402-anvil]
     depends_on:
       geth:
         condition: service_started
+      anvil:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     healthcheck:
-      test: [CMD, /x402localfacilitator, --healthcheck]
+      test: [CMD, /x402facilitator, --healthcheck=http://127.0.0.1:8081/healthz]
       interval: 2s
       timeout: 2s
       retries: 30
+    restart: unless-stopped
+    stop_grace_period: 35s
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:v1.8.7
+    user: "0:0"
+    entrypoint: [sh, /usr/local/bin/anvil-entrypoint.sh]
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          'test -f /data/ready && test "$(cast chain-id --rpc-url http://127.0.0.1:8545)" = 31337',
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    stop_signal: SIGINT
+    stop_grace_period: 30s
     restart: unless-stopped

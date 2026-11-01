@@ -4,11 +4,20 @@
     "ERC1820Registry.json": "b5b25cdf74246367cef9ca0f95dcb1776aefd9a4b43430f9abb22923865c591f",
     "EntryPoint.json": "2b8f44adfbd9fcb3d23956915448df85e1f54ef247b6e69368218fd3b9484c67",
     "Multicall3.json": "ed8f8615c0b87a9156047daea7d93c6ba1bf831aacc4b387e4a471ea7bc05052",
+    "Permit2.json": "63c4987af88078215c64bfea9d840482fec5bbb4869ee8fa0e04808975c39479",
     "SimpleAccountFactory.json": "b3df89bf47ba70ef6378d091dece8e3a044fe576e91f8f50d80b206e294be2b9",
-    "local.json": "d6c41ec965d743263566a66c863f392e893a5d0f75219469926e097f6a34246d",
-    "sys-asm.json": "f61078f4bd7bebfee6b70db5bf56399caaedf692bda25ce1cd8442383dcc532e"
+    "local.json": "076dba8d03c17d0279ae0f45a0c08f1553ce57d3542d50616dae9de4cd245ab2",
+    "sys-asm.json": "f61078f4bd7bebfee6b70db5bf56399caaedf692bda25ce1cd8442383dcc532e",
+    "x402ExactPermit2Proxy.json": "7be72d61a0e16623836587048cbe43f5343310f6040154dfdb2e2f9e7efecf8b"
   },
   "contracts": [
+    {
+      "address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+      "name": "Permit2",
+      "bundle": "Permit2.json",
+      "codeHash": "0xb43712c2ae86f7574db5aca8e14b846cae021f9dbf37f2fe5920529852f6fa94",
+      "codeSha256": "56887d094a271a8b8ba59b2d72b068d15e9120edef82a6e55f09482842e3686a"
+    },
     {
       "address": "0x00000961ef480eb55e80d19ad83579a64c007002",
       "name": "WithdrawalQueue",
@@ -72,6 +81,13 @@
       "codeSha256": "50a56a9328a01aa001d63b6ba351d6c2144e63c8275cf1bdf54382f019f7bc94"
     },
     {
+      "address": "0x402085c248eea27d92e8b30b2c58ed07f9e20001",
+      "name": "x402ExactPermit2Proxy",
+      "bundle": "x402ExactPermit2Proxy.json",
+      "codeHash": "0xf6b451924519e06a08000e253d311fc20cb3f5ffe7ce2a57323126e5391cb412",
+      "codeSha256": "d80111c7a105d3927501fcf761d63431d337e8bd5afbe6cfcb7d8837335dfd42"
+    },
+    {
       "address": "0x433709009b8330fda32311df1c2afa402ed8d009",
       "name": "EntryPoint",
       "bundle": "EntryPoint.json",
@@ -108,11 +124,18 @@
       "codeSha256": "5451dadf85d2888f8235d921a98b6e533033c1cffe6081e21c38d207c600ca9d"
     },
     {
+      "address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
+      "name": "LocalBillingToken",
+      "bundle": "local.json",
+      "codeHash": "0x06a10073f241787684f20d00c546e465ebebbf317a7f29bb8081bcc7c588a247",
+      "codeSha256": "9f1e20c7866316af19b894881c680d9c6ecc4303d429fdcbeefeedcd83f3420f"
+    },
+    {
       "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
       "name": "LocalBillingToken",
       "bundle": "local.json",
-      "codeHash": "0xd8c594502b6e0ba2fbd7cd9972a7b73f4aa8222f49da40243e65747d0b585ddc",
-      "codeSha256": "fb5aea87f1b34dee791cb06a505ad1190a255d932fafa0dc38f8136cad66464d"
+      "codeHash": "0x06a10073f241787684f20d00c546e465ebebbf317a7f29bb8081bcc7c588a247",
+      "codeSha256": "9f1e20c7866316af19b894881c680d9c6ecc4303d429fdcbeefeedcd83f3420f"
     },
     {
       "address": "0x9ef4c86838638daea46d5517442f5c23fe1dd34c",

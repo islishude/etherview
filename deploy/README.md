@@ -97,13 +97,14 @@ raise those values. The safe public configuration exposes only whether the
 capability is enabled, never either pepper.
 
 x402 top-ups and prepaid API billing are disabled independently by default.
-Configure the network, asset, and `billing.base_price_atomic` (the catalog derives
+Configure `billing.payment_chains` and `billing.base_price_atomic` (the catalog derives
 `etherview.<module>.<action>` prices from complexity weights), then
 enable `features.api_billing`. Enable `features.x402_topups` only with SIWE,
 user-owned keys, top-up bounds, ordered `[eip3009, permit2]`, recipient, and
 the reviewed Facilitator origin/CIDRs. Provide
 `ETHERVIEW_X402_FINGERPRINT_PEPPER` with at least 32 independent random bytes.
-Optional facilitator credentials are a bounded JSON object in
+Optional facilitator credentials are a bounded network-keyed JSON object (for example
+`{"eip155:11155111":{"Authorization":"Bearer ..."}}`) in
 `ETHERVIEW_X402_FACILITATOR_HEADERS`. Compose passes both values only to the
 monolith `all` or split `api` service; feature-off deployments with the
 variables unset do not pass either Secret. Run `etherview doctor` against the
@@ -359,3 +360,11 @@ payloads while validating the bundled executor manifest and self-test.
 ### Preview configuration layout
 
 See [Preview configuration layout](../preview/docs/operations.md#preview-configuration-layout).
+
+### Standalone facilitator
+
+The optional production facilitator has its own image, configuration, database
+login and signer identity. See [operations](../docs/operations.md#standalone-multi-chain-facilitator)
+and `deploy/facilitator/config.example.yaml`. Its standalone Helm chart requires
+an existing Secret and explicit egress CIDRs; label authorized API/all pods
+`etherview-facilitator-client: "true"`. It is not a new `serve` role.

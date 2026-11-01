@@ -2,6 +2,7 @@ package billing
 
 import (
 	"errors"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -13,10 +14,9 @@ var (
 )
 
 type Account struct {
-	UserID            string
-	ChainID           uint64
-	Network           string
-	Asset             common.Address
+	UserID  string
+	ChainID uint64
+
 	TotalCreditAtomic string
 	TotalDebitAtomic  string
 	ReservedAtomic    string
@@ -49,26 +49,28 @@ func (state TopupIntentState) valid() bool {
 func (state TopupIntentState) Valid() bool { return state.valid() }
 
 type TopupIntent struct {
-	ID              string
-	UserID          string
-	ChainID         uint64
-	Network         string
-	Asset           common.Address
-	AmountAtomic    string
-	Recipient       common.Address
-	Payer           common.Address
-	State           TopupIntentState
-	ActivePaymentID *string
-	TransactionHash *common.Hash
-	FailureCode     *string
-	ExpiresAt       time.Time
-	ProcessingAt    *time.Time
-	SettlingAt      *time.Time
-	CreditedAt      *time.Time
-	FailedAt        *time.Time
-	ExpiredAt       *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	PaymentOption      paymentoption.Option
+	CreditAmountAtomic string
+	ID                 string
+	UserID             string
+	ChainID            uint64
+	Network            string
+	Asset              common.Address
+	AmountAtomic       string
+	Recipient          common.Address
+	Payer              common.Address
+	State              TopupIntentState
+	ActivePaymentID    *string
+	TransactionHash    *common.Hash
+	FailureCode        *string
+	ExpiresAt          time.Time
+	ProcessingAt       *time.Time
+	SettlingAt         *time.Time
+	CreditedAt         *time.Time
+	FailedAt           *time.Time
+	ExpiredAt          *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type UsageState string
@@ -92,13 +94,12 @@ func (state UsageState) valid() bool {
 func (state UsageState) Valid() bool { return state.valid() }
 
 type UsageCharge struct {
-	ID                   string
-	Owner                string
-	UserID               string
-	APIKeyPrefix         string
-	ChainID              uint64
-	Network              string
-	Asset                common.Address
+	ID           string
+	Owner        string
+	UserID       string
+	APIKeyPrefix string
+	ChainID      uint64
+
 	Method               string
 	Operation            string
 	ResourceDigest       Digest
@@ -121,10 +122,11 @@ type UsageReservation struct {
 }
 
 type CreateTopupIntentInput struct {
-	UserID       string
-	Payer        common.Address
-	AmountAtomic string
-	ObservedAt   time.Time
+	PaymentOption paymentoption.Option
+	UserID        string
+	Payer         common.Address
+	AmountAtomic  string
+	ObservedAt    time.Time
 }
 
 type ReserveUsageInput struct {

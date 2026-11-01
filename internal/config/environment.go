@@ -342,3 +342,42 @@ func validFixedHex(value string, byteLen int) bool {
 	_, err := hex.DecodeString(value[2:])
 	return err == nil
 }
+
+// Payment headers are selected by network and never shared across facilitators.
+func parsePaymentHeaders(value string) (map[string]map[string]string, error) {
+	if len(value) > 32*16384 {
+		return nil, errors.New("invalid facilitator header map")
+	}
+	decoder := json.NewDecoder(strings.NewReader(value))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('{') {
+		return nil, errors.New("invalid facilitator header map")
+	}
+	result := map[string]map[string]string{}
+	for decoder.More() {
+		token, err = decoder.Token()
+		if err != nil {
+			return nil, errors.New("invalid facilitator header map")
+		}
+		network, ok := token.(string)
+		if !ok || result[network] != nil || len(result) >= 32 {
+			return nil, errors.New("invalid facilitator header map")
+		}
+		var raw json.RawMessage
+		if decoder.Decode(&raw) != nil {
+			return nil, errors.New("invalid facilitator header map")
+		}
+		headers, err := parseSecretHeaders(string(raw))
+		if err != nil {
+			return nil, errors.New("invalid facilitator header map")
+		}
+		result[network] = headers
+	}
+	if _, err = decoder.Token(); err != nil {
+		return nil, errors.New("invalid facilitator header map")
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return nil, errors.New("invalid facilitator header map")
+	}
+	return result, nil
+}

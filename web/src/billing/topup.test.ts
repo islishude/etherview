@@ -1,3 +1,4 @@
+import { testBillingConfig, testTopupIntent } from "@/billing/testFixtures";
 import {
   decodeFunctionData,
   encodeFunctionResult,
@@ -16,7 +17,6 @@ import {
   ensureExactPermit2Allowance,
   type TopupWallet,
 } from "./topup";
-import type { BillingConfig, BillingTopupIntent } from "@/api/billing";
 import { encodeBillingTypedData, type BillingSigningBinding } from "@/wallet/billing";
 
 const signer = privateKeyToAccount(`0x${"01".repeat(32)}`);
@@ -100,7 +100,7 @@ describe("Permit2 top-up approval", () => {
 
 describe("x402 SDK top-up flow", () => {
   const network = "eip155:48815";
-  const config = {
+  const config = testBillingConfig({
     api_billing_enabled: true,
     x402_topups_enabled: true,
     x402_version: 2,
@@ -112,20 +112,23 @@ describe("x402 SDK top-up flow", () => {
     recipient,
     asset_eip712_name: "Local USD",
     asset_eip712_version: "1",
-  } satisfies BillingConfig;
-  const intent = {
-    id: "topup-test",
-    user_id: "user",
-    network,
-    asset,
-    recipient,
-    payer: account,
-    amount_atomic: "1000",
-    state: "open",
-    created_at: "2026-10-30T00:00:00Z",
-    updated_at: "2026-10-30T00:00:00Z",
-    expires_at: "2099-01-01T00:00:00Z",
-  } satisfies BillingTopupIntent;
+  });
+  const intent = testTopupIntent(
+    {
+      id: "topup-test",
+      user_id: "user",
+      network,
+      asset,
+      recipient,
+      payer: account,
+      amount_atomic: "1000",
+      state: "open",
+      created_at: "2026-10-30T00:00:00Z",
+      updated_at: "2026-10-30T00:00:00Z",
+      expires_at: "2099-01-01T00:00:00Z",
+    },
+    config,
+  );
 
   beforeEach(() => {
     // Node's Request needs an absolute URL; browsers resolve same-origin paths.
@@ -206,6 +209,27 @@ describe("x402 SDK top-up flow", () => {
           false,
         );
       }
+    },
+  );
+
+  it.each(["asset_decimals", "credit_rate_numerator", "network"] as const)(
+    "rejects a changed %s quote before wallet authorization",
+    async (field) => {
+      const { options, wallet, fetch } = fixture("eip3009");
+      const payment_option = {
+        ...options.intent.payment_option,
+        ...(field === "asset_decimals"
+          ? { asset_decimals: 18 }
+          : field === "network"
+            ? { network: "eip155:31337" }
+            : { credit_rate_numerator: "2" }),
+      };
+      await expect(
+        payBillingTopup({ ...options, intent: { ...options.intent, payment_option } }),
+      ).rejects.toBeInstanceOf(TopupAuthorizationError);
+      expect(wallet.signBillingTypedData).not.toHaveBeenCalled();
+      expect(wallet.sendTransaction).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
     },
   );
 

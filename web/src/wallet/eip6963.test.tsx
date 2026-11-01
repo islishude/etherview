@@ -1,3 +1,4 @@
+import { testBillingConfig } from "@/billing/testFixtures";
 import { useState, type ReactNode } from "react";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -196,10 +197,12 @@ describe("EIP-6963 wallet boundary", () => {
     "restore-rejected",
     "switch-rejected",
   ])("fences payment chain transitions: %s", async (scenario) => {
-    vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue({
-      x402_topups_enabled: true,
-      network: "eip155:11155111",
-    } as billingAPI.BillingConfig);
+    vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue(
+      testBillingConfig({
+        x402_topups_enabled: true,
+        network: "eip155:11155111",
+      }) as billingAPI.BillingConfig,
+    );
     const fake = createFakeProvider({ eth_signTypedData_v4: walletSignature });
     fake.setResponse("wallet_switchEthereumChain", ({ params }: EIP1193RequestArguments) => {
       const chain = (params as [{ chainId: string }])[0].chainId;

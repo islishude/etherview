@@ -887,7 +887,7 @@ After an unknown or incomplete attempt, inspect and reconcile that exact
 payment before authorizing any new attempt.
 
 `make test-runtime-e2e` does not spend testnet funds. In addition to the
-general runtime suite, it builds the test-only x402 contract and Facilitator
+general runtime suite, it builds the test-only x402 contract and production Facilitator
 images and runs the same fixture against production Etherview images in
 monolith and six-role distributed topologies. It verifies real Anvil SIWE,
 EIP-3009 and Permit2 settlement, exact Permit2 approval, replay rejection,
@@ -1376,3 +1376,27 @@ spend Sepolia funds. Real payment and API-debit acceptance is documented in
 [P60](plans/P60-user-auth-billing.md#final-live-payment-and-api-debit-acceptance-p60-t17--p60-t24).
 Its one-shot local harness and detailed local records were deleted after
 acceptance at the operator's request; the plan retains the acceptance conclusion.
+
+### Multi-option billing regression coverage
+
+P60-T25 adds exact rational conversion and explicit precision tests, configuration
+uniqueness/credential routing checks, and PostgreSQL four-option funding into one
+account with immutable snapshots and replay rejection. Browser regressions cover
+chain/token selection and draft reset. `make test-preview-x402` compares token
+and credit increments for all four Preview options in both role layouts through
+the Anvil HTTPS gateway, then checks recreation and isolated payment-chain outage.
+P60-T25 uses local acceptance only; local Permit2 fixture evidence makes no
+production-contract compatibility claim.
+
+## Standalone facilitator acceptance
+
+Run `go test -race ./internal/facilitator ./cmd/x402facilitator` for configuration,
+protocol routing, authentication and keystore/KMS signature regressions. Run
+`go run ./cmd/testintegration -packages ./internal/facilitator -race` for durable
+reservation, nonce uniqueness, immutable transaction bytes and singleton-lock
+recovery. The existing `make test-runtime-e2e` and `make test-preview-x402` exercise
+the production facilitator and standard EIP-3009/Permit2 contract paths in
+all/split topologies. `node --test preview/anvil/test.mjs` verifies persisted
+standard Permit2 nonce bitmaps and exact approval consumption across restart.
+Run generation, lint, schema, deployment, docs and plan gates for this change.
+Mocked KMS and local chain evidence do not close P60-T27 real-environment acceptance.

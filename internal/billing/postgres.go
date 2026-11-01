@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/base32"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"math/big"
 	"net/http"
 	"regexp"
@@ -624,7 +626,7 @@ func (ledger *PostgresLedger) ListUser(
 	if err := applyPageAfter(after, &params.BeforeCreatedAt, &params.BeforeID); err != nil {
 		return nil, err
 	}
-	var rows []dbgen.BillingPayment
+	var rows []dbgen.ListUserBillingPaymentsRow
 	err = dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		rows, queryErr = queries.ListUserBillingPayments(ctx, params)
@@ -633,7 +635,22 @@ func (ledger *PostgresLedger) ListUser(
 	if err != nil {
 		return nil, fmt.Errorf("list user billing payments: %w", err)
 	}
-	return ledger.paymentsFromRows(rows)
+	result := make([]Payment, 0, len(rows))
+	for _, row := range rows {
+		payment, err := ledger.paymentFromRow(row.BillingPayment)
+		if err != nil {
+			return nil, err
+		}
+		if len(row.PaymentOption) > 0 {
+			var option paymentoption.Option
+			if json.Unmarshal(row.PaymentOption, &option) != nil || option.Validate() != nil {
+				return nil, ErrInvalidInput
+			}
+			payment.PaymentOption = &option
+		}
+		result = append(result, payment)
+	}
+	return result, nil
 }
 
 func (ledger *PostgresLedger) ListAdmin(
@@ -653,7 +670,7 @@ func (ledger *PostgresLedger) ListAdmin(
 	if err := applyPageAfter(after, &params.BeforeCreatedAt, &params.BeforeID); err != nil {
 		return nil, err
 	}
-	var rows []dbgen.BillingPayment
+	var rows []dbgen.ListAdminBillingPaymentsRow
 	err = dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		rows, queryErr = queries.ListAdminBillingPayments(ctx, params)
@@ -662,7 +679,22 @@ func (ledger *PostgresLedger) ListAdmin(
 	if err != nil {
 		return nil, fmt.Errorf("list administrator billing payments: %w", err)
 	}
-	return ledger.paymentsFromRows(rows)
+	result := make([]Payment, 0, len(rows))
+	for _, row := range rows {
+		payment, err := ledger.paymentFromRow(row.BillingPayment)
+		if err != nil {
+			return nil, err
+		}
+		if len(row.PaymentOption) > 0 {
+			var option paymentoption.Option
+			if json.Unmarshal(row.PaymentOption, &option) != nil || option.Validate() != nil {
+				return nil, ErrInvalidInput
+			}
+			payment.PaymentOption = &option
+		}
+		result = append(result, payment)
+	}
+	return result, nil
 }
 
 func (ledger *PostgresLedger) Summary(
@@ -782,20 +814,6 @@ func applyPageAfter(
 	*createdAt = postgresTime(after.CreatedAt)
 	*id = parsed
 	return nil
-}
-
-func (ledger *PostgresLedger) paymentsFromRows(
-	rows []dbgen.BillingPayment,
-) ([]Payment, error) {
-	result := make([]Payment, 0, len(rows))
-	for _, row := range rows {
-		payment, err := ledger.paymentFromRow(row)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, payment)
-	}
-	return result, nil
 }
 
 func (ledger *PostgresLedger) paymentFromRow(row dbgen.BillingPayment) (Payment, error) {

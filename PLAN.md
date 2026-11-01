@@ -25,7 +25,7 @@ Validator browsing, MEV accounting and L2-specific batch semantics are not core 
 | P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done    | P00, P10, P20                | Local verification, Sourcify source import/publication, automatic source discovery, contract intelligence, runtime/deployment, telemetry, optional accelerators, Caddy HTTPS, Kubo and Lighthouse/archive Preview with genesis ERC-4337, local ENS and Rundler; ENS under enrich, local production parity and independent Mainnet acceptance |
 | P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done    | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/requests/blob downloads, CSV, and bounded quotas; database-only ENS reads, publication snapshots and source status/events                                                                                                |
 | P50 | [Web](docs/plans/P50-web.md)                                                      | done    | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, manual explorer browsing with live home/status and task progress, guarded NFT links, ENS display, injected-wallet interaction, session-authenticated verification, and optional browser Turnstile protection; manual ENS reads and expired-label hiding                             |
-| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | done    | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups including local Preview, private watches, and one-shot browser push                                                                                                                                                                          |
+| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | in_progress    | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups and standalone multi-chain facilitator (real KMS/network acceptance pending), private watches, and one-shot browser push                                                                                                                                                                          |
 | P70 | [Release](docs/plans/P70-release.md)                                              | blocked | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                                                                                                                                                                                                       |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
@@ -57,9 +57,9 @@ Full historical coverage remains deployment progress, not a completed claim.
 
 P60-T17 is done: live Ethereum Sepolia EIP-3009/Permit2 payments have finalized
 independent chain/writer reconciliation and unique successful Anvil API debits. Sepolia
-remains payment-only. P60-T24 and P60 are done: browser and live cross-chain
+remains payment-only. P60-T24 is done: browser and live cross-chain
 acceptance, the required Go lint gate and focused IPFS/consensus/metric race
-regressions all passed. No further payment is required.
+regressions all passed. P60-T25 is also done: multi-chain, multi-token unified credit and the second Preview payment chain passed local all/split, browser, writer, gateway and contract acceptance. T25 requires local acceptance only; the local Permit2 fixture makes no production-contract compatibility claim.
 P60-T20 is done with operator-confirmed browser-provider delivery after all site
 tabs close; P60 retains the evidence and its limits.
 P70-T04 remains blocked on the operator-provisioned reference

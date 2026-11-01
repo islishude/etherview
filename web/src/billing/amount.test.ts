@@ -1,6 +1,6 @@
+import { testBillingConfig } from "@/billing/testFixtures";
 import { describe, expect, it } from "vitest";
 import { amountInputLength, formatTokenAmount, parseTokenAmount, topupAmount } from "./amount";
-import type { BillingConfig } from "@/api/billing";
 
 describe("whole-token amounts", () => {
   it.each([0, 6, 18, 255])("round trips precision %s without floating point", (decimals) => {
@@ -37,11 +37,11 @@ describe("whole-token amounts", () => {
     expect(parseTokenAmount("1.0", 0)).toBeUndefined();
   });
   it("checks bounds after conversion", () => {
-    const config = {
+    const config = testBillingConfig({
       asset_decimals: 6,
       minimum_topup_amount_atomic: "10",
       maximum_topup_amount_atomic: "1250000",
-    } as BillingConfig;
+    });
     expect(topupAmount("0.000009", config)).toBeUndefined();
     expect(topupAmount("0.000010", config)).toBe("10");
     expect(topupAmount("1.25", config)).toBe("1250000");

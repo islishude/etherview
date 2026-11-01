@@ -1,0 +1,10 @@
+image: etherview-x402-facilitator:local
+secretName: ""
+serviceAccountAnnotations: {}
+# Non-secret configuration; all credentials must reference /run/secrets files.
+config: {}
+# Explicit RPC, KMS and PostgreSQL destination CIDRs.
+egressCIDRs: []
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {cpu: "1", memory: 512Mi}

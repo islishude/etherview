@@ -1,3 +1,4 @@
+import { testBillingConfig } from "../src/billing/testFixtures";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { appearanceCases, collectBrowserErrors, configureAppearance } from "./appearance";
@@ -85,6 +86,9 @@ for (const appearance of appearanceCases) {
         id: "00000000-0000-7000-8000-000000000066",
         user_id: "private-user",
         amount_atomic: largeAmount,
+        credit_amount_atomic: largeAmount,
+        payment_option: testBillingConfig({ network: "eip155:1", asset, recipient: address })
+          .payment_chains[0]!.tokens[0],
         network: "eip155:1",
         asset,
         recipient: address,
@@ -95,29 +99,35 @@ for (const appearance of appearanceCases) {
       };
       if (path.endsWith("/config"))
         return route.fulfill({
-          json: envelope({
-            api_billing_enabled: true,
-            x402_topups_enabled: true,
-            x402_version: 2,
-            scheme: "exact",
-            network: "eip155:1",
-            asset,
-            recipient: address,
-            asset_transfer_methods: ["eip3009", "permit2"],
-            minimum_topup_amount_atomic: "1",
-            maximum_topup_amount_atomic: largeAmount,
-            asset_decimals: 6,
-            base_price_atomic: "1",
-            operations: [
-              { operation: "etherview.account.balance", complexity_weight: 2, amount_atomic: "2" },
-            ],
-          }),
+          json: envelope(
+            testBillingConfig({
+              api_billing_enabled: true,
+              x402_topups_enabled: true,
+              x402_version: 2,
+              scheme: "exact",
+              network: "eip155:1",
+              asset,
+              recipient: address,
+              asset_transfer_methods: ["eip3009", "permit2"],
+              minimum_topup_amount_atomic: "1",
+              maximum_topup_amount_atomic: largeAmount,
+              asset_decimals: 6,
+              base_price_atomic: "1",
+              operations: [
+                {
+                  operation: "etherview.account.balance",
+                  complexity_weight: 2,
+                  amount_atomic: "2",
+                },
+              ],
+            }),
+          ),
         });
       if (path.endsWith("/account"))
         return route.fulfill({
           json: envelope({
             user_id: "private-user",
-            network: "eip155:1",
+
             asset,
             available_atomic: "25000000",
             reserved_atomic: "12000",
