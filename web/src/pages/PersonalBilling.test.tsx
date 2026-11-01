@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
   readContract: vi.fn(),
   crossChain: false,
   withBillingChain: vi.fn(),
+  closeBillingChain: vi.fn(),
 }));
 vi.mock("@/auth/AuthProvider", () => ({
   useAuth: () => ({
@@ -44,6 +45,7 @@ vi.mock("@/wallet/WalletProvider", () => ({
     connecting: false,
     readContract: state.readContract,
     withBillingChain: state.crossChain ? state.withBillingChain : undefined,
+    closeBillingChain: state.closeBillingChain,
     sendTransaction: vi.fn(),
     signBillingTypedData: vi.fn(),
     waitForBillingTransaction: vi.fn(),
@@ -155,6 +157,90 @@ async function ready() {
 }
 
 describe("personal billing workspace", () => {
+  it.each([false, true])("locks network entry and fences departure: %s", async (depart) => {
+    state.crossChain = true;
+    const other = testBillingConfig({ id: "other", network: "eip155:2" });
+    vi.mocked(billing.getBillingConfig).mockResolvedValue({
+      ...config,
+      payment_chains: [...config.payment_chains, ...other.payment_chains],
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { user, rerender } = setup();
+    state.withBillingChain.mockImplementation(async (_network, operation) => {
+      await gate;
+      state.chainID = "2";
+      rerender();
+      return operation({ account: address, chainID: "2", revision: 2 });
+    });
+    await ready();
+    await waitFor(() => expect(state.readContract).toHaveBeenCalledTimes(1));
+    await user.selectOptions(screen.getByLabelText("Network", { exact: true }), "eip155:2");
+    expect(state.withBillingChain).toHaveBeenCalledWith("eip155:2", expect.any(Function), true);
+    for (const select of screen.getAllByRole("combobox")) expect(select).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh balance" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Top up & authorize" })).toBeDisabled();
+    if (depart) await openHistory(user);
+    await act(async () => {
+      release();
+    });
+    if (depart) {
+      expect(state.readContract).toHaveBeenCalledTimes(1);
+      expect(state.closeBillingChain).toHaveBeenCalledTimes(1);
+    } else {
+      await waitFor(() => expect(state.readContract).toHaveBeenCalledTimes(2));
+      expect(state.closeBillingChain).not.toHaveBeenCalled();
+      await openHistory(user);
+      expect(state.closeBillingChain).toHaveBeenCalledTimes(1);
+    }
+    expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
+  });
+
+  it("retains a failed selection, hides old funds and retries the selected network", async () => {
+    state.crossChain = true;
+    state.readContract.mockResolvedValue(encodeAbiParameters([{ type: "uint256" }], [123456789n]));
+    const other = testBillingConfig({ id: "other", network: "eip155:2", name: "Other USD" });
+    vi.mocked(billing.getBillingConfig).mockResolvedValue({
+      ...config,
+      payment_chains: [...config.payment_chains, ...other.payment_chains],
+    });
+    state.withBillingChain.mockRejectedValueOnce(
+      new BillingChainError("entry", "2", "USER_REJECTED"),
+    );
+    const { user } = setup();
+    await ready();
+    await waitFor(() =>
+      expect(document.querySelector(".billing-wallet-balance")).toHaveTextContent("123.456789"),
+    );
+    await user.type(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" }), "1");
+    await user.selectOptions(screen.getByLabelText("Network", { exact: true }), "eip155:2");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network switch cancelled");
+    expect(screen.getByLabelText("Network", { exact: true })).toHaveValue("eip155:2");
+    expect(document.querySelector("#billing-payment-token")).toHaveValue("other");
+    expect(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" })).toHaveValue("");
+    expect(document.querySelector(".billing-wallet-balance")).toHaveTextContent("Unavailable");
+    expect(document.querySelector(".billing-wallet-balance")).not.toHaveTextContent("123.456789");
+    expect(state.readContract).toHaveBeenCalledTimes(1);
+    expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
+    const refresh = screen.getByRole("button", { name: "Refresh balance" });
+    expect(refresh).toHaveTextContent("");
+    state.withBillingChain.mockImplementation(async (_network, operation) =>
+      operation({ account: address, chainID: "2", revision: 2 }),
+    );
+    await user.click(refresh);
+    await waitFor(() =>
+      expect(state.withBillingChain).toHaveBeenLastCalledWith(
+        "eip155:2",
+        expect.any(Function),
+        true,
+      ),
+    );
+    await openHistory(user);
+    expect(state.closeBillingChain).toHaveBeenCalled();
+  });
+
   it("resets amount and token when choosing another payment chain", async () => {
     const other = testBillingConfig({
       id: "other",
@@ -226,7 +312,7 @@ describe("personal billing workspace", () => {
     await user.type(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" }), "1");
     await user.click(screen.getByRole("button", { name: "Top up & authorize" }));
     await waitFor(() => expect(payBillingTopup).toHaveBeenCalledTimes(1));
-    expect(state.withBillingChain).toHaveBeenCalledWith("eip155:1", expect.any(Function));
+    expect(state.withBillingChain).toHaveBeenCalledWith("eip155:1", expect.any(Function), true);
     expect(state.readContract).toHaveBeenCalledTimes(1);
     expect(vi.mocked(payBillingTopup).mock.calls[0]![0].wallet.active.chainID).toBe("1");
   });
@@ -272,7 +358,7 @@ describe("personal billing workspace", () => {
     const { user } = setup();
     await ready();
     expect(state.readContract).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Check balance" }));
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Refresh balance" })).toBeEnabled(),
     );
@@ -282,7 +368,7 @@ describe("personal billing workspace", () => {
     await user.type(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" }), "1");
     expect(screen.getByText("Insufficient balance. Missing 1 tokens.")).toBeVisible();
     expect(state.readContract).toHaveBeenCalledTimes(1);
-    expect(state.withBillingChain).toHaveBeenCalledWith("eip155:1", expect.any(Function));
+    expect(state.withBillingChain).toHaveBeenCalledWith("eip155:1", expect.any(Function), true);
     expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
     expect(payBillingTopup).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Top up & authorize" })).toBeEnabled();
@@ -307,7 +393,7 @@ describe("personal billing workspace", () => {
       return value;
     });
     await ready();
-    await user.click(screen.getByRole("button", { name: "Check balance" }));
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
     expect(state.readContract).toHaveBeenCalledTimes(1);
     await act(async () => {
       finish(encodeAbiParameters([{ type: "uint256" }], [123456789n]));
@@ -334,7 +420,7 @@ describe("personal billing workspace", () => {
     );
     const { user } = setup();
     await ready();
-    await user.click(screen.getByRole("button", { name: "Check balance" }));
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Network switch cancelled");
     const network = screen.getByLabelText("Network", { exact: true });
     expect(network).toHaveAttribute("aria-invalid", "true");
@@ -345,12 +431,10 @@ describe("personal billing workspace", () => {
     expect(network).toHaveAccessibleDescription(/Network switch cancelled/);
     expect(state.readContract).not.toHaveBeenCalled();
     state.readContract.mockRejectedValueOnce(new Error("unavailable"));
-    await user.click(screen.getByRole("button", { name: "Check balance" }));
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
     await waitFor(() => expect(state.readContract).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Unable to check wallet balance. Refresh to retry.",
-    );
-    await user.click(screen.getByRole("button", { name: "Check balance" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
     await waitFor(() =>
       expect(
         screen.queryByText("Unable to check wallet balance. Refresh to retry."),
@@ -370,9 +454,9 @@ describe("personal billing workspace", () => {
     );
     const { user, rerender } = setup();
     await ready();
-    await user.dblClick(screen.getByRole("button", { name: "Check balance" }));
+    await user.dblClick(screen.getByRole("button", { name: "Refresh balance" }));
     expect(state.withBillingChain).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Check balance" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Refresh balance" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Top up & authorize" })).toBeDisabled();
     for (const select of screen.getAllByRole("combobox")) expect(select).toBeDisabled();
     state.connected = false;
@@ -453,6 +537,22 @@ describe("personal billing workspace", () => {
     expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
   });
 
+  it("shows only unavailable when the pre-payment balance read fails", async () => {
+    const { user } = setup();
+    await ready();
+    await user.type(screen.getByRole("textbox"), "1");
+    state.readContract.mockRejectedValue(new Error("private RPC URL"));
+    await user.click(screen.getByRole("button", { name: "Top up & authorize" }));
+    await waitFor(() =>
+      expect(document.querySelector(".billing-wallet-balance")).toHaveTextContent("Unavailable"),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Unable to check wallet balance. Refresh to retry."),
+    ).not.toBeInTheDocument();
+    expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
+  });
+
   it("shows failed balance reads without a false zero and supports retry", async () => {
     state.readContract.mockRejectedValue(new Error("private RPC URL"));
     const { user } = setup();
@@ -460,7 +560,8 @@ describe("personal billing workspace", () => {
     await user.type(screen.getByRole("textbox"), "1");
     expect(screen.getByRole("button", { name: "Top up & authorize" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Refresh balance" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to check wallet balance");
+    await waitFor(() => expect(state.readContract).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(document.querySelector(".billing-wallet-balance")).toHaveTextContent("Unavailable");
     state.readContract.mockResolvedValue(encodeAbiParameters([{ type: "uint256" }], [1000000n]));
     await user.click(screen.getByRole("button", { name: "Refresh balance" }));

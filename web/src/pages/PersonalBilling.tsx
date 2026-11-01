@@ -1,18 +1,20 @@
+import {
+  fundingBalanceBlocked,
+  fundingWalletKey,
+  useFundingView,
+  useFundingNetworkError,
+  useFundingSelection,
+  useFundingBalance,
+  type ChainFailure,
+} from "./useFundingWallet";
 import { TopupProgressSteps } from "./TopupProgressSteps";
 import { mergeTopupObservation, type TopupProgress } from "@/billing/progress";
 import { BillingWalletConnect } from "./BillingWalletConnect";
 import { BillingSteps } from "./BillingSteps";
-import { checkTopupBalance, readTopupBalance, TopupBalanceError } from "@/billing/balance";
+import { checkTopupBalance, TopupBalanceError } from "@/billing/balance";
 import "@/i18n/resources/billingPrices";
 import "./PersonalBilling.css";
-import {
-  type ReactNode,
-  type RefObject,
-  type SubmitEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, type SubmitEvent, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { CircleCheck, LoaderCircle, RefreshCw, X } from "lucide-react";
@@ -39,7 +41,7 @@ import { SelectControl } from "@/components/SelectControl";
 import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { type ActiveWallet, useWallet } from "@/wallet/WalletProvider";
-import { BillingChainError, chainsMatch, toWalletBoundaryError } from "@/wallet/eip6963";
+import { BillingChainError, chainsMatch } from "@/wallet/eip6963";
 import { BillingLoadError, BillingPagination } from "./BillingPages";
 
 import {
@@ -170,24 +172,18 @@ export function PersonalBilling() {
     auth.session.user?.address,
     payment,
   );
-  const walletKey = fundingWalletKey(identity, wallet.active, payment);
+  const viewRevision = useFundingView(view, wallet.closeBillingChain);
+  const walletKey = fundingWalletKey(identity, wallet.active, payment) + `:${viewRevision}`;
   const currentWalletKey = useRef(walletKey);
   currentWalletKey.current = walletKey;
-  useEffect(() => {
-    setChainFailure(undefined);
-    setNotification(undefined);
-  }, [walletKey]);
-  const networkError =
-    chainFailure?.key === walletKey
-      ? t(
-          `billing.guide.switchError.${chainFailure.error.code === "USER_REJECTED" ? "rejected" : chainFailure.error.code === "CHAIN_MISMATCH" ? "mismatch" : chainFailure.error.code === "INVALID_PROVIDER_RESPONSE" ? "invalid" : "failed"}`,
-          { network: paymentChain?.name ?? chainFailure.error.targetChainID },
-        )
-      : undefined;
-  useEffect(() => {
-    if (networkError) setNotification(networkError);
-  }, [networkError, chainFailure]);
-  const { balance, balanceError, refreshBalance } = useFundingBalance({
+  const networkError = useFundingNetworkError(
+    chainFailure,
+    walletKey,
+    paymentChain?.name,
+    setNotification,
+    setChainFailure,
+  );
+  const { balance, balanceError, refreshBalance, markBalanceUnavailable } = useFundingBalance({
     wallet,
     walletKey,
     currentWalletKey,
@@ -201,15 +197,29 @@ export function PersonalBilling() {
     setCheckingBalance,
     setChainFailure,
     notify: setNotification,
+    enabled: view === "payment" && !chainFailure,
+  });
+  const selectPayment = useFundingSelection({
+    wallet,
+    identity,
+    viewRevision,
+    currentWalletKey,
+    config: config.data,
+    payment,
+    walletReady,
+    checkingBalanceRef,
+    submittingRef,
+    setCheckingBalance,
+    setChainFailure,
+    setNotification,
+    setPaymentNetwork,
+    setPaymentOptionID,
+    setAmount,
+    setError,
+    setNotice,
   });
   const atomicAmount = payment ? topupAmount(amount, payment) : undefined;
-  const enoughBalance =
-    balance.data !== undefined &&
-    atomicAmount !== undefined &&
-    balance.data >= BigInt(atomicAmount);
-  const balanceBlocked = crossChain
-    ? atomicAmount === undefined
-    : !enoughBalance || balance.isFetching || Boolean(balance.error);
+  const balanceBlocked = fundingBalanceBlocked(balance, atomicAmount, crossChain);
   const blocked =
     submitting || checkingBalance || waiting || recovery.isPending || Boolean(recovery.error);
 
@@ -278,7 +288,7 @@ export function PersonalBilling() {
         });
       };
       const receipt = wallet.withBillingChain
-        ? await wallet.withBillingChain(paymentConfig.network!, execute)
+        ? await wallet.withBillingChain(paymentConfig.network!, execute, true)
         : await execute(wallet.active);
       signal.throwIfAborted();
       if (completed.current.has(receipt.intent.id)) return;
@@ -309,8 +319,11 @@ export function PersonalBilling() {
           setChainFailure({ key: walletKey, error: cause });
         }
       } else if (cause instanceof TopupBalanceError) {
-        setError(t(`billing.guide.${cause.reason}`));
-        void balance.refetch();
+        if (cause.reason === "unavailable") markBalanceUnavailable();
+        else {
+          setError(t("billing.guide.insufficient"));
+          void balance.refetch();
+        }
       } else if (cause instanceof Error && cause.name === "TopupAuthorizationError") {
         setError(t("billing.topup.notSubmitted"));
       } else {
@@ -395,14 +408,7 @@ export function PersonalBilling() {
                         optionID={paymentOption!.id}
                         networkError={networkError}
                         blocked={blocked}
-                        onChange={(network, optionID) => {
-                          setChainFailure(undefined);
-                          setPaymentNetwork(network);
-                          setPaymentOptionID(optionID);
-                          setAmount("");
-                          setError(undefined);
-                          setNotice(undefined);
-                        }}
+                        onChange={selectPayment}
                       />
                       <TopupForm
                         config={payment}
@@ -412,7 +418,6 @@ export function PersonalBilling() {
                           wallet.active && (
                             <WalletBalance
                               ready={walletReady}
-                              crossChain={crossChain}
                               busy={checkingBalance || balance.isFetching}
                               disabled={submitting}
                               failed={balanceError || Boolean(networkError)}
@@ -459,122 +464,6 @@ export function PersonalBilling() {
       </div>
     </div>
   );
-}
-
-interface ChainFailure {
-  key: string;
-  error: BillingChainError;
-}
-
-function useFundingBalance({
-  wallet,
-  walletKey,
-  currentWalletKey,
-  payment,
-  walletReady,
-  onPaymentChain,
-  submitting,
-  submittingRef,
-  checkingBalance,
-  checkingBalanceRef,
-  setCheckingBalance,
-  setChainFailure,
-  notify,
-}: {
-  wallet: ReturnType<typeof useWallet>;
-  walletKey: string;
-  currentWalletKey: RefObject<string>;
-  payment: BillingPaymentConfig | undefined;
-  walletReady: boolean;
-  onPaymentChain: boolean;
-  submitting: boolean;
-  submittingRef: RefObject<boolean>;
-  checkingBalance: boolean;
-  checkingBalanceRef: RefObject<boolean>;
-  setCheckingBalance: (value: boolean) => void;
-  setChainFailure: (value: ChainFailure | undefined) => void;
-  notify: (message: string | undefined) => void;
-}) {
-  const { t } = useTranslation();
-  const identity = usePrivateIdentity();
-  const lifetime = usePrivateLifetime();
-  const client = useQueryClient();
-  const prefix = ["private-account", identity, "billing"];
-  const [balanceFailure, setBalanceFailure] = useState<string>();
-  const balance = useQuery({
-    queryKey: [...prefix, "wallet-balance", walletKey],
-    queryFn: () =>
-      readTopupBalance(
-        wallet.readContract,
-        wallet.active!.account,
-        payment!.asset!,
-        payment!.network!.slice("eip155:".length),
-      ),
-    enabled:
-      walletReady &&
-      onPaymentChain &&
-      !submitting &&
-      !checkingBalance &&
-      Boolean(payment?.x402_topups_enabled),
-    retry: false,
-    staleTime: 0,
-  });
-  const balanceError = balanceFailure === walletKey || (onPaymentChain && Boolean(balance.error));
-  const refreshBalance = async () => {
-    if (checkingBalanceRef.current || submittingRef.current || !walletReady || !payment) return;
-    setChainFailure(undefined);
-    notify(undefined);
-    if (onPaymentChain) {
-      setBalanceFailure(undefined);
-      const result = await balance.refetch();
-      if (currentWalletKey.current === walletKey && result.error) {
-        setBalanceFailure(walletKey);
-        notify(t("billing.guide.unavailable"));
-      }
-      return;
-    }
-    if (!wallet.withBillingChain) return;
-    checkingBalanceRef.current = true;
-    setCheckingBalance(true);
-    setBalanceFailure(undefined);
-    const signal = lifetime();
-    const isCurrent = () => !signal.aborted && currentWalletKey.current === walletKey;
-    try {
-      const value = await wallet.withBillingChain(payment.network!, async (selected) => {
-        if (!isCurrent()) throw new TopupBalanceError("unavailable");
-        return readTopupBalance(
-          wallet.readContract,
-          selected.account,
-          payment.asset!,
-          payment.network!.slice("eip155:".length),
-        );
-      });
-      if (isCurrent()) client.setQueryData([...prefix, "wallet-balance", walletKey], value);
-    } catch (cause) {
-      if (isCurrent()) {
-        if (cause instanceof TopupBalanceError) {
-          setBalanceFailure(walletKey);
-          notify(t("billing.guide.unavailable"));
-        } else {
-          setChainFailure({
-            key: walletKey,
-            error:
-              cause instanceof BillingChainError
-                ? cause
-                : new BillingChainError(
-                    "entry",
-                    payment.network!.slice("eip155:".length),
-                    toWalletBoundaryError(cause).code,
-                  ),
-          });
-        }
-      }
-    } finally {
-      checkingBalanceRef.current = false;
-      if (!signal.aborted) setCheckingBalance(false);
-    }
-  };
-  return { balance, balanceError, refreshBalance };
 }
 
 function FundingDisabled() {
@@ -808,7 +697,6 @@ function BillingTabs({
 
 function WalletBalance({
   ready,
-  crossChain,
   busy,
   disabled,
   failed,
@@ -818,7 +706,6 @@ function WalletBalance({
   refresh,
 }: {
   ready: boolean;
-  crossChain: boolean;
   busy: boolean;
   disabled: boolean;
   failed: boolean;
@@ -828,7 +715,6 @@ function WalletBalance({
   refresh: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const query = crossChain && value === undefined;
   return (
     <div role="status" className="billing-wallet-balance">
       <span>{t("billing.guide.walletBalance")}</span>{" "}
@@ -840,19 +726,16 @@ function WalletBalance({
             ? t("billing.guide.balanceUnavailable")
             : value !== undefined
               ? displayBillingAmount(value.toString(), payment)
-              : crossChain
-                ? t("billing.guide.queryNetwork")
-                : t("billing.guide.loading")}
+              : t("billing.guide.balanceUnavailable")}
       <button
         type="button"
         className="billing-balance-refresh"
-        aria-label={t(query ? "billing.guide.query" : "billing.guide.refresh")}
-        title={t(query ? "billing.guide.query" : "billing.guide.refresh")}
+        aria-label={t("billing.guide.refresh")}
+        title={t("billing.guide.refresh")}
         disabled={!ready || busy || disabled}
         onClick={() => void refresh()}
       >
         <UIIcon icon={RefreshCw} size={14} className={busy ? "query-loading-spinner" : undefined} />
-        {query && t("billing.guide.query")}
       </button>
       {ready && !busy && !failed && value !== undefined && amount && value < BigInt(amount) && (
         <p>
@@ -1271,26 +1154,6 @@ function usePaymentSelection(config: BillingConfig | undefined) {
     setPaymentNetwork,
     setPaymentOptionID,
   };
-}
-
-function fundingWalletKey(
-  identity: string,
-  active: ActiveWallet | undefined,
-  payment: BillingPaymentConfig | undefined,
-) {
-  return JSON.stringify([
-    identity,
-    active && [
-      active.uuid,
-      active.account,
-      active.authChainID ?? active.chainID,
-      active.authRevision ?? active.revision,
-    ],
-    payment?.network,
-    payment?.asset,
-    payment?.recipient,
-    payment?.id,
-  ]);
 }
 
 function walletFundingState(

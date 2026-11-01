@@ -58,6 +58,20 @@ for (const appearance of appearanceCases) {
         window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail })),
       );
     }, address);
+    const walletChain = () =>
+      page.evaluate(
+        () =>
+          new Promise<string>((resolve) => {
+            window.addEventListener(
+              "eip6963:announceProvider",
+              ((event: CustomEvent) => {
+                void event.detail.provider.request({ method: "eth_chainId" }).then(resolve);
+              }) as EventListener,
+              { once: true },
+            );
+            window.dispatchEvent(new Event("eip6963:requestProvider"));
+          }),
+      );
     const errors = collectBrowserErrors(page);
     const external: string[] = [];
     const writes: string[] = [];
@@ -211,7 +225,7 @@ for (const appearance of appearanceCases) {
     await expect(page.locator(".billing-wallet-balance")).not.toContainText("25");
     await checkView("payment-before-balance");
     await page
-      .getByRole("button", { name: appearance.language === "zh" ? "查询余额" : "Check balance" })
+      .getByRole("button", { name: appearance.language === "zh" ? "刷新余额" : "Refresh balance" })
       .click();
     await expect(page.getByRole("alert")).toContainText(
       appearance.language === "zh" ? "已取消网络切换" : "Network switch cancelled",
@@ -231,7 +245,7 @@ for (const appearance of appearanceCases) {
     await checkView("payment-switch-rejected");
     await page
       .getByRole("button", {
-        name: appearance.language === "zh" ? "查询余额" : "Check balance",
+        name: appearance.language === "zh" ? "刷新余额" : "Refresh balance",
       })
       .click();
     await expect(page.locator("#billing-network-error")).toHaveCount(0);
@@ -241,6 +255,7 @@ for (const appearance of appearanceCases) {
         name: appearance.language === "zh" ? "刷新余额" : "Refresh balance",
       }),
     ).toBeEnabled();
+    expect(await walletChain()).toBe("0x7a69");
     await checkView("payment");
     await expect(page.locator(".billing-balance-values dd").first()).toHaveText("25");
     await expect(page.locator(".billing-prices")).toHaveCount(0);
@@ -251,6 +266,7 @@ for (const appearance of appearanceCases) {
     await expect(page.getByRole("cell", { name: "0.000002", exact: true })).toBeVisible();
     await checkView("query-prices");
     await page.keyboard.press("Home");
+    await expect.poll(walletChain).toBe("0x1");
     await page.locator(".billing-view-switch button").first().click();
     const amountInput = page.locator("#billing-topup-amount");
     await amountInput.fill("1.25");

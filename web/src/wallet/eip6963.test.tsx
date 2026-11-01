@@ -53,6 +53,115 @@ afterEach(() => {
   }
 });
 
+describe("payment-view wallet scope", () => {
+  it.each([
+    "event",
+    "no-event",
+    "second-success",
+    "second-rejected",
+    "partial-failure",
+    "close-pending",
+    "operation-failure",
+    "restore-rejected",
+  ])("retains the payment-view scope and restores on close: %s", async (scenario) => {
+    const config = testBillingConfig({ network: "eip155:11155111" });
+    const second = testBillingConfig({ network: "eip155:2" });
+    config.payment_chains.push(...second.payment_chains);
+    vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue(config);
+    const fake = createFakeProvider();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fake.setResponse("wallet_switchEthereumChain", async ({ params }: EIP1193RequestArguments) => {
+      const chain = (params as [{ chainId: string }])[0].chainId;
+      if (chain === "0x2" && scenario === "second-rejected") throw { code: 4001 };
+      if (chain === "0x1" && scenario === "restore-rejected") throw { code: 4001 };
+      if (scenario === "close-pending" && chain === "0xaa36a7") await gate;
+      fake.setResponse("eth_chainId", chain);
+      if (scenario !== "no-event") fake.emit("chainChanged", chain);
+      if (chain === "0x2" && scenario === "partial-failure") throw { code: 4001 };
+      return null;
+    });
+    registerProvider(providerDetail(fake.provider));
+    let current!: ReturnType<typeof useWallet>;
+    function Capture() {
+      current = useWallet();
+      return null;
+    }
+    renderWallet(<Capture />);
+    await waitFor(() => expect(current.providers).toHaveLength(1));
+    await act(async () => {
+      await current.connect(providerUUID);
+    });
+    const original = current.active!;
+    const operation = vi.fn(async () => {
+      if (scenario === "operation-failure") throw new Error("payment failed");
+      return "done";
+    });
+    if (scenario === "close-pending") {
+      let pending!: Promise<unknown>;
+      await act(async () => {
+        pending = current.withBillingChain!("eip155:11155111", operation, true).catch(
+          (error) => error,
+        );
+      });
+      await waitFor(() =>
+        expect(
+          fake.request.mock.calls.some(([call]) => call.method === "wallet_switchEthereumChain"),
+        ).toBe(true),
+      );
+      await act(async () => {
+        await expect(current.withBillingChain!("eip155:2", operation, true)).rejects.toMatchObject({
+          code: "INVALID_REQUEST",
+        });
+        const closed = current.closeBillingChain!();
+        expect(current.closeBillingChain!()).toBe(closed);
+        release();
+        expect(await pending).toBeInstanceOf(WalletBoundaryError);
+        await closed;
+      });
+      expect(operation).not.toHaveBeenCalled();
+    } else {
+      await act(async () => {
+        const result = current.withBillingChain!("eip155:11155111", operation, true);
+        if (scenario === "operation-failure")
+          await expect(result).rejects.toThrow("payment failed");
+        else await expect(result).resolves.toBe("done");
+      });
+      expect(current.active?.chainID).toBe("11155111");
+      expect(current.active?.authRevision).toBe(original.authRevision);
+      expect(current.active?.authChainID).toBe("1");
+      const next = vi.fn(async () => "next");
+      await act(async () => {
+        if (scenario === "second-rejected" || scenario === "partial-failure") {
+          await expect(current.withBillingChain!("eip155:2", next, true)).rejects.toBeInstanceOf(
+            BillingChainError,
+          );
+          expect(next).not.toHaveBeenCalled();
+        } else
+          await current.withBillingChain!(
+            scenario === "second-success" ? "eip155:2" : "eip155:11155111",
+            next,
+            true,
+          );
+      });
+      expect(current.active?.chainID).toBe(scenario === "second-success" ? "2" : "11155111");
+      await act(async () => {
+        await current.closeBillingChain!();
+      });
+    }
+    if (scenario === "restore-rejected") expect(current.active).toBeUndefined();
+    else {
+      expect(current.active?.chainID).toBe("1");
+      expect(current.active?.authRevision).toBe(original.authRevision);
+    }
+    expect(
+      fake.request.mock.calls.some(([call]) => call.method === "wallet_addEthereumChain"),
+    ).toBe(false);
+  });
+});
+
 describe("EIP-6963 wallet boundary", () => {
   it.each([
     "same-chain",

@@ -53,19 +53,19 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T21 | done   | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                                 | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                                                        |
 | P60-T22 | done   | P60-T21                             | Whole-token top-up input and mandatory complexity-weighted pricing for every V2 query                                                                                   | Exact decimal/UI, catalog/config, accounting, generation and local all/split x402 gates                                                                   |
 | P60-T23 | done   | P60-T22                             | Use etherview.module.action IDs throughout pricing, usage, API, metrics and billing UI; retain Sourcify and V2 naming                                                   | Catalog/ledger/API/UI, integration race, browser and all/split local-payment acceptance                                                                   |
-| P60-T24 | done   | P60-T12, P60-T22                    | Explicit payment-chain wallet scope with site-bound SIWE identity; Anvil indexing and real Sepolia payments                                                             | controlled chain transitions, hostile wallet/session races, exact approval, real payment plus priced API debit evidence                                   |
+| P60-T24 | done   | P60-T12, P60-T22                    | Payment-view wallet scope with immediate network selection, retained failed selections and site-bound SIWE identity; Anvil indexing and real Sepolia payments                                                             | controlled transitions, failed-selection retry, departure restoration, hostile wallet/session races, exact approval and separate live payment/API-debit evidence                                   |
 | P60-T25 | done   | P60-T24                             | Multi-chain, multi-token x402 funding with token-specific precision and fixed conversion into unified credit; persistent Preview Anvil payment chain behind the gateway | Four chain/token combinations, atomic credit and replay, browser selection, gateway, restart/outage and all/split acceptance; local acceptance only       |
-| P60-T26 | done   | P60-T25                             | Production standalone multi-chain facilitator, keystore/KMS, durable settlement and shared Preview                                                                      | Unit/race, durable journal and concurrent-chain recovery, standard-contract dual-chain, schema/runtime and deployment gates passed; local-only acceptance |
+| P60-T26 | done   | P60-T25                             | Production standalone multi-chain facilitator, keystore/KMS, durable settlement/progress, recoverable top-up steps and shared Preview                                                                      | Unit/race, durable journal and concurrent-chain recovery, standard-contract dual-chain, schema/runtime and deployment gates passed; local-only acceptance |
 | P60-T27 | todo   | P60-T26                             | Real AWS KMS and multi-network testnet facilitator acceptance                                                                                                           | Requires operator-provided KMS identity, funded testnet accounts and independent reconciliation                                                           |
-| P60-T28 | done   | P60-T26                             | Durable facilitator broadcast progress and bilingual top-up steps, including Permit2 approval and uncertain-outcome recovery                                            | Unit, PostgreSQL, delayed local-chain/browser and all/split regressions; generation, lint and governance gates                                            |
 
 ## Acceptance
 
-- [x] P60-T28: Durable broadcast-backed progress, bilingual top-up steps and
-      uncertain-response recovery passed 956 frontend tests, 234 browser tests,
-      Go/PostgreSQL race checks, delayed-mining Anvil all/split parity, fresh
-      production-image schema, generation, lint and governance gates. Local-only
-      acceptance; P60-T27 real-environment requirements remain separate.
+- [x] Payment-network selection retains failed selections and unavailable balances;
+      the payment-view scope preserves site-bound identity and restores the original
+      network on departure (P60-T24).
+- [x] Durable broadcast-backed progress and recoverable bilingual top-up steps
+      preserve exactly-once credit and all/split parity (P60-T26). Local acceptance
+      does not satisfy P60-T27's real-environment requirements.
 
 - [x] P60-T23: The etherview.* operation namespace is used end to end without legacy aliases or backfills; live payment acceptance remains separate.
 
@@ -146,6 +146,12 @@ transaction identifiers and the local databases were also deleted. This plan
 retains only the verified acceptance conclusion; raw evidence is no longer kept.
 The production wallet regressions and Go lint fixes are retained. P60-T17 and
 P60-T24 are complete within their original scope; P70 release gates remain separate.
+
+P60-T24's payment-view scope also passed controlled-wallet frontend and bilingual
+mobile/desktop browser regressions for immediate network selection, retained failed
+selections, unavailable balances, partial-switch recovery and departure races.
+Frontend lint, generation and governance checks passed. This UI extension has local
+acceptance only; the earlier live-payment conclusion does not extend to it.
 
 ### Prior feature acceptance
 
@@ -275,14 +281,18 @@ its original scope.
 
 The independent authenticated service supports keystore and AWS KMS signers,
 standard EIP-3009/Permit2, PostgreSQL-owned signed transactions and singleton
-execution with independent chain queues. Preview now uses one process for Geth
+execution with independent chain queues. Authenticated durable broadcast progress
+and recoverable bilingual top-up steps preserve settlement and credit ownership.
+Preview now uses one process for Geth
 and Anvil; the custom Permit2 settlement path and old command are removed.
 
 Local acceptance passed: signer/protocol race tests, PostgreSQL crash-boundary,
 concurrent-chain and restart/replay tests, OpenAPI/generation/Go lint, schema and
 full runtime E2E, Preview x402 in all/split layouts including chain outage and
 paused-chain reconciliation, deployment renders, deterministic contract rebuilds,
-Anvil persistence, license/dependency, docs and plan checks.
+Anvil persistence, license/dependency, docs and plan checks. Durable progress also
+passed frontend/browser recovery regressions, PostgreSQL race checks and delayed-
+mining Anvil all/split parity, including uncertain-response recovery.
 
 P60-T27 remains deferred: supply the real KMS workload identity and key, funded
 accounts on two EVM networks with approved token/proxy deployments, and independent

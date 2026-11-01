@@ -57,9 +57,9 @@ Full historical coverage remains deployment progress, not a completed claim.
 
 P60-T17 is done: live Ethereum Sepolia EIP-3009/Permit2 payments have finalized
 independent chain/writer reconciliation and unique successful Anvil API debits. Sepolia
-remains payment-only. P60-T24 is done: browser and live cross-chain
-acceptance, the required Go lint gate and focused IPFS/consensus/metric race
-regressions all passed. P60-T25 is also done: multi-chain, multi-token unified credit and the second Preview payment chain passed local all/split, browser, writer, gateway and contract acceptance. T25 requires local acceptance only; the local Permit2 fixture makes no production-contract compatibility claim.
+remains payment-only. P60-T24 is done: payment-view wallet scope, immediate network
+selection, retained failed selections and departure restoration passed local
+frontend/browser acceptance; prior live cross-chain acceptance remains separate. P60-T25 is also done: multi-chain, multi-token unified credit and the second Preview payment chain passed local all/split, browser, writer, gateway and contract acceptance. T25 requires local acceptance only; the local Permit2 fixture makes no production-contract compatibility claim.
 P60-T20 is done with operator-confirmed browser-provider delivery after all site
 tabs close; P60 retains the evidence and its limits.
 P70-T04 remains blocked on the operator-provisioned reference
@@ -106,4 +106,6 @@ P40-T30 completed unified proxy browsing and interaction reads on the latest com
 
 P40-T31 completed latest-processed holder, NFT owner and statistics reads, including retained hourly rollups; wallet actions no longer inherit unrelated browsing invalidation.
 
-P60-T28 completed durable facilitator broadcast progress and a recoverable top-up step list with local acceptance; P60-T27 retains separate real-environment acceptance.
+P60-T26 completed the standalone multi-chain facilitator, durable broadcast progress
+and recoverable top-up steps with local acceptance. P60-T27 retains the independent
+real AWS KMS and funded multi-network acceptance requirements.

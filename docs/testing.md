@@ -1371,10 +1371,13 @@ identity. Run `make web-test`, `make web-lint`, `make test-e2e`,
 is in `wallet/eip6963.test.tsx`, `auth/AuthProvider.test.tsx` and
 `pages/PersonalBilling.test.tsx`: exact expected transitions, missing events,
 account/network changes, rejected entry/restoration, stable authentication,
-and balance checks only after explicit confirmation. Explicit balance queries
-use the same temporary scope without creating intents or signing payments; cover
-restoration, retained and zero balances, retry, concurrent-action locking and
-stale-result rejection. Passive refresh must never trigger a chain switch.
+and balance checks only after explicit user action when switching is needed.
+The P60-T24 payment view retains its scope across reads and payment outcomes. Cover
+immediate selection switching, retained failed selections without old balances,
+icon-only retry, unavailable/zero balances, serialized entry, partial failures,
+late entry after departure, restoration on history/prices/route departure and
+restoration failure. Balance reads create no intents or payment signatures;
+account/provider changes and stale results remain fenced. Passive refresh must never trigger a chain switch.
 Automated tests never spend Sepolia funds. Real payment and API-debit acceptance is documented in
 [P60](plans/P60-user-auth-billing.md#final-live-payment-and-api-debit-acceptance-p60-t17--p60-t24).
 Its one-shot local harness and detailed local records were deleted after
@@ -1406,7 +1409,7 @@ Mocked KMS and local chain evidence do not close P60-T27 real-environment accept
 
 ## Top-up progress
 
-P60-T28 adds wallet-bound progress callbacks, bilingual accessible step lists,
+P60-T26 includes wallet-bound progress callbacks, bilingual accessible step lists,
 response-order protection, and uncertain-response recovery tests. Run the
 focused billing/topup and PersonalBilling tests followed by `make web-test`,
 `make web-lint`, and `make test-e2e`; account billing browser tests hold signing

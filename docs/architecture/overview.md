@@ -1322,6 +1322,12 @@ Intents store the full public policy and resulting credit. Payments retain the
 on-chain amount; the atomic settlement transaction posts only the snapshotted
 credit to the user/explorer-chain account. The frontend selects chain then token,
 clears drafts on selection changes and binds wallet operations to that option.
+Explicit network selection invokes the injected wallet switch directly. Failed
+switches retain the new selection, display unavailable balance and stop further
+work until explicit retry. The payment-view scope retains site-bound SIWE identity
+and stays on the payment network until history, prices or route departure;
+restoration failure disconnects local wallet/authentication state (ADR-0020).
+Balance read failures display only unavailable, with an accessible icon retry.
 Facilitator credentials are network-keyed, API/all-only secrets and never public.
 
 ### Standalone multi-chain facilitator
