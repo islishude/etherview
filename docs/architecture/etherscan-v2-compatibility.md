@@ -394,4 +394,4 @@ The complexity weight is 5 (a bounded large artifact read), priced through the
 shared base-price catalog. Integrity/publication failures release any reserved
 credit. Operator keys and billing-disabled deployments retain free exceptions.
 Browser preview and local download use the separate free session-protected
-POST specified by ADR-0055; the former public V1 content GET is removed.
+GET specified by ADR-0055; anonymous V1 content access is unavailable.

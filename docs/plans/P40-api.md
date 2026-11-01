@@ -1,6 +1,6 @@
 # P40 — API & Data Exports
 
-Status: `in_progress`
+Status: `done`
 
 Browser subscription API and all/split delivery acceptance were completed
 under P60-T20; notifications have no persisted history or replay.
@@ -76,6 +76,7 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T29 | done   | P20-T31                            | Database-only transaction-grouped ENS history and snapshot-bound event pagination                                                                                                      | ENS history regressions, generated contracts and applicable production/browser gates                                     |
 | P40-T30 | done   | P40-T11, P50-T84                   | Published proxy browsing snapshots independent of the canonical tip, exact-hash fact selection, and unified completed-snapshot interaction reads                                       | PostgreSQL snapshot/reorg/generation regressions, API/client, frontend/browser and generation/source/docs/plan gates     |
 | P40-T31 | done   | P40-T21, P40-T30                   | Latest completed holder, NFT owner and statistics snapshots on initial reads and refresh; wallet actions independent of unrelated browsing invalidation                                | Snapshot lag/refresh/reorg regressions, wallet read/write regression, schema image and generated/source/docs/plan checks |
+| P40-T32 | done   | P20-T32, P40-T22, P60-T22          | Paid V2 blob content and session/CSRF-protected browser GET; reject anonymous V1 download                                                                                              | Authentication, billing reservation/debit/release, generated contracts and all/split runtime tests                       |
 
 P40-T06's authoritative compatibility reads build on P20, the native API,
 P60-T09 user authentication/scoped keys, and P60-T13 prepaid read billing.
@@ -85,6 +86,8 @@ holding pages, reader/writer routing, and production runtime parity. Their
 acceptance is independent of P60's still-blocked live-payment gate.
 
 ## Acceptance
+
+- [x] P40-T32: Browser content remains session/CSRF-protected and free; V2 requires an API key and weight-5 billing with existing exceptions.
 
 - [x] P40-T28: Database-only name detail and name-identity search with independent field states and publication snapshots. Generated contracts, read-only HTTP, unresolved/expired search and snapshot/reorg tests. Existing historical reports do not validate this extension.
 
@@ -287,22 +290,10 @@ Go tests, 831 frontend tests, 221 embedded browser tests, production-image
 fresh-schema E2E, generate-check, lint-go, web-lint, docs-check and plan-check
 passed locally. Running Preview and remote CI were not updated.
 
-## Blob access and archive update
+P40-T32: The free browser GET requires a writer-authoritative session and CSRF, validates
+Origin/Fetch Metadata when supplied, and does not use Turnstile. V2 remains
+key-only with weight 5, reservation/release and operator/disabled-billing exceptions.
 
-| ID      | Status      | Dependencies                                          | Outcome                                                                               | Acceptance                                                                                                         |
-| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| P40-T32 | in_progress | Existing blob archive and session/billing foundations | Paid V2 blob content and session-protected browser content; remove public V1 download | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
-
-Acceptance evidence: Public V1 content GET removed; free session-protected browser POST and weight-5 V2 blob.getblob implemented.
-Focused Go regressions and the complete frontend unit suite (79 files, 899 tests)
-passed. Generation/OpenAPI, lint-go, source, docs and plan checks passed;
-RustFS, production schema, all/split runtime including local prepaid payments,
-and real Lighthouse blob smoke with V2 readback passed. The smoke rerun used
-`make test-preview-consensus-prebuilt` against the image built by the full target.
-
-Remaining acceptance: the user requested stopping broad local tests and running
-them in remote CI. Complete `make check`, `make test-integration-race` and
-`make test-e2e` there before marking this item done. Interrupted local runs are
-not passing evidence. The browser suite exposed one stale two-fetch expectation;
-it now expects the intended single fetch and awaits the CI rerun. Local topology
-checks do not establish live payment or production archive backup/restore evidence.
+Shared commands, revision/image identity, environment and limits are recorded
+once in [P20-T32 acceptance](P20-enrichment.md#blob-access-and-archive-update).
+The completed local gates do not close independent live-payment or release blockers.

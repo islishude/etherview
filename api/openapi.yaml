@@ -671,11 +671,11 @@ paths:
         default:
           $ref: "#/components/responses/Error"
   "/blocks/{hash}/blobs/{index}/content":
-    post:
+    get:
       operationId: "getBrowserBlobContent"
       security:
         - UserSession: []
-      description: "Session-only browser content acquisition. Requires same-origin Origin and CSRF. Does not require Turnstile. Not an API-key download endpoint."
+      description: "Session-only browser content acquisition. Requires a session-bound CSRF header. Origin may be omitted for same-origin GET; when present it must match the configured origin. Sec-Fetch-Site, when present, must be same-origin. Does not require Turnstile. Not an API-key download endpoint."
       tags:
         - "blocks"
       parameters:

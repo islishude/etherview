@@ -149,7 +149,7 @@ var catalog = []Spec{
 	spec("getBlockRequests", "GET", "/blocks/{id}/requests", false, pathParameter("id", ParameterBlockIdentifier), cursorParameter(), limitParameter("50"), queryParameter("request_type", ParameterText)),
 	spec("getBlockConsensus", "GET", "/blocks/{id}/consensus", false, pathParameter("id", ParameterBlockIdentifier)),
 	spec("getBlockBlobs", "GET", "/blocks/{id}/blobs", false, pathParameter("id", ParameterBlockIdentifier)),
-	spec("getBrowserBlobContent", "POST", "/blocks/{hash}/blobs/{index}/content", false, pathParameter("hash", ParameterHash), pathParameter("index", ParameterUint256)),
+	spec("getBrowserBlobContent", "GET", "/blocks/{hash}/blobs/{index}/content", false, pathParameter("hash", ParameterHash), pathParameter("index", ParameterUint256)),
 	spec("listBlocks", "GET", "/blocks", true,
 		cursorParameter(), limitParameter("25")),
 	spec("getBlock", "GET", "/blocks/{id}", true,

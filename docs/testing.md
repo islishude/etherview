@@ -1343,7 +1343,8 @@ establish local behavior, not remote CI or live chain acceptance.
 
 ## Blob content access and S2 regressions
 
-Cover removal of the public content GET, session-only browser POST, Origin/CSRF,
+Cover anonymous content rejection, removal of browser POST, session-only
+browser GET, optional matching Origin, same-origin Fetch Metadata and mandatory CSRF,
 successful token-free access with Turnstile enabled or disabled, and rejection
 before archive access for missing sessions, invalid Origin or CSRF.
 V2 blob tests cover key-only access, exact hash/index validation, weight-5

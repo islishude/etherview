@@ -1,6 +1,6 @@
 # P50 — Embedded Web
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -65,8 +65,11 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T82 | done   | P40-T28                            | Bilingual name detail, name search and primary-name links without source badges                                                                                                                        | Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions                               |
 | P50-T83 | done   | P40-T29                            | Compact name overview and bilingual expandable ENS transaction history                                                                                                                                 | ENS history regressions, generated contracts and applicable production/browser gates                                           |
 | P50-T84 | done   | P50-T11, P50-T81, P50-T83          | Explicit live-refresh allowlist and page-scoped manual browsing refresh with invalidation notices                                                                                                      | Frontend, embedded browser, generation, docs and plan gates                                                                    |
+| P50-T85 | done   | P40-T32, P50-T75, P60-T05          | Session-only blob preview with an expanded-detail download icon and reusable in-memory content                                                                                                         | Bilingual browser, single-fetch saving, identity-change cleanup and cancellation regressions                                   |
 
 ## Acceptance
+
+- [x] P50-T85: Blob viewing requires login and deliberate action; the expanded-detail icon saves complete cached bytes without another request.
 
 - [x] P50-T82: Bilingual name detail, name search and primary-name links without source badges. Keyboard/mobile navigation, copying, SSE and local field expiry; production topology regressions. Existing historical reports do not validate this extension.
 
@@ -234,24 +237,11 @@ P50-T83: Compact overview and lazy expandable history support both languages/the
 
 P50-T84: Local acceptance passed 780 frontend tests, 39 tooling tests and all 170 embedded Chromium scenarios, including nine Address tabs, manual refresh races/failures, ENS withdrawal, single-SSE recovery and keyboard/mobile heading controls. `make web-test`, `make web-lint`, `make test-e2e`, `make generate-check`, `make docs-check` and `make plan-check` passed. Remote CI was not run; local browser fixtures do not establish live chain acceptance.
 
-## Blob access and archive update
+P50-T85: Viewing requires login and a deliberate click. The expanded preview shows the
+first 1024 bytes and offers an icon that saves the complete cached blob without
+another request. Identity changes/unmount discard bytes and cancel pending reads.
+Bilingual desktop/mobile browser coverage passed in the full 225-test suite.
 
-| ID      | Status      | Dependencies                                          | Outcome                                                                                          | Acceptance                                                                                                         |
-| ------- | ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| P50-T85 | in_progress | Existing blob archive and session/billing foundations | Session-only blob acquisition with shared in-memory preview and an expanded-detail download icon | Implemented; targeted regressions pass. Full acceptance deferred to remote CI at user request; see evidence below. |
-
-Acceptance evidence: Login-only content acquisition (with Origin/CSRF), an expanded-detail download icon, and session-scoped preview/download reuse implemented.
-The login-only/icon update passes focused HTTP and frontend regressions; full
-browser and runtime acceptance for that update remains deferred to remote CI.
-Earlier archive/V2 acceptance included focused Go regressions and the complete
-frontend unit suite (79 files, 899 tests). Generation/OpenAPI, lint-go, source, docs and plan checks passed;
-RustFS, production schema, all/split runtime including local prepaid payments,
-and real Lighthouse blob smoke with V2 readback passed. The smoke rerun used
-`make test-preview-consensus-prebuilt` against the image built by the full target.
-
-Remaining acceptance: the user requested stopping broad local tests and running
-them in remote CI. Complete `make check`, `make test-integration-race` and
-`make test-e2e` there before marking this item done. Interrupted local runs are
-not passing evidence. The browser suite exposed one stale two-fetch expectation;
-it now expects the intended single fetch and awaits the CI rerun. Local topology
-checks do not establish live payment or production archive backup/restore evidence.
+Shared commands, revision/image identity, environment and limits are recorded
+once in [P20-T32 acceptance](P20-enrichment.md#blob-access-and-archive-update).
+The completed local gates do not close independent live-payment or release blockers.

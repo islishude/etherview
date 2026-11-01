@@ -1201,8 +1201,9 @@ Block models select consensus slots when enabled and published, with explicit
 execution-header fallback and `slot_number_source`. Consensus and blob HTTP
 metadata reads do not contact upstream nodes. Exact-hash content reads decompress and validate the object, then recheck the
 published manifest. V2 `blob.getblob` uses API-key prepaid billing with weight 5.
-The public V1 content GET is removed; a free browser-only content POST on the same block-scoped path
-requires SIWE, Origin and CSRF, without Turnstile. The expanded content details
+Anonymous V1 content access is unavailable; the free browser-only content GET
+requires SIWE and CSRF, without Turnstile. Origin may be omitted; when supplied
+it must match. Sec-Fetch-Site, when supplied, must be `same-origin`. The expanded content details
 provide a bottom-right download icon that saves the already loaded bytes.
 Preview and file saving share a session-scoped in-memory byte buffer. Core execution readiness and fork
 choice never depend on either optional upstream.

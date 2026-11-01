@@ -57,10 +57,12 @@ are both required; pruned upstream data may be impossible to recover.
 
 API processes read metadata from PostgreSQL, close snapshots before object
 access, validate object integrity, then recheck publication identity before
-returning bytes. Content acquisition uses exact block hashes. The public V1
-content GET is removed. The free browser-only POST at
+returning bytes. Content acquisition uses exact block hashes. Anonymous V1 content
+access is unavailable. The free browser-only GET at
 `/api/v1/blocks/{hash}/blobs/{index}/content` requires a writer-authoritative
-SIWE session, exact Origin and CSRF. Turnstile is not required, even when
+SIWE session and a session-bound CSRF header. Origin may be omitted for
+same-origin GETs; if supplied it must match the configured origin.
+Sec-Fetch-Site, when supplied, must be `same-origin`. The former POST is removed. Turnstile is not required, even when
 globally enabled. API keys cannot replace sessions.
 The browser retains content only in session-scoped component memory and reuses
 it for preview and local file saving through a download icon at the bottom right

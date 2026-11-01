@@ -51,10 +51,12 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T19 | done    | P60-T18, P20-T10                    | Durable transaction/token notifications, generation-fenced delivery, reorg/reattach handling, read watermarks, and bounded cleanup                                 | restart, lease/generation, concurrency, indexed matching, disabled-account replay, and PostgreSQL regressions            |
 | P60-T20 | done    | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance               | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                   |
 | P60-T21 | done    | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                            | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                       |
-
-| P60-T22 | done | P60-T21 | Whole-token top-up input and mandatory complexity-weighted pricing for every V2 query | Exact decimal/UI, catalog/config, accounting, generation and local all/split x402 gates |
+| P60-T22 | done    | P60-T21                             | Whole-token top-up input and mandatory complexity-weighted pricing for every V2 query                                                                              | Exact decimal/UI, catalog/config, accounting, generation and local all/split x402 gates                                  |
+| P60-T23 | done    | P60-T22                             | Use etherview.module.action IDs throughout pricing, usage, API, metrics and billing UI; retain Sourcify and V2 naming                                              | Catalog/ledger/API/UI, integration race, browser and all/split local-payment acceptance                                  |
 
 ## Acceptance
+
+- [x] P60-T23: The etherview.* operation namespace is used end to end without legacy aliases or backfills; live payment acceptance remains separate.
 
 - [x] An invalid signature creates neither a user nor a session; a first valid
       login creates an ordinary active user.
@@ -215,14 +217,13 @@ against the same shared writer balance. These results do not close P60-T17.
 
 ### Etherview operation namespace (P60-T23)
 
-| ID      | Status      | Depends on | Deliverable                                                                                                                                               | Verification                                                                                       |
-| ------- | ----------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| P60-T23 | in_progress | P60-T22    | Use etherview.module.action IDs throughout pricing, usage persistence, API responses, metrics and billing UI; retain Sourcify and V2 compatibility naming | Targeted catalog/ledger/API/UI regressions; aggregate checks deferred to remote CI at user request |
-
 The namespace follows the fresh-database contract without legacy aliases or
 backfills. P60-T17 remains blocked on its independent live-payment acceptance.
 
-Targeted namespace, price, prepaid dispatch, API and metrics regressions pass,
-as do the 18 PersonalBilling tests, generation consistency, docs and plan checks.
-The final branch's full Go/SQL integration, lint, browser and aggregate gates
-remain assigned to remote CI at the user's request; this item is not yet done.
+The complete `make check`, `make test-integration-race`, `CI=true make test-e2e`
+and `make test-runtime-e2e` gates passed, including local payment settlement,
+concurrent priced debit, reservation release and operator bypass in both role layouts.
+Shared revision/image identity and environment are recorded in
+[P20-T32 acceptance](P20-enrichment.md#blob-access-and-archive-update).
+P60-T17 still requires its independent one-shot live EIP-3009/Permit2 reports;
+local Anvil acceptance cannot close it.

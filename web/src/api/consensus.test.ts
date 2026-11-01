@@ -8,6 +8,7 @@ const hash = `0x${"11".repeat(32)}`;
 it("retains the exact block number and block-scoped index in the download filename", async () => {
   const fetch = vi.fn(async (request: RequestInfo | URL, options?: RequestInit) => {
     expect(request).toBe(`/api/v1/blocks/${hash}/blobs/42/content`);
+    expect(options?.method).toBe("GET");
     const headers = new Headers(options?.headers);
     expect(headers.get("X-CSRF-Token")).toBe("csrf");
     expect(headers.has("X-Turnstile-Token")).toBe(false);

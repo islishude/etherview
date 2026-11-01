@@ -1879,9 +1879,11 @@ with an `api:read` key, preferably in `X-API-Key`. The fixed weight is 5, multip
 by the configured base atomic price. User keys spend their owner's balance;
 operator keys and billing-disabled deployments retain free exceptions.
 
-The old public `/api/v1/blocks/{hash}/blobs/{index}/content` GET is absent.
-The free browser POST `/api/v1/blocks/{hash}/blobs/{index}/content` requires
-SIWE, matching Origin and CSRF. Blob content does not require Turnstile, even
+Anonymous blob content access is unavailable. The former browser POST is removed.
+The free browser GET `/api/v1/blocks/{hash}/blobs/{index}/content` requires
+SIWE and a session-bound CSRF header. Origin may be omitted; when present it
+must match the configured origin. Sec-Fetch-Site, when present, must be
+`same-origin`. Blob content does not require Turnstile, even
 when the global switch is enabled. The expanded details provide a download
 icon that saves the cached complete blob without another request or fee.
 The browser saves previously fetched content locally without another charge

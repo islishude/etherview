@@ -312,9 +312,9 @@ export const getBlockConsensus = <ThrowOnError extends boolean = false>(options:
 export const getBlockBlobs = <ThrowOnError extends boolean = false>(options: Options<GetBlockBlobsData, ThrowOnError>): RequestResult<GetBlockBlobsResponses, GetBlockBlobsErrors, ThrowOnError> => options.client.get<GetBlockBlobsResponses, GetBlockBlobsErrors, ThrowOnError>({ url: '/blocks/{id}/blobs', ...options });
 
 /**
- * Session-only browser content acquisition. Requires same-origin Origin and CSRF. Does not require Turnstile. Not an API-key download endpoint.
+ * Session-only browser content acquisition. Requires a session-bound CSRF header. Origin may be omitted for same-origin GET; when present it must match the configured origin. Sec-Fetch-Site, when present, must be same-origin. Does not require Turnstile. Not an API-key download endpoint.
  */
-export const getBrowserBlobContent = <ThrowOnError extends boolean = false>(options: Options<GetBrowserBlobContentData, ThrowOnError>): RequestResult<GetBrowserBlobContentResponses, GetBrowserBlobContentErrors, ThrowOnError> => options.client.post<GetBrowserBlobContentResponses, GetBrowserBlobContentErrors, ThrowOnError>({
+export const getBrowserBlobContent = <ThrowOnError extends boolean = false>(options: Options<GetBrowserBlobContentData, ThrowOnError>): RequestResult<GetBrowserBlobContentResponses, GetBrowserBlobContentErrors, ThrowOnError> => options.client.get<GetBrowserBlobContentResponses, GetBrowserBlobContentErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'etherview_session',

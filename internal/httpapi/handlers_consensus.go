@@ -93,7 +93,7 @@ func (h *Handler) browserBlobContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authentication, ok := h.requireUserSession(w, r)
-	if !ok || !h.requireAuthOrigin(w, r) || !h.requireCSRF(w, r, authentication) {
+	if !ok || !h.requireBlobReadOrigin(w, r) || !h.requireCSRF(w, r, authentication) {
 		return
 	}
 	if !h.cfg.Consensus.Blobs.Enabled {
@@ -101,4 +101,18 @@ func (h *Handler) browserBlobContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.blobContent(w, r)
+}
+
+// Same-origin browser GETs may omit Origin. The session-bound CSRF header
+// remains mandatory; reject contradictory browser provenance when supplied.
+func (h *Handler) requireBlobReadOrigin(w http.ResponseWriter, r *http.Request) bool {
+	if len(r.Header.Values("Origin")) > 0 && !h.requireAuthOrigin(w, r) {
+		return false
+	}
+	if values := r.Header.Values("Sec-Fetch-Site"); len(values) > 0 &&
+		(len(values) != 1 || values[0] != "same-origin") {
+		writeError(w, r, http.StatusForbidden, "origin_invalid", "request origin is invalid", nil)
+		return false
+	}
+	return true
 }
