@@ -52,6 +52,140 @@ afterEach(() => {
 
 describe("EIP-6963 wallet boundary", () => {
   it.each([
+    "same-chain",
+    "event",
+    "no-event",
+    "late-event",
+    "add",
+    "add-switches",
+    "rejected",
+    "add-rejected",
+    "wrong-chain",
+    "account-change",
+    "chain-aba",
+    "disconnect",
+    "missing-config",
+    "wrong-config",
+    "add-aba",
+  ])("prepares login on the configured chain: %s", async (scenario) => {
+    const fake = createFakeProvider({ eth_chainId: scenario === "same-chain" ? "0x1" : "0x2" });
+    let switches = 0;
+    fake.setResponse("wallet_switchEthereumChain", () => {
+      switches += 1;
+      if (scenario === "rejected") throw { code: 4001 };
+      if (
+        [
+          "add",
+          "add-switches",
+          "add-rejected",
+          "missing-config",
+          "wrong-config",
+          "add-aba",
+        ].includes(scenario) &&
+        switches === 1
+      )
+        throw { code: 4902 };
+      if (scenario === "wrong-chain") return null;
+      fake.setResponse("eth_chainId", "0x1");
+      if (!["no-event", "late-event"].includes(scenario)) fake.emit("chainChanged", "0x1");
+      if (scenario === "account-change") fake.emit("accountsChanged", [accountB]);
+      if (scenario === "chain-aba") {
+        fake.emit("chainChanged", "0x2");
+        fake.emit("chainChanged", "0x1");
+      }
+      if (scenario === "disconnect") fake.emit("disconnect", {});
+      return null;
+    });
+    fake.setResponse("wallet_addEthereumChain", () => {
+      if (scenario === "add-rejected") throw { code: 4001 };
+      if (scenario === "add-aba") fake.emit("chainChanged", "0x1");
+      if (scenario === "add-switches") {
+        fake.setResponse("eth_chainId", "0x1");
+        fake.emit("chainChanged", "0x1");
+      }
+      return null;
+    });
+    registerProvider(providerDetail(fake.provider));
+    let current!: ReturnType<typeof useWallet>;
+    function Capture() {
+      current = useWallet();
+      return null;
+    }
+    renderWallet(<Capture />, scenario);
+    await waitFor(() => expect(current.providers).toHaveLength(1));
+    await act(async () => {
+      await current.connect(providerUUID);
+    });
+    const original = current.active!;
+    const success = [
+      "same-chain",
+      "event",
+      "no-event",
+      "late-event",
+      "add",
+      "add-switches",
+    ].includes(scenario);
+    await act(async () => {
+      if (success) {
+        const prepared = await current.prepareLogin(original);
+        expect(prepared.chainID).toBe("1");
+        expect(current.isActiveWallet(prepared)).toBe(true);
+      } else {
+        await expect(current.prepareLogin(original)).rejects.toBeInstanceOf(WalletBoundaryError);
+      }
+    });
+    if (scenario === "late-event") {
+      const revision = current.active!.revision;
+      act(() => fake.emit("chainChanged", "0x1"));
+      expect(current.active!.revision).toBe(revision);
+    }
+    expect(switches).toBe(scenario === "same-chain" ? 0 : scenario === "add" ? 2 : 1);
+    const additions = fake.request.mock.calls.filter(
+      ([request]) => request.method === "wallet_addEthereumChain",
+    );
+    expect(additions).toHaveLength(
+      ["add", "add-switches", "add-rejected", "add-aba"].includes(scenario) ? 1 : 0,
+    );
+  });
+
+  it.each(["changed-account", "empty-accounts", "invalid-accounts", "disconnected"])(
+    "clears stale login identity after a silent %s response and permits reconnection",
+    async (scenario) => {
+      const fake = createFakeProvider();
+      registerProvider(providerDetail(fake.provider));
+      let current!: ReturnType<typeof useWallet>;
+      function Capture() {
+        current = useWallet();
+        return null;
+      }
+      renderWallet(<Capture />);
+      await waitFor(() => expect(current.providers).toHaveLength(1));
+      await act(async () => {
+        await current.connect(providerUUID);
+      });
+      fake.setResponse("eth_accounts", () => {
+        if (scenario === "disconnected") throw { code: 4900 };
+        if (scenario === "invalid-accounts") return null;
+        return scenario === "empty-accounts" ? [] : [accountB];
+      });
+      await act(async () => {
+        await expect(current.prepareLogin(current.active!)).rejects.toBeInstanceOf(
+          WalletBoundaryError,
+        );
+      });
+      expect(current.active).toBeUndefined();
+      fake.setResponse("eth_requestAccounts", [accountB]);
+      fake.setResponse("eth_accounts", [accountB]);
+      await act(async () => {
+        const connected = await current.connect(providerUUID);
+        const prepared = await current.prepareLogin(connected);
+        expect(prepared.account).toBe(accountB);
+        expect(current.isActiveWallet(prepared)).toBe(true);
+      });
+    },
+  );
+
+  it.each([
     "event",
     "no-event",
     "same-account-event",
@@ -1108,7 +1242,7 @@ function WalletHarness() {
   );
 }
 
-function renderWallet(children: ReactNode = <WalletHarness />) {
+function renderWallet(children: ReactNode = <WalletHarness />, scenario?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -1119,12 +1253,15 @@ function renderWallet(children: ReactNode = <WalletHarness />) {
     native_decimals: 18,
     native_name: "Ether",
     native_symbol: "ETH",
-    wallet_add_chain: {
-      chain_id: "1",
-      chain_name: "Wallet Testnet",
-      native_currency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpc_urls: ["http://localhost:8545"],
-    },
+    wallet_add_chain:
+      scenario === "missing-config"
+        ? undefined
+        : {
+            chain_id: scenario === "wrong-config" ? "2" : "1",
+            chain_name: "Wallet Testnet",
+            native_currency: { name: "Ether", symbol: "ETH", decimals: 18 },
+            rpc_urls: ["http://localhost:8545"],
+          },
   });
   return render(
     <QueryClientProvider client={queryClient}>

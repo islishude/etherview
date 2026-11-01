@@ -112,3 +112,19 @@ restoration disconnects the local wallet/authentication state without retrying o
 misrepresenting a possibly settled payment. Reload does not restore a scope.
 Server sessions, CSRF and ledger identities are unchanged, and balances are never
 copied between site-chain identities.
+
+## Login chain preparation
+
+An explicit login action first connects the selected provider and prepares the
+configured site chain before requesting a challenge. Only an unknown-chain
+provider error (4902) permits adding the chain from validated public configuration;
+missing or mismatched metadata fails closed. Adding a chain does not prove it
+became selected: the client reads the chain again and switches if necessary.
+
+Preparation fences the provider, account and wallet revision. Only the expected
+transition to the site chain is accepted, including a missing or delayed event;
+account changes, disconnects, unexpected chains and ABA transitions cancel the
+attempt. Actual chain and account are checked before challenge creation. Rejection
+or failure stops login and permits an explicit retry. Successful login leaves the
+wallet on the site chain. This does not preserve a previously authenticated
+identity across an unrelated chain change or modify the payment scope.

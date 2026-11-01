@@ -98,7 +98,7 @@ describe("authentication pages", () => {
         );
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Export CSV");
       } else {
-        expect(screen.queryByRole("dialog")).toBeNull();
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Address");
       }
       expect(mutations).toEqual([]);

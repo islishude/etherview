@@ -73,7 +73,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 interface LoginAttempt {
   connectionObserved: boolean;
   finished: boolean;
-  phase: "connecting" | "authenticating";
+  phase: "connecting" | "preparing" | "authenticating";
+  preparationWallet?: ActiveWallet;
   providerUUID?: string;
   startedDisconnected: boolean;
   wallet?: ActiveWallet;
@@ -81,7 +82,7 @@ interface LoginAttempt {
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const wallet = useWallet();
-  const { connect, isActiveWallet, signSIWEChallenge } = wallet;
+  const { connect, prepareLogin, isActiveWallet, signSIWEChallenge } = wallet;
   const publicConfig = usePublicConfig();
   const enabled = publicConfig.data?.features.user_auth === true;
   const expectedChainID = publicConfig.data?.chain_id;
@@ -180,10 +181,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const allowedLoginConnection =
       firstObservedConnection &&
       ((attempt?.phase === "connecting" && currentWallet.uuid === attempt.providerUUID) ||
-        (attempt?.phase === "authenticating" &&
+        ((attempt?.phase === "authenticating" || attempt?.phase === "preparing") &&
           attempt.wallet !== undefined &&
           sameWallet(currentWallet, attempt.wallet)));
-    if (allowedLoginConnection) {
+    const origin = attempt?.preparationWallet;
+    const allowedPreparation =
+      attempt !== undefined &&
+      origin !== undefined &&
+      currentWallet !== undefined &&
+      currentWallet.uuid === origin.uuid &&
+      currentWallet.account === origin.account &&
+      (sameWallet(currentWallet, authenticationWallet(origin)!) ||
+        (chainsMatch(currentWallet.chainID, expectedChainID) &&
+          currentWallet.revision === origin.revision + 1));
+    if (allowedLoginConnection || allowedPreparation) {
       attempt.connectionObserved = true;
       if (attempt.finished) loginAttemptRef.current = undefined;
       return;
@@ -207,7 +218,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setPending(false);
     setError(undefined);
     bestEffortLogout(current);
-  }, [commitSession, walletIdentity]);
+  }, [commitSession, expectedChainID, walletIdentity]);
 
   const login = useCallback(
     async (providerUUID?: string) => {
@@ -252,7 +263,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       let verificationCSRF: string | undefined;
       let accepted = false;
       try {
-        const selected = activeWalletRef.current ?? (await connect(providerUUID!));
+        const connected = activeWalletRef.current ?? (await connect(providerUUID!));
+        if (generationRef.current !== generation) return;
+        attempt.phase = "preparing";
+        attempt.wallet = connected;
+        attempt.preparationWallet = connected;
+        const selected = await prepareLogin(connected);
+        if (generationRef.current !== generation) return;
         attempt.phase = "authenticating";
         attempt.wallet = selected;
         if (!chainsMatch(selected.chainID, expectedChainID)) {
@@ -303,7 +320,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (generationRef.current === generation) setPending(false);
       }
     },
-    [commitSession, enabled, expectedChainID, connect, isActiveWallet, signSIWEChallenge],
+    [
+      commitSession,
+      enabled,
+      expectedChainID,
+      connect,
+      prepareLogin,
+      isActiveWallet,
+      signSIWEChallenge,
+    ],
   );
 
   const logout = useCallback(async () => {

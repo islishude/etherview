@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useAuth } from "@/auth/AuthProvider";
-import { usePublicConfig } from "@/api/publicConfig";
-import { chainsMatch } from "@/wallet/eip6963";
 import { useWallet } from "@/wallet/WalletProvider";
 
 interface SIWELoginControlProps {
@@ -14,13 +12,9 @@ interface SIWELoginControlProps {
 export function SIWELoginControl({ full = false, label }: SIWELoginControlProps) {
   const { t } = useTranslation();
   const auth = useAuth();
-  const config = usePublicConfig();
   const wallet = useWallet();
   const [choosing, setChoosing] = useState(false);
-  const expectedChainID = config.data?.chain_id;
-  const walletOnChain =
-    wallet.active !== undefined && chainsMatch(wallet.active.chainID, expectedChainID);
-  const busy = auth.pending || wallet.connecting;
+  const busy = auth.pending || wallet.connecting || wallet.addingChain;
 
   useEffect(() => {
     if (wallet.active || auth.session.authenticated || wallet.providers.length <= 1) {
@@ -46,7 +40,7 @@ export function SIWELoginControl({ full = false, label }: SIWELoginControlProps)
     <div className={`siwe-login-control${full ? " full" : ""}`}>
       <button
         className={`button primary${full ? " full" : ""}`}
-        disabled={busy || (wallet.active ? !walletOnChain : wallet.providers.length === 0)}
+        disabled={busy || (!wallet.active && wallet.providers.length === 0)}
         onClick={start}
         type="button"
       >

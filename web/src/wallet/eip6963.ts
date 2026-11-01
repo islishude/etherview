@@ -429,7 +429,7 @@ function isProviderRDNS(value: string): boolean {
   );
 }
 
-function providerErrorCode(cause: unknown): number | undefined {
+export function providerErrorCode(cause: unknown): number | undefined {
   try {
     if (
       typeof cause === "object" &&

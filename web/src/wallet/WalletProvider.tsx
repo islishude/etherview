@@ -10,7 +10,6 @@ import {
 } from "react";
 import { getAddress, isAddress, toHex, type Address, type Hex } from "viem";
 
-import { getBillingConfig } from "@/api/billing";
 import type { AuthChallenge } from "@/api/auth";
 import { usePublicConfig } from "@/api/publicConfig";
 import {
@@ -28,12 +27,12 @@ import {
   isWalletSignature,
   normalizeChainID,
   normalizeProviderChainID,
+  providerErrorCode,
   snapshotProviderDetail,
   toWalletBoundaryError,
   WalletBoundaryError,
   type WalletBoundaryErrorCode,
 } from "./eip6963";
-import { encodeCanonicalSIWEChallenge } from "./siwe";
 import type { BillingSigningBinding, BillingTypedData } from "./billing";
 
 export interface ContractCall {
@@ -82,6 +81,7 @@ interface WalletContextValue {
   discover: () => void;
   connect: (uuid: string) => Promise<ActiveWallet>;
   addChain: (uuid: string) => Promise<void>;
+  prepareLogin: (expected: ActiveWallet) => Promise<ActiveWallet>;
   disconnect: () => void;
   getActiveWallet: () => ActiveWallet | undefined;
   isActiveWallet: (expected: ActiveWallet) => boolean;
@@ -120,7 +120,10 @@ export function WalletProvider({ children }: PropsWithChildren) {
     { original: InternalActiveWallet; expectedChain?: string; paymentChain: string } | undefined
   >(undefined);
 
+  const loginPreparationRef = useRef<{ target: string; arrived: boolean } | undefined>(undefined);
+
   const commitActive = useCallback((next: InternalActiveWallet | undefined, controlled = false) => {
+    loginPreparationRef.current = undefined;
     const scope = controlled ? billingScopeRef.current : undefined;
     if (!controlled) billingScopeRef.current = undefined;
     walletRevisionRef.current += 1;
@@ -252,6 +255,8 @@ export function WalletProvider({ children }: PropsWithChildren) {
       }
       const current = activeRef.current;
       if (!current) return;
+      // The preparation listener fences the transition until final RPC checks.
+      if (loginPreparationRef.current?.target === chainID) return;
       const scope = billingScopeRef.current;
       // The verified RPC fallback may precede its delayed chainChanged event.
       // This acknowledgement may also arrive after restoration closes the scope.
@@ -415,6 +420,16 @@ export function WalletProvider({ children }: PropsWithChildren) {
     [commitActive, failActiveSession, requestActiveProvider],
   );
 
+  const prepareLogin = useLoginPreparation({
+    activeRef,
+    loginPreparationRef,
+    billingScopeRef,
+    configuredChainID,
+    addChainConfig: publicConfig.data?.wallet_add_chain,
+    commitActive,
+    setError,
+  });
+
   const withBillingChain = useBillingChain({
     activeRef,
     billingScopeRef,
@@ -464,6 +479,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       discover,
       connect,
       addChain,
+      prepareLogin,
       disconnect,
       getActiveWallet,
       isActiveWallet,
@@ -477,6 +493,7 @@ export function WalletProvider({ children }: PropsWithChildren) {
       withBillingChain,
       connect,
       addChain,
+      prepareLogin,
       addingChain,
       connecting,
       disconnect,
@@ -495,6 +512,139 @@ export function WalletProvider({ children }: PropsWithChildren) {
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+}
+
+function useLoginPreparation({
+  activeRef,
+  loginPreparationRef,
+  billingScopeRef,
+  configuredChainID,
+  addChainConfig,
+  commitActive,
+  setError,
+}: {
+  activeRef: React.RefObject<InternalActiveWallet | undefined>;
+  loginPreparationRef: React.RefObject<{ target: string; arrived: boolean } | undefined>;
+  billingScopeRef: React.RefObject<unknown>;
+  configuredChainID: string | undefined;
+  addChainConfig: unknown;
+  commitActive: (wallet: InternalActiveWallet | undefined) => InternalActiveWallet | undefined;
+  setError: (code: WalletBoundaryErrorCode) => void;
+}) {
+  return useCallback(
+    async (expected: ActiveWallet): Promise<ActiveWallet> => {
+      const target = normalizeChainID(configuredChainID);
+      if (!target) throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+      const original = activeRef.current;
+      if (!original || !walletIdentityMatches(original, expected))
+        throw new WalletBoundaryError("SESSION_CHANGED");
+      if (loginPreparationRef.current || billingScopeRef.current)
+        throw new WalletBoundaryError("INVALID_REQUEST");
+      const scope = { target, arrived: false };
+      loginPreparationRef.current = scope;
+      const assertPreparation = () => {
+        if (loginPreparationRef.current !== scope || activeRef.current !== original)
+          throw new WalletBoundaryError("SESSION_CHANGED");
+      };
+      const readChain = async () => {
+        const response = await requestProvider(original.detail.provider, { method: "eth_chainId" });
+        assertPreparation();
+        const chain = normalizeProviderChainID(response);
+        if (!chain) throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+        if (scope.arrived && chain !== target) throw new WalletBoundaryError("SESSION_CHANGED");
+        if (chain !== original.chainID) scope.arrived = true;
+        return chain;
+      };
+      const switchChain = async () => {
+        // Inspect only the bounded top-level code before sanitizing provider errors.
+        const result = await requestProvider(
+          original.detail.provider,
+          {
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: toHex(BigInt(target)) }],
+          },
+          true,
+        );
+        assertPreparation();
+        if (result !== null) throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+      };
+      const invalidate = () => {
+        if (loginPreparationRef.current === scope) {
+          commitActive(undefined);
+          setError("SESSION_CHANGED");
+        }
+      };
+      const onChain = (value: unknown) => {
+        const chain = normalizeProviderChainID(value);
+        if (chain === target) scope.arrived = true;
+        else if (!chain || scope.arrived || chain !== original.chainID) invalidate();
+      };
+      const onAccounts = (value: unknown) => {
+        if (parseAccounts(value)?.[0] !== original.account) invalidate();
+      };
+      try {
+        // Connection may have just completed, before React installs its listeners.
+        original.detail.provider.on("chainChanged", onChain);
+        original.detail.provider.on("accountsChanged", onAccounts);
+        original.detail.provider.on("disconnect", invalidate);
+        const initialChain = await readChain();
+        if (initialChain !== original.chainID) throw new WalletBoundaryError("SESSION_CHANGED");
+        if (initialChain !== target) {
+          try {
+            await switchChain();
+          } catch (cause) {
+            assertPreparation();
+            if (!(cause instanceof UnknownWalletChainError)) throw cause;
+            const parameter = buildAddEthereumChainParameter(addChainConfig);
+            if (normalizeProviderChainID(parameter.chainId) !== target)
+              throw new WalletBoundaryError("CHAIN_UNAVAILABLE");
+            const result = await requestProvider(original.detail.provider, {
+              method: "wallet_addEthereumChain",
+              params: [parameter],
+            });
+            assertPreparation();
+            if (result !== null) throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+            if ((await readChain()) !== target) await switchChain();
+          }
+        }
+        if ((await readChain()) !== target) throw new WalletBoundaryError("CHAIN_MISMATCH");
+        scope.arrived = true;
+        const accounts = parseAccounts(
+          await requestProvider(original.detail.provider, {
+            method: "eth_accounts",
+          }),
+        );
+        assertPreparation();
+        if (!accounts) throw new WalletBoundaryError("INVALID_PROVIDER_RESPONSE");
+        if (accounts[0] !== original.account) throw new WalletBoundaryError("ACCOUNT_CHANGED");
+        const prepared =
+          original.chainID === target ? original : commitActive({ ...original, chainID: target });
+        return publicActiveWallet(prepared!);
+      } catch (cause) {
+        const error = toWalletBoundaryError(cause);
+        if (loginPreparationRef.current === scope) {
+          // Failed account validation or a partial switch must not retain stale identity.
+          if (scope.arrived) commitActive(undefined);
+          setError(error.code);
+        }
+        throw error;
+      } finally {
+        removeProviderListener(original.detail.provider, "chainChanged", onChain);
+        removeProviderListener(original.detail.provider, "accountsChanged", onAccounts);
+        removeProviderListener(original.detail.provider, "disconnect", invalidate);
+        if (loginPreparationRef.current === scope) loginPreparationRef.current = undefined;
+      }
+    },
+    [
+      activeRef,
+      loginPreparationRef,
+      billingScopeRef,
+      commitActive,
+      configuredChainID,
+      addChainConfig,
+      setError,
+    ],
+  );
 }
 
 function useBillingChain({
@@ -518,6 +668,7 @@ function useBillingChain({
     async <T,>(network: string, operation: (wallet: ActiveWallet) => Promise<T>): Promise<T> => {
       if (billingScopeRef.current) throw new WalletBoundaryError("INVALID_REQUEST");
       const original = await requireProvider(configuredChainID);
+      const { getBillingConfig } = await import("@/api/billing");
       const config = await getBillingConfig();
       assertCurrentWallet(activeRef.current, original);
       if (
@@ -687,6 +838,7 @@ function useWalletOperations({
 
   const signSIWEChallenge = useCallback(
     async (challenge: AuthChallenge, expected: ActiveWallet) => {
+      const { encodeCanonicalSIWEChallenge } = await import("./siwe");
       const wallet = await requireProvider(configuredChainID);
       assertExpectedWalletIdentity(wallet, expected);
       const encodedMessage = encodeCanonicalSIWEChallenge(
@@ -782,13 +934,21 @@ function useWalletOperations({
   };
 }
 
+class UnknownWalletChainError extends WalletBoundaryError {
+  constructor() {
+    super("CHAIN_UNAVAILABLE");
+  }
+}
+
 async function requestProvider(
   provider: EIP1193Provider,
   arguments_: EIP1193RequestArguments,
+  allowUnknownChain = false,
 ): Promise<unknown> {
   try {
     return await provider.request(arguments_);
   } catch (cause) {
+    if (allowUnknownChain && providerErrorCode(cause) === 4902) throw new UnknownWalletChainError();
     throw toWalletBoundaryError(cause);
   }
 }

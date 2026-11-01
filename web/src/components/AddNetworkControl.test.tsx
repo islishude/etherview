@@ -197,6 +197,7 @@ function walletState(overrides: Partial<WalletState> = {}): WalletState {
     addChain: vi.fn(async (_uuid: string) => {}),
     addingChain: false,
     connect: vi.fn(async (_uuid: string) => activeWallet()),
+    prepareLogin: vi.fn(async (selected) => selected),
     connecting: false,
     discover: vi.fn(),
     disconnect: vi.fn(),
