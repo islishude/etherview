@@ -41,7 +41,9 @@ test(
     ).address;
     const wallet = createWalletClient({ chain, transport, account: payer });
     let process;
+    let diagnostics = "";
     const start = () => {
+      diagnostics = "";
       process = spawn("sh", [fileURLToPath(new URL("entrypoint.sh", import.meta.url))], {
         env: {
           ...globalThis.process.env,
@@ -49,13 +51,16 @@ test(
           ANVIL_STATE_DIR: dir,
           ANVIL_PORT: String(port),
         },
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      process.stderr.on("data", (chunk) => {
+        diagnostics = (diagnostics + chunk.toString()).slice(-8192);
       });
       return process;
     };
     const ready = async () => {
       for (let attempt = 0; attempt < 100; attempt++) {
-        if (process.exitCode !== null) throw Error("Anvil exited before ready");
+        if (process.exitCode !== null) throw Error(`Anvil exited before ready: ${diagnostics}`);
         try {
           if (
             (await client.getChainId()) === 31337 &&
@@ -172,7 +177,16 @@ test(
           address: manifest.contracts.X402ExactPermit2Proxy.address,
           abi: manifest.contracts.X402ExactPermit2Proxy.abi,
           functionName: "settle",
-          args: [{ permitted: { token: address, amount: value }, nonce: BigInt(decimals), deadline: 9999999999n }, payer.address, { to: recipient, validAfter: 0n }, permitSignature],
+          args: [
+            {
+              permitted: { token: address, amount: value },
+              nonce: BigInt(decimals),
+              deadline: 9999999999n,
+            },
+            payer.address,
+            { to: recipient, validAfter: 0n },
+            permitSignature,
+          ],
         });
         assert.equal(
           (await client.waitForTransactionReceipt({ hash: settlement })).status,
@@ -212,12 +226,15 @@ test(
           true,
         );
       }
-      assert.equal(await client.readContract({
-        address: manifest.contracts.Permit2.address,
-        abi: manifest.contracts.Permit2.abi,
-        functionName: "nonceBitmap",
-        args: [payer.address, 0n],
-      }), (1n << 6n) | (1n << 18n));
+      assert.equal(
+        await client.readContract({
+          address: manifest.contracts.Permit2.address,
+          abi: manifest.contracts.Permit2.abi,
+          functionName: "nonceBitmap",
+          args: [payer.address, 0n],
+        }),
+        (1n << 6n) | (1n << 18n),
+      );
       await stop();
       fs.appendFileSync(seed, "\n");
       const failed = start();

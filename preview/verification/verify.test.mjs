@@ -12,7 +12,14 @@ const { inventory, bundles } = loadInventory(directory, genesis);
 test("inventory covers every code allocation including constructor children", () => {
   assert.equal(inventory.contracts.length, 27);
   assert.equal(inventory.contracts.filter((c) => c.name === "LocalBillingToken").length, 2);
-  for (const name of ["SenderCreator", "SimpleAccount", "LocalBillingToken", "BuilderExit", "Permit2", "x402ExactPermit2Proxy"])
+  for (const name of [
+    "SenderCreator",
+    "SimpleAccount",
+    "LocalBillingToken",
+    "BuilderExit",
+    "Permit2",
+    "x402ExactPermit2Proxy",
+  ])
     assert.ok(inventory.contracts.some((c) => c.name === name));
   for (const c of inventory.contracts) {
     const body = submission(c, bundles);

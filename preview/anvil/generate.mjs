@@ -1,7 +1,8 @@
 // Deterministic, reviewed payment-only genesis; never run during startup.
 import fs from "node:fs";
-import { standardPaymentContracts } from "../contracts/x402-standard.mjs";
 import { createRequire } from "node:module";
+
+import { standardPaymentContracts } from "../contracts/x402-standard.mjs";
 const require = createRequire(new URL("../contracts/package.json", import.meta.url));
 const { mnemonicToAccount } = require("viem/accounts");
 const manifest = JSON.parse(
@@ -16,7 +17,12 @@ for (const name of ["LocalBillingToken", "LocalBillingToken18"]) {
   alloc[address.slice(2)] = allocation[address];
 }
 for (const contract of standardPaymentContracts(31337)) {
-  alloc[contract.address.slice(2).toLowerCase()] = { balance: "0x0", nonce: "0x1", code: contract.code, storage: {} };
+  alloc[contract.address.slice(2).toLowerCase()] = {
+    balance: "0x0",
+    nonce: "0x1",
+    code: contract.code,
+    storage: {},
+  };
 }
 for (let addressIndex = 0; addressIndex < 20; addressIndex++) {
   const account = mnemonicToAccount("test test test test test test test test test test test junk", {

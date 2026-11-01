@@ -24,8 +24,8 @@ import {
 import { entryPoint09Abi, entryPoint09Address } from "viem/account-abstraction";
 import { mnemonicToAccount } from "viem/accounts";
 
-import { standardPaymentContracts } from "./x402-standard.mjs";
 import { resolveENSImport } from "./ens-imports.mjs";
+import { standardPaymentContracts } from "./x402-standard.mjs";
 const here = import.meta.dirname;
 const root = path.resolve(here, "../..");
 const ensSources = JSON.parse(
@@ -333,9 +333,9 @@ try {
   addresses.LocalBillingToken18 = token18Receipt.contractAddress;
   artifacts.LocalBillingToken18 = artifacts.LocalBillingToken;
   for (const contract of standardPaymentContracts(chain.id)) {
-    await rpc.request({method: "anvil_setCode", params: [contract.address, contract.code]});
+    await rpc.request({ method: "anvil_setCode", params: [contract.address, contract.code] });
     addresses[contract.name] = contract.address;
-    artifacts[contract.name] = {abi: contract.abi};
+    artifacts[contract.name] = { abi: contract.abi };
   }
   const encoded = await rpc.request({ method: "anvil_dumpState", params: [] });
   let bytes = Buffer.from(encoded.slice(2), "hex");

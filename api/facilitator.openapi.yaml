@@ -12,7 +12,7 @@ paths:
     get:
       operationId: facilitatorSupported
       responses:
-        '200':
+        "200":
           description: x402 v2 supported exact EVM networks and signer addresses.
           content:
             application/json:
@@ -26,17 +26,18 @@ paths:
                       type: object
                       required: [x402Version, scheme, network]
                       properties:
-                        x402Version: {type: integer, enum: [2]}
-                        scheme: {type: string, enum: [exact]}
-                        network: {type: string, pattern: '^eip155:[1-9][0-9]*$'}
-                  extensions: {type: array, items: {type: string}}
-                  signers: {type: object, additionalProperties: {type: array, items: {type: string}}}
+                        x402Version: { type: integer, enum: [2] }
+                        scheme: { type: string, enum: [exact] }
+                        network: { type: string, pattern: "^eip155:[1-9][0-9]*$" }
+                  extensions: { type: array, items: { type: string } }
+                  signers:
+                    { type: object, additionalProperties: { type: array, items: { type: string } } }
   /verify:
     post:
       operationId: facilitatorVerify
-      requestBody: {$ref: '#/components/requestBodies/Payment'}
+      requestBody: { $ref: "#/components/requestBodies/Payment" }
       responses:
-        '200':
+        "200":
           description: Verification result; no transaction is submitted.
           content:
             application/json:
@@ -44,18 +45,18 @@ paths:
                 type: object
                 required: [isValid]
                 properties:
-                  isValid: {type: boolean}
-                  invalidReason: {type: string}
-                  payer: {type: string}
-        '400': {description: Invalid or unsupported payload.}
-        '401': {description: Invalid bearer credential.}
-        '503': {description: Chain or database unavailable.}
+                  isValid: { type: boolean }
+                  invalidReason: { type: string }
+                  payer: { type: string }
+        "400": { description: Invalid or unsupported payload. }
+        "401": { description: Invalid bearer credential. }
+        "503": { description: Chain or database unavailable. }
   /settle:
     post:
       operationId: facilitatorSettle
-      requestBody: {$ref: '#/components/requestBodies/Payment'}
+      requestBody: { $ref: "#/components/requestBodies/Payment" }
       responses:
-        '200':
+        "200":
           description: Durable settlement outcome. Pending results always contain the original transaction hash.
           content:
             application/json:
@@ -63,43 +64,46 @@ paths:
                 type: object
                 required: [success, network]
                 properties:
-                  success: {type: boolean}
-                  network: {type: string}
-                  transaction: {type: string}
-                  errorReason: {type: string}
-                  payer: {type: string}
-                  amount: {type: string, pattern: '^[0-9]+$'}
-        '400': {description: Invalid or unsupported payload.}
-        '401': {description: Invalid bearer credential.}
-        '409': {description: Conflicting authorization reuse.}
-        '503': {description: 'Unavailable, busy or awaiting reconciliation; do not automatically resubmit.'}
+                  success: { type: boolean }
+                  network: { type: string }
+                  transaction: { type: string }
+                  errorReason: { type: string }
+                  payer: { type: string }
+                  amount: { type: string, pattern: "^[0-9]+$" }
+        "400": { description: Invalid or unsupported payload. }
+        "401": { description: Invalid bearer credential. }
+        "409": { description: Conflicting authorization reuse. }
+        "503":
+          {
+            description: "Unavailable, busy or awaiting reconciliation; do not automatically resubmit.",
+          }
   /metrics:
     get:
       operationId: facilitatorMetrics
       responses:
-        '200':
+        "200":
           description: Bounded per-network Prometheus metrics.
           content:
             text/plain:
-              schema: {type: string}
-        '401': {description: Invalid bearer credential.}
-        '503': {description: Journal unavailable.}
+              schema: { type: string }
+        "401": { description: Invalid bearer credential. }
+        "503": { description: Journal unavailable. }
   /healthz:
     get:
       operationId: facilitatorLiveness
       security: []
       responses:
-        '204': {description: Process is alive.}
+        "204": { description: Process is alive. }
   /readyz:
     get:
       operationId: facilitatorReadiness
       security: []
       responses:
-        '204': {description: Active and all configured chains healthy.}
-        '503': {description: Degraded; healthy chains remain usable.}
+        "204": { description: Active and all configured chains healthy. }
+        "503": { description: Degraded; healthy chains remain usable. }
 components:
   securitySchemes:
-    bearerAuth: {type: http, scheme: bearer}
+    bearerAuth: { type: http, scheme: bearer }
   requestBodies:
     Payment:
       required: true
@@ -110,7 +114,7 @@ components:
             additionalProperties: false
             required: [x402Version, paymentPayload, paymentRequirements]
             properties:
-              x402Version: {type: integer, enum: [2]}
+              x402Version: { type: integer, enum: [2] }
               paymentPayload:
                 type: object
                 description: x402 v2 exact-EVM authorization payload. Integer amounts and nonces use strings.
@@ -119,10 +123,10 @@ components:
                 type: object
                 required: [scheme, network, asset, amount, payTo, maxTimeoutSeconds, extra]
                 properties:
-                  scheme: {type: string, enum: [exact]}
-                  network: {type: string, pattern: '^eip155:[1-9][0-9]*$'}
-                  asset: {type: string}
-                  amount: {type: string, pattern: '^[1-9][0-9]*$'}
-                  payTo: {type: string}
-                  maxTimeoutSeconds: {type: integer, minimum: 1, maximum: 3600}
-                  extra: {type: object, additionalProperties: true}
+                  scheme: { type: string, enum: [exact] }
+                  network: { type: string, pattern: "^eip155:[1-9][0-9]*$" }
+                  asset: { type: string }
+                  amount: { type: string, pattern: "^[1-9][0-9]*$" }
+                  payTo: { type: string }
+                  maxTimeoutSeconds: { type: integer, minimum: 1, maximum: 3600 }
+                  extra: { type: object, additionalProperties: true }

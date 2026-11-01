@@ -17,7 +17,7 @@ fi
 ready=${ANVIL_STATE_DIR:-/data}/ready
 rm -f "$ready"
 rpc=http://127.0.0.1:${ANVIL_PORT:-8545}
-anvil --host 0.0.0.0 --port "${ANVIL_PORT:-8545}" --chain-id 31337 --hardfork prague \
+"${ANVIL:-anvil}" --host 0.0.0.0 --port "${ANVIL_PORT:-8545}" --chain-id 31337 --hardfork prague \
   --accounts 0 --block-time 1 --state "$state" --state-interval 1 --preserve-historical-states &
 node_pid=$!
 cleanup() {
@@ -28,7 +28,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' INT TERM
 attempt=0
-until cast chain-id --rpc-url "$rpc" >/dev/null 2>&1; do
+until "${CAST:-cast}" chain-id --rpc-url "$rpc" >/dev/null 2>&1; do
   kill -0 "$node_pid" 2>/dev/null || exit 1
   attempt=$((attempt + 1))
   [ "$attempt" -lt 100 ] || exit 1
@@ -36,10 +36,10 @@ until cast chain-id --rpc-url "$rpc" >/dev/null 2>&1; do
 done
 # Native snapshots preserve old block time. Advance normally before accepting
 # payment authorizations whose validity window is expressed in wall-clock time.
-current=$(cast block latest --field timestamp --rpc-url "$rpc")
+current=$("${CAST:-cast}" block latest --field timestamp --rpc-url "$rpc")
 target=$(date +%s)
 if [ "$current" -ge "$target" ]; then target=$((current + 1)); fi
-cast rpc --rpc-url "$rpc" evm_setNextBlockTimestamp "$target" >/dev/null
-cast rpc --rpc-url "$rpc" evm_mine >/dev/null
+"${CAST:-cast}" rpc --rpc-url "$rpc" evm_setNextBlockTimestamp "$target" >/dev/null
+"${CAST:-cast}" rpc --rpc-url "$rpc" evm_mine >/dev/null
 touch "$ready"
 wait "$node_pid"

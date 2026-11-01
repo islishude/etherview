@@ -191,9 +191,9 @@ test("Preview x402 code, constructor storage and settlement funds exist at genes
   assert.equal(token.nonce, "0x1");
   const storage = token.storage;
   const slot = (n) => "0x" + BigInt(n).toString(16).padStart(64, "0");
-  assert.equal(BigInt(storage[slot(7)]), 6n);
+  assert.equal(BigInt(storage[slot(6)]), 6n);
   const token18 = genesis.alloc[contracts.LocalBillingToken18.address.slice(2).toLowerCase()];
-  assert.equal(BigInt(token18.storage[slot(7)]), 18n);
+  assert.equal(BigInt(token18.storage[slot(6)]), 18n);
   assert.equal(BigInt(storage[slot(2)]), 1000000000000000000n);
   const balanceSlot = keccak256(
     encodeAbiParameters(

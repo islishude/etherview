@@ -143,9 +143,8 @@ test("root .local artifacts are ignored while source exceptions retain path and 
 
 test("Preview x402 exceptions permit only exact public identities at exact paths", () => {
   const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-x402-"));
-  const compose = readFileSync("preview/compose/x402.yaml", "utf8");
   const identities = [
-    compose.match(/X402_LOCAL_FACILITATOR_PRIVATE_KEY: (.+)/)[1],
+    "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
     "0x8464135c8F25Da09e49BC8782676a84730C318bC",
   ];
   const paths = [
@@ -188,6 +187,46 @@ test("Preview x402 exceptions permit only exact public identities at exact paths
         ...paths.map((file) => `${file}:3`),
         ...[1, 2, 3].map((line) => `nested/compose.yaml:${line}`),
       ].sort(),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("facilitator fixture exception is restricted to its public key and exact path", () => {
+  const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-facilitator-"));
+  const file = "internal/facilitator/runtime_integration_test.go";
+  const key = readFileSync(file, "utf8").match(/const fixturePayerKey = "([a-f0-9]{64})"/)[1];
+  try {
+    for (const name of [file, `nested/${file}`]) {
+      mkdirSync(dirname(join(root, name)), { recursive: true });
+      writeFileSync(
+        join(root, name),
+        [key, publicHash].map((value) => `private_key = "${value}"`).join("\n"),
+      );
+    }
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        resolve(".gitleaks.toml"),
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
+    assert.deepEqual(
+      findings.map(({ File, StartLine }) => `${File}:${StartLine}`).sort(),
+      [`${file}:2`, `nested/${file}:1`, `nested/${file}:2`].sort(),
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
