@@ -404,7 +404,7 @@
         },
         {
           "path": ".github/scripts/make-targets.test.mjs",
-          "template": "          \"caddy:{{version}}-alpine\",",
+          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\", \"etherview-preview-bundler:local\"]",
           "count": 1
         },
         {
