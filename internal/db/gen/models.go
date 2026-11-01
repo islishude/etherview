@@ -160,6 +160,7 @@ type ApiKey struct {
 	Burst         int32              `db:"burst" json:"burst"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 	OwnerUserID   pgtype.UUID        `db:"owner_user_id" json:"owner_user_id"`
 	Scopes        []string           `db:"scopes" json:"scopes"`
 }

@@ -12,6 +12,7 @@ type UserKeyPageAfter struct {
 }
 
 type UserRepository interface {
+	DeleteForUser(context.Context, string, string, time.Time) error
 	PutForUser(context.Context, string, APIKey, int) error
 	UserKey(context.Context, string, string) (APIKey, error)
 	RotateForUser(context.Context, string, string, APIKey) error
@@ -87,4 +88,8 @@ func (service *UserService) List(
 		return UserKeyPage{}, err
 	}
 	return UserKeyPage{Items: items, ActiveCount: active}, nil
+}
+
+func (service *UserService) Delete(ctx context.Context, userID, prefix string, at time.Time) error {
+	return service.repository.DeleteForUser(ctx, userID, prefix, at)
 }

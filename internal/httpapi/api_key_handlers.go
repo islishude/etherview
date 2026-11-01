@@ -153,6 +153,28 @@ func (h *Handler) revokeCurrentUserAPIKey(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) deleteCurrentUserAPIKey(w http.ResponseWriter, r *http.Request) {
+	if !h.userAPIKeysAvailable(w, r) || !h.requireAuthOrigin(w, r) {
+		return
+	}
+	authentication, ok := h.requireUserSession(w, r)
+	if !ok || !h.requireCSRF(w, r, authentication) {
+		return
+	}
+	prefix, ok := validUserAPIKeyPrefix(w, r)
+	if !ok {
+		return
+	}
+	if err := h.userAPIKeys.Delete(
+		r.Context(), authentication.Session.User.ID, prefix,
+		h.now().UTC().Truncate(time.Microsecond),
+	); err != nil {
+		h.handleUserAPIKeyError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) writeIssuedUserAPIKey(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -177,6 +199,8 @@ func (h *Handler) userAPIKeysAvailable(w http.ResponseWriter, r *http.Request) b
 
 func (h *Handler) handleUserAPIKeyError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, auth.ErrAPIKeyNotRevoked):
+		writeError(w, r, http.StatusConflict, "api_key_not_revoked", "API key must be revoked before deletion", nil)
 	case errors.Is(err, auth.ErrAPIKeyLimitReached):
 		writeError(w, r, http.StatusConflict, "api_key_limit_reached", "active API key limit was reached", nil)
 	case errors.Is(err, auth.ErrAPIKeyNotActive):

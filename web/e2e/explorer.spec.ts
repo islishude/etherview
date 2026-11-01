@@ -2476,6 +2476,7 @@ for (const initiallyConnected of [false, true]) {
         json: envelope(currentUser()),
       });
     });
+    let personalKeyDeleted = false;
     await page.route("**/api/v1/users/me/api-keys**", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -2491,7 +2492,7 @@ for (const initiallyConnected of [false, true]) {
         await route.fulfill({
           contentType: "application/json",
           json: envelope({
-            items: [key()],
+            items: personalKeyDeleted ? [] : [key()],
             policy: {
               rate_per_second: 20,
               burst: 40,
@@ -2530,8 +2531,13 @@ for (const initiallyConnected of [false, true]) {
         });
         return;
       }
-      if (request.method() === "DELETE") {
+      if (request.method() === "POST" && url.pathname.endsWith("/revoke")) {
         personalKey = { ...personalKey, status: "revoked" };
+        await route.fulfill({ body: "", status: 204 });
+        return;
+      }
+      if (request.method() === "DELETE") {
+        personalKeyDeleted = true;
         await route.fulfill({ body: "", status: 204 });
         return;
       }
@@ -2832,12 +2838,17 @@ for (const initiallyConnected of [false, true]) {
       fullPage: true,
     });
     await activateInView(page.getByRole("button", { name: "切换到中文" }));
-    await expect(page.getByText(/最小权限凭据/)).toBeVisible();
+    await expect(page.getByRole("tab", { name: "列表", exact: true })).toBeVisible();
     await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
+    await activateInView(page.getByRole("tab", { name: "创建", exact: true }));
+    await expect(page.locator(".api-key-card")).toHaveCount(0);
+    await expect(page.locator("#api-key-name")).toBeVisible();
+    await assertA11yAndNoOverflow(page, "API key creation in Chinese narrow mode");
+    await activateInView(page.getByRole("tab", { name: "列表", exact: true }));
     await activateInView(page.getByRole("button", { name: "Switch to English" }));
     await page.setViewportSize({ width: 1280, height: 900 });
     await expect(page.getByRole("textbox", { name: "Key name" })).toHaveCount(0);
-    await activateInView(page.getByRole("button", { name: "Add API key" }));
+    await activateInView(page.getByRole("tab", { name: "Create", exact: true }));
     await page
       .locator(".account-create-form")
       .screenshot({ path: test.info().outputPath("api-key-create-desktop.png") });
@@ -2866,11 +2877,13 @@ for (const initiallyConnected of [false, true]) {
     await expect(
       page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
     ).toBeVisible();
+    await activateInView(page.getByRole("button", { name: "Delete", exact: true }));
+    await expect(page.locator(".api-key-card")).toHaveCount(0);
     const personalKeyWrites = authRequests.filter(
       ({ method, pathname }) =>
         pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
     );
-    expect(personalKeyWrites).toHaveLength(3);
+    expect(personalKeyWrites).toHaveLength(4);
     for (const request of personalKeyWrites) {
       expect(request.headers["x-csrf-token"]).toBe(authCSRFToken);
       expect(request.headers.origin).toBe("http://127.0.0.1:4173");

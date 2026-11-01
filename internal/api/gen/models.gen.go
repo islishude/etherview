@@ -8588,6 +8588,11 @@ type CreateCurrentUserAPIKeyParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 
+// DeleteCurrentUserAPIKeyParams defines parameters for DeleteCurrentUserAPIKey.
+type DeleteCurrentUserAPIKeyParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
 // RevokeCurrentUserAPIKeyParams defines parameters for RevokeCurrentUserAPIKey.
 type RevokeCurrentUserAPIKeyParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`

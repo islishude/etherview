@@ -1007,7 +1007,9 @@ a manual-refresh notice without withdrawing current profile fields.
   are never recognized on native routes.
 - Operators create, rotate, list, and revoke deployment-wide API keys through
   the single CLI. An explicitly enabled Cookie-authenticated account boundary
-  additionally manages only its own scoped keys. Plaintext appears only in
+  additionally manages only its own scoped keys. Its list and creation tabs
+  are separate; users must revoke a key before soft-deleting it from their list.
+  Soft deletion retains the revoked credential row and all billing references. Plaintext appears only in
   create/rotate output. Rotation locks the active PostgreSQL row and commits
   the replacement digest plus old-key revocation in one transaction, preserving
   owner, name, scopes, and quota policy. See ADR-0035.

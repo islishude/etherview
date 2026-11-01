@@ -158,6 +158,7 @@ type Querier interface {
 	DeleteExpiredENSSyncObservations(ctx context.Context, targetChainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, rowLimit int32) (int64, error)
 	DeleteExpiredUserSessions(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteOperatorLabel(ctx context.Context, chainID pgtype.Numeric, objectKind string, objectKey string) (DeleteOperatorLabelRow, error)
+	DeleteUserAPIKey(ctx context.Context, deletedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) error
 	DerivedVerifyAdvanceScan(ctx context.Context, arg DerivedVerifyAdvanceScanParams) (int64, error)
 	DerivedVerifyArtifactJobKind(ctx context.Context, jobID pgtype.UUID) (string, error)
 	DerivedVerifyArtifactProvenance(ctx context.Context, jobID pgtype.UUID) (DerivedVerifyArtifactProvenanceRow, error)
@@ -515,6 +516,7 @@ type Querier interface {
 	LockENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64) (EnsSyncCandidate, error)
 	LockENSSyncSource(ctx context.Context, sourceID int64) (EnsSyncProgress, error)
 	LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error)
+	LockUserAPIKeyForDeletion(ctx context.Context, prefix string, userID pgtype.UUID) (LockUserAPIKeyForDeletionRow, error)
 	MaintenanceLegacyClaimCandidates(ctx context.Context, arg MaintenanceLegacyClaimCandidatesParams) ([]MaintenanceLegacyClaimCandidatesRow, error)
 	MaintenanceLegacyCompleteRequest(ctx context.Context, id int64) (int64, error)
 	MaintenanceLegacyCurrentFinality(ctx context.Context, iD int64, chainID pgtype.Numeric) (MaintenanceLegacyCurrentFinalityRow, error)

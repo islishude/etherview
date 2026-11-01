@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	apiauth "github.com/islishude/etherview/internal/auth"
 )
 
 func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
@@ -272,6 +273,23 @@ func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 	expiry, err := prepaid.Expire(t.Context(), expiring.Charge.ReservationExpiresAt, 100)
 	if err != nil || expiry.UsageReservations != 1 {
 		t.Fatalf("usage expiry=%+v error=%v", expiry, err)
+	}
+	assertBillingAccountAmounts(t, prepaid, userID, "100", "30", "70")
+	assertBillingEntryCount(t, db, "usage", committedReservation.Charge.ID, 1)
+
+	keyRepository, err := apiauth.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keyRepository.RevokeForUser(t.Context(), userID, "aaaaaaaaaa", base.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := keyRepository.DeleteForUser(t.Context(), userID, "aaaaaaaaaa", base.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var historicalPrefix, historicalState string
+	if err := db.QueryRow(t.Context(), `SELECT api_key_prefix, state FROM billing_usage_charges WHERE id = $1`, committedReservation.Charge.ID).Scan(&historicalPrefix, &historicalState); err != nil || historicalPrefix != "aaaaaaaaaa" || historicalState != "committed" {
+		t.Fatalf("deleted key billing history: prefix=%s state=%s error=%v", historicalPrefix, historicalState, err)
 	}
 	assertBillingAccountAmounts(t, prepaid, userID, "100", "30", "70")
 	assertBillingEntryCount(t, db, "usage", committedReservation.Charge.ID, 1)

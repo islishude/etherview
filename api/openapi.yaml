@@ -182,8 +182,8 @@ paths:
                 $ref: "#/components/schemas/UserAPIKeyIssuedResponse"
         default:
           $ref: "#/components/responses/Error"
-  /users/me/api-keys/{prefix}:
-    delete:
+  /users/me/api-keys/{prefix}/revoke:
+    post:
       operationId: revokeCurrentUserAPIKey
       tags: [users, api-keys]
       security:
@@ -194,6 +194,20 @@ paths:
       responses:
         "204":
           description: API key revoked, or already revoked.
+        default:
+          $ref: "#/components/responses/Error"
+  /users/me/api-keys/{prefix}:
+    delete:
+      operationId: deleteCurrentUserAPIKey
+      tags: [users, api-keys]
+      security:
+        - UserSession: []
+      parameters:
+        - $ref: "#/components/parameters/APIKeyPrefix"
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: Revoked API key soft-deleted, or already deleted. Active keys return 409 api_key_not_revoked.
         default:
           $ref: "#/components/responses/Error"
   /admin/users:

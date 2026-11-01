@@ -3021,7 +3021,7 @@ export type RevokeCurrentUserApiKeyData = {
         prefix: string;
     };
     query?: never;
-    url: '/users/me/api-keys/{prefix}';
+    url: '/users/me/api-keys/{prefix}/revoke';
 };
 
 export type RevokeCurrentUserApiKeyErrors = {
@@ -3041,6 +3041,36 @@ export type RevokeCurrentUserApiKeyResponses = {
 };
 
 export type RevokeCurrentUserApiKeyResponse = RevokeCurrentUserApiKeyResponses[keyof RevokeCurrentUserApiKeyResponses];
+
+export type DeleteCurrentUserApiKeyData = {
+    body?: never;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path: {
+        prefix: string;
+    };
+    query?: never;
+    url: '/users/me/api-keys/{prefix}';
+};
+
+export type DeleteCurrentUserApiKeyErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type DeleteCurrentUserApiKeyError = DeleteCurrentUserApiKeyErrors[keyof DeleteCurrentUserApiKeyErrors];
+
+export type DeleteCurrentUserApiKeyResponses = {
+    /**
+     * Revoked API key soft-deleted, or already deleted. Active keys return 409 api_key_not_revoked.
+     */
+    204: void;
+};
+
+export type DeleteCurrentUserApiKeyResponse = DeleteCurrentUserApiKeyResponses[keyof DeleteCurrentUserApiKeyResponses];
 
 export type ListAdminUsersData = {
     body?: never;

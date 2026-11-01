@@ -129,6 +129,7 @@ type ProxyReader interface {
 }
 
 type UserAPIKeyAdministration interface {
+	Delete(context.Context, string, string, time.Time) error
 	Policy() auth.UserKeyPolicy
 	Create(context.Context, string, string, []auth.Scope) (auth.IssuedAPIKey, error)
 	Rotate(context.Context, string, string) (auth.IssuedAPIKey, error)

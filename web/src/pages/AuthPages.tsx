@@ -3,9 +3,9 @@ import { CircleCheck, CircleDot, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
 import { WatchlistPanel } from "./WatchlistPages";
-import { usePrivateIdentity } from "@/api/privateAccount";
+import { usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
 import { type SubmitEvent, useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { getAddress, isAddress } from "viem";
@@ -13,12 +13,14 @@ import { getAddress, isAddress } from "viem";
 import { listAdminUsers, type AdminUserUpdate, type User } from "@/api/auth";
 import {
   createCurrentUserAPIKey,
+  deleteCurrentUserAPIKey,
   listCurrentUserAPIKeys,
   revokeCurrentUserAPIKey,
   rotateCurrentUserAPIKey,
   type APIKeyScope,
   type UserAPIKey,
   type UserAPIKeyIssued,
+  type UserAPIKeyPage,
 } from "@/api/userApiKeys";
 import { usePublicConfig } from "@/api/publicConfig";
 import { CopyButton } from "@/components/CopyButton";
@@ -338,9 +340,82 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
   );
 }
 
+function APIKeyTabs({
+  creating,
+  disabled,
+  onChange,
+}: {
+  creating: boolean;
+  disabled: boolean;
+  onChange: (creating: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="contract-tabs" role="tablist" aria-label={t("auth.apiKeys.title")}>
+      {([false, true] as const).map((create) => (
+        <button
+          key={String(create)}
+          id={`api-key-tab-${create}`}
+          role="tab"
+          aria-selected={creating === create}
+          aria-controls="api-key-panel"
+          tabIndex={creating === create ? 0 : -1}
+          type="button"
+          className={`contract-tab${creating === create ? " active" : ""}`}
+          disabled={disabled}
+          onClick={() => {
+            onChange(create);
+          }}
+          onKeyDown={(event) => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? false : event.key === "End" ? true : !creating;
+            onChange(next);
+            document.getElementById(`api-key-tab-${next}`)?.focus();
+          }}
+        >
+          {t(create ? "auth.apiKeys.createTab" : "auth.apiKeys.listTab")}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function APIKeyPolicyCard({ policy }: { policy: UserAPIKeyPage["policy"] | undefined }) {
+  const { t } = useTranslation();
+  return (
+    <div className="api-key-summary-grid">
+      <article className="panel api-key-policy-card">
+        <span className="eyebrow">{t("auth.apiKeys.eyebrow")}</span>
+        <p>{t("auth.apiKeys.description")}</p>
+        {policy && (
+          <dl>
+            <div>
+              <dt>{t("auth.apiKeys.active")}</dt>
+              <dd>
+                {policy.active_count} / {policy.maximum_active}
+              </dd>
+            </div>
+            <div>
+              <dt>{t("auth.apiKeys.rate")}</dt>
+              <dd>{policy.rate_per_second} /s</dd>
+            </div>
+            <div>
+              <dt>{t("auth.apiKeys.burst")}</dt>
+              <dd>{policy.burst}</dd>
+            </div>
+          </dl>
+        )}
+      </article>
+    </div>
+  );
+}
+
 function UserAPIKeysPanel({ locale }: { locale: string }) {
   const { t } = useTranslation();
   const auth = useAuth();
+  const queryClient = useQueryClient();
+  const getSignal = usePrivateLifetime();
   const [creating, setCreating] = useState(false);
   const [cursors, setCursors] = useState([""]);
   const [name, setName] = useState("");
@@ -358,7 +433,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
       auth.session.expires_at,
       cursor ?? null,
     ],
-    queryFn: () => listCurrentUserAPIKeys(25, cursor),
+    queryFn: ({ signal }) => listCurrentUserAPIKeys(25, cursor, signal),
     enabled: auth.session.authenticated,
     retry: false,
     staleTime: 0,
@@ -385,6 +460,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
 
   const createKey = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (pendingPrefix) return;
     const normalizedName = name.trim();
     if (!csrfToken || !normalizedName || scopes.length === 0) {
       setFormError(t("auth.apiKeys.invalidRequest"));
@@ -393,12 +469,16 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
     setPendingPrefix("create");
     setFormError(undefined);
     try {
-      const next = await createCurrentUserAPIKey(csrfToken, normalizedName, scopes);
+      const next = await createCurrentUserAPIKey(csrfToken, normalizedName, scopes, getSignal());
+      if (getSignal().aborted) return;
       setIssued(next);
       setCreating(false);
+      setCursors([""]);
       setName("");
       setScopes(["api:read"]);
-      await keys.refetch();
+      await queryClient.invalidateQueries({
+        queryKey: ["current-user-api-keys", auth.session.user?.id],
+      });
     } catch {
       setFormError(t("auth.apiKeys.mutationFailed"));
     } finally {
@@ -407,11 +487,17 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   };
 
   const rotateKey = async (key: UserAPIKey) => {
-    if (!csrfToken || !window.confirm(t("auth.apiKeys.confirmRotate", { name: key.name }))) return;
+    if (
+      !csrfToken ||
+      pendingPrefix ||
+      !window.confirm(t("auth.apiKeys.confirmRotate", { name: key.name }))
+    )
+      return;
     setPendingPrefix(key.prefix);
     setFormError(undefined);
     try {
-      const next = await rotateCurrentUserAPIKey(csrfToken, key.prefix);
+      const next = await rotateCurrentUserAPIKey(csrfToken, key.prefix, getSignal());
+      if (getSignal().aborted) return;
       setIssued(next);
       await keys.refetch();
     } catch {
@@ -422,12 +508,39 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   };
 
   const revokeKey = async (key: UserAPIKey) => {
-    if (!csrfToken || !window.confirm(t("auth.apiKeys.confirmRevoke", { name: key.name }))) return;
+    if (
+      !csrfToken ||
+      pendingPrefix ||
+      !window.confirm(t("auth.apiKeys.confirmRevoke", { name: key.name }))
+    )
+      return;
     setPendingPrefix(key.prefix);
     setFormError(undefined);
     try {
-      await revokeCurrentUserAPIKey(csrfToken, key.prefix);
+      await revokeCurrentUserAPIKey(csrfToken, key.prefix, getSignal());
       await keys.refetch();
+    } catch {
+      setFormError(t("auth.apiKeys.mutationFailed"));
+    } finally {
+      setPendingPrefix(undefined);
+    }
+  };
+
+  const deleteKey = async (key: UserAPIKey) => {
+    if (
+      !csrfToken ||
+      pendingPrefix ||
+      !window.confirm(t("auth.apiKeys.confirmDelete", { name: key.name }))
+    )
+      return;
+    setPendingPrefix(key.prefix);
+    setFormError(undefined);
+    try {
+      await deleteCurrentUserAPIKey(csrfToken, key.prefix, getSignal());
+      if (keys.data?.data.items.length === 1) setCursors([""]);
+      await queryClient.invalidateQueries({
+        queryKey: ["current-user-api-keys", auth.session.user?.id],
+      });
     } catch {
       setFormError(t("auth.apiKeys.mutationFailed"));
     } finally {
@@ -439,218 +552,220 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
 
   return (
     <section className="api-key-workspace" aria-labelledby="api-key-workspace-title">
-      <div className="api-key-summary-grid">
-        <article className="panel api-key-policy-card">
-          <span className="eyebrow">{t("auth.apiKeys.eyebrow")}</span>
-          <h2 id="api-key-workspace-title">{t("auth.apiKeys.title")}</h2>
-          <p>{t("auth.apiKeys.description")}</p>
-          {policy && (
-            <dl>
-              <div>
-                <dt>{t("auth.apiKeys.active")}</dt>
-                <dd>
-                  {policy.active_count} / {policy.maximum_active}
-                </dd>
-              </div>
-              <div>
-                <dt>{t("auth.apiKeys.rate")}</dt>
-                <dd>{policy.rate_per_second} /s</dd>
-              </div>
-              <div>
-                <dt>{t("auth.apiKeys.burst")}</dt>
-                <dd>{policy.burst}</dd>
-              </div>
-            </dl>
-          )}
-          {!creating && (
-            <button
-              className="button secondary inline-button account-action"
-              disabled={!policy || policy.active_count >= policy.maximum_active}
-              onClick={() => setCreating(true)}
-            >
-              {t("auth.apiKeys.add")}
-            </button>
-          )}
-        </article>
-      </div>
+      <h2 id="api-key-workspace-title">{t("auth.apiKeys.title")}</h2>
+      <APIKeyTabs
+        creating={creating}
+        disabled={Boolean(pendingPrefix)}
+        onChange={(value) => {
+          setCreating(value);
+          setFormError(undefined);
+        }}
+      />
+      <div
+        role="tabpanel"
+        className="api-key-workspace"
+        id="api-key-panel"
+        tabIndex={0}
+        aria-labelledby={`api-key-tab-${creating}`}
+      >
+        {creating && <APIKeyPolicyCard policy={policy} />}
 
-      {creating && (
-        <form className="panel api-key-create-form account-create-form" onSubmit={createKey}>
-          <h2>{t("auth.apiKeys.createTitle")}</h2>
-          <label className="field-control" htmlFor="api-key-name">
-            <span>{t("auth.apiKeys.name")}</span>
-            <input
-              id="api-key-name"
-              maxLength={128}
-              onChange={(event) => {
-                setName(event.target.value);
-                setFormError(undefined);
-              }}
-              placeholder={t("auth.apiKeys.namePlaceholder")}
-              value={name}
-            />
-          </label>
-          <fieldset className="api-key-scopes">
-            <legend>{t("auth.apiKeys.scopes")}</legend>
-            {(["api:read", "contract:verify"] as APIKeyScope[]).map((scope) => (
-              <label key={scope}>
-                <input
-                  checked={scopes.includes(scope)}
-                  onChange={() => toggleScope(scope)}
-                  type="checkbox"
-                />
-                <span>
-                  <strong>
-                    {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}
-                  </strong>
-                  <small>
-                    {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}
-                  </small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          <div className="account-form-actions">
-            <button
-              className="button primary"
-              disabled={Boolean(pendingPrefix) || !name.trim() || scopes.length === 0}
-              type="submit"
-            >
-              {t("auth.apiKeys.create")}
-            </button>
-            <button
-              className="button secondary"
-              type="button"
-              disabled={Boolean(pendingPrefix)}
-              onClick={() => {
-                setCreating(false);
-                setFormError(undefined);
-                setName("");
-                setScopes(["api:read"]);
-              }}
-            >
-              {t("auth.apiKeys.cancel")}
-            </button>
+        {creating && (
+          <form className="panel api-key-create-form account-create-form" onSubmit={createKey}>
+            <h2>{t("auth.apiKeys.createTitle")}</h2>
+            <label className="field-control" htmlFor="api-key-name">
+              <span>{t("auth.apiKeys.name")}</span>
+              <input
+                id="api-key-name"
+                maxLength={128}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setFormError(undefined);
+                }}
+                placeholder={t("auth.apiKeys.namePlaceholder")}
+                value={name}
+              />
+            </label>
+            <fieldset className="api-key-scopes">
+              <legend>{t("auth.apiKeys.scopes")}</legend>
+              {(["api:read", "contract:verify"] as APIKeyScope[]).map((scope) => (
+                <label key={scope}>
+                  <input
+                    checked={scopes.includes(scope)}
+                    onChange={() => toggleScope(scope)}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>
+                      {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}
+                    </strong>
+                    <small>
+                      {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}
+                    </small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+            <div className="account-form-actions">
+              <button
+                className="button primary"
+                disabled={
+                  Boolean(pendingPrefix) ||
+                  !policy ||
+                  policy.active_count >= policy.maximum_active ||
+                  !name.trim() ||
+                  scopes.length === 0
+                }
+                type="submit"
+              >
+                {t("auth.apiKeys.create")}
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={Boolean(pendingPrefix)}
+                onClick={() => {
+                  setCreating(false);
+                  setFormError(undefined);
+                }}
+              >
+                {t("auth.apiKeys.cancel")}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {formError && <Message type="error">{formError}</Message>}
+        {keys.isPending && (
+          <p className="query-notice" role="status">
+            {t("auth.apiKeys.loading")}
+          </p>
+        )}
+        {keys.error && (
+          <div className="query-notice degraded" role="alert">
+            <span>
+              <strong>{t("auth.apiKeys.loadFailed")}</strong>
+              <small>{t("auth.apiKeys.loadFailedDescription")}</small>
+            </span>
           </div>
-        </form>
-      )}
-
-      {formError && <Message type="error">{formError}</Message>}
-      {keys.isPending && (
-        <p className="query-notice" role="status">
-          {t("auth.apiKeys.loading")}
-        </p>
-      )}
-      {keys.error && (
-        <div className="query-notice degraded" role="alert">
-          <span>
-            <strong>{t("auth.apiKeys.loadFailed")}</strong>
-            <small>{t("auth.apiKeys.loadFailedDescription")}</small>
-          </span>
-        </div>
-      )}
-      {!creating && keys.data?.data.items.length === 0 && (
-        <p className="empty-result" role="status">
-          {t("auth.apiKeys.empty")}
-        </p>
-      )}
-      {!creating && keys.data && keys.data.data.items.length > 0 && (
-        <div className="api-key-list" aria-label={t("auth.apiKeys.listLabel")}>
-          {keys.data.data.items.map((key) => (
-            <article className="panel api-key-card" key={key.prefix}>
-              <div className="api-key-card-heading">
-                <div>
-                  <h3>{key.name}</h3>
-                  <code>{key.prefix}</code>
-                </div>
-                <span className={`user-state ${key.status}`}>
-                  {t(`auth.apiKeys.status.${key.status}`)}
-                </span>
-              </div>
-              <dl>
-                <div>
-                  <dt>{t("auth.apiKeys.scopes")}</dt>
-                  <dd>
-                    {key.scopes
-                      .map((scope) =>
-                        t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`),
-                      )
-                      .join(", ")}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("auth.apiKeys.quota")}</dt>
-                  <dd>
-                    {key.rate_per_second}/s · {key.burst}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("auth.apiKeys.created")}</dt>
-                  <dd>
-                    <time dateTime={key.created_at}>{formatTimestamp(key.created_at, locale)}</time>
-                  </dd>
-                </div>
-                {key.revoked_at && (
+        )}
+        {!creating && keys.data?.data.items.length === 0 && (
+          <p className="empty-result" role="status">
+            {t("auth.apiKeys.empty")}
+          </p>
+        )}
+        {!creating && keys.data && keys.data.data.items.length > 0 && (
+          <div className="api-key-list" aria-label={t("auth.apiKeys.listLabel")}>
+            {keys.data.data.items.map((key) => (
+              <article className="panel api-key-card" key={key.prefix}>
+                <div className="api-key-card-heading">
                   <div>
-                    <dt>{t("auth.apiKeys.revoked")}</dt>
+                    <h3>{key.name}</h3>
+                    <code>{key.prefix}</code>
+                  </div>
+                  <span className={`user-state ${key.status}`}>
+                    {t(`auth.apiKeys.status.${key.status}`)}
+                  </span>
+                </div>
+                <dl>
+                  <div>
+                    <dt>{t("auth.apiKeys.scopes")}</dt>
                     <dd>
-                      <time dateTime={key.revoked_at}>
-                        {formatTimestamp(key.revoked_at, locale)}
+                      {key.scopes
+                        .map((scope) =>
+                          t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`),
+                        )
+                        .join(", ")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t("auth.apiKeys.quota")}</dt>
+                    <dd>
+                      {key.rate_per_second}/s · {key.burst}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>{t("auth.apiKeys.created")}</dt>
+                    <dd>
+                      <time dateTime={key.created_at}>
+                        {formatTimestamp(key.created_at, locale)}
                       </time>
                     </dd>
                   </div>
+                  {key.revoked_at && (
+                    <div>
+                      <dt>{t("auth.apiKeys.revoked")}</dt>
+                      <dd>
+                        <time dateTime={key.revoked_at}>
+                          {formatTimestamp(key.revoked_at, locale)}
+                        </time>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+                {key.status === "revoked" && (
+                  <div className="api-key-actions">
+                    <button
+                      className="button danger"
+                      disabled={Boolean(pendingPrefix)}
+                      onClick={() => void deleteKey(key)}
+                      type="button"
+                    >
+                      {t("auth.apiKeys.delete")}
+                    </button>
+                  </div>
                 )}
-              </dl>
-              {key.status === "active" && (
-                <div className="api-key-actions">
-                  <button
-                    className="button secondary"
-                    disabled={Boolean(pendingPrefix)}
-                    onClick={() => void rotateKey(key)}
-                    type="button"
-                  >
-                    {t("auth.apiKeys.rotate")}
-                  </button>
-                  <button
-                    className="button danger"
-                    disabled={Boolean(pendingPrefix)}
-                    onClick={() => void revokeKey(key)}
-                    type="button"
-                  >
-                    {t("auth.apiKeys.revoke")}
-                  </button>
-                </div>
-              )}
-            </article>
-          ))}
-        </div>
-      )}
-      {!creating && keys.data && (
-        <nav className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
-          <button
-            className="button secondary"
-            disabled={keys.isFetching || cursors.length === 1}
-            onClick={() =>
-              setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current))
-            }
-            type="button"
-          >
-            {t("pagination.previous")}
-          </button>
-          <span>{t("pagination.page", { page: cursors.length })}</span>
-          <button
-            className="button secondary"
-            disabled={keys.isFetching || !keys.data.meta.next_cursor}
-            onClick={() => {
-              const next = keys.data?.meta.next_cursor;
-              if (next) setCursors((current) => [...current, next]);
-            }}
-            type="button"
-          >
-            {t("pagination.next")}
-          </button>
-        </nav>
-      )}
+                {key.status === "active" && (
+                  <div className="api-key-actions">
+                    <button
+                      className="button secondary"
+                      disabled={Boolean(pendingPrefix)}
+                      onClick={() => void rotateKey(key)}
+                      type="button"
+                    >
+                      {t("auth.apiKeys.rotate")}
+                    </button>
+                    <button
+                      className="button danger"
+                      disabled={Boolean(pendingPrefix)}
+                      onClick={() => void revokeKey(key)}
+                      type="button"
+                    >
+                      {t("auth.apiKeys.revoke")}
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+        {!creating && keys.data && (
+          <nav className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
+            <button
+              className="button secondary"
+              disabled={Boolean(pendingPrefix) || keys.isFetching || cursors.length === 1}
+              onClick={() =>
+                setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current))
+              }
+              type="button"
+            >
+              {t("pagination.previous")}
+            </button>
+            <span>{t("pagination.page", { page: cursors.length })}</span>
+            <button
+              className="button secondary"
+              disabled={Boolean(pendingPrefix) || keys.isFetching || !keys.data.meta.next_cursor}
+              onClick={() => {
+                const next = keys.data?.meta.next_cursor;
+                if (next) setCursors((current) => [...current, next]);
+              }}
+              type="button"
+            >
+              {t("pagination.next")}
+            </button>
+          </nav>
+        )}
+      </div>
 
       {issued && (
         <div className="dialog-backdrop" onMouseDown={() => setIssued(undefined)}>
