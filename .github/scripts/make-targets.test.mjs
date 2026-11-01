@@ -98,7 +98,7 @@ for (const suite of [
     assert.equal(existsSync(join(f.dir, ".local/preview.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
-      preview ? ["docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
+      preview ? ["docker", "docker", "docker", "go"] : ["docker", "go"],
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
@@ -130,7 +130,7 @@ for (const suite of [
     assert.equal(builds.length, preview ? 2 : 1);
     assert(builds[0].args.includes("production"));
     assert.deepEqual(ordinary.commands.slice(-prebuilt.commands.length), prebuilt.commands);
-    assert.equal(ordinary.commands.filter((c) => c.command === "compose").length, preview ? 2 : 0);
+    assert.equal(ordinary.commands.filter((c) => c.command === "compose").length, preview ? 1 : 0);
   });
 
   test(`${target}: missing images and failed tests stop the command`, (t) => {
@@ -140,7 +140,6 @@ for (const suite of [
           "etherview:local",
           "caddy:2.11.7-alpine",
           "etherview-preview-bundler:local",
-          "etherview-x402-facilitator:local",
         ]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });

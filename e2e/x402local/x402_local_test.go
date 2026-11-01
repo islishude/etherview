@@ -109,7 +109,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 			t.Errorf("tear down x402 local %s: %v", mode, err)
 		}
 	})
-	if _, err := project.Run(ctx, "build", "x402-fixture", "x402-facilitator"); err != nil {
+	if _, err := project.Run(ctx, "build", "x402-fixture"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := project.Run(ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "--remove-orphans"); err != nil {

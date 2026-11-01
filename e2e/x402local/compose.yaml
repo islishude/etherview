@@ -96,8 +96,9 @@ services:
   x402-facilitator:
     build:
       context: ../..
-      dockerfile: deploy/facilitator/Dockerfile
-    image: etherview-x402-facilitator:local
+      target: production
+    image: ${ETHERVIEW_IMAGE:-etherview:local}
+    entrypoint: ["/x402facilitator"]
     depends_on:
       migration:
         condition: service_completed_successfully

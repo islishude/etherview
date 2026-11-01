@@ -1,4 +1,4 @@
-image: etherview-x402-facilitator:local
+image: etherview:local
 secretName: ""
 serviceAccountAnnotations: {}
 # Non-secret configuration; all credentials must reference /run/secrets files.

@@ -125,7 +125,9 @@ services:
       service: x402-facilitator
     build:
       context: .
-      dockerfile: deploy/facilitator/Dockerfile
+      target: production
+      args:
+        ETHERVIEW_WEB_BRANDING_DIR: ${ETHERVIEW_WEB_BRANDING_DIR:-web/branding/default}
     volumes:
       - ./preview/facilitator/config.yaml:/etc/etherview/facilitator.yaml:ro
 

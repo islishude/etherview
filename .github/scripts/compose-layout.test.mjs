@@ -282,3 +282,21 @@ test("Preview unified env preserves role isolation, custom paths and host preced
     }
   }
 });
+
+test("facilitator deployments share production image and override its entrypoint", () => {
+  for (const image of ["etherview:local", "registry.example/etherview:custom"]) {
+    for (const file of ["compose.yaml", "e2e/x402local/compose.yaml", "deploy/facilitator/compose.yaml"]) {
+      const document = render(["-f", file, "--profile", "monolith", "--profile", "distributed"], { ETHERVIEW_IMAGE: image });
+      const service = document.services["x402-facilitator"];
+      assert.equal(service.image, image);
+      assert.equal(service.build.context, root);
+      assert.equal(service.build.target, "production");
+      assert.ok(!service.build.dockerfile || service.build.dockerfile === "Dockerfile");
+      assert.deepEqual(service.entrypoint, ["/x402facilitator"]);
+      assert.deepEqual(service.command, ["--config=/etc/etherview/facilitator.yaml"]);
+      if (service.healthcheck) {
+        assert.deepEqual(service.healthcheck.test, ["CMD", "/x402facilitator", "--healthcheck=http://127.0.0.1:8081/healthz"]);
+      }
+    }
+  }
+});

@@ -1,9 +1,10 @@
 services:
   x402-facilitator:
-    image: etherview-x402-facilitator:local
+    image: ${ETHERVIEW_IMAGE:-etherview:local}
+    entrypoint: ["/x402facilitator"]
     build:
       context: ../..
-      dockerfile: deploy/facilitator/Dockerfile
+      target: production
     command: [--config=/etc/etherview/facilitator.yaml]
     volumes:
       - ./config.yaml:/etc/etherview/facilitator.yaml:ro

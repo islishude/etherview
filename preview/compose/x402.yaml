@@ -1,6 +1,7 @@
 services:
   x402-facilitator:
-    image: etherview-x402-facilitator:local
+    image: ${ETHERVIEW_IMAGE:-etherview:local}
+    entrypoint: ["/x402facilitator"]
     command: [--config=/etc/etherview/facilitator.yaml]
     secrets: [x402-db, x402-token, x402-key, x402-password, x402-geth, x402-anvil]
     depends_on:

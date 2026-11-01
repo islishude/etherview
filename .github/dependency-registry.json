@@ -270,11 +270,6 @@
           "count": 1
         },
         {
-          "path": "deploy/facilitator/Dockerfile",
-          "template": "FROM golang:{{version}} AS build",
-          "count": 1
-        },
-        {
           "path": ".github/scripts/toolchain-check.sh",
           "template": "MINIMUM_GO=\"go{{version}}\"",
           "count": 1

@@ -6,6 +6,9 @@ output=$(mktemp)
 trap 'rm -f "$output"' EXIT INT TERM
 "$helm" lint "$chart" -f "$chart/test-values.yaml"
 "$helm" template facilitator "$chart" -f "$chart/test-values.yaml" > "$output"
+grep -Fq 'image: "etherview:local"' "$output"
+grep -Fq 'command: ["/x402facilitator"]' "$output"
+grep -Fq 'args: [--config=/etc/etherview/facilitator.yaml]' "$output"
 grep -q 'replicas: 1' "$output"
 grep -q 'type: Recreate' "$output"
 grep -q 'publishNotReadyAddresses: true' "$output"

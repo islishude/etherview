@@ -90,6 +90,7 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
+COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/x402facilitator /x402facilitator
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
 COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers

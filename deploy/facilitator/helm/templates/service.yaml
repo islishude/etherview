@@ -36,6 +36,7 @@ spec:
       containers:
         - name: facilitator
           image: {{ .Values.image | quote }}
+          command: ["/x402facilitator"]
           args: [--config=/etc/etherview/facilitator.yaml]
           ports: [{name: https, containerPort: 8081}]
           securityContext:

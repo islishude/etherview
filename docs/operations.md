@@ -1918,6 +1918,12 @@ credit consumption or explorer reads.
 ## Standalone multi-chain facilitator
 
 The production `x402facilitator` process is separate from all explorer roles.
+Build the shared production image with `make docker-build IMAGE=etherview:local`.
+Compose uses `ETHERVIEW_IMAGE` (default `etherview:local`) and overrides the
+entrypoint to `/x402facilitator`; the standalone Helm chart uses its `image` value
+and the same executable as its container command. The image retains `/etherview`
+as its default entrypoint. Pass `--config=/etc/etherview/facilitator.yaml` to the
+facilitator process, with configuration and signer secrets mounted separately.
 Use `deploy/facilitator/config.example.yaml`, the standalone Compose definition,
 or the chart under `deploy/facilitator/helm`. Run the ordinary fresh-database
 migrations before starting it. Its database login needs access only to

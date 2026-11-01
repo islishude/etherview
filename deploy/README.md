@@ -363,8 +363,9 @@ See [Preview configuration layout](../preview/docs/operations.md#preview-configu
 
 ### Standalone facilitator
 
-The optional production facilitator has its own image, configuration, database
-login and signer identity. See [operations](../docs/operations.md#standalone-multi-chain-facilitator)
+The optional production facilitator shares the root Dockerfile production image
+with Etherview and runs `/x402facilitator` through an explicit entrypoint override.
+It retains its own configuration, database login and signer identity. See [operations](../docs/operations.md#standalone-multi-chain-facilitator)
 and `deploy/facilitator/config.example.yaml`. Its standalone Helm chart requires
 an existing Secret and explicit egress CIDRs; label authorized API/all pods
 `etherview-facilitator-client: "true"`. It is not a new `serve` role.

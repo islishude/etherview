@@ -323,7 +323,7 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-facilitator:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -517,8 +517,7 @@ preview-env:
 preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs check
 
-preview-x402-images:
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-facilitator
+preview-x402-images: docker-build
 
 preview-images: preview-env preview-x402-images preview-bundler-image
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
@@ -558,7 +557,7 @@ clean-preview-compiler-cache: preview-bundler-image
 
 start-x402-local: docker-build
 	@case "$(X402_LOCAL_TOPOLOGY)" in monolith|distributed) ;; *) echo "X402_LOCAL_TOPOLOGY must be monolith or distributed"; exit 1;; esac
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" build x402-fixture x402-facilitator
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" build x402-fixture
 	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" \
 		--profile "$(X402_LOCAL_TOPOLOGY)" up -d --no-build --wait --wait-timeout 180 --remove-orphans
 	@echo "x402 local: explorer=http://localhost:$${X402_LOCAL_PORT:-18080} anvil=http://localhost:$${X402_LOCAL_ANVIL_PORT:-18545} topology=$(X402_LOCAL_TOPOLOGY)"
@@ -637,6 +636,5 @@ test-preview-tools-e2e-full-prebuilt: preview-e2e-check
 check: test-preview-tools
 
 .PHONY: facilitator-deployment-check
-facilitator-deployment-check:
+facilitator-deployment-check: docker-check
 	HELM="$(HELM)" deploy/facilitator/helm/test.sh
-	DOCKER="$(DOCKER)" $(BUILDX) build --check -f deploy/facilitator/Dockerfile .
