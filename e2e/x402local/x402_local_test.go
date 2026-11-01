@@ -147,7 +147,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstHeader := topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "eip3009")
+	firstHeader := topupWithDelayedMining(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "eip3009")
 	replay := postTopupPayment(t, httpClient, publicOrigin, csrf, firstHeader.intentID, firstHeader.header)
 	if replay.StatusCode != http.StatusConflict {
 		t.Fatalf("EIP-3009 replay status=%d", replay.StatusCode)
@@ -155,7 +155,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	_ = replay.Body.Close()
 
 	approveExact(t, rpcClient, ownerKey, owner, big.NewInt(100))
-	topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "permit2")
+	topupWithDelayedMining(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "permit2")
 	if allowance := tokenUint(t, rpcClient, "allowance", owner, common.HexToAddress(permit2Address)); allowance.Sign() != 0 {
 		t.Fatalf("Permit2 exact allowance remained %s after settlement", allowance)
 	}
@@ -268,7 +268,25 @@ type topupPayment struct {
 	header   string
 }
 
+// topup exercises ordinary settlement on either Geth or Anvil.
 func topup(
+	t *testing.T,
+	client *http.Client,
+	rpcClient *ethclient.Client,
+	codec *x402wire.Codec,
+	origin, csrf string,
+	owner common.Address,
+	method string,
+) topupPayment {
+	t.Helper()
+	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, "100")
+	response := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+	checkTopupResponse(t, response, method)
+	return payment
+}
+
+// topupWithDelayedMining requires the Anvil runtime fixture's mining controls.
+func topupWithDelayedMining(
 	t *testing.T,
 	client *http.Client,
 	rpcClient *ethclient.Client,
@@ -318,12 +336,17 @@ func topup(
 	case <-time.After(15 * time.Second):
 		t.Fatal("settlement did not finish after mining")
 	}
+	checkTopupResponse(t, response, method)
+	return payment
+}
+
+func checkTopupResponse(t *testing.T, response *http.Response, method string) {
+	t.Helper()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK || response.Header.Get(x402wire.PaymentResponseHeader) == "" {
 		body, _ := io.ReadAll(response.Body)
 		t.Fatalf("%s top-up status=%d body=%s", method, response.StatusCode, body)
 	}
-	_ = response.Body.Close()
-	return payment
 }
 
 func authorizeTopup(
@@ -469,7 +492,7 @@ func consumeBalanceAction(client *http.Client, origin, key string, owner common.
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close() //nolint:errcheck
+	defer func() { _ = response.Body.Close() }() //nolint:errcheck
 	var envelope struct {
 		Status string `json:"status"`
 	}
@@ -489,7 +512,7 @@ func logicalFailure(t *testing.T, client *http.Client, origin, key string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close() //nolint:errcheck
+	defer func() { _ = response.Body.Close() }() //nolint:errcheck
 	var envelope struct {
 		Status string `json:"status"`
 	}
@@ -653,7 +676,7 @@ func doJSON(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close() //nolint:errcheck
+	defer func() { _ = response.Body.Close() }() //nolint:errcheck
 	if response.StatusCode != want {
 		t.Fatalf("%s %s status=%d want=%d", method, target, response.StatusCode, want)
 	}

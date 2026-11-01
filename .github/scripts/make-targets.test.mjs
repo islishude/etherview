@@ -136,11 +136,7 @@ for (const suite of [
   test(`${target}: missing images and failed tests stop the command`, (t) => {
     const f = fixture(t);
     for (const missing of preview
-      ? [
-          "etherview:local",
-          "caddy:2.11.7-alpine",
-          "etherview-preview-bundler:local",
-        ]
+      ? ["etherview:local", "caddy:2.11.7-alpine", "etherview-preview-bundler:local"]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });
       assert.notEqual(result.status, 0);
