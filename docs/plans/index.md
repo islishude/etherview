@@ -28,17 +28,27 @@ dependencies. This catalog groups the child plans by responsibility.
 
 - [P70 — Release](P70-release.md)
 
-## ENS synchronization delivery
+## Consolidated capability ownership
 
-The current-chain rewrite replaces the retired ENS milestones. P20-T27 owns
-core fact references and recovery; P20-T28 owns protocol discovery; P20-T29
-owns independent resolution validity and publication. P30-T149 moves ENS into
-enrich; P40-T27 and P50-T81 adapt database reads and display. P30-T150 owns local
-production acceptance and P30-T151 independently verifies representative Mainnet
-publications. P20-T27/P20-T28/P20-T29, P30-T149/P30-T150/P30-T151, P40-T27 and P50-T81 are done
-with [new acceptance evidence](../reviews/ens-current-chain-acceptance.md).
-Historical evidence does not close these new gates. Full directory coverage is
-a deployment progress fact, not a prerequisite for exact-result publication.
+ENS discovery, resolution, registration profiles and history belong to P20-T27;
+P40-T27 owns database-only APIs and P50-T81 owns browsing. P30-T150 retains local
+production acceptance and P30-T151 retains independent representative Mainnet
+reconciliation. Those evidence boundaries remain separate.
+
+Completed follow-up items are folded into their existing capability milestone:
+
+| Owning milestone                                    | Folded identifiers                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| P20-T01 / P20-T13 / P20-T20 / P20-T27               | T10 / T03 / T32 / T28–T31 respectively                                              |
+| P30-T15 / P30-T138 / P30-T141 / P30-T144 / P30-T150 | T16 / T142 / T140 / T143 and T145 / T149 respectively                               |
+| P40-T11 / P40-T21 / P40-T22 / P40-T27               | T30 / T31 (NFT/statistics scope in T03) / T32 / T28–T29 respectively                |
+| P50-T01 / P50-T11 / P50-T75 / P50-T81               | T76 / T84 / T85 / T82–T83 respectively                                              |
+| P60-T13 / P60-T25 / P60-T26                         | T22–T23 (whole-token input in T14) / T24 / T30 respectively                         |
+| P60-T20                                             | T19's durable notification design is removed; current delivery is volatile Web Push |
+
+These are ownership redirects, not new acceptance claims. Historical review
+identifiers remain provenance. Superseded implementations and routine change
+logs live in Git, not additional archive plans.
 
 ## Planning and retention
 
@@ -72,10 +82,3 @@ change. New plan IDs start at P80; all lower gaps and retired prefixes stay rese
 | P70           | 52                            |
 | P55 (retired) | 4                             |
 | P66 (retired) | 8                             |
-
-Name registration browsing extends ADR-0058 through P20-T30 → P40-T28 → P50-T82.
-These milestones retain independent profile/resolution validity, canonical known-name
-search and database-only reads. Existing runtime scenarios are extended; earlier
-completed IDs and Mainnet evidence are not reopened or reused as new acceptance.
-
-ENS operation history and the compact name page are complete under P20-T31 → P40-T29 → P50-T83.

@@ -2,10 +2,10 @@
 
 Status: accepted
 
-ADR-0031 supersedes this decision where it requires Vyper, native executable
-platform selection, hard compiler isolation, runner images, or runner
-provenance. The remaining catalog-integrity, dual-compilation, matching,
-canonical-publication, and hostile-input requirements stay accepted.
+Solidity/Yul execution follows ADR-0031/ADR-0040, Vyper follows
+ADR-0053/ADR-0054, and Geas follows ADR-0039. This decision owns the shared
+catalog-integrity, dual-compilation, matching, canonical-publication and
+hostile-input boundaries; it does not require native compilers or runner services.
 
 ## Context
 
@@ -80,28 +80,20 @@ fail-closed cleanup requirements remain mandatory.
 - ERC-5202 creation and runtime wrappers must decode to the same non-empty
   initcode when both are supplied. Sourcify results and compiler-list contents
   are hostile external input and never become local publication evidence.
-- Compiler lists are fetched hourly into immutable PostgreSQL generations. A
-  failed refresh retains the last successful generation; submissions stop when
-  it is older than 24 hours. Lists are limited to 8 MiB and 4096 entries.
+- Solidity compiler lists are fetched hourly into immutable PostgreSQL generations.
+  Failed refresh retains the last generation; a missing or older-than-24-hour
+  catalog prevents new compiler binding and is retried by leased workers.
+  Submission does not require a live catalog. Lists are limited to 8 MiB and 4096 entries.
   Entries require canonical versions, an allowed HTTPS origin, a non-zero
   SHA-256 digest, and an artifact no larger than 200 MiB.
-- Compiler artifacts are cached by digest through the existing proxy-free,
-  redirect-free, public-network-only downloader. Public compilation streams the
-  compiler and Standard JSON over a bounded framed protocol into a generic,
-  digest-pinned runner image. The runner rechecks the digest in an executable
-  tmpfs before invoking the compiler. Solidity catalog discovery recognizes
-  the complete platform directory set published by solc-bin and automatically
-  selects from the validated container-runner image or private process host;
-  configured catalog URLs are optional approved-mirror overrides. Native
-  packages must match their ELF, Mach-O, or PE platform. Emscripten/WASM
-  directories are recognized but fail closed while their unlisted sidecar
-  inputs cannot be represented by the immutable single-artifact provenance.
-  Compiler platform, compiler digest, and runner digest are immutable job provenance.
-- Compiler containers keep no network, a read-only root, non-root identity,
-  dropped capabilities, no-new-privileges, bounded CPU, memory, PIDs, file
-  descriptors, output, and temporary space. The exact random container is
-  force-removed before any outcome is accepted; cleanup failure remains fatal
-  and leaves the lease for explicit recovery.
+- Solidity artifacts are checksum-addressed solc-js from the approved
+  emscripten-wasm32 catalog or an equivalent mirror. The API/all-owned restricted
+  SEA reauthenticates runtime and artifact identities; provenance binds compiler,
+  executor and catalog generation once under the lease. ADR-0031/ADR-0037/ADR-0040
+  own downloader, cache, process permissions, I/O/time/memory limits and fail-closed
+  process-group cleanup. No runner image, native compiler or alternate-platform
+  fallback is selected. Vyper uses ADR-0054's application snapshot without remote
+  catalog expiry; Geas uses its pinned helper without a compiler catalog.
 - Compiler diagnostics are bounded domain outcomes and are never logged.
   Sandbox, transport, cache, runtime, and nested upstream diagnostics remain
   stable redacted system failures.

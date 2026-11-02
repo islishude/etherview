@@ -108,7 +108,7 @@ independently of source would let guessed material be published as verified.
   even when selectors collide.
 - A signature service can improve display coverage but can never create a
   verified fact in Go or PostgreSQL.
-- Proxy ABI quality depends on P20-T03 producing canonical historical proxy
+- Proxy ABI quality depends on P20-T13 producing canonical historical proxy
   observations; missing observations degrade to signature guesses or unknown,
   not a global ABI lookup.
 - ABI reindex may be useful after Trace completes, but core ingestion and other

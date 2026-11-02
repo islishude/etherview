@@ -2,15 +2,12 @@
 
 Status: accepted
 
-[ADR-0054](ADR-0054-vyper-application-lock.md) supersedes the hosted-package,
-independent signing/catalog and remote freshness decisions below. Runtime
-isolation, immutable provenance, matching and native acceptance remain mandatory.
+[ADR-0054](ADR-0054-vyper-application-lock.md) owns application-locked package
+assembly and distribution. This decision owns execution, matching and immutable
+provenance; it incorporates the still-applicable verification boundaries from
+the retired native-Python and signed-catalog decisions (ADR-0047/ADR-0049).
 
 ## Decision
-
-This distribution replaces ADR-0047/ADR-0049's native Python execution and
-platform-specific archive distribution. Their canonical publication, signed
-catalog, immutable binding and fresh-process boundaries remain mandatory.
 
 The existing Node SEA gains a Vyper-only protocol. It selects two exact,
 image-local read-only runtimes: `pyodide@314.0.7` / CPython 3.14.2 /
@@ -44,30 +41,52 @@ Vyper mode fixes V8 old-generation memory to 128 MiB and each WASM memory to
 read/write/network/child-process rejection. This remains execution of trusted
 compilers with hostile data, not a sandbox for arbitrary Python/JavaScript.
 
-Signed catalog v2 entries contain one emscripten-wasm32 package per compiler
-and the required shared-runtime digest. Official source digest remains compiler
-identity. The new node_vyper_wasm_v1 executor identity hashes a domain-separated
-concatenation of the host SEA manifest, shared runtime manifest and package
-manifest digests. Each signed package entry includes executor_digests for both
-Linux host architectures, binding those composite identities to the same
-package. PostgreSQL validates the chosen executor digest against that signed
-entry. Startup validates both shared manifests and requires successful permission,
-Python identity and memory self-tests for both runtimes before readiness.
-Binding authenticates the installed package; invocation revalidates all three
-identities before and after compilation. A running parent freezes the host and both runtime identities and never adopts
-a replacement. A changed identity makes the executor unavailable. None may
-change during binding, retry or compilation. The catalog v2 format and executor
-digest formula remain unchanged: each version uses its selected shared digest.
-Internal acceptance records carry `shared_runtimes` with both digests, while
-each matrix entry retains the actual `shared_sha256`.
+The immutable application snapshot records one emscripten-wasm32 package per
+compiler version and its required shared-runtime digest. Official source digest
+remains compiler identity (`compiler_kind=python_vyper_v1`,
+`compiler_platform=python-wheel`, `execution_policy=trusted_subprocess`).
+The `node_vyper_wasm_v1` executor identity
+hashes a domain-separated concatenation of the host SEA, selected shared runtime
+and package manifest digests. The process registers its native host's composite
+identity with the application recipe under ADR-0054; PostgreSQL authenticates
+binding against that immutable generation, not a remote signed catalog.
 
-Every runtime upgrade drains queued/running Vyper jobs before deployment.
-This dual-runtime change adds no database migration or compatibility adapter. Terminal provenance
-is preserved without rebinding, backfill or a legacy executor. New jobs require
-the new catalog and complete installed runtime. Public verification inputs,
-matching and publication semantics are unchanged. Both Linux architectures
-consume the same package bytes and must independently pass the full matrix and
-monolith/split production acceptance before catalog promotion.
+Startup validates both shared manifests and requires permission, Python identity
+and memory self-tests before readiness. Binding authenticates the installed
+package; invocation revalidates all three identities before and after compilation.
+The parent freezes host and shared runtime identities and never adopts a
+replacement. An identity change makes the executor unavailable. Binding, retry
+and invocation cannot silently choose new bytes. Acceptance records carry both
+`shared_runtimes` digests and each matrix entry's selected `shared_sha256`.
+
+API/all own Vyper jobs through the shared durable verification worker. Compiler
+inputs are bounded inline sources/interfaces with canonical relative paths;
+imports never fall back to host sources. User input cannot choose executable
+paths, URLs, packages, runtime, environment or process limits. The Go parent
+supplies effective positive input/output byte limits to the compile protocol.
+Server-owned output selection and bounded source-only search paths replace caller
+selection; official built-in interfaces belong to the authenticated runtime.
+Native address and standalone Standard JSON/multipart, Etherscan `vyper-json`
+and Web submissions use one version-aware pipeline with an explicit target.
+Upstream defaults are preserved and unsupported explicit settings fail according
+to the version's capabilities. Batch, factory-derived and Sourcify Vyper
+verification remain excluded.
+
+Original and whitespace-perturbed sources compile independently with the same
+bound identities. Matching authenticates version-specific metadata and exact
+compiler-declared immutable ranges; it never masks undeclared differences.
+Releases from 0.4.1 carry the five-field integrity footer; older version-only
+metadata does not prove full source identity. Missing authenticated metadata is
+partial evidence. Constructor arguments remain ABI-canonical. Genesis target
+provenance, canonical code/block selection, leases and atomic immutable-result
+publication retain ADR-0024's boundaries.
+
+Every runtime upgrade requires draining queued/running Vyper jobs. Terminal
+provenance is never rebound or backfilled; earlier development schemas are
+recreated under the fresh-database policy. Native Linux AMD64/ARM64 consume the
+same package bytes and independently pass the complete matrix and production
+all/split acceptance before application release. Local or emulated results do
+not replace native evidence.
 
 ## Consequences
 
@@ -100,8 +119,10 @@ and secret scanning are unchanged. There is no replacement CVE allowlist.
 
 Verification is not contract safety certification. Historical EVM compiler
 bugs remain reproducible, and bounded pathological input is not an upstream
-vulnerability fix. The [historical security and performance review](../reviews/P30-wasm-security-performance.md)
-retains measured startup/RSS evidence and the original threat analysis.
+vulnerability fix. Retired advisory reviews and runtime measurements remain in
+Git. Current [validation](../testing.md#vyper-verification-gates) and
+[benchmark procedures](../../compiler/vyper/README.md#integrity-and-security-checks)
+require evidence bound to the selected runtime and package identities.
 
 ## Build and reference tooling
 
@@ -116,5 +137,5 @@ authenticated inputs, with retired packaging tools excluded from installation.
 
 Producer-language changes can alter compressed bytes without altering compiler
 sources. All archive and manifest hashes remain authoritative: changed package
-bytes require application-lock review and fresh native acceptance before catalog
-promotion. No acceptance record or bound provenance is rebound to new bytes.
+bytes require application-lock review and fresh native acceptance before application
+release. No acceptance record or bound provenance is rebound to new bytes.

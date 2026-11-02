@@ -66,29 +66,19 @@ and retain raw-first input, exact block identity, and atomic publication.
 
 ## Current Blockers
 
-None. P60/P70 retain independent release blockers.
+None. P70 retains final release gates.
 
 ## Evidence
 
-P10-T03 retains authenticated Genesis root/persistence/security and reviewed
-protocol compatibility acceptance. Amsterdam header/gas validation passed local
-Go/race, PostgreSQL and real-Geth Preview checks at its delivery revision;
-P30-T35 owns the shared production-topology evidence.
+P10-T01/P10-T02/P10-T03/P10-T04/P10-T05/P10-T06 passed
+RPC/indexer/store/syncer/maintenance unit and race tests and PostgreSQL 18
+integration at delivery. Coverage includes atomic hash-keyed ingestion,
+gaps/restart, finality/orphans, partitions and real CLI repair/reindex. Hostile
+wire and immutable-bundle mutation tests, counting-source traversal, bounded
+backfill, lease expiry, canceled rate reservations and batched-write regressions
+passed with generation/source and production-parity checks.
 
-Retained completed milestones: P10-T01, P10-T02, P10-T03, P10-T04, P10-T05, P10-T06.
-
-RPC, indexer, store, syncer and maintenance race tests passed. PostgreSQL 18
-normal/race integration covered atomic hash-keyed ingestion, restart/gap
-recovery, finality and orphan retention, partition provisioning, and the real
-CLI repair/reindex worker path. Hostile receipt/batch inputs reject before
-publication; pruned history remains an explicit capability failure.
-
-Bounded traversal/backfill and cancellation-safe RPC reservations passed
-counting-source, cancellation, lease-expiry, partial-progress, and race checks.
-Immutable bundles and batched writes passed hostile wire/storage, mutation,
-conflict/reorg/partition, generated SQL, PostgreSQL, and runtime-parity coverage.
-Reproducible chainbundle decode/allocation and core-write benchmarks provide
-local regression baselines; they do not satisfy P70-T04 reference capacity.
-
-[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P10-indexing.md#evidence).
-These are historical results, not tests rerun by this plan cleanup.
+Genesis import authenticated block-zero/state roots. Amsterdam header/gas
+compatibility passed protocol, PostgreSQL/race and real-Geth Preview checks;
+P30-T35 owns shared production evidence. Decode/allocation/core-write benchmarks
+are local regression baselines, not P70-T04 reference capacity.

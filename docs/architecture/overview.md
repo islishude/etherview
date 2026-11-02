@@ -7,11 +7,11 @@ selected by roles and are instantiated identically whether all roles share one
 process or run in separate deployments.
 
 [ADR-0058](../decisions/ADR-0058-background-ens-synchronization-and-database-only-reads.md)
-defines ENS background workers under enrich in this shared component graph. P20-T27 through
-P20-T29 supply persistence, discovery, projections and publication; P30-T149
-supplies the shared runtime and operations. P40-T27 reads writer publications
-without ENS network calls or writes; P50-T81 owns proactive Web display.
-P30-T150/P30-T151 retain separate local and live acceptance gates.
+defines ENS background workers under enrich in this shared component graph.
+P20-T27 owns core-backed discovery, resolution, registration profiles and history;
+P40-T27 owns database-only reads and P50-T81 owns manual browsing with expiry
+withdrawal. P30-T150/P30-T151 retain separate local and representative Mainnet
+acceptance; full directory coverage remains deployment progress.
 
 The feature-aware production component manifest is executable architecture:
 startup compares it with the exact deduplicated keys registered by the runtime.
@@ -130,7 +130,8 @@ CodeMirror chunks. Hashed assets are built with Gzip/Brotli sidecars and a
 SHA-256 size manifest. The embedded handler performs representation-aware
 conditional delivery while keeping shell nonces, CSP, immutable caching,
 HEAD, range, fallback, and reserved-path behavior intact. One durable
-`/api/v1/events` EventSource invalidates live React Query data; the home page
+`/api/v1/events` EventSource marks ordinary browsing snapshots for explicit
+refresh and updates the home/status allowlist; the home page
 refetches one atomic `/api/v1/home` publication instead of opening a second
 stream, and canonical lists no longer poll every two seconds. Home responses
 carry `event_id`; clients pass their highest observed version as `min_event_id`.
@@ -763,9 +764,9 @@ a manual-refresh notice without withdrawing current profile fields.
   jobs, observations or snapshots. Opaque tokens reference retained effective
   publications, including immutable empty snapshots; dependencies, canonicality,
   known invalidations and observation freshness are checked independently of retention.
-- Durable `names` events share the existing SSE stream. Visible address batches
-  replace atomically at one publication; old responses cannot restore stale
-  labels. Local validity timers hide expired names without a network request.
+- Durable `names` events share the existing SSE stream and mark changed snapshots
+  for manual refresh. Explicit reads replace visible address batches atomically;
+  old responses cannot restore stale labels. Local validity timers hide expired names without a network request.
   Source coverage and resolution status remain separate from core readiness.
 - The maintenance role owns a PostgreSQL-only search-catalog housekeeper in
   the same production component graph used by `roles=all` and split processes.

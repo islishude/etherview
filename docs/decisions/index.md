@@ -7,13 +7,9 @@ merging distinct invariants.
 ## Core chain, persistence, and runtime correctness
 
 - [ADR-0057 — Preview Rundler](ADR-0057-preview-rundler.md)
-
 - [ADR-0055 — Consensus and Blob Archives](ADR-0055-consensus-and-blob-archives.md)
-
 - [ADR-0052 — Amsterdam Explorer Support](ADR-0052-amsterdam-explorer-support.md)
-
 - [ADR-0050 — Native pgx and Typed Queries](ADR-0050-native-pgx-and-typed-queries.md)
-
 - [ADR-0001 — Modular Roles and PostgreSQL Truth](ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0002 — Identity-Bound Repair and Explicit Reindex](ADR-0002-identity-bound-repair-and-explicit-reindex.md)
 - [ADR-0004 — Durable Runtime Status and Event Replay](ADR-0004-durable-runtime-status-and-events.md)
@@ -33,13 +29,8 @@ merging distinct invariants.
 ## Contract verification and intelligence
 
 - [ADR-0054 — Application-Locked Vyper Distribution](ADR-0054-vyper-application-lock.md)
-
 - [ADR-0056 — Bytecode Database Source Discovery](ADR-0056-bytecode-db-source-discovery.md)
 - [ADR-0053 — Shared Python WASM Vyper Distribution](ADR-0053-vyper-wasm-distribution.md)
-- [ADR-0049 — Signed Dynamic Vyper Runtimes](ADR-0049-dynamic-vyper-runtimes.md)
-
-- [ADR-0047 — Pinned Python Vyper Executor](ADR-0047-pinned-vyper-executor.md)
-
 - [ADR-0009 — Block-Bound ABI Provenance](ADR-0009-block-bound-abi-provenance.md)
 - [ADR-0010 — Block-Pinned Proxy Stage and ABI Dependency](ADR-0010-block-pinned-proxy-stage-and-abi-dependency.md)
 - [ADR-0024 — Verifier v2 Workflow](ADR-0024-verifier-v2-workflow.md)
@@ -58,9 +49,8 @@ merging distinct invariants.
 ## API, Web, external boundaries, and identity
 
 - [ADR-0058 — Background ENS Synchronization and Database-Only Reads](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
-  is accepted; the current-chain cutover is complete and its linked plans track
-  registration-profile and name-directory extensions.
-
+  owns current-chain synchronization, registration profiles, directory/history
+  publication and database-only reads.
 - [ADR-0003 — Spec-First API and Canonical Public Identifiers](ADR-0003-spec-first-api-and-canonical-public-identifiers.md)
 - [ADR-0005 — Safe NFT Metadata and Media Boundary](ADR-0005-safe-nft-metadata-and-media-boundary.md)
 - [ADR-0011 — Snapshot Search, Statistics, and Bounded Adapters](ADR-0011-snapshot-search-stats-and-bounded-adapters.md)
@@ -71,17 +61,18 @@ merging distinct invariants.
 - [ADR-0044 — Prepaid API Billing with x402 Top-Ups](ADR-0044-prepaid-api-billing-and-x402-topups.md)
 - [ADR-0045 — Canonical ERC-4337 UserOperation Index](ADR-0045-erc4337-useroperation-index.md)
 - [ADR-0046 — Authoritative ERC-20 Holder Reconciliation](ADR-0046-authoritative-erc20-holder-reconciliation.md)
-
 - [ADR-0051 — Watchlist, Notifications and CSV](ADR-0051-watchlist-notifications-csv.md)
-
 - [ADR-0059 — Production multi-chain x402 facilitator](ADR-0059-production-x402-facilitator.md)
 
 ## Retired decisions
 
-- [ADR-0041 — Snapshot-Stable ENS Primary Names](ADR-0041-snapshot-stable-ens-primary-names.md):
-  superseded by ADR-0058; retained as historical documentation of the retired
-  request-time implementation.
+Retired files are removed after their remaining invariants and incoming links
+are routed to the accepted replacement. Git retains historical text.
 
+- ADR-0041 — request-time ENS primary names: replaced by ADR-0058.
+- ADR-0047 / ADR-0049 — native Python Vyper and independently signed runtime
+  catalogs: execution/matching boundaries are consolidated into ADR-0053;
+  application-locked distribution and native acceptance belong to ADR-0054.
 - ADR-0014 — durable verification identity and publication: replaced by the
   maintained verifier-v2, compiler-executor, and publication boundaries in
   ADR-0024 and ADR-0031.

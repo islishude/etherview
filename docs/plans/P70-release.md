@@ -2,10 +2,6 @@
 
 Status: `blocked`
 
-Browser subscription API and all/split feature delivery acceptance were completed
-under P60-T20; notifications have no persisted history or replay. Final release
-acceptance remains governed by the gates below.
-
 ## Outcome
 
 Etherview v1.0.0 has conformance, migration, security, performance, deployment,
@@ -38,7 +34,7 @@ release acceptance and publication only.
 
 ## Acceptance
 
-- [x] P20-T27 through P20-T29, P30-T149, P40-T27 and P50-T81 are delivered;
+- [x] P20-T27, P40-T27 and P50-T81 are delivered;
       P30-T150 proves local all/split behavior and P30-T151 supplies independent
       Mainnet v1/v2 activation, coverage and reconciliation evidence. ENS
       request-time fallback, missing-as-absent results and stale identity display
@@ -58,22 +54,17 @@ release acceptance and publication only.
 
 ## Current Blockers
 
-P60-T17's live-payment gate is complete: acceptance verified finalized
-Sepolia settlement, account credit, successful priced Anvil queries and unique
-writer debits. P60-T24 and P60 are also complete after the required Go lint and
-focused race checks passed. P70-T01, P70-T02, P70-T03 and P70-T05 are now
-dependency-ready (`todo`), but their final release suites have not been claimed
-or completed. Payment acceptance does not close any final release gate.
+P00–P60 feature dependencies are complete, including P60-T17's live payments
+and P30-T150/P30-T151's local and representative Mainnet ENS publication checks.
+P70-T01, P70-T02, P70-T03 and P70-T05 are dependency-ready (`todo`); none of their
+final release suites has been claimed or completed.
 
-The current-chain ENS feature milestones and P30-T150/P30-T151 acceptance are
-complete with [new evidence](../reviews/ens-current-chain-acceptance.md). This
-clears only that feature dependency. Final release conformance, security,
-recovery/soak and documentation gates remain open.
-Historical or bounded ENS samples do not prove full directory coverage.
-The name-directory/profile extension is tracked separately by P20-T30, P40-T28
-and P50-T82; its [local evidence](../reviews/ens-name-details-acceptance.md) does
-not extend the original Mainnet report. Final conformance/capacity must include
-registration-profile jobs, name details, alias search and independent expiry.
+ENS conformance/capacity must include profile jobs, name details/alias search,
+independent expiry and operation history. The
+[profile extension report](../reviews/ens-current-chain-acceptance.md#registration-profile-local-acceptance) is local
+evidence and does not extend the [Mainnet samples](../reviews/ens-current-chain-acceptance.md)
+or prove full directory coverage. Later multi-payment/facilitator local evidence
+likewise does not extend P60-T17's earlier live-payment acceptance.
 
 P70-T04 is blocked on an operator-provisioned reference environment for the
 final clean revision and image digest: at least two failure domains with room
@@ -94,12 +85,8 @@ No release is authorized by documentation cleanup.
 
 ## Evidence
 
-Final release acceptance remains incomplete. Feature-level historical checks
-remain in their owning plans and Git history; they do not close the release
-conformance, security, topology, documentation, or reference-capacity gates.
-P60-T17 has completed live payment/debit acceptance; P70-T04 still needs the final
-accepted revision and image digest tested in the named reference environment.
-P30-T150 and P30-T151 have new local and representative live evidence for the rewrite.
-Full directory coverage remains separately reported deployment progress.
-Local ENS acceptance alone closes no release gate. Record final release reports and
-artifact identities here as the gates complete.
+Final release acceptance is incomplete. Feature-level historical results remain
+in their owning plans and do not close final conformance, security, topology,
+documentation or capacity gates. Record final revision/image-bound reports and
+artifact identities here as those gates complete. Documentation consolidation
+establishes no new release acceptance.

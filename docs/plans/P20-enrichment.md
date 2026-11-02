@@ -33,7 +33,6 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 - [ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md)
 - [ADR-0025](../decisions/ADR-0025-historical-execution-analytics.md)
 - [ADR-0005](../decisions/ADR-0005-safe-nft-metadata-and-media-boundary.md)
-- [ADR-0041](../decisions/ADR-0041-snapshot-stable-ens-primary-names.md)
 - [Architecture](../architecture/overview.md)
 - [ADR-0007: Block-scoped derived canonicality journals](../decisions/ADR-0007-block-scoped-derived-canonicality-journals.md)
 - [ADR-0008: Versioned token observations and exact state reconciliation](../decisions/ADR-0008-versioned-token-observations-and-exact-state-reconciliation.md)
@@ -49,99 +48,47 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 
 ## Work Items
 
-| ID      | Status | Depends on                         | Deliverable                                                                                                                                                      | Verification                                                                                                    |
-| ------- | ------ | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| P20-T01 | done   | P10                                | Versioned durable stages, leases, idempotency, reattach-safe replay generations, and one retry budget                                                            | replay/crash, detach/reattach, lease-race and retry tests                                                       |
-| P20-T02 | done   | P20-T01                            | ABI selector/event/error decoding, confidence, and global ABI/Trace resource budgets including builtin and large-batch boundaries                                | ABI/trace fixture/fuzz and adversarial-budget tests                                                             |
-| P20-T03 | done   | P20-T02                            | Contract creation and EIP-1167/1967/beacon proxy versioning                                                                                                      | proxy-upgrade tests                                                                                             |
-| P20-T04 | done   | P20-T01                            | ERC-20/721/1155 discovery, transfers, ownership, balances, supply, and separate EIP-7708 protocol-transfer publication                                           | standard/nonstandard token tests                                                                                |
-| P20-T05 | done   | P20-T01                            | Geth callTracer and trace_* normalization, block-hash-batched call/state-difference tracing, and bounded envelopes without per-transaction debug fallback        | trace/revert, envelope/fallback/budget, PostgreSQL, race and production parity tests                            |
-| P20-T06 | done   | P20-T03, P20-T04, P20-T05          | Snapshot search, exact historical analytics/rollups and price adapters                                                                                           | Unicode/config/security, exact-block and fallback, PostgreSQL generation/snapshot/reorg, race and runtime tests |
-| P20-T09 | done   | P20-T04                            | Immutable exact NFT/ERC-20 state, cache-miss-only balance batches, typed capability failures, and metadata-role discovery and canonical event-driven NFT refresh | conflict/cache/reorg, parser/schema, exact RPC, known-ID batch, concurrency and Preview tests                   |
-| P20-T10 | done   | P20-T01                            | Lease-fenced atomic publication of derived output, stage result, journal, and job generation                                                                     | stale-worker and publication-window tests                                                                       |
-| P20-T11 | done   | P20-T05, P20-T10                   | Exact bounded transaction state differences with independent capability state                                                                                    | malformed, limit, replay, and reorg tests                                                                       |
-| P20-T13 | done   | P20-T03, P20-T01, P20-T10, P20-T11 | OpenZeppelin 5.6.1-aware `proxy@2`, dependent `abi@2`, shared Beacon observations, canonical upgrade/initialization facts, and replay-safe coverage evidence     | proxy/ABI unit, PostgreSQL integration/race, reorg, replay, and immutable binding-source tests                  |
-| P20-T17 | done   | P10, P20-T10                       | Configuration-digest-bound EntryPoint v0.6-v0.9 decoding, `userop@1`, durable operations/events/participants, continuous coverage, and explicit reindex          | decoder/configuration, PostgreSQL normal/race, malformed bundle, replay/reorg, and real-Anvil regressions       |
-| P20-T18 | done   | P10, P20-T04, P20-T10, P20-T09     | Always-scheduled `holder@1`, genesis-covered exact-state reconciliation, immutable observations, incremental publication, and bounded reindex                    | state/RPC, migration, PostgreSQL, supply/balance, lease/replay/reorg, race, and generation tests                |
-| P20-T19 | done   | P10, P20-T10                       | Optional Beacon network identity, bounded authenticated ingestion, durable overview, and `consensus@1`                                                           | fork/body-root, PostgreSQL, unavailable capability, lease/reorg, and discovery-generation regressions           |
-| P20-T20 | done   | P20-T19                            | Independently enabled `blob@1`, KZG-authenticated immutable object archives, fenced manifests, retained-object replay, and repair                                | object-store, independent readback, corruption, conditional write, crash, and replay regressions                |
-| P20-T21 | done   | P10, P20-T19                       | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                        | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                      |
-| P20-T27 | done   | P10                                | Current-chain core fact references, independent ENS progress and reorg recovery                                                                                  | Fresh schema, coverage gaps, restart, canonical detach/reattach and race tests                                  |
-| P20-T28 | done   | P20-T27                            | Complete v1/v2 discovery, registry and resolver lifecycles, migration and reverse bridging                                                                       | Pinned real contracts, graph/record identity, lifecycle and hostile-input tests                                 |
-| P20-T29 | done   | P20-T28                            | Exact resolution independent of directory coverage, bounded refresh and atomic publication                                                                       | Lagging coverage, stale events, expiry, leases, canonical and publication races                                 |
-| P20-T30 | done   | P20-T29                            | Independent exact registration profiles and canonical known-name directory; remove ENS source classifications                                                    | Protocol ownership/expiry/permissions, lifecycle, canonical publication and PostgreSQL race                     |
-| P20-T31 | done   | P20-T30                            | Canonical ENS operation history with temporal name associations and bounded recovery                                                                             | ENS history regressions, generated contracts and applicable production/browser gates                            |
-| P20-T32 | done   | P20-T20                            | S2-compressed immutable blob archives with bounded decoding and verified replay                                                                                  | S2 bounds/integrity, PostgreSQL race, RustFS, production runtime and full Lighthouse acceptance                 |
+| ID      | Status | Depends on                     | Deliverable                                                                                                                                                                    | Verification                                                                                                                     |
+| ------- | ------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| P20-T01 | done   | P10                            | Durable bounded stages, retry budgets, reattach-safe generations and lease-fenced atomic output/journal/job publication                                                        | Crash/replay, stale-worker, publication-window, lease and retry regressions                                                      |
+| P20-T02 | done   | P20-T01                        | ABI selector/event/error decoding, confidence, and global ABI/Trace resource budgets including builtin and large-batch boundaries                                              | ABI/trace fixture/fuzz and adversarial-budget tests                                                                              |
+| P20-T04 | done   | P20-T01                        | ERC-20/721/1155 discovery, transfers, ownership, balances, supply, and separate EIP-7708 protocol-transfer publication                                                         | standard/nonstandard token tests                                                                                                 |
+| P20-T05 | done   | P20-T01                        | Geth callTracer and trace_* normalization, block-hash-batched call/state-difference tracing, and bounded envelopes without per-transaction debug fallback                      | trace/revert, envelope/fallback/budget, PostgreSQL, race and production parity tests                                             |
+| P20-T06 | done   | P20-T13, P20-T04, P20-T05      | Snapshot search, exact historical analytics/rollups and price adapters                                                                                                         | Unicode/config/security, exact-block and fallback, PostgreSQL generation/snapshot/reorg, race and runtime tests                  |
+| P20-T09 | done   | P20-T04                        | Immutable exact NFT/ERC-20 state, cache-miss-only balance batches, typed capability failures, and metadata-role discovery and canonical event-driven NFT refresh               | conflict/cache/reorg, parser/schema, exact RPC, known-ID batch, concurrency and Preview tests                                    |
+| P20-T11 | done   | P20-T05, P20-T01               | Exact bounded transaction state differences with independent capability state                                                                                                  | malformed, limit, replay, and reorg tests                                                                                        |
+| P20-T13 | done   | P20-T01, P20-T02, P20-T11      | Contract creation and block-pinned proxy@2 / abi@2 observations, standard/Beacon proxy versions, canonical upgrade facts and immutable binding provenance                      | Proxy/ABI fixtures, PostgreSQL race, replay/reorg and binding-source regressions                                                 |
+| P20-T17 | done   | P10, P20-T01                   | Configuration-digest-bound EntryPoint v0.6-v0.9 decoding, `userop@1`, durable operations/events/participants, continuous coverage, and explicit reindex                        | decoder/configuration, PostgreSQL normal/race, malformed bundle, replay/reorg, and real-Anvil regressions                        |
+| P20-T18 | done   | P10, P20-T04, P20-T01, P20-T09 | Always-scheduled `holder@1`, genesis-covered exact-state reconciliation, immutable observations, incremental publication, and bounded reindex                                  | state/RPC, migration, PostgreSQL, supply/balance, lease/replay/reorg, race, and generation tests                                 |
+| P20-T19 | done   | P10, P20-T01                   | Optional Beacon network identity, bounded authenticated ingestion, durable overview, and `consensus@1`                                                                         | fork/body-root, PostgreSQL, unavailable capability, lease/reorg, and discovery-generation regressions                            |
+| P20-T20 | done   | P20-T19                        | Independent blob@1 archives: KZG-authenticated S2 bodies, immutable manifests, bounded decode, verified retained-object replay and repair                                      | Integrity/bounds, object-store readback, crash/reorg/repair, PostgreSQL race and Lighthouse acceptance                           |
+| P20-T21 | done   | P10, P20-T19                   | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                                      | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                                       |
+| P20-T27 | done   | P10, P20-T01                   | Current-chain ENS v1/v2 core-backed discovery, lifecycle/recovery, independent resolution and registration profiles, canonical name directory and event-time operation history | Pinned protocol fixtures, coverage/expiry/lease/publication fences and PostgreSQL race; separate runtime/Mainnet evidence in P30 |
 
 ## Acceptance
 
-- [x] P20-T32: S2 archives preserve raw content identity, bound decoding, and pass replay/reorg and full local archive acceptance.
-
-- [x] P20-T30: Independent exact registration profiles and canonical known-name directory; remove ENS source classifications. Protocol ownership/expiry/permissions, lifecycle, canonical publication and PostgreSQL race. Existing historical reports do not validate this extension.
-
-### Current-chain ENS rewrite
-
-- [x] P20-T27: Current-chain core fact references, independent ENS progress and reorg recovery. Fresh schema, coverage gaps, restart, canonical detach/reattach and race tests.
-- [x] P20-T28: Complete v1/v2 discovery, registry and resolver lifecycles, migration and reverse bridging. Pinned real contracts, graph/record identity, lifecycle and hostile-input tests.
-- [x] P20-T29: Exact resolution independent of directory coverage, bounded refresh and atomic publication. Lagging coverage, stale events, expiry, leases, canonical and publication races.
-
-Previous ENS checks are historical evidence only. Completion requires the new
-implementation and its own acceptance; directory coverage is reported separately.
-
-### Delivered capability acceptance
-
-- [x] Independent requests publication authenticates all five types against the
-      Beacon body/bid and execution header, retains orphan rows, and revalidates
-      retained commitments before lease-fenced replay.
-- [x] Durable stage work is bounded, restartable and generation/lease-fenced.
-- [x] ABI, proxy, token, trace and state-difference facts retain exact block identity.
-- [x] Canonical publication is atomic; reorg replay retains orphan observations.
-- [x] Exact balance observations reject conflicts and never reuse orphan state.
-- [x] Capability loss and hostile input fail explicitly without corrupting readiness.
-- [x] EntryPoint ranges and every UserOperation publication bind one configuration
-      digest; disabled or mismatched configurations cannot expose another digest.
-- [x] Only successful direct `handleOps`/`handleAggregatedOps` calls with exactly
-      agreeing calldata and EntryPoint events publish; malformed bundles publish
-      no partial rows. Lifecycle, failure, and participant facts survive replay,
-      detach/reattach, and orphan retention.
-- [x] UserOperation history uses explicit bounded `reindex --stage userop`;
-      migrations never enqueue unbounded history.
-- [x] Holder candidates require continuous block-zero-through-tip high/verified
-      canonical ERC-20 Transfer coverage. One exact block-hash state endpoint reconciles
-      every candidate and total supply before an immutable snapshot is public.
-- [x] Forward holder updates reconcile Transfer participants; code/proxy generation
-      changes and audit drift require a full baseline. Reorg, replay, lease expiry,
-      RPC loss, or conflicting state cannot expose partial or stale holdings.
-- [x] Existing holder history uses explicit bounded `reindex --stage holder`;
-      migrations and startup never enqueue unbounded history.
-- [x] Disabled consensus/blob features issue no upstream requests. Published
-      observations authenticate the pinned Beacon SSZ body root and exact execution
-      hash; time-derived slots are locator hints only.
-- [x] Blob bytes are KZG-bound immutable objects verified by independent readback
-      before PostgreSQL publishes manifests. Objects survive reorgs; retained
-      replay revalidates network, identity, canonicality, lease, generation, and bytes.
-- [x] Reorgs rewind discovery even while collection is disabled; generation fencing
-      rejects stale scans and publication. Optional failures remain worker-local
-      capability states and never withdraw core execution readiness.
-- [x] Canonical ERC-4906 single/batch and ERC-1155 URI events create immutable,
-      orphan-retained update observations without trusting their URI payloads.
-- [x] Direct update signals refresh their exact Token ID, while a batch signal
-      visits only already discovered IDs in its closed range with bounded work.
-- [x] Every event-driven source call stays on one state endpoint and uses the
-      exact event block hash; stale blocks never enqueue or publish a refresh.
-- [x] A same-URI standard update still refetches the document, while contracts
-      that emit no standard update event receive no periodic or request-driven
-      refresh.
-
-- [x] Core indexing, ordinary API responses, and readiness do not depend on ENS availability.
-
-- [x] Historical execution analytics retain exact fee totals and generation-fenced,
-      reorg-safe hourly rollups; dirty or incomplete ranges never publish stale
-      aggregates. Amsterdam gas semantics follow the current stats contract.
-- [x] `native_transfer@1` derives EIP-7708 ETH transfers only from authenticated
-      post-Amsterdam receipts and publishes output, journal, stage and lease
-      atomically. Replay retains orphan facts; Token/ABI/Trace keep protocol logs
-      separate from contract events and never fabricate ABI execution provenance.
+- [x] Durable stages retain exact block identity, bounded work, immutable observations,
+      atomic lease/generation-fenced publication and orphan-safe replay.
+- [x] ABI/proxy/trace/state-difference decoding rejects hostile or ambiguous input;
+      exact balances and NFT observations never reuse orphan state.
+- [x] NFT ERC-4906/ERC-1155 refresh uses exact event blocks and bounded known-ID
+      batches; same-URI signals refetch, and absent signals do not create pollers.
+- [x] UserOperation publications bind configured EntryPoint ranges and digest;
+      malformed or mismatched direct bundles publish no partial operations.
+- [x] Holder snapshots prove continuous genesis-through-snapshot coverage and
+      reconcile exact balances/supply before publication. Incremental/audit/code
+      changes, replay and reorg preserve complete-state requirements.
+- [x] Consensus and five-type requests authenticate network, Beacon body and
+      execution identity without driving execution finality or readiness.
+- [x] Blob archives use KZG-bound immutable S2 bodies, bounded decoding,
+      independent readback, fenced manifests and revalidated retained replay.
+- [x] ENS v1/v2 consumes core facts under enrich; exact resolution and registration
+      profiles publish independently of directory progress and of each other.
+      Canonical directory and event-time history retain expiry/reorg/lease fences.
+- [x] Analytics use exact amounts and generation-fenced rollups; native_transfer@1
+      keeps authenticated EIP-7708 protocol logs separate from ABI/contract events.
+- [x] Optional feature failures never corrupt core readiness. Historical replay
+      uses explicit bounded reindex; startup performs no unbounded backfill.
 
 ## Current Blockers
 
@@ -152,111 +99,46 @@ retains its release security, capacity, recovery and other existing gates.
 
 ## Evidence
 
-P20-T27: core-backed block/event references, stored-log-only collection, local
-identity checks and bounded attachment-aware rewind passed ENS sync/collector/v2
-PostgreSQL race regressions, including same-hash reattachment and no independent
-log acquisition. Unit tests, lint-go, generate-check, docs-check, plan-check and
-production-image test-schema-e2e passed. This proves the persistence/input
-boundary; protocol, publication and runtime acceptance are recorded separately below.
+P20-T01/P20-T02/P20-T04/P20-T05/P20-T06/P20-T11/P20-T13 passed
+stage/ABI/proxy/token/trace/state-difference and PostgreSQL normal/race tests covering immutable block identity, bounded decoding/batches, atomic
+lease-fenced publication, replay and orphan retention. P20-T09 NFT event refresh passed
+bounded known-ID, same-URI, conflict/reorg and local Kubo persistence checks;
+this does not establish public IPFS availability.
 
-P20-T21 passed five-type nonempty protocol fixtures, bounded malformed input,
-exact uint64 values, envelope identity/root rejection, PostgreSQL race publication,
-lease expiry, disabled-period cursor rewind, reorg/reattach and retained replay.
-Real Geth/Lighthouse Preview verified empty request sets against root-pinned
-Gloas envelopes and execution headers in both role layouts, including restart.
-The nonempty five-type evidence is synthetic; real builder transactions and
-public historical retention are not established.
+P20-T17 UserOperation decoder/configuration tests cover EntryPoint v0.6-v0.9; a real
+Anvil packed v0.9 transaction passed both layouts. P20-T18 holder reconciliation passed
+exact supply/balance, coverage, incremental publication, lease/replay/reorg and
+PostgreSQL race tests. API/Web acceptance remains in P40/P50, topology in P30-T35
+and reference capacity in P70-T04.
 
-P20-T04/P20-T06 retain local native-transfer and historical-analytics acceptance:
-stage/publication, exact amounts, migration, reorg/replay, PostgreSQL/race and
-load regressions passed. Current protocol/stage semantics remain owned by the
-ADRs; P30-T35 retains historical runtime/Preview parity and evidence limits.
+P20-T27 passed core-reference/attachment, pinned v1/v2 lifecycle/discovery,
+independent profile/resolution, canonical directory, expiry and temporal history
+regressions, PostgreSQL race, generation and fresh-schema checks. See the
+[current-chain report](../reviews/ens-current-chain-acceptance.md) and
+[profile extension report](../reviews/ens-current-chain-acceptance.md#registration-profile-local-acceptance).
+P30-T150/P30-T151 retain separate local and representative Mainnet acceptance;
+profile/history fixtures do not extend the Mainnet sample or prove full history.
 
-P20-T09 includes NFT parser/schema, event-driven ERC-4906/ERC-1155 refresh,
-known-ID batch bounds, concurrency and reorg acceptance. Offline local Kubo
-Preview proves exact observations and refresh persistence, not public IPFS.
-
-P20-T17 passed EntryPoint v0.6-v0.9 decoder/configuration and PostgreSQL
-normal/race tests. A real Anvil packed v0.9 transaction passed both role layouts;
-API/Web and runtime evidence belongs to P40-T20, P50-T72, and P30-T35.
-
-P20-T18 passed exact supply/balance reconciliation, continuous coverage,
-immutable facts, publication fences, incremental updates, replay, and reorg
-withdrawal in unit/race and PostgreSQL normal/race tests. Its public and runtime
-acceptance is recorded in P40-T21, P50-T73, and P30-T35; reference capacity
-remains P70-T04 work.
-
-P20-T19 protocol/PostgreSQL fixtures authenticated Bellatrix through Gloas
-bodies against pinned roots, including private presets and independent geth
-root checks. They rejected forged execution associations/network changes and
-covered unavailable worker outcomes, leases, bounded initial discovery, and
-generation-fenced catch-up after disabled-period reorgs.
-P20-T20 passed duplicate references, conditional writes, independent readback,
-upload-before-publication failure, replay after upstream pruning, generation
-changes during readback, missing-object repair, and fixed-network replay checks.
-These are historical protocol-fixture/container results. Real private Beacon
-acceptance and deferred storage-side IAM enforcement belong to P30-T138;
-public-network retention and production backup/restore are not established.
-
-Retained completed milestones: P20-T01, P20-T02, P20-T03, P20-T04, P20-T05, P20-T06,
-P20-T09, P20-T10, P20-T11, P20-T13, P20-T17, P20-T18, P20-T19, P20-T20.
-
-Stage, ABI, token, proxy, trace and state-difference unit/fuzz/race checks
-and PostgreSQL integration passed at the delivery revisions. Tests covered
-lease-fenced atomic publication, detach/reattach replay, exact immutable NFT
-observations, hostile decoding budgets and historical proxy bindings.
-
-Later block-batched trace and exact-balance work passed `make check`,
-`make test-integration-race`, generation/source gates and schema acceptance.
-Fixtures prove one-endpoint batches, cache-miss-only reconciliation, conflict
-rejection and no orphan-cache reuse. Current stage versions and contracts live
-in the architecture and ADRs.
-
-[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P20-enrichment.md#evidence).
-These are historical results, not tests rerun by this plan cleanup.
-
-P20-T28: pinned real v1/v2 fixtures exercise premigration reservation, unwrapped,
-unlocked and locked migrations, WrapperRegistry factory discovery, v1 reverse
-mirroring, shared paths, token regeneration and record links. ENS units and the
-PostgreSQL v2 race regression passed, together with lint/docs/plan checks.
-P30-T150/P30-T151 record separate production-image and live-chain evidence.
-
-P20-T29: all ENS PostgreSQL race regressions passed, including incomplete
-coverage, moving-head commits, older projections, expiry and attachment fences.
-Single-source publications, catalog and names outbox share one transaction.
-Generation, lint, docs, plan and production-image schema gates passed.
-
-P20-T30: exact pinned-contract profile regressions, ENS PostgreSQL race tests,
-independent publication/invalidation and canonical discovery withdrawal passed.
-Generation, Go lint and fresh production-image schema acceptance passed.
-Profiles preserve registrar expiry and token/resource identities independently
-of forward resolution; no namespace classification remains in persisted contracts.
-Authoritative WrapperRegistry paths, unsupported permission models and
-registration-expiry pagination also passed, followed by the full PostgreSQL
-race suite; see the [extension report](../reviews/ens-name-details-acceptance.md).
-
-P20-T31: Canonical event facts retain source, block and log identity; event-time v2 associations exclude later aliases and recover persisted pending work after restart. Verified by the ENS PostgreSQL race suite, temporal/restart regressions and fresh production-schema gate.
+P20-T19 consensus fixtures authenticate Bellatrix through Gloas, network/execution
+identity and generation-fenced reorg recovery. P20-T21 passed all five nonempty
+request-type fixtures and publication/replay fences. Real Lighthouse Preview
+covered empty Gloas request sets in both layouts; nonempty builder transactions
+and public historical retention are not established.
 
 ### Blob access and archive update
 
-P20-T32: `make check` (including source, generation, lint, unit/race, security,
-license and deployment checks), `make test-integration-race`,
-`CI=true make test-e2e` (225 tests), `make test-rustfs`, `make test-schema-e2e`,
-`make test-runtime-e2e` and `make test-preview-consensus-full` passed.
-The frontend unit suite passed 896 tests. The S2 roundtrip/bounds regression
-measured 131072 raw bytes as 12 bytes for zero, 18 for sparse and 131079 for
-seeded random content; malformed, truncated, oversized and digest/length
-mismatches are rejected.
+P20-T20 includes S2 integrity/bounds, conditional writes, independent readback,
+upload-before-publication failure, retained replay and repair. Shared archive,
+P40-T22 browser/V2, P50-T75 preview/download and P60-T13 billing acceptance passed
+`make check`, `make test-integration-race`, `CI=true make test-e2e` (225 tests),
+`make test-rustfs`, `make test-schema-e2e`, `make test-runtime-e2e` and
+`make test-preview-consensus-full` on macOS arm64/Docker Linux arm64.
 
-Evidence environment: macOS arm64 with Docker Desktop Linux arm64, revision
-`88c6d576` plus the reviewed browser GET change and its route-test correction.
-Runtime and full Lighthouse builds used production image config
+The recorded worktree was based on `88c6d576` plus the browser GET and route-test
+correction; runtime/Lighthouse image config was
 `sha256:532c4f544adb6a56317d97d04425a637a87d28fc207d27e0bbae9d02d3f79258`.
-Full Lighthouse acceptance verified independent archive readback, read-only API
-permissions, outage/recreation recovery, both role layouts and nonzero finality.
-Runtime acceptance also passed local EIP-3009/Permit2 settlement and debit in
-both layouts. These results do not establish live payments, public Beacon
-historical retention, production backup/restore or native Linux host cleanup.
-The RustFS writer-IAM limitation remains separately documented in Preview operations.
-Security gates passed their existing thresholds: npm reported two moderate
-advisories; govulncheck reported no affected code, with one unused-module advisory.
+Full acceptance verified archive bytes, read-only API access, outage/recreation,
+all/split publication and nonzero finality. Local EIP-3009/Permit2 settlement and
+debit passed separately from live payments. These results do not prove public
+Beacon retention, production backup/restore or storage-enforced writer IAM;
+P30-T138 retains that limitation.

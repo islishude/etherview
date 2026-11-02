@@ -5,8 +5,9 @@ Status: accepted
 This decision supersedes ADR-0041 and the external-name provisions of ADR-0011.
 ADR-0018 retains writer-authoritative name reads. The current-chain rewrite
 replaces this ADR's previous independent ENS role and dual-source design.
-P20-T27/T28/T29 own persistence, protocols and publication; P30-T149 owns runtime;
-P40-T27/P50-T81 own public reads/display; P30-T150/T151 own local/live acceptance.
+P20-T27 owns persistence, protocols, profiles and history publication;
+P40-T27/P50-T81 own public reads/display. P30-T150 owns runtime and local
+acceptance; P30-T151 owns representative Mainnet acceptance.
 Historical reports establish only the implementation and samples they exercised.
 
 ## Decision
@@ -169,7 +170,7 @@ Avatars/text pages, public resolution submission,
 wallet-write name substitution and arbitrary offchain enumeration remain outside
 scope. Names are current presentation identities, not historical transaction facts.
 
-### Name registration profiles and directory (P20-T30/P40-T28/P50-T82)
+### Name registration profiles and directory (P20-T27/P40-T27/P50-T81)
 
 Publish registration profiles independently of forward resolution. Registrant is
 the current registration-right holder, including wrapped token ownership, never
@@ -202,7 +203,7 @@ refresh for current fields and history, local expiry timers, safe normalized
 URLs, bilingual/mobile layouts and independent address navigation/copy actions.
 No account-owned-name enumeration or registration management is introduced.
 
-### Name operation history (P20-T31/P40-T29/P50-T83)
+### Name operation history (P20-T27/P40-T27/P50-T81)
 
 History is a separate immutable projection of reviewed contract events, referencing
 core logs. It preserves event-time name identity, including v2 registry paths,

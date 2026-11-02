@@ -4,8 +4,8 @@ Status: accepted
 
 ## Decision
 
-This application lock replaces ADR-0049/ADR-0053's independently signed catalog
-and hosted compiler packages. The complete supported version set, the explicit
+This application lock replaces the retired independently signed catalog and
+hosted compiler packages. The complete supported version set, the explicit
 dual-Pyodide policy,
 fresh restricted SEA processes, exact matching and canonical lease-fenced
 publication remain mandatory.

@@ -186,7 +186,7 @@ inputs are canonical uint256 decimal values.
 | `tokensupply`      | `GET`, `POST` | `contractaddress`            | None                                            | Optional | State; alias of `stats.tokensupply`                                                                                                              |
 | `tokenbalance`     | `GET`, `POST` | `contractaddress`, `address` | `tag`                                           | Optional | State; alias of `account.tokenbalance`                                                                                                           |
 | `tokeninfo`        | `GET`, `POST` | `contractaddress`            | None                                            | Optional | Token through the canonical tip and a current canonical token observation. Exact State is optional; without it, ERC-20 `totalSupply` is omitted. |
-| `tokenholderlist`  | `GET`, `POST` | `contractaddress`            | `page`, `offset`, fixed address-ascending order | Optional | Core, Token, Proxy, and Holder complete from genesis through the canonical tip; latest token holder snapshot is complete                         |
+| `tokenholderlist`  | `GET`, `POST` | `contractaddress`            | `page`, `offset`, fixed address-ascending order | Optional | Latest completed coherent canonical holder snapshot, with Core/Token/Proxy/Holder coverage from genesis through that snapshot                    |
 | `tokenholdercount` | `GET`, `POST` | `contractaddress`            | None                                            | Optional | Same authoritative Holder snapshot as `tokenholderlist`                                                                                          |
 
 ## Source-Verification Form

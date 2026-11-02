@@ -1,13 +1,15 @@
-# Current-chain ENS rewrite acceptance
+# Current-chain ENS acceptance
 
-Recorded 2026-10-29 UTC (2026-10-30 Asia/Shanghai). This report belongs to
-P30-T150/P30-T151 and ADR-0058. The older
-[P30 ENS report](P30-ens-mainnet-acceptance.md) remains historical evidence for
-its original architecture and does not close these milestones.
+This report retains separate acceptance records for current-chain ENS publication
+and its later registration-profile extension under ADR-0058. P20-T27, P40-T27
+and P50-T81 own the capability; P30-T150/P30-T151 own local and representative
+Mainnet acceptance. Recorded results apply to their exact images and scopes, not
+to subsequent changes. Retired independent-role ENS evidence remains in Git.
 
 ## Local acceptance
 
-The following passed locally after the rewrite:
+Recorded 2026-10-29 UTC (2026-10-30 Asia/Shanghai). The following passed locally
+after the rewrite:
 
 - ENS unit tests and the combined PostgreSQL ENS race regressions.
 - `make check`, including generation, Go race, lint, source ownership,
@@ -32,13 +34,9 @@ image. The final runtime, schema and Preview runs used the image recorded below.
 This is local development acceptance; it does not claim remote CI or a release
 capacity/security/soak result.
 
-The regressions found and fixed during acceptance include source-cursor rewind
-following an orphan sibling repeatedly, rollback of newly learned invalidation
-watches, exhaustion of unclaimed work while waiting in the queue, and PostgreSQL
-numeric coefficients being mistaken for full chain/coin values. Queue latency
-now remains backlog; first claim starts the bounded execution deadline, and
-subsequent retries cannot renew it. A coin type of `60` remains `60` through
-operator import, publication and reads.
+Regressions cover attachment-aware cursor rewind, invalidation-watch rollback,
+queue latency versus bounded execution/retry deadlines, and exact numeric
+chain/coin identities through import, publication and reads.
 
 ## Representative Mainnet publication
 
@@ -106,7 +104,42 @@ exhaustive Mainnet deployment inventory. Neither this report nor local fixtures
 prove full historical coverage or arbitrary offchain/wildcard-name enumeration.
 
 The feature and representative-publication gates are separate from deployment
-catch-up. P70's live-payment, security, reference-capacity, release conformance,
-recovery/soak, documentation and signed-artifact gates remain in their owning
-plans. In particular, this bounded run does not prove the 500 RPS reference
+catch-up. P70's security, reference-capacity, release conformance, recovery/soak,
+documentation and signed-artifact gates remain open. Independent live-payment
+acceptance belongs to P60-T17 and is not evidence supplied by this report. In particular, this bounded run does not prove the 500 RPS reference
 capacity target or clear its infrastructure requirement.
+
+## Registration-profile local acceptance
+
+Recorded 2026-10-30. This extension adds independent registration profiles,
+canonical known-name search and database-only name details. Unresolved/expired
+names remain searchable; two names resolving to one address retain distinct
+identities. Profile and resolution expiry/publication are independent. Canonical
+withdrawal, immutable snapshots and lease/generation/configuration fences remain.
+
+Pinned v1/v2 fixtures cover registrar/registry ownership, Wrapper ownership and
+expiry, authoritative parent/WrapperRegistry paths, premigration/migration,
+renewal, regeneration, grace and reregistration. Unreviewed implementations or
+permission models never invent a controller. Focused regressions also preserve
+retryable proxy-storage failures and exact-job-block premigration fallback.
+Bilingual mobile/keyboard tests cover name details, links, copying and expiry.
+
+Targeted ENS/API/query and PostgreSQL race tests, `make test-integration-race`,
+generation, Go/Web lint and documentation gates passed. Frontend acceptance
+comprised 760 unit and 157 browser cases, with both new mobile cases additionally
+checked through keyboard activation. Initial assets stayed within their budgets.
+
+`make test-schema-e2e`, `make test-runtime-e2e` and `make test-preview-contracts`
+passed, including independent profile publication followed by public name reads,
+restart/recovery and all/split parity. Final prebuilt runs followed
+`make docker-build` using Linux arm64 image
+`sha256:6d6b6b53162f67801b508ab94388c1e3abee7218f3d550e89d0f8cccec8cf246`.
+Review fixes then passed `make check`, the full owned PostgreSQL race runner,
+four bilingual ENS browser cases, schema, all/split runtime/local x402 and Preview
+with image `sha256:053532cc3d2561b91bc2fa2941831e6fb2e2d458876fbf64f002a04e7f97aaae`.
+The subsequent SQL-only cleanup passed API/query race, PostgreSQL ENS/search race,
+generation and Go lint checks; it did not rerun those image-bound suites.
+
+These are local development results, not new Mainnet registration-field or
+operation-history evidence, remote CI, full history or release acceptance.
+The earlier Mainnet samples above do not validate the later profile fields.

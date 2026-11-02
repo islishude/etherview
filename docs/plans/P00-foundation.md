@@ -49,22 +49,14 @@ persistence, typed SQL, neutral package and API contracts, and a deterministic e
 
 ## Current Blockers
 
-None. P60/P70 retain independent release blockers.
+None. P70 retains final release gates.
 
 ## Evidence
 
-P00-T04 includes typed SQL/native pgx and neutral contract acceptance: exact
-values, routing, snapshots, lease/commit fencing, cancellation, session-lock
-connection disposal and import/source boundaries passed focused normal/race,
-PostgreSQL and generation checks. The development guide retains revision-bound
-benchmarks; P30-T35 retains production-image/native architecture evidence.
-
-Retained completed milestones: P00-T03, P00-T04, P00-T05.
-
-CLI/configuration unit and smoke tests, PostgreSQL migration and generated
-API contracts, and frontend build/deep-link checks passed for the initial
-foundation. Toolchain, lint and governance maintenance now belongs to the
-normal development workflow, not additional foundation milestones.
-
-[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P00-foundation.md#evidence).
-These are historical results, not tests rerun by this plan cleanup.
+P00-T03/P00-T04/P00-T05 passed CLI/configuration, generated API/SQL,
+PostgreSQL migration, frontend build/deep-link and component-parity checks at
+their delivery revisions. Native pgx and neutral contracts passed exact-value,
+snapshot/routing, lease/commit, cancellation, session-lock disposal, race and
+source/import-boundary regressions. The [development guide](../development.md#native-pgx-acceptance-record)
+retains bounded benchmark evidence; P30-T35 owns production-image acceptance.
+Toolchain and governance maintenance follow the normal workflow.

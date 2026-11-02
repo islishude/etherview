@@ -35,43 +35,38 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 
 ## Work Items
 
-| ID      | Status | Depends on                          | Deliverable                                                                                                                                                             | Verification                                                                                                                                                     |
-| ------- | ------ | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P60-T02 | done   | P40, P50                            | SIWE challenge/session/profile persistence, typed schema/queries, token/CSRF core and public contracts                                                                  | generation, migration, unit and PostgreSQL concurrency tests                                                                                                     |
-| P60-T03 | done   | P60-T02                             | Cookie/Origin/CSRF-protected HTTP authorization and administrator role/status/session-revocation CLI                                                                    | handler/replay/expiry, authorization, CLI and PostgreSQL integration tests                                                                                       |
-| P60-T05 | done   | P60-T03                             | Bounded wallet signing, `AuthProvider`, account page, admin users, and bilingual UX                                                                                     | Vitest, boundary, a11y, and browser tests                                                                                                                        |
-| P60-T09 | done   | P40, P50, P60-T03, P60-T05          | Scoped, user-owned API keys and a tabbed `/account` management workspace                                                                                                | PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race, and aggregate gates pass                                                                  |
-| P60-T11 | done   | P60-T03, P60-T09                    | Prepaid accounts, append-only ledger, top-up intents and usage reservations with ADR/API/config/catalog contracts and typed persistence                                 | generation/config, migration, PostgreSQL concurrency and race tests                                                                                              |
-| P60-T12 | done   | P60-T11, P60-T13                    | x402 v2 EIP-3009/Permit2 top-ups, replay identity, pending settlement/reconciliation, and disposable Anvil/Facilitator production parity                                | hostile protocol/transport, real local chain/ledger/usage/replay/outage, monolith/split tests; live gate passed under P60-T17                                    |
-| P60-T13 | done   | P60-T11                             | `/v2/api` user-key reservation/debit gate, operator bypass, canonical resources, bounded capture, and removal of accountless request-payment runtime/configuration      | compatibility, quota/failure/race, config, migration/audit, generation, deployment, and runtime tests                                                            |
-| P60-T14 | done   | P60-T12                             | Account balance/top-up/usage APIs and constrained browser wallet top-up flow                                                                                            | generated client, Vitest, Playwright, and accessibility                                                                                                          |
-| P60-T16 | done   | P60-T03, P60-T05, P60-T13, P60-T14  | Auth/billing metrics, alerts, role-scoped Secret/Helm/Compose deployment, runbooks, administrator adjustment and reconciliation/rollback controls                       | deployment, security/race, browser/E2E, operations, common and role-parity gates                                                                                 |
-| P60-T17 | done   | P60-T16                             | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance                                                                                                    | testnet transactions and writer/chain/credit/usage reports                                                                                                       |
-| P60-T18 | done   | P60-T03, P60-T09, P10, P20, P40-T01 | Private writer-authoritative watch management, bounded enrollment, fresh schema/typed queries, and ownership isolation                                                  | OpenAPI/generation, schema, Cookie/Origin/CSRF, handler, watch-limit, and PostgreSQL regressions                                                                 |
-| P60-T19 | done   | P60-T18, P20-T10                    | Durable transaction/token notifications, generation-fenced delivery, reorg/reattach handling, read watermarks, and bounded cleanup                                      | restart, lease/generation, concurrency, indexed matching, disabled-account replay, and PostgreSQL regressions                                                    |
-| P60-T20 | done   | P60-T18, P60-T19                    | Replace durable notifications with session-bound, best-effort Web Push; five watches/account; align P40 API, P50 browser and P70 topology acceptance                    | Local automated acceptance and operator-confirmed closed-page provider delivery; evidence limits below                                                           |
-| P60-T21 | done   | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                                 | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                                                               |
-| P60-T22 | done   | P60-T21                             | Whole-token top-up input and mandatory complexity-weighted pricing for every V2 query                                                                                   | Exact decimal/UI, catalog/config, accounting, generation and local all/split x402 gates                                                                          |
-| P60-T23 | done   | P60-T22                             | Use etherview.module.action IDs throughout pricing, usage, API, metrics and billing UI; retain Sourcify and V2 naming                                                   | Catalog/ledger/API/UI, integration race, browser and all/split local-payment acceptance                                                                          |
-| P60-T24 | done   | P60-T12, P60-T22                    | Payment-view wallet scope with immediate network selection, retained failed selections and site-bound SIWE identity; Anvil indexing and real Sepolia payments           | controlled transitions, failed-selection retry, departure restoration, hostile wallet/session races, exact approval and separate live payment/API-debit evidence |
-| P60-T25 | done   | P60-T24                             | Multi-chain, multi-token x402 funding with token-specific precision and fixed conversion into unified credit; persistent Preview Anvil payment chain behind the gateway | Four chain/token combinations, atomic credit and replay, browser selection, gateway, restart/outage and all/split acceptance; local acceptance only              |
-| P60-T26 | done   | P60-T25                             | Production standalone multi-chain facilitator, keystore/KMS, durable settlement/progress, recoverable top-up steps and shared Preview                                   | Unit/race, durable journal and concurrent-chain recovery, standard-contract dual-chain, schema/runtime and deployment gates passed; local-only acceptance        |
-| P60-T27 | done   | P60-T26                             | Rustack KMS and two independent Anvil networks for local facilitator acceptance                                                                                         | AWS SDK HTTP signing compatibility, both payment methods on both networks, all/split recovery and independent chain/writer reconciliation                        |
-| P60-T30 | done   | P60-T26, P60-T27                    | Facilitator configuration, lifecycle and deployment refactor under ADR-0059                                                                                             | Strict config/offline CLI, secret isolation, lifecycle and PostgreSQL race, aggregate/deployment, runtime/Preview/Rustack acceptance passed                      |
+| ID      | Status | Depends on                          | Deliverable                                                                                                                                                          | Verification                                                                                                                              |
+| ------- | ------ | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| P60-T02 | done   | P40, P50                            | SIWE challenge/session/profile persistence, typed schema/queries, token/CSRF core and public contracts                                                               | generation, migration, unit and PostgreSQL concurrency tests                                                                              |
+| P60-T03 | done   | P60-T02                             | Cookie/Origin/CSRF-protected HTTP authorization and administrator role/status/session-revocation CLI                                                                 | handler/replay/expiry, authorization, CLI and PostgreSQL integration tests                                                                |
+| P60-T05 | done   | P60-T03                             | Bounded wallet signing, `AuthProvider`, account page, admin users, and bilingual UX                                                                                  | Vitest, boundary, a11y, and browser tests                                                                                                 |
+| P60-T09 | done   | P40, P50, P60-T03, P60-T05          | Scoped, user-owned API keys and a tabbed `/account` management workspace                                                                                             | PostgreSQL, browser, schema/runtime, Hardhat, Foundry, security, race, and aggregate gates pass                                           |
+| P60-T11 | done   | P60-T03, P60-T09                    | Prepaid accounts, append-only ledger, top-up intents and usage reservations with ADR/API/config/catalog contracts and typed persistence                              | generation/config, migration, PostgreSQL concurrency and race tests                                                                       |
+| P60-T12 | done   | P60-T11, P60-T13                    | x402 v2 EIP-3009/Permit2 top-ups, replay identity, pending settlement/reconciliation, and disposable Anvil/Facilitator production parity                             | hostile protocol/transport, real local chain/ledger/usage/replay/outage, monolith/split tests; live gate passed under P60-T17             |
+| P60-T13 | done   | P60-T11                             | Complexity-weighted V2 pricing and etherview.* operation identities, account-wide reservations/debits, operator bypass and bounded response capture                  | Catalog/config completeness, quota/failure/race, namespace, generation, PostgreSQL and local payment parity                               |
+| P60-T14 | done   | P60-T12                             | Account balance/top-up/usage APIs, exact whole-token input, constrained wallet approval/signing and recoverable progress UI                                          | Generated client, exact decimal/bounds, wallet/session races, browser recovery and accessibility                                          |
+| P60-T16 | done   | P60-T03, P60-T05, P60-T13, P60-T14  | Auth/billing metrics, alerts, role-scoped Secret/Helm/Compose deployment, runbooks, administrator adjustment and reconciliation/rollback controls                    | deployment, security/race, browser/E2E, operations, common and role-parity gates                                                          |
+| P60-T17 | done   | P60-T16                             | One-shot live EIP-3009 and Permit2 top-up plus API-debit conformance                                                                                                 | testnet transactions and writer/chain/credit/usage reports                                                                                |
+| P60-T18 | done   | P60-T03, P60-T09, P10, P20, P40-T01 | Private writer-authoritative watch management, bounded enrollment, fresh schema/typed queries, and ownership isolation                                               | OpenAPI/generation, schema, Cookie/Origin/CSRF, handler, watch-limit, and PostgreSQL regressions                                          |
+| P60-T20 | done   | P60-T18, P20-T01                    | Session-bound best-effort Web Push with five watches/account, TTL 0, volatile matching and no persisted history/retry queue                                          | Ownership/revocation, restart/replay, encrypted payloads, browser worker and all/split tests; separate operator provider acceptance       |
+| P60-T21 | done   | P60-T12, P60-T16                    | Local x402 top-ups on the existing Geth/Lighthouse Preview, genesis-predeployed token and prepaid usage                                                              | Preview EIP-3009/Permit2, restart/outage and split/all-role acceptance; no public testnet evidence                                        |
+| P60-T25 | done   | P60-T12, P60-T14, P60-T21           | Multi-chain/token funding with immutable conversion into unified credit, payment-view wallet scope and persistent second Preview chain                               | Four payment options, exact credit/replay, failed-switch recovery, departure restoration, gateway/restart/outage and all/split acceptance |
+| P60-T26 | done   | P60-T25                             | Standalone multi-chain facilitator with keystore/KMS, durable settlement/progress, strict offline-checkable configuration, role-scoped secrets and bounded lifecycle | Protocol/config/CLI race, PostgreSQL journal/nonce/recovery, schema/runtime/Preview and deployment gates; local evidence                  |
+| P60-T27 | done   | P60-T26                             | Rustack KMS and two independent Anvil networks for local facilitator acceptance                                                                                      | AWS SDK HTTP signing compatibility, both payment methods on both networks, all/split recovery and independent chain/writer reconciliation |
 
 ## Acceptance
 
 - [x] Payment-network selection retains failed selections and unavailable balances;
       the payment-view scope preserves site-bound identity and restores the original
-      network on departure (P60-T24).
+      network on departure (P60-T25).
 - [x] Durable broadcast-backed progress and recoverable bilingual top-up steps
-      preserve exactly-once credit and all/split parity (P60-T26). This evidence
-      does not cover P60-T27's Rustack KMS and dual-Anvil acceptance.
+      preserve exactly-once credit and all/split parity (P60-T26). Rustack KMS evidence
+      remains independently recorded under P60-T27.
 - [x] P60-T27: AWS SDK HTTP signing through Rustack and both payment methods on
       two independent Anvil networks pass all/split recovery and independent
       chain/writer reconciliation under the acceptance criteria below.
 
-- [x] P60-T23: The etherview.* operation namespace is used end to end without legacy aliases or backfills; live payment acceptance remains separate.
+- [x] P60-T13: The etherview.* operation namespace is used end to end without legacy aliases or backfills; live payment acceptance remains separate.
 
 - [x] An invalid signature creates neither a user nor a session; a first valid
       login creates an ordinary active user.
@@ -94,7 +89,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
       contract-call behavior remains compatible.
 - [x] `serve --roles=all` and the split API role use the same implementation and
       PostgreSQL session semantics.
-- [x] The browser exposes only `/account` with deep-linked Overview, API Keys,
+- [x] The `/account` workspace exposes deep-linked Overview, Watchlist, API Keys
       and Billing tabs; `/users/me/api-keys` remains an API-only namespace.
 - [x] Personal API keys are writer-owned, canonically scoped, bounded by an
       atomic per-user limit, one-time revealed, and permanently revoked when
@@ -122,20 +117,20 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
       and CSRF checks isolate users; API keys cannot manage private tools.
 - [x] P60-T20 replaces durable notification history and queues with session-bound
       Web Push, TTL 0, no retries/backfill, bounded matching and all/split parity.
-      P40 subscription API, P50 browser controls/worker and P70 runtime acceptance
-      share this migration. Real provider delivery is separate from local evidence.
+      P40 subscription API and P50 browser controls/worker share all/split feature
+      acceptance. Real provider delivery is separate from local evidence.
 
 ## Current Blockers
 
 P60-T26 and P60-T27 local acceptance are complete. No P60 feature blocker
 remains. Rustack SDK compatibility and dual-Anvil all/split reconciliation passed;
 real AWS provisioning and public-testnet funding are outside T27's local scope.
-Earlier P60-T17/T24 live evidence retains its original scope, and P70 release
+Earlier P60-T17 live evidence retains its original scope, and P70 release
 gates remain separate.
 
 ## Evidence
 
-### Final live payment and API-debit acceptance (P60-T17 / P60-T24)
+### Final live payment and API-debit acceptance
 
 Manual MetaMask SIWE, EIP-3009 and Permit2 payments, finalized independent-RPC
 reconciliation, unique account credits and successful priced API debits passed.
@@ -148,25 +143,32 @@ The one-shot harness, report SQL, Make targets and local runtime were removed
 after acceptance. At the operator's request, detailed reports, credentials,
 transaction identifiers and the local databases were also deleted. This plan
 retains only the verified acceptance conclusion; raw evidence is no longer kept.
-The production wallet regressions and Go lint fixes are retained. P60-T17 and
-P60-T24 are complete within their original scope; P70 release gates remain separate.
+The production wallet regressions and Go lint fixes are retained. P60-T17 is complete within its original scope; P70 release gates remain separate.
 
-P60-T24's payment-view scope also passed controlled-wallet frontend and bilingual
+P60-T25's payment-view scope also passed controlled-wallet frontend and bilingual
 mobile/desktop browser regressions for immediate network selection, retained failed
 selections, unavailable balances, partial-switch recovery and departure races.
 Frontend lint, generation and governance checks passed. This UI extension has local
 acceptance only; the earlier live-payment conclusion does not extend to it.
 
-### Prior feature acceptance
+### Sessions, keys and prepaid accounting
 
-P60-T20 implements session-bound subscriptions, TTL 0 sends, volatile cursors,
-indexed bounded matching, lock-loss cancellation, and removal of history/queues.
-Local regressions cover encrypted payloads/VAPID, session ownership/revocation,
-concurrent watch limits, delayed Token publication/replay, restart backlog
-loss, single-sender behavior, snapshot closure, browser controls and CSV.
-P40/P50/P70 share API, browser and production-topology acceptance. Browser
-permission and notification tests include a real Chromium worker with the site
-page closed, using a CDP-injected event; this is not vendor delivery evidence.
+P60-T02/P60-T03/P60-T05/P60-T09/P60-T16 passed SIWE challenge/replay/expiry,
+writer session revocation, Cookie/Origin/CSRF, scoped-key ownership, bilingual account and deployment unit/browser and
+PostgreSQL concurrency/race checks at delivery. P60-T11/P60-T12/P60-T13
+prepaid ledger, reservation/debit/release, pending settlement and replay passed local real-Anvil
+production tests in both layouts. Exact complexity pricing and the etherview.*
+namespace passed catalog/config, generation, browser and accounting tests; shared
+archive/V2 acceptance is in [P20](P20-enrichment.md#blob-access-and-archive-update).
+P60-T14 passed generated API, exact amount, bounded approval/signing and browser
+recovery/accessibility checks. These local tests are distinct from the live gate above.
+
+### Private watches and browser push
+
+P60-T18/P60-T20 passed ownership/revocation, concurrent watch limits, encrypted
+payload/VAPID, bounded matching, lock-loss cancellation, delayed publication,
+restart backlog loss and all/split tests. Chromium worker delivery with the page
+closed used a CDP-injected event and does not prove vendor delivery.
 
 On 2026-10-24, the operator confirmed that an earlier manual test successfully
 received a real browser notification after all site tabs were closed, and
@@ -177,126 +179,21 @@ and exact permission state were not supplied with the confirmation. This update
 records the operator's acceptance; it does not claim an independently rerun
 test, native notification-click verification, or broader browser/OS coverage.
 
-P60-T18/P60-T19's former durable delivery and read-watermark decision is replaced
-by ADR-0051/P60-T20. Watch ownership and CSV acceptance remain preserved.
+### Multi-payment funding and standalone facilitator
 
-Retained completed milestones: P60-T02, P60-T03, P60-T05, P60-T09, P60-T11, P60-T12,
-P60-T13, P60-T14, P60-T16, P60-T18, P60-T19, P60-T20.
+P60-T21/P60-T25 passed local Preview EIP-3009/Permit2, four chain/token choices,
+exact conversion/credit/replay, wallet-switch failure/restoration, gateway,
+persistent Anvil restart/outage and uncertain-settlement recovery in both layouts.
+T25's original local Permit2 fixture does not establish production-contract
+compatibility; earlier live evidence does not extend to these later changes.
 
-SIWE challenge/session, replay, expiry, Cookie/Origin/CSRF, writer
-authorization and administrative revocation tests passed with PostgreSQL
-concurrency coverage. Generated contracts, bilingual wallet/account browser
-flows, role-scoped deployment, security and monolith/split acceptance passed.
-Scoped user API keys additionally passed schema/runtime, Hardhat/Foundry,
-ordinary/race and aggregate gates. Reload and wallet-identity regressions remain
-part of the maintained auth suite.
-
-Protocol/hostile-transport and PostgreSQL 18 concurrency/race tests passed
-for single credit, account-wide spend, reservation/release, replay, pending
-settlement and reconciliation. Generated API, frontend/browser, security,
-role-scoped deployment and `make check` passed at implementation closure.
-Real local Anvil/Facilitator production-image tests passed SIWE, EIP-3009 and
-Permit2 top-ups, two keys, concurrent debit and final chain/account equality
-in monolith and split roles. This is local payment evidence only; the live
-staging reconciliation gate remains blocked.
-
-Removal of the accountless request-payment runtime and configuration passed
-config rejection, migration/audit, billing, generation, deployment, and runtime
-checks. Historical rows remain audit-only and top-up accounting is unchanged;
-this completed cleanup does not close the live staging gate.
-
-These are historical feature results, not tests rerun by this plan consolidation
-or evidence that the live-payment release gate has passed.
-
-### Preview x402 acceptance (P60-T21)
-
-The record below predates the genesis-predeployment migration. Its initializer
-reuse evidence describes that earlier implementation; the current gate checks
-block-zero token code and Facilitator recreation without chain-state changes.
-See [current Preview acceptance](../../preview/docs/testing.md#x402-billing-gate).
-
-On 2026-10-28, the working tree based on `69dedc09` passed local macOS/Docker
-Desktop acceptance with production image
-`sha256:7da318c5cd1a29eccf9a3710a8888a87af6c0501b4bb84237f8a548b83a84356`.
-After `make docker-build preview-x402-images`, `make check`, `make test-e2e`
-(149 browser tests), `make test-rustfs`, `make test-runtime-e2e-prebuilt`,
-`make test-preview-x402-prebuilt`, `make test-preview-metadata-prebuilt` and
-`make test-preview-consensus-prebuilt` passed.
-
-Preview's chain 48815 settled both methods: split-mode credit/debit/available
-was 200/1/199; after all-role continuation it was 400/2/398, matching on-chain
-recipient balances. Exact allowance consumption, replay rejection, initialization
-reuse without chain-state changes, restart and spending during Facilitator outage
-passed. Review regressions additionally paused the validator after payment
-broadcast, retained the exact pending hash, resumed mining and reconciled one
-credit without resending (final credit/debit/available 401/2/399). RPC/race tests
-cover broadcast uncertainty, receipt timeouts/errors, hash mismatch, indexing and
-confirmed reverts. The test-only Permit2 witness path and these local results do not establish
-production Permit2/proxy compatibility, remote CI or P60-T17 live acceptance.
-
-### Whole-token input and complexity pricing (P60-T22)
-
-All 30 bounded V2 queries have explicit positive weights and cost reasons;
-public prices and writer reservations derive from one validated base price.
-Catalog completeness and missing-price rejection prevent implicit free queries.
-Whole-token input and personal billing display use exact decimal conversion,
-including precision/uint256 bounds and asset-aware historical formatting.
-
-Local acceptance passed `make check`, `CI=true make test-e2e` (221 tests, no
-retries), billing PostgreSQL integration/race, and production runtime/x402
-all/split tests. Preview EIP-3009/Permit2, replay, exact allowance, restart/outage
-and pending-hash reconciliation passed: split credit/debit/available was
-200/2/198, all-role continuation 400/4/396, and final reconciled credit/debit
-401/4. The local Anvil suite additionally verifies the 40-weight batch query
-against the same shared writer balance. These results do not close P60-T17.
-
-### Etherview operation namespace (P60-T23)
-
-The namespace follows the fresh-database contract without legacy aliases or
-backfills. Independent live-payment acceptance is recorded above under P60-T17.
-
-The complete `make check`, `make test-integration-race`, `CI=true make test-e2e`
-and `make test-runtime-e2e` gates passed, including local payment settlement,
-concurrent priced debit, reservation release and operator bypass in both role layouts.
-Shared revision/image identity and environment are recorded in
-[P20-T32 acceptance](P20-enrichment.md#blob-access-and-archive-update).
-Those local-only results did not close P60-T17; the separate real Sepolia
-payment and API-debit reports above satisfy that independent gate.
-
-### Multi-payment funding (P60-T25)
-
-Production multi-option configuration, immutable conversion snapshots, unified
-credit SQL/API, browser chain/token selection and persistent Preview Anvil are
-complete. Both all/split layouts fund one account through four options and
-reconcile actual token transfers with fixed-rate credits; replay, exact allowance,
-Anvil recreation, payment-chain outage and unknown-settlement recovery passed.
-
-Acceptance: `make check`, final generation/lint/docs/plan checks, PostgreSQL
-integration and race, 935 Web unit tests, 226 browser E2E tests plus 12 final
-billing-layout checks, schema/runtime E2E, Preview gateway, x402 and contract
-E2E, and deterministic genesis/Anvil fixture checks all passed.
-
-Acceptance is local-only by scope decision. This milestone used the former local
-Permit2 fixture; these results make no production-contract compatibility claim.
-No new live testnet gate is required for T25. Prior T17/T24 live evidence retains
-its original scope.
-
-### Standalone multi-chain facilitator (P60-T26)
-
-The independent authenticated service supports keystore and AWS KMS signers,
-standard EIP-3009/Permit2, PostgreSQL-owned signed transactions and singleton
-execution with independent chain queues. Authenticated durable broadcast progress
-and recoverable bilingual top-up steps preserve settlement and credit ownership.
-Preview now uses one process for Geth
-and Anvil; the custom Permit2 settlement path and old command are removed.
-
-Local acceptance passed: signer/protocol race tests, PostgreSQL crash-boundary,
-concurrent-chain and restart/replay tests, OpenAPI/generation/Go lint, schema and
-full runtime E2E, Preview x402 in all/split layouts including chain outage and
-paused-chain reconciliation, deployment renders, deterministic contract rebuilds,
-Anvil persistence, license/dependency, docs and plan checks. Durable progress also
-passed frontend/browser recovery regressions, PostgreSQL race checks and delayed-
-mining Anvil all/split parity, including uncertain-response recovery.
+P60-T26 replaced that fixture with the standalone service and standard contracts.
+Signer/protocol/configuration/CLI race, PostgreSQL journal/nonce/crash/restart,
+strict offline validation, secret isolation, reverse startup cleanup and immediate
+lock reacquisition passed. `make check`, schema/runtime, Preview x402 and Rustack
+all/split acceptance passed locally. Durable progress also passed browser recovery,
+PostgreSQL race and delayed-mining/unknown-response tests. Real AWS IAM and new
+public-network acceptance are not established.
 
 ### Rustack KMS and dual-Anvil acceptance (P60-T27)
 
@@ -335,17 +232,4 @@ remove their isolated projects and volumes after execution.
 This local simulation does not establish real AWS IAM enforcement, production
 key isolation or public-network production readiness. KMS outage uses pause/resume
 and makes no emulator key-persistence claim. P70 release gates and historical
-P60-T17/T24/T26 evidence retain their original scope. Public APIs, database schema
-and production runtime code are unchanged.
-
-### Facilitator configuration and lifecycle (P60-T30)
-
-Ordinary RPC URLs and public certificates are configuration; credentials remain
-explicit process-scoped files. Independent server/RPC transport policies, offline
-configuration checks, HTTP/settlement/journal boundaries and reverse-order startup
-cleanup are implemented across Compose, Helm, Preview and local acceptance facilities.
-Configuration/CLI race and PostgreSQL race regressions passed, including redacted
-logs and immediate lock reacquisition after failed startup. `make check`, runtime
-all/split, Preview split/all and Rustack KMS dual-Anvil acceptance passed. Existing
-protocol, journal and exactly-once credit semantics remain unchanged; this is local
-acceptance, not new AWS IAM or public-network evidence.
+P60-T17/P60-T26 evidence retain their original scope.

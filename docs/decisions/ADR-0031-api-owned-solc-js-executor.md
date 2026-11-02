@@ -2,8 +2,9 @@
 
 Status: accepted
 
-[ADR-0047](ADR-0047-pinned-vyper-executor.md) supersedes only the Vyper
-prohibition by adding a pinned Python executor.
+Vyper execution and distribution are governed separately by
+[ADR-0053](ADR-0053-vyper-wasm-distribution.md) and
+[ADR-0054](ADR-0054-vyper-application-lock.md).
 
 [ADR-0037](ADR-0037-persistent-solcjs-artifact-cache.md) supersedes only this
 decision's disposable-cache deployment consequence. [ADR-0040](ADR-0040-sea-packaged-solcjs-executor.md)
@@ -25,16 +26,13 @@ Official Solidity catalogs publish checksum-addressed
 host CPU architecture and can be loaded by the same small, pinned solc-js
 wrapper on every supported application image.
 
-Vyper has no equivalent architecture-neutral artifact contract in the current
-implementation. Retaining its historical Linux AMD64 catalog would preserve
-the platform coupling this decision removes.
+The earlier native Vyper catalog had the same platform coupling. Its replacement
+now uses application-locked packages and dual-Pyodide SEA execution.
 
 ## Decision
 
-- At adoption, public verification supported Solidity and Yul and removed
-  native Vyper submission, matching, catalog, UI, and compatibility paths.
-  Later Vyper decisions supersede that exclusion. The consolidated baseline
-  creates current contracts directly; the historical data cutover remains in Git.
+- This executor owns Solidity and Yul. Vyper and Geas have separate execution
+  contracts; all use the current fresh-database publication model.
 - `api` and `all` own compiler catalog refresh, checksum-addressed artifact
   caching, job leases, compilation, and publication. There is no
   compiler-runner service, runner protocol, runner image, or compiler-specific

@@ -603,9 +603,10 @@ Names and search results carry their observation block and expiration.
 Public integers are decimal strings. Unknown candidates return `not_indexed`;
 only exact negative observations return `not_found`. Durable `names` events
 share `/api/v1/events`. Snapshot retention never extends observation validity.
-Historical reports, including the [old Mainnet report](reviews/P30-ens-mainnet-acceptance.md),
-are not acceptance evidence for this architecture. P30-T151 requires the new
-core-to-publication path; full-history gaps remain explicit operator state.
+The [current-chain acceptance report](reviews/ens-current-chain-acceptance.md)
+records representative Mainnet core-to-publication checks under P30-T151. The
+retired independent-role evidence remains in Git; full-history gaps remain
+explicit operator state.
 
 Explicit recovery commands use only the writer database and the configured
 policy. Import files contain one name or address per line (at most 1 MiB and

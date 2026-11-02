@@ -52,7 +52,7 @@ billing retain their existing free exceptions. Successful results contain the
 entire raw blob as 0x-prefixed hexadecimal, never an archive URL. The separate
 session/CSRF browser content GET (without Turnstile) remains free under ADR-0055. Every query has an explicit positive integer complexity weight and cost rationale
 in the operation catalog. Its price is that weight multiplied by the deployment's
-positive `billing.base_price_atomic`, denominated in token atomic units.
+positive `billing.base_price_atomic`, denominated in six-decimal credit atomic units.
 Operation IDs use the `etherview.<module>.<action>` namespace across the price
 catalog, usage ledger, API responses and metrics, including `etherview.blob.getblob`.
 The fresh-database contract does not accept the former `etherscan.*` prefix,

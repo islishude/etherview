@@ -2,12 +2,10 @@
 
 Status: accepted
 
-The external-name-specific decisions below were first replaced by
-[ADR-0041](ADR-0041-snapshot-stable-ens-primary-names.md) and are now superseded by
-[ADR-0058](ADR-0058-background-ens-synchronization-and-database-only-reads.md).
-Name synchronization and publication run in a background role and name queries
-are database-only; linked plans retain local and live acceptance boundaries. Request-time name fetch/write provisions below are historical.
-Search catalog, price-adapter, statistics, and maintenance decisions remain active.
+[ADR-0058](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
+owns current-chain background name synchronization and database-only name reads.
+This decision owns search catalog, price-adapter, statistics and maintenance
+boundaries. The retired request-time name adapter is not an active contract.
 
 ## Context
 
@@ -57,34 +55,15 @@ still expose state-backed capabilities without weakening their error contract.
   advances `min_generation` only after closing and deleting documents outside
   the configured generation window. Search-source `chain_id` is immutable;
   moving a source across chains is rejected transactionally.
-- A first-page dotted search requires a fresh external name resolution before
-  opening its repeatable-read search transaction. Resolver absence, expiry
-  followed by fetch failure, or a resolved identity not visible at the new
-  exact canonical snapshot is typed unavailable; stale catalog data is never
-  a fallback. The cursor records the accepted resolved address, so later pages
-  validate that same identity at the frozen tip and generation without
-  refetching merely because the adapter TTL expires. Name-source candidates for
-  that dotted query are restricted to the accepted address even when multiple
-  registries publish the same name; independently matching operator labels and
-  other source kinds retain their normal search semantics.
-- A successful name observation is accepted only for the exact configured
-  chain and canonical block number/hash. Its statement takes `FOR KEY SHARE`
-  on that canonical row through the complete insert, serializing the
-  check-to-write window with a detach. The first identity for a registry,
-  name, and block hash is immutable; a concurrent identical response is an
-  idempotent no-op that preserves its first audit timestamp and catalog
-  generation, while a conflicting address, resolver, or height is a typed
-  `identity_conflict`.
-- Name and price adapters use only the shared SSRF-safe HTTPS client and persist
-  bounded success or failure observations with an expiry. Name successes are
-  canonical-block facts; failure observations intentionally require no block
-  identity and suppress repeated hostile calls only for their short TTL.
-  Observation identity includes chain, capability, a provider namespace, and
-  the logical observation key. The name provider namespace is SHA-256 of the
-  validated configured base URL, so changing providers cannot reuse the old
-  success or failure cache and the URL itself is never stored.
-  Adapter and state-RPC failures cross public boundaries as stable capability
-  states and codes, never nested upstream messages or credential-bearing URLs.
+- Dotted name search reads canonical known-name identities from PostgreSQL,
+  including unresolved and expired names, under ADR-0058. It performs no resolver
+  calls or writes. Profile and resolution validity are independent of directory
+  membership; stale observations never become a fresh resolved identity.
+- Price adapters use the shared SSRF-safe HTTPS client and persist bounded
+  success/failure observations with expiry and provider-scoped identity. Adapter
+  and state-RPC failures expose stable capability states/codes, never nested
+  upstream messages or credential-bearing URLs. ENS observations and publication
+  use ADR-0058's separate worker, canonical attachment and lease fences.
 - The production maintenance role runs search/adapter housekeeping as a shared
   supervisor component in both monolith and split deployments. It sweeps once
   on startup and periodically thereafter, uses a chain-scoped PostgreSQL
@@ -148,16 +127,10 @@ prior catalog and adapter facts intact for a later retry.
   typed failure instead of reporting plausible but false zeros.
 - Optional adapter failure, network loss, or missing history RPC cannot block
   core ingestion or make PostgreSQL cease to be the correctness source.
-- Dotted search never converts an unavailable fresh resolution into a stale
-  success, while an already-issued cursor remains traversable for its retained
-  snapshot without depending on the external adapter's later health.
-- A resolver configuration change starts in an isolated cache namespace, and
-  public name failures expose only controlled `capability`, `state`, and `code`
-  identifiers.
-- Concurrent name publication and canonical detach have one serial order: a
-  detach that wins rejects the stale observation, while a name write that wins
-  is subsequently marked noncanonical by that detach and disappears from
-  current search.
+- Name search does not depend on resolver availability. Known unresolved names
+  remain directory results; only valid published observations supply addresses.
+- ENS publication and canonical detach serialize under ADR-0058; withdrawn
+  observations cannot remain valid current labels or resolution results.
 - Changing cursor identity, catalog temporal semantics, adapter observation
   identity, or statistics formulas requires a new reviewed persistent/public
   contract and, for block statistics, a new stage version.

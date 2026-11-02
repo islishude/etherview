@@ -3,13 +3,9 @@
 Status: `done`
 
 This is the canonical plan for contract verification, contract intelligence,
-and the shared runtime/operations platform. P60/P70 release and live-payment blockers remain outside this plan.
+and the shared runtime/operations platform. Final release gates belong to P70.
 
 ## Outcome
-
-P30-T152 provides the Preview manual scenario CLI with completed local all/split
-acceptance. Browser-provider delivery and public-chain acceptance remain separate
-evidence.
 
 Etherview provides fail-closed contract verification and contract intelligence
 over exact chain, address, runtime, block, and generation identities. It supports
@@ -39,7 +35,6 @@ availability does not gate core readiness.
 - [ADR-0027](../decisions/ADR-0027-process-native-api-tls.md)
 - [Architecture](../architecture/overview.md)
 - [ADR catalog](../decisions/index.md)
-- [Proxy baseline review](../reviews/P58-oz-proxy-baseline.md)
 - [Proxy deployment review template](../reviews/proxy-detection-deployment-review-template.md)
 - [ADR-0001](../decisions/ADR-0001-modular-roles-and-postgresql-truth.md)
 - [ADR-0002](../decisions/ADR-0002-identity-bound-repair-and-explicit-reindex.md)
@@ -80,8 +75,7 @@ availability does not gate core readiness.
 | -------- | ------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P30-T10  | done   | P10, P20                                                      | Dual compilation, automatic candidates, transformations, batch/blueprint/method lookup, asynchronous REST/Etherscan/Sourcify workflows, and lease-safe verification workers                                             | compiler/matcher fixtures, API/PostgreSQL, heartbeat/lease-loss/fatal-error race and production parity tests                                                            |
 | P30-T14  | done   | P30-T10                                                       | API-owned architecture-neutral solc-js executor, compiler catalog, checksum-addressed shared cache, Node SEA packaging, and exact provenance                                                                            | catalog/provenance, cache concurrency/restart, image, and production compiler regressions                                                                               |
-| P30-T15  | done   | P20-T13, P30-T14                                              | Exact/same-code verified artifacts, atomic selector indexes, immutable proxy/implementation/management binding, and identity-fenced standard proxy interaction                                                          | publication/ABI, writer-query, upgrade/reorg, authorization/wallet, PostgreSQL, browser and Hardhat tests                                                               |
-| P30-T16  | done   | P30-T14, P30-T64                                              | Allow authenticated canonical Genesis predeploys to use runtime-only native and Etherscan-compatible address verification without fabricating creation evidence                                                         | target-resolution, publication-fence, PostgreSQL, and compatibility regressions                                                                                         |
+| P30-T15  | done   | P20-T13, P30-T14, P30-T64                                     | Exact/same-code artifacts and selectors, canonical Genesis runtime-only verification, immutable proxy/implementation binding and identity-fenced interaction                                                            | Publication/ABI, Genesis provenance, wallet authorization, PostgreSQL/reorg, browser and Hardhat tests                                                                  |
 | P30-T20  | done   | P20-T05, P20-T13, P30-T15                                     | Persisted-first bounded log/call ABI decoding, trace-bound attribution, canonical failure decoding and Solidity/custom errors with generated APIs and Web disclosure                                                    | codec/budget, catalog, trace, generation, PostgreSQL/race, browser and production parity tests                                                                          |
 | P30-T24  | done   | P20-T13                                                       | Unified block-pinned proxy detector/resolver, generated Safe manifests and exact evidence, memoized bounded RPC, public projections, metrics/runbook and bounded backfill without generation flags or shadow comparison | baseline differential, unit/fuzz, adversarial exact-block RPC, Safe factory discovery, authorization/reorg, PostgreSQL/race, browser and production gates               |
 | P30-T33  | done   | P00                                                           | Typed role/subsystem builders, independent executable component manifest, shared lifecycle/readiness, bounded HTTP/pool shutdown, optional native API TLS and fail-closed startup                                       | configuration/graph, HTTP/1.1/HTTP/2 cancellation, stuck-borrower, deployment and monolith/split parity tests                                                           |
@@ -95,117 +89,39 @@ availability does not gate core readiness.
 | P30-T68  | done   | P30-T24, P30-T15                                              | Legacy LibCWIA exact parser/evidence, immutable argument persistence, bounded Solady Solidity-AST decoding and exact-address/same-code ABI reads with separate write authority                                          | parser/fuzz, PostgreSQL/reorg, query/verifier, dynamic bytes/arrays, generation, browser and production Hardhat tests                                                   |
 | P30-T79  | done   | P30-T15, P30-T20                                              | Authenticated compilation units and candidates, historical CREATE/CREATE2 unique creation/runtime matching, transitive forward discovery, exact-epoch provenance, bounded backfill and generated API/Web                | generation/heartbeat fences, short publication transactions, fork rewind, retry/pagination, A-to-B-to-A and direct-child provenance, PostgreSQL/race and topology tests |
 | P30-T97  | done   | P30-T14, P30-T79                                              | Native/Etherscan/Web Vyper verification, dual Pyodide runtime routing, application-locked PyPI archives/recipe provenance, supported-version policy and reviewed updater                                                | package equivalence/isolation, fresh-process version matrices, PostgreSQL, identity-bound aggregation, native AMD64/ARM64 and monolith/split acceptance                 |
-| P30-T138 | done   | P20-T19, P20-T20, P40-T22, P50-T75, P30-T35, P30-T36, P30-T34 | Real Lighthouse PoS Preview, role-scoped durable archive deployment, explicit initialization, and outage/recovery parity with documented deferred writer IAM enforcement                                                | Preview consensus/metadata, RustFS, schema/runtime, finality, permissions, restart, and common gates                                                                    |
+| P30-T138 | done   | P20-T19, P20-T20, P40-T22, P50-T75, P30-T35, P30-T36, P30-T34 | Real Lighthouse PoS Preview, Caddy HTTPS for app/IPFS/RPC/Beacon, explicit archive initialization and role-scoped durable archive deployment                                                                            | TLS/origin/streaming, finality/readback/restart/outage, schema/runtime and all/split acceptance; writer IAM remains deferred                                            |
 | P30-T139 | done   | P30-T10, P30-T14, P30-T15, P30-T97                            | Bounded remote eth-bytecode-db discovery, durable scheduling and locally verified source publication with provenance and role parity                                                                                    | Protocol/PG race, creation fallback/Yul, source provenance, common/browser/schema/runtime gates and production Solidity/Vyper topology parity                           |
-| P30-T140 | done   | P30-T10                                                       | Optional Etherscan credentials for Sourcify imports, authenticated encryption before durable enqueue, credential-safe request identity and bilingual Web inputs                                                         | API, redaction/tamper/deduplication, PostgreSQL worker and browser regressions                                                                                          |
-| P30-T141 | done   | P30-T10, P30-T140                                             | Sourcify-to-Etherview source import through canonical local verification, explicit post-publication import and accessible verification choices                                                                          | API authorization, hostile-source and PostgreSQL publication regressions, bilingual browser and select visual checks                                                    |
-| P30-T142 | done   | P30-T138                                                      | Caddy Preview HTTPS migration for app, IPFS, Geth and Beacon on *.etherview.localhost, including browser origins and streaming                                                                                          | Real Caddy boundary regressions, browser authentication, Preview metadata/consensus, runtime/RustFS and common gates                                                    |
-| P30-T143 | done   | P20-T17, P30-T138                                             | Reproducible Preview genesis ERC-4337 v0.9 contracts, Alto Bundler and management CLI                                                                                                                                   | Reproducible genesis, real PoS safe-mode Bundler CLI/API/browser, split/all restart and existing Preview gates                                                          |
-| P30-T144 | done   | P30-T143                                                      | Replace Preview Alto with pinned Rundler v0.9 support, remove Alto-only genesis helpers and patch                                                                                                                       | Reproducible genesis, safe validation, standard RPC, real PoS submission/rejection/restart in split/all and existing Preview gates                                      |
-| P30-T145 | done   | P30-T143, P30-T14                                             | Verify every Preview genesis contract through the normal local verifier during Compose startup                                                                                                                          | Complete source inventory, bounded failure and restart regressions, real Preview publication for every non-empty allocation                                             |
-| P30-T149 | done   | P20-T29                                                       | ENS in enrich with one current-chain configuration and shared runtime/deployment boundaries                                                                                                                             | Component parity, credential isolation, readiness/shutdown and deployment checks                                                                                        |
-| P30-T150 | done   | P30-T149, P40-T27, P50-T81                                    | Real-contract and production-image current-chain ENS acceptance in all/split layouts                                                                                                                                    | Fresh schema, autonomous discovery/publication, reorg/restart/outage and browser gates                                                                                  |
+| P30-T141 | done   | P30-T10                                                       | Sourcify source import through local verification, independent post-publication import, encrypted optional Etherscan credentials and bilingual browser workflows                                                        | Authorization, credential identity/redaction/restart, hostile source/publication, PostgreSQL and browser regressions                                                    |
+| P30-T144 | done   | P20-T17, P30-T138, P30-T14                                    | Reproducible Preview ERC-4337/local ENS genesis, pinned Rundler, management CLI and ordinary-verifier publication of all genesis contracts                                                                              | Allocation/source integrity, runtime-only provenance, real PoS submission/rejection/restart and split/all parity                                                        |
+| P30-T150 | done   | P20-T27, P40-T27, P50-T81                                     | ENS under enrich with current-chain configuration and shared deployment/lifecycle; real-contract production-image local acceptance                                                                                      | Fresh schema, credential isolation, autonomous discovery/publication, reorg/restart/outage and all/split browser gates                                                  |
 | P30-T151 | done   | P30-T150                                                      | Representative Mainnet core-to-publication acceptance and independent reconciliation                                                                                                                                    | Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons                                                                      |
-| P30-T152 | done   | P30-T144, P30-T145, P30-T150                                  | Preview manual scenarios, resumable transaction journal, reports, proxy families and EIP-7702 lifecycle controls                                                                                                        | Tool regressions, isolated split/all Preview CLI and browser acceptance                                                                                                 |
+| P30-T152 | done   | P30-T144, P30-T150                                            | Preview manual scenarios, resumable transaction journal, reports, proxy families and EIP-7702 lifecycle controls                                                                                                        | Tool regressions, isolated split/all Preview CLI and browser acceptance                                                                                                 |
 
 ## Acceptance
 
-### Preview manual tools
-
-- [x] P30-T152: Preview CLI initial samples, lifecycle actions, durable recovery,
-      reports, isolated all/split execution and bilingual desktop/mobile browser
-      acceptance. Wallet-provider operations and final visual checks remain manual.
-
-### Current-chain ENS rewrite
-
-- [x] P30-T149: ENS in enrich with one current-chain configuration and shared runtime/deployment boundaries. Component parity, credential isolation, readiness/shutdown and deployment checks.
-- [x] P30-T150: Real-contract and production-image current-chain ENS acceptance in all/split layouts. Fresh schema, autonomous discovery/publication, reorg/restart/outage and browser gates.
-- [x] P30-T151: Representative Mainnet core-to-publication acceptance and independent reconciliation. Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons.
-
-Previous ENS checks are historical evidence only. Completion requires the new
-implementation and its own acceptance; directory coverage is reported separately.
-
-### Delivered capability acceptance
-
-- [x] Reproducible real-constructor allocations match Geth block zero and
-      authenticated genesis import. Input fingerprints reject stale or tampered
-      bundles while preserving existing system and x402 allocations.
-- [x] Safe-mode v0.9 Bundler submission passes through the CLI, API and browser
-      in split/all layouts, including failure paths and container recreation.
-
-- [x] Existing Sourcify sources import from an explicit source chain without
-      re-upload through ordinary local compilation and canonical/lease-fenced
-      publication on the deployment's chain. Direct and post-publication imports
-      keep local and external outcomes separate; independent source/metadata
-      uploads, bilingual service cards and select controls pass keyboard, theme
-      and mobile browser checks.
-- [x] Optional Etherscan credentials remain encrypted across durable Sourcify
-      submission/restart, never enter responses or logs, and remain separate
-      from Etherview authentication in the bilingual Web flow.
-- [x] Compiler/helper identity, exact runtime matching and canonical publication are authenticated.
-- [x] Solidity/Yul, Vyper and Geas retain separate bounded execution contracts.
-- [x] Vyper uses application-locked archives and explicit fresh-process runtime routing.
-- [x] Safe, Diamond, CWIA, EIP-7702 and factory-derived provenance remain distinct.
-- [x] ABI reads and wallet writes enforce their exact historical/current identity fences.
-- [x] Shared components preserve monolith/split readiness, shutdown and persistence parity.
-- [x] Optional accelerators preserve PostgreSQL authority and bounded failure behavior.
-- [x] Native architecture and production topology evidence exists for the delivered compiler changes.
-- [x] Go-runtime and writer/reader pool telemetry is bounded and supports
-      reproducible performance baselines without changing readiness authority.
-- [x] API archive credentials are read-only and enrich credentials are read/write;
-      initialization runs explicitly outside core role dependencies. Optional
-      endpoint/object-store outages do not block core recreation or readiness.
-- [x] Real Geth/Lighthouse Preview preserves network/object identity and passes
-      locally signed blob transactions, independent Beacon/S3/API readback,
-      recovery, finalized-epoch advancement, and all/split publication.
-- [x] Public-network retention, production backup/restore, and deferred storage-side
-      writer IAM enforcement are not inferred from local Preview acceptance.
-- [x] Runtime builders and capability modules fail closed on incomplete dependencies.
-- [x] SSE, shutdown and worker leases preserve bounded cancellation and recovery.
-- [x] Local Kubo, streaming IPFS CLI and the independent HTTPS gateway pass acceptance.
-- [x] Applicable schema, production topology and native architecture gates completed.
-- [x] Domain hardening in P10, P30, P40, P50, and the completed P60 billing
-      milestones has aggregate generation, source, security, race, integration,
-      browser, deployment, and monolith/split
-      production acceptance; live-payment and reference-capacity gates remain separate.
-- [x] UserOperation runtime fixtures opt in explicitly; unrelated Hardhat/Foundry
-      overlays remain feature-off with feature-derived readiness. The testing
-      guide owns the shared-overlay defaults, cross-suite sequence, timeout,
-      and failure-signature rules.
-- [x] PostgreSQL integration retains a bounded timeout above observed cold-CI
-      duration without skipped/weakened tests; a fresh remediation-revision CI
-      run passed integration and native AMD64/ARM64 Hardhat/Foundry matrices.
-- [x] UserOperation, holder, and private-tool feature acceptance includes schema,
-      generation, integration/race, browser, and all/split production parity;
-      local evidence does not close live-payment or reference-capacity gates.
-- [x] Hardhat and Foundry verification E2E explicitly disable ENS and do not
-      require or impersonate the retired separate ENS RPC fixture.
-
-- [x] Diamond detection cross-validates Loupe and immutable functions, checks
-      facet code and reports status/completeness/validation independently.
-      Ordered add/replace/remove history retains reorg facts; selector-filtered
-      interaction and collision handling preserve exact historical ABI identity.
-- [x] CWIA arguments derive from bounded canonical Solidity AST, including
-      dynamic bytes/arrays. Exact-address then same-chain same-code ABI reads
-      do not grant verification or write authority; writes require exact binding.
-- [x] Factory matches are unique, bind exact parent/child code epochs and keep
-      matching outside ingestion and publication transactions. Generation/lease
-      fences, canonical rechecks, retry idempotency and fork-aware rewind guard
-      historical and transitive forward discovery without losing provenance.
-- [x] Worker lease loss remains task-local while fatal compiler errors retain
-      their classification. Local Kubo metadata acceptance checks two canonical
-      versions, one attempt each and restart persistence; its gateway/CA isolation
-      preserves strict production SSRF rules and proves no public-IPFS availability.
-
-- [x] Optional process-native API TLS validates its certificate/key pair before
-      binding, supports TLS 1.2/1.3 and HTTP/2, and never falls back to HTTP on
-      invalid material. Secrets remain API/all-scoped; rotation uses restart.
-- [x] Native application healthchecks and Compose `--wait` own Preview readiness;
-      explicit lifecycle setup remains required. Configurable JSON/text log levels
-      and reporter-fenced rate-limited progress/outcome logs retain bounded fields.
-- [x] Hardhat provider submission/status polling and durable proxy verification
-      pass production paths; independent Foundry acceptance retains both layouts,
-      exact compiler provenance and native AMD64/ARM64 coverage.
+- [x] Compiler/helper identity, dual compilation, exact matching, immutable
+      provenance and canonical lease-fenced publication pass each language's gates.
+- [x] Vyper uses application-locked archives and fresh dual-Pyodide SEA execution;
+      native architecture and all/split acceptance remain independently required.
+- [x] Safe, Diamond, CWIA, EIP-7702 and factory-derived provenance remain distinct;
+      ABI reads and wallet writes enforce their own identity and authority fences.
+- [x] Sourcify/discovery sources become local evidence only after local verification;
+      credentials are encrypted and local/external outcomes remain separate.
+- [x] Shared builders and the independent manifest preserve role parity,
+      fail-closed startup, readiness, bounded cancellation/shutdown and persistence.
+- [x] Optional accelerators retain PostgreSQL authority and bounded fallback;
+      role-scoped deployment, native API TLS, telemetry and repair controls pass.
+- [x] Caddy, Kubo, real Lighthouse and durable archive Preview preserve origin,
+      network/object identity, finality, outage/restart and all/split behavior.
+- [x] Preview genesis contracts, Rundler and verifier publication are reproducible;
+      authenticated runtime-only verification fabricates no creation evidence.
+- [x] Manual scenario tools retain bounded lifecycle actions and durable recovery;
+      provider delivery and human visual acceptance remain separately scoped.
+- [x] ENS runtime under enrich passed local production tests and independent
+      representative Mainnet reconciliation; full directory coverage is not claimed.
+- [x] Schema, deployment, feature-aware E2E overlays and native acceptance passed
+      at delivery. Local results do not establish public retention, production
+      backup/restore, deferred writer IAM or final release capacity/security.
 
 ## Current Blockers
 
@@ -228,220 +144,73 @@ of unconditional writes and overwrites, with unchanged stored bytes after denial
 The 1.0.5 target is an evaluation checkpoint, not a guarantee of a fix.
 This is a retained deployment limitation
 of P30-T138; its completed local acceptance does not establish writer IAM enforcement.
-P60/P70 release blockers remain independent.
+P70 release gates remain independent.
 
 ## Evidence
 
-P30-T152 passed 24 tool regressions and isolated all/split production Preview runs.
-Each layout published 17 initial scenarios and completed 38 lifecycle actions,
-including real blob download comparison, AA rejection/revert, proxy families,
-EIP-7702, ENS and token/NFT changes. Read-only checks preserved transaction history;
-English desktop and Chinese mobile checks covered initial/final pages and manual
-refresh (136 screenshots). `make check`, generation, Go lint, docs/plan checks,
-Runtime, Hardhat, 221 browser regressions and four existing Preview gates passed
-locally. [Testing conditions](../../preview/docs/tools.md#acceptance) document the
-isolated strict-policy gateway, polling interval and external discovery boundary.
-Wallet login/signing, payments, notification permission and final human visual
-acceptance remain manual.
+P30-T10/P30-T14/P30-T15/P30-T20 passed matching, compiler/Genesis
+provenance, ABI/proxy/trace decoding and canonical publication unit/fuzz/race and PostgreSQL regressions at delivery.
+P30-T43/P30-T59/P30-T64/P30-T68/P30-T79 passed Hardhat, Foundry, browser
+and production all/split gates for EIP-7702, Diamond, Geas, CWIA and
+factory-derived verification. P30-T24's unified detector
+also passed immutable baseline comparisons and exact-block adversarial tests;
+ADR-0032 still requires independent deployment review.
 
-Existing runtime/Preview results below remain evidence for their original
-revisions; local fixtures cannot close the live-source gate.
+P30-T141 passed encrypted credentials, queue/restart/deduplication, hostile
+source import, compiler mismatch/reorg and bilingual browser checks on the
+worktree based on `d6da23b`. Local HTTPS/compiler fixtures and a public response
+shape check do not establish live Sourcify publication or service availability.
+P30-T139 passed controlled HTTPS discovery and real Solidity/Vyper compilation
+in both local ARM64/Docker topologies. Public search returned HTTP 403 on
+2026-10-25; public coverage was not established.
 
-P30-T144 completed on 2026-10-28. Rundler 0.11.0 replaces Alto and its
-simulation allocations. Local real-PoS Preview acceptance covered genesis,
-safe validation, standard RPC, rejection/restart, ENS, billing and split/all
-parity. [CI run 40681596433](https://github.com/islishude/etherview/actions/runs/40681596433)
-passed all 31 jobs at `562b42fcd0cbf2e1446bb000e48254403ff080e1`, including
-security/licenses, container/Compose/Helm, production schema/runtime, Preview,
-and native AMD64/ARM64 production acceptance. These remote results close the
-remaining common, deployment and runtime gates previously blocked by local
-DNS and registry access. They do not cover subsequent uncommitted changes or
-clear the deferred RustFS IAM limitation and independent P60/P70 release gates.
-
-P30-T143 passed locally on macOS ARM64 on 2026-10-28.
-`make preview-contracts-check` reproduced the allocations and covered controlled
-commitment/expiry/grace-period failures. `make test-preview-contracts-prebuilt`
-verified real Geth/Lighthouse genesis state, authenticated import, safe-mode
-Alto v0.9 deployment/call/revert and rejection paths, local ENS CLI operations,
-search/primary-name publication, browser display and persistent split/all parity.
-Reports retain allocation/source digests and transaction/UserOperation hashes.
-The full common check, PostgreSQL race, schema/runtime and 149 browser tests
-passed, together with Caddy and Preview metadata/consensus/x402 regressions.
-Tests used independent projects and temporary volumes; daily Preview was not
-reset. Remote CI and P60/P70 release gates are not established by this evidence.
-
-P30-T142 passed locally on macOS ARM64 on 2026-10-26: `make test-preview-gateway`
-against the official Caddy 2.11.7 image, both Preview E2E prebuilt targets after
-building the application and pulling Preview images, `make check`, `make test-e2e`
-(148 browser tests), `make test-runtime-e2e`, and `make test-rustfs`.
-Caddy regressions cover TLS, raw IPFS paths/bodies, cancellation and timeouts,
-CORS and replacement origins, streaming, failed writes without retries, upstream
-isolation, certificate startup failures and bounded shutdown. Real Preview
-acceptance covers HTTPS transactions, IPFS, finalized Beacon data, all/split
-parity, and browser SIWE/CSRF/Secure cookies, wallet URLs, CORS, WSS and SSE.
-Tests use isolated name resolution and disposable loopback ports; this does not
-claim a daily Preview migration, system hosts changes or a remote CI run.
-
-P30-T141 passed on 2026-10-25 against the worktree based on `d6da23b` on local
-macOS ARM64: Go package and focused race tests, PostgreSQL 18 local publication,
-compiler mismatch and reorg regressions, 659 Web tests, 129 browser tests, and
-generation, OpenAPI, lint, docs, plan and deployment checks. Local HTTPS and
-compiler fixtures prove import boundaries; a public Sourcify GET checked response
-shape only. No live public publication/import or remote CI acceptance is implied.
-
-P30-T140 passed on 2026-10-25 against the worktree based on `d6da23b` on local
-macOS ARM64: Go package tests and focused race tests, PostgreSQL 18 encrypted
-queue/restart/deduplication regression, 647 Web tests, 127 browser tests, and
-generation, OpenAPI, lint, docs, plan and deployment checks. External calls used
-local HTTPS fixtures; this does not establish live Sourcify/Etherscan service
-availability or remote CI acceptance.
-
-P30-T33/P30-T35/P30-T37 retain process TLS, certificate deployment, native
-healthcheck/Compose lifecycle and bounded logging acceptance. Historical
-Genesis, analytics and compiler production paths passed their feature gates.
-Amsterdam headers/gas/native transfers passed local Go/race, PostgreSQL/race,
-generation, browser, schema, runtime/x402, Hardhat, Foundry and real-Geth Preview
-acceptance in both layouts. Protocol-log projection additionally passed
-publication/corruption/reorg and bilingual browser regressions. These delivery
-records do not establish a new native CI run, live network or production rollout.
-
-P30-T138 passed `make check`, `make source-check`, `make test-integration-race`,
-`make test-e2e`, `make test-rustfs`, `make test-schema-e2e`, and
-`make test-runtime-e2e` at its delivery revision. Production monolith and split
-roles preserved core readiness through optional endpoint outages, restart,
-and dependency recovery.
-Geth v1.17.8 / Lighthouse v8.3.0 passed real private PoS/finalized-epoch
-advancement, locally signed blob transactions, independent Beacon/S3/API byte
-and KZG/hash checks, read-only denial, outages, retained network/object identity,
-and both publication layouts. `make test-preview-metadata`,
-`make test-preview-consensus`, `make test-rustfs`, `make test-runtime-e2e`, and
-`make check` passed locally; the license scanner required an explicit current
-`GOROOT` without relaxing any gate. These historical local protocol/container
-results do not prove public historical retention, production backup/restore,
-or storage-enforced writer conditional permissions. Operators must verify
-retention and database/archive recovery together; the IAM clearing condition
-remains above.
-
-P30-T24 passed seven immutable pre-change observation fixtures, focused
-detector/authorization/RPC race regressions, the full PostgreSQL integration
-race suite, all 50 browser tests, and fresh-schema acceptance. The delivery revision
-production image passed runtime, local x402, Hardhat and Foundry acceptance in
-both monolith and split roles. Generation, source, lint, Go/Web/race, security,
-license, deployment, docs and plan gates passed; the local license scanner
-required an explicit current `GOROOT`. These are local macOS ARM64/Docker
-results, not new native Linux matrix, live-chain or production rollout evidence.
-ADR-0032 owns the fresh-baseline cutover and separate deployment review.
-
-P30-T97 passed local helper/aggregation regressions, application count/parity race
-tests, provider compatibility, tagged E2E lint, source/docs/plan/deployment checks
-and both local application suites. Native Linux AMD64/ARM64 acceptance passed in
+P30-T97's application-locked dual-runtime acceptance passed native Linux
+AMD64/ARM64 compiler matrices and both production layouts in
 [run 38539515561 attempt 2](https://github.com/islishude/etherview/actions/runs/38539515561/attempts/2)
-and [attempt 3](https://github.com/islishude/etherview/actions/runs/38539515561/attempts/3),
-including all 25 versions / 352 fixture inputs per architecture and both
-application topologies. Attempt 2 reused attempt-1 image/package artifact IDs
-after cancellation and failed-only rerun; both final bundles passed the existing
-application acceptance tool. PR #148 records timings: recovery 13m50s / 122.27
-runner-minutes, full rerun 16m43s / 125.60 versus baseline 18m40s / 119.18.
-Recovery excludes reused jobs; these samples do not establish a stable speedup.
-
-P30-T139 passed protocol and PostgreSQL race regressions, `make check`, browser,
-fresh-schema and runtime gates, plus the Hardhat/Vyper production suites. The
-final discovery image passed controlled HTTPS source import and real local
-Solidity/Vyper compilation in both topologies; Yul creation fallback and
-cross-address/chain isolation passed PostgreSQL regressions. These are local
-ARM64/Docker results. Public search from this host returned HTTP 403 on
-2026-10-25, so public-source coverage and new remote CI acceptance remain unproven.
-
-Retained completed milestones: P30-T10, P30-T14, P30-T15, P30-T16, P30-T20, P30-T24,
-P30-T33, P30-T34, P30-T35, P30-T36, P30-T37, P30-T43, P30-T59, P30-T64, P30-T68,
-P30-T79, P30-T97, P30-T138, P30-T139.
-
-Contract matching, compiler provenance, ABI/proxy/trace decoding and
-canonical publication passed focused unit/fuzz/race and PostgreSQL regressions.
-Hardhat, Foundry, embedded-browser and production monolith/split gates covered
-Safe, Diamond, Geas, CWIA, EIP-7702 and factory-derived verification at their
-respective delivery revisions. Lifecycle, telemetry, deployment and optional
-accelerator outage/fallback checks passed; RustFS transport passed the real
-service gate and S3 credential/redirect regressions locally.
-
-Dual-runtime acceptance passed all 13 checks in
-[run 38326160375](https://github.com/islishude/etherview/actions/runs/38326160375)
-at `81cd91396f18f8000646f700e6a1f2a7334428ee`, including both native Linux
-architectures and monolith/split Hardhat. Application-locked assembly then
-passed [run 38331342142](https://github.com/islishude/etherview/actions/runs/38331342142)
-at `9d37872cf043b16ac1c7934204a68a85d0f8b9c6`; both architecture records passed
-the application acceptance validator. These historical runs covered 26
-versions before Vyper 0.2.0 retirement.
-
-The subsequent supported-version retirement and reviewed updater passed all
-13 checks in [run 38422689050](https://github.com/islishude/etherview/actions/runs/38422689050)
-at `ed2d01cc3276acc8b7aa6052876a3dbaedeb7c04`, including native matrices,
-Hardhat/Foundry, PostgreSQL, browser, security/license and Preview acceptance.
-Later maintenance is not covered by that run. No production rollout is claimed.
-The current distribution and supported-version policy are owned by ADR-0054;
-retired native helpers, hosted catalogs and custom advisory approval work are
-not outstanding delivery tasks.
-
-Go-runtime and writer/reader pool metric contracts passed focused checks and
-common gates. Capacity tuning remains backed by domain benchmarks; local
-measurements do not replace the operator-provisioned P70-T04 capacity report.
-
-[Detailed completion record](https://github.com/islishude/etherview/blob/e665a0b9b5dcee02e6d90d3a2224a76031cbda3d/docs/plans/P30-contract-verification.md#evidence).
-These are historical results, not tests rerun by this plan cleanup.
+and [attempt 3](https://github.com/islishude/etherview/actions/runs/38539515561/attempts/3).
+The records cover 25 versions / 352 inputs per architecture and bind reused
+artifacts where applicable. ADR-0054 owns the current supported-version and
+release policy; these historical runs do not cover later changes.
 
 ### Production acceptance boundaries
 
-P30-T35 retains aggregate acceptance for UserOperation, holder, and
-private-tool boundaries. EntryPoint v0.6-v0.9 decoder/configuration,
-PostgreSQL normal/race, generation, and `make check` passed. Fresh-schema and
-production runtime tests exercised a real Anvil packed v0.9 transaction through
-both worker/API layouts with identical durable/public results; unrelated
-feature-off Hardhat/Foundry fixtures retained independent acceptance. The
-recorded overlay/timeout remediation passed fresh CI integration and both
-architectures of Hardhat/Foundry; this is historical, not a new CI run.
+P30-T33/P30-T34/P30-T35/P30-T36/P30-T37 passed component/startup/readiness,
+HTTP/SSE cancellation, bounded shutdown, pgx locks/transactions, telemetry,
+Compose/Helm, accelerator outage/fallback and role-scoped credentials checks.
+Schema/runtime and native architecture acceptance also covered UserOperations,
+holders, private tools, Genesis and Amsterdam projections. Local Kubo tests
+proved two canonical metadata versions and restart persistence. These checks
+do not prove public IPFS availability or P70-T04 reference capacity.
 
-Holder checks passed schema/runtime, generation, integration/race, browser,
-Hardhat, Foundry, deployment, security/license, and common gates. Transient
-compiler download failures required unchanged retries and do not establish
-upstream availability. Private watch/notification/export acceptance passed
-local `make check`, integration/race, browser, schema, and production runtime
-on 2026-09-26. P70-T04 still requires high-cardinality holder reads concurrent
-with reconciliation in the operator-provisioned reference environment.
+P30-T138 passed Caddy TLS/origins/streaming, local RustFS, full schema/runtime,
+metadata and real Geth/Lighthouse consensus gates. Private PoS acceptance
+verified blob/KZG readback, finality advancement, API read-only denial,
+network/object retention and all/split outage/restart recovery. Local results
+prove neither public retention nor production database/archive backup/restore.
+Storage-side writer IAM remains deferred under Current Blockers.
 
-SQL/source ownership, typed runtime builders, HTTP shutdown/SSE, worker
-lease recovery and version-fenced home state passed focused normal/race,
-generation, PostgreSQL and browser gates. Native pgx read/write, cancellation,
-session-lock disposal and topology acceptance passed; the development guide
-retains the bounded benchmark and native pgx acceptance summary.
+P30-T144 passed reproducible genesis, Rundler safe validation, standard RPC,
+submission/rejection/restart, ENS and billing in real PoS split/all Preview.
+[CI run 40681596433](https://github.com/islishude/etherview/actions/runs/40681596433)
+passed all 31 jobs at `562b42fcd0cbf2e1446bb000e48254403ff080e1`, including
+native AMD64/ARM64 acceptance. Local genesis verification on 2026-10-28 published
+all 24 code-bearing allocations through the ordinary verifier, reused them after
+restart and fabricated no creation evidence. Neither result clears writer IAM.
 
-[PR 92 CI run 35474508539](https://github.com/islishude/etherview/actions/runs/35474508539)
-at `aebb61fee2783e3f6bb8810a81296b05c142bce6` passed all 11 jobs, including
-production schema/runtime and native AMD64/ARM64 Hardhat/Foundry. Later local
-Kubo acceptance replaced the failed public-gateway prerequisite: the exact
-`make test-preview-metadata` passed two canonical metadata versions, one
-attempt each, gateway/worker restart and immutable content checks. That local
-replacement does not establish public-IPFS availability.
+P30-T152 passed 24 tool regressions and isolated production runs: each layout
+published 17 initial scenarios and completed 38 lifecycle actions. Bilingual
+desktop/mobile checks covered manual refresh and initial/final state. See
+[tool acceptance](../../preview/docs/tools.md#acceptance) for environment and
+limits. Wallet-provider actions, live payments and final human visual review
+remain separate manual evidence.
 
-Neutral contracts and production/test decomposition passed import-graph,
-source/lint, focused, and topology checks. Aggregate bounded-runtime acceptance
-passed `make check`, explicit integration/race and browser suites, schema,
-runtime/x402, Hardhat, and Foundry production gates at its delivery revision.
-This covers domain hardening, not P60-T17 live payments or P70-T04 capacity;
-short local benchmarks establish regression coverage only.
+### Current-chain ENS acceptance
 
-### Preview genesis verification acceptance
-
-P30-T145 passed on 2026-10-28 against local Geth/Lighthouse and the production
-API: all 24 code-bearing genesis allocations have exact-address runtime
-publications; a repeated run and API restart reuse all 24. The source inventory
-includes constructor-created children and fixed system/utility/application
-inputs, with no synthetic creation evidence. Input generation checks, 15 helper
-regressions, Compose rendering, Preview lint, repository formatting, docs and
-plan checks passed. This is local Preview acceptance, not a production rollout
-or additional remote CI evidence.
-
-P30-T149: shared enrich component/configuration tests and local `make check` passed, including Compose and Helm parity and credential scoping. Production recovery acceptance remains P30-T150.
-
-P30-T150: ENS unit/PostgreSQL race regressions, `make check`, full integration race, fresh-schema, production runtime, Preview contracts and 155 browser tests passed locally. Real contracts cover all/split discovery, migration, reorg, restart and isolated failures; release capacity/security/soak gates remain separate.
-
-P30-T151: the [new report and machine-readable evidence](../reviews/ens-current-chain-acceptance.md) pin the production image/manifest and Mainnet block 26299443. Core stored 766 independently matched logs; seven imported v1/v2/CCIP/primary samples passed background publication, database-only API reads, restart and independent RPC reconciliation. Event-discovered live samples are explicitly zero; full history remains uncovered.
+P30-T150 passed shared enrich configuration/component parity, secret scoping,
+real-contract discovery/migration/reorg/restart/outage, PostgreSQL race,
+`make check`, schema/runtime, Preview contracts and 155 browser tests locally.
+P30-T151's [report](../reviews/ens-current-chain-acceptance.md) pins image,
+manifest and Mainnet block 26299443: 766 independently matched stored logs and
+seven imported v1/v2/CCIP/primary samples passed publication, database-only reads,
+restart and independent reconciliation. Event-discovered live samples are zero.
+Full directory coverage and P70 release security/capacity/soak remain separate.

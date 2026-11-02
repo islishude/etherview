@@ -13,13 +13,13 @@ canonical detach/reattach, and read-only unknown-name lookups. Run them through
 they also run in the maintained full integration/race suites. Schema changes
 continue to require the production-image `make test-schema-e2e` gate.
 
-P20-T28 adds `TestENSCollector` PostgreSQL race regressions for autonomous
+`TestENSCollector` adds PostgreSQL race regressions for autonomous
 discovery, ordered versions/deletions/renewal, restart and concurrent cursors,
 history/deployment gaps, core attachment changes and reorg/reattachment. Run the combined suite with
 `go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run '^TestENS(Sync|Collector)'`.
 The RPC fixture is local evidence, not live Mainnet acceptance.
 
-P20-T28/P20-T29 and P40-T27 add real pinned v2 lifecycle/projection fixtures,
+The ENS suite includes real pinned v2 lifecycle/projection fixtures,
 background worker/publication and database-only reader tests. Run the combined
 PostgreSQL race suite with
 `go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
@@ -47,7 +47,7 @@ without requests, bilingual accessibility and mobile layout. Unit tests cover
 multi-chunk atomicity and stale responses. API tests reject ENS calls and writes,
 including enqueue and snapshot inserts, without changing authentication/billing.
 
-P20-T30/P40-T28/P50-T82 extend these gates with exact independent registration
+These gates include exact independent registration
 profiles, canonical known-name search and `/api/v1/names/{name}`. Real-contract
 profile tests cover registrant/controller separation, wrapper expiry, grace,
 renewal, regeneration, migration and re-registration. PostgreSQL tests require
@@ -1056,8 +1056,7 @@ partition/merge and subprocess failure handling. Go tests authenticate and
 reproduce the locked package with the same assembler used by workers.
 Compare parallel-group wall time against the sequential baseline on native CI;
 record resource contention and any compilation timeout without relaxing limits.
-The historical native serial/parallel comparison and failure-propagation evidence
-remain in the [measurement record](reviews/P30-vyper-ci-measurements.json) and
+Historical measurements remain in Git and the
 [measurement run](https://github.com/islishude/etherview/actions/runs/38184481846).
 That run covers its recorded revision and 26-version baseline, before 0.2.0
 retirement; it does not replace acceptance for later runtime changes.
@@ -1328,7 +1327,7 @@ See [Preview application contracts acceptance](../preview/docs/testing.md#previe
 
 ## Manual explorer refresh acceptance
 
-P50-T84 restricts passive requests to home/status and verification/payment task
+P50-T11 restricts passive requests to home/status and verification/payment task
 progress. Test heads, publication bursts, reorgs, initial SSE opening, native
 reconnect and online recovery: ordinary views must retain request counts and
 pagination. In-range publications mark snapshots; out-of-range events do not.
@@ -1366,7 +1365,7 @@ consensus/blob acceptance gates above.
 
 ### Separate payment-chain wallet acceptance
 
-P60-T24 adds an explicit top-up scope: the injected wallet changes operation
+P60-T25 adds an explicit top-up scope: the injected wallet changes operation
 revision on expected payment-chain transitions while keeping site-bound SIWE
 identity. Run `make web-test`, `make web-lint`, `make test-e2e`,
 `make generate-check`, `make docs-check` and `make plan-check`. Focused coverage
@@ -1374,14 +1373,14 @@ is in `wallet/eip6963.test.tsx`, `auth/AuthProvider.test.tsx` and
 `pages/PersonalBilling.test.tsx`: exact expected transitions, missing events,
 account/network changes, rejected entry/restoration, stable authentication,
 and balance checks only after explicit user action when switching is needed.
-The P60-T24 payment view retains its scope across reads and payment outcomes. Cover
+The P60-T25 payment view retains its scope across reads and payment outcomes. Cover
 immediate selection switching, retained failed selections without old balances,
 icon-only retry, unavailable/zero balances, serialized entry, partial failures,
 late entry after departure, restoration on history/prices/route departure and
 restoration failure. Balance reads create no intents or payment signatures;
 account/provider changes and stale results remain fenced. Passive refresh must never trigger a chain switch.
 Automated tests never spend Sepolia funds. Real payment and API-debit acceptance is documented in
-[P60](plans/P60-user-auth-billing.md#final-live-payment-and-api-debit-acceptance-p60-t17--p60-t24).
+[P60](plans/P60-user-auth-billing.md#final-live-payment-and-api-debit-acceptance).
 Its one-shot local harness and detailed local records were deleted after
 acceptance at the operator's request; the plan retains the acceptance conclusion.
 
@@ -1404,7 +1403,7 @@ pending-chain admission, existing unsigned/signed owners, digest conflicts and
 PostgreSQL reservation/refusal races. A refused authorization must never obtain
 signed bytes; an existing transaction must retain its original hash.
 
-P60-T30 additionally covers mutually exclusive RPC sources, independent listener
+Facilitator configuration coverage includes mutually exclusive RPC sources, independent listener
 and RPC plaintext permissions, strict legacy/unknown/duplicate YAML rejection,
 bounded files, redacted field errors and offline `--check-config`. Credential
 environment regressions cover direct/file precedence, blank fallback, present-but-empty

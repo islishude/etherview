@@ -66,7 +66,7 @@ rebroadcast also records confirmed broadcast evidence on success.
 
 ## Configuration and lifecycle boundaries
 
-P60-T30 separates `server`, `database`, `auth`, `signers` and `chains`.
+Configuration separates `server`, `database`, `auth`, `signers` and `chains`.
 Ordinary RPC destinations use `chains[].rpc.url`; credential-bearing destinations
 use the mutually exclusive `url_file`. Local plaintext RPC permission belongs
 to each RPC configuration, independently of the server's local plaintext exception.
