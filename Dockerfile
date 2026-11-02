@@ -70,12 +70,14 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY compiler/vyper ./compiler/vyper
+COPY compiler/geas ./compiler/geas
 COPY web/webui.go ./web/webui.go
 COPY api/openapi.yaml ./api/openapi.yaml
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go install -trimpath -ldflags="-s -w" ./cmd/...
+    go install -trimpath -ldflags="-s -w" ./cmd/... \
+    && go build -trimpath -ldflags="-s -w" -o /go/bin/etherview-geas-compiler ./compiler/geas
 
 FROM production-base AS production
 ARG VERSION=dev
