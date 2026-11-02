@@ -3,7 +3,7 @@ import { shorten } from "@/components/format";
 import { testBillingConfig, testTopupIntent } from "@/billing/testFixtures";
 import { encodeAbiParameters } from "viem";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as billing from "@/api/billing";
@@ -212,6 +212,11 @@ describe("personal billing workspace", () => {
     state.crossChain = true;
     state.readContract.mockResolvedValue(encodeAbiParameters([{ type: "uint256" }], [123456789n]));
     const other = testBillingConfig({ id: "other", network: "eip155:2", name: "Other USD" });
+    other.payment_chains[0]!.tokens.push({
+      ...other.payment_chains[0]!.tokens[0]!,
+      id: "other-token",
+      name: "Other Token",
+    });
     vi.mocked(billing.getBillingConfig).mockResolvedValue({
       ...config,
       payment_chains: [...config.payment_chains, ...other.payment_chains],
@@ -226,7 +231,7 @@ describe("personal billing workspace", () => {
     );
     await user.type(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" }), "1");
     await user.selectOptions(screen.getByLabelText("Network", { exact: true }), "eip155:2");
-    expect(await screen.findByRole("alert")).toHaveTextContent("Network switch cancelled");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to switch to Test Network");
     expect(screen.getByLabelText("Network", { exact: true })).toHaveValue("eip155:2");
     expect(document.querySelector("#billing-payment-token")).toHaveValue("other");
     expect(screen.getByRole("textbox", { name: "Top-up amount (whole tokens)" })).toHaveValue("");
@@ -234,6 +239,17 @@ describe("personal billing workspace", () => {
     expect(document.querySelector(".billing-wallet-balance")).not.toHaveTextContent("123.456789");
     expect(state.readContract).toHaveBeenCalledTimes(1);
     expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Asset" }), "other-token");
+    await user.type(screen.getByRole("textbox"), "1");
+    const submit = screen.getByRole("button", { name: "Top up & authorize" });
+    expect(submit).toBeDisabled();
+    fireEvent.submit(submit.closest("form")!);
+    expect(state.withBillingChain).toHaveBeenCalledTimes(1);
+    expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Network", { exact: true })).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
     const refresh = screen.getByRole("button", { name: "Refresh balance" });
     expect(refresh).toHaveTextContent("");
     state.withBillingChain.mockImplementation(async (_network, operation) =>
@@ -332,7 +348,7 @@ describe("personal billing workspace", () => {
     "CHAIN_MISMATCH",
     "INVALID_PROVIDER_RESPONSE",
     "REQUEST_FAILED",
-  ] as const)("blocks payment after %s and retries the original payment", async (code) => {
+  ] as const)("blocks payment after %s until explicit balance refresh succeeds", async (code) => {
     state.chainID = "31337";
     state.crossChain = true;
     state.withBillingChain.mockRejectedValueOnce(new BillingChainError("entry", "1", code));
@@ -352,9 +368,26 @@ describe("personal billing workspace", () => {
     expect(
       screen.queryByText("Unable to check wallet balance. Refresh to retry."),
     ).not.toBeInTheDocument();
+    expect(retry).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to switch to Test Network");
+    expect(document.querySelector("#billing-network-error")).toHaveTextContent(
+      "Your wallet is not ready to sign payment on this network. Confirm the switch in your wallet and retry.",
+    );
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.type(screen.getByRole("textbox"), "0");
+    fireEvent.submit(retry.closest("form")!);
+    expect(retry).toBeDisabled();
+    expect(state.withBillingChain).toHaveBeenCalledTimes(1);
+    expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
+    state.withBillingChain.mockRejectedValueOnce(new BillingChainError("entry", "1", code));
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
+    await screen.findByRole("alert");
+    expect(retry).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Refresh balance" }));
+    await waitFor(() => expect(retry).toBeEnabled());
     await user.click(retry);
     await waitFor(() => expect(payBillingTopup).toHaveBeenCalledTimes(1));
-    expect(state.readContract).toHaveBeenCalledTimes(1);
+    expect(state.readContract).toHaveBeenCalledTimes(2);
     expect(billing.createBillingTopupIntent).toHaveBeenCalledTimes(1);
   });
 
@@ -431,14 +464,18 @@ describe("personal billing workspace", () => {
     const { user } = setup();
     await ready();
     await user.click(screen.getByRole("button", { name: "Refresh balance" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Network switch cancelled");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unable to switch to Test Network");
     const network = screen.getByLabelText("Network", { exact: true });
     expect(network).toHaveAttribute("aria-invalid", "true");
-    expect(network).toHaveAccessibleDescription(/Network switch cancelled/);
+    expect(network).toHaveAccessibleDescription(
+      /Your wallet is not ready to sign payment on this network/,
+    );
     expect(document.querySelector(".billing-wallet-balance")).toHaveTextContent("Unavailable");
     await user.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(network).toHaveAccessibleDescription(/Network switch cancelled/);
+    expect(network).toHaveAccessibleDescription(
+      /Your wallet is not ready to sign payment on this network/,
+    );
     expect(state.readContract).not.toHaveBeenCalled();
     state.readContract.mockRejectedValueOnce(new Error("unavailable"));
     await user.click(screen.getByRole("button", { name: "Refresh balance" }));

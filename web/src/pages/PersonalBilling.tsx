@@ -2,6 +2,7 @@ import { BillingTransactionHash } from "./BillingTransactionHash";
 import {
   fundingBalanceBlocked,
   fundingWalletKey,
+  fundingNetworkKey,
   useFundingView,
   useFundingNetworkError,
   useFundingSelection,
@@ -177,11 +178,12 @@ export function PersonalBilling() {
   );
   const viewRevision = useFundingView(view, wallet.closeBillingChain);
   const walletKey = fundingWalletKey(identity, wallet.active, payment) + `:${viewRevision}`;
+  const networkKey = fundingNetworkKey(identity, wallet.active, payment) + `:${viewRevision}`;
   const currentWalletKey = useRef(walletKey);
   currentWalletKey.current = walletKey;
   const networkError = useFundingNetworkError(
     chainFailure,
-    walletKey,
+    networkKey,
     paymentChain?.name,
     setNotification,
     setChainFailure,
@@ -189,6 +191,7 @@ export function PersonalBilling() {
   const { balance, balanceError, refreshBalance, markBalanceUnavailable } = useFundingBalance({
     wallet,
     walletKey,
+    networkKey,
     currentWalletKey,
     payment,
     walletReady,
@@ -200,7 +203,7 @@ export function PersonalBilling() {
     setCheckingBalance,
     setChainFailure,
     notify: setNotification,
-    enabled: view === "payment" && !chainFailure,
+    enabled: view === "payment" && !networkError,
   });
   const selectPayment = useFundingSelection({
     wallet,
@@ -222,7 +225,8 @@ export function PersonalBilling() {
     setNotice,
   });
   const atomicAmount = payment ? topupAmount(amount, payment) : undefined;
-  const balanceBlocked = fundingBalanceBlocked(balance, atomicAmount, crossChain);
+  const balanceBlocked =
+    Boolean(networkError) || fundingBalanceBlocked(balance, atomicAmount, crossChain);
   const blocked =
     submitting || checkingBalance || waiting || recovery.isPending || Boolean(recovery.error);
 
@@ -233,13 +237,10 @@ export function PersonalBilling() {
     if (blocked || submittingRef.current || checkingBalanceRef.current || balanceBlocked) return;
     setError(undefined);
     setNotice(undefined);
-    setChainFailure(undefined);
     setNotification(undefined);
     if (
       !walletReady ||
       !wallet.active ||
-      !wallet.signBillingTypedData ||
-      !wallet.waitForBillingTransaction ||
       !auth.session.csrf_token ||
       !payment?.x402_topups_enabled
     ) {
@@ -318,7 +319,7 @@ export function PersonalBilling() {
         await refreshBilling();
       } else if (cause instanceof BillingChainError) {
         if (currentWalletKey.current === walletKey) {
-          setChainFailure({ key: walletKey, error: cause });
+          setChainFailure({ key: networkKey, error: cause });
         }
       } else if (cause instanceof TopupBalanceError) {
         if (cause.reason === "unavailable") markBalanceUnavailable();

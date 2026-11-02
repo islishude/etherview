@@ -112,7 +112,9 @@ site chain. The payment view retains the scope across balance reads and payment 
 and attempts restoration when leaving for history, prices or another route.
 Selection immediately requests wallet switching; failure retains the selected
 network/token, hides its balance and stops the operation. A later explicit
-refresh or payment retries entry; neither passive refresh nor initial rendering
+balance refresh retries entry; payment submission remains disabled until network
+entry succeeds. Dismissing the notification, editing the amount or changing tokens
+on the same network does not clear the failure. Neither passive refresh nor initial rendering
 switches networks. Partial entry failure attempts to restore the preceding actual
 network without reverting the selection. Closing during a pending request waits
 for that request and restores without starting further payment work. Failed

@@ -14,7 +14,7 @@ export interface ChainFailure {
 
 export function useFundingNetworkError(
   chainFailure: ChainFailure | undefined,
-  walletKey: string,
+  networkKey: string,
   networkName: string | undefined,
   setNotification: (value: string | undefined) => void,
   setChainFailure: (value: ChainFailure | undefined) => void,
@@ -23,17 +23,13 @@ export function useFundingNetworkError(
   useEffect(() => {
     setChainFailure(undefined);
     setNotification(undefined);
-  }, [walletKey, setChainFailure, setNotification]);
-  const networkError =
-    chainFailure?.key === walletKey
-      ? t(
-          `billing.guide.switchError.${chainFailure.error.code === "USER_REJECTED" ? "rejected" : chainFailure.error.code === "CHAIN_MISMATCH" ? "mismatch" : chainFailure.error.code === "INVALID_PROVIDER_RESPONSE" ? "invalid" : "failed"}`,
-          { network: networkName ?? chainFailure.error.targetChainID },
-        )
-      : undefined;
+  }, [networkKey, setChainFailure, setNotification]);
+  const failed = chainFailure?.key === networkKey;
+  const notification = t("billing.guide.switchError.message", { network: networkName });
+  const networkError = failed ? t("billing.guide.switchError.description") : undefined;
   useEffect(() => {
-    if (networkError) setNotification(networkError);
-  }, [networkError, chainFailure, setNotification]);
+    if (failed) setNotification(notification);
+  }, [failed, notification, chainFailure, setNotification]);
   return networkError;
 }
 
@@ -90,8 +86,10 @@ export function useFundingSelection({
   const prefix = ["private-account", identity, "billing"];
   return (network: string, optionID: string) => {
     if (checkingBalanceRef.current || submittingRef.current) return;
-    setChainFailure(undefined);
-    setNotification(undefined);
+    if (network !== payment?.network) {
+      setChainFailure(undefined);
+      setNotification(undefined);
+    }
     setPaymentNetwork(network);
     setPaymentOptionID(optionID);
     setAmount("");
@@ -113,7 +111,7 @@ export function useFundingSelection({
       .catch((cause) => {
         if (currentWalletKey.current !== nextKey) return;
         setChainFailure({
-          key: nextKey,
+          key: fundingNetworkKey(identity, wallet.active, nextPayment) + `:${viewRevision}`,
           error:
             cause instanceof BillingChainError
               ? cause
@@ -134,6 +132,7 @@ export function useFundingSelection({
 export function useFundingBalance({
   wallet,
   walletKey,
+  networkKey,
   currentWalletKey,
   payment,
   walletReady,
@@ -149,6 +148,7 @@ export function useFundingBalance({
 }: {
   wallet: ReturnType<typeof useWallet>;
   walletKey: string;
+  networkKey: string;
   currentWalletKey: RefObject<string>;
   payment: BillingPaymentConfig | undefined;
   walletReady: boolean;
@@ -226,7 +226,7 @@ export function useFundingBalance({
           setBalanceFailure(walletKey);
         } else {
           setChainFailure({
-            key: walletKey,
+            key: networkKey,
             error:
               cause instanceof BillingChainError
                 ? cause
@@ -268,6 +268,24 @@ export function fundingWalletKey(
     payment?.asset,
     payment?.recipient,
     payment?.id,
+  ]);
+}
+
+// Network readiness survives token changes within the same wallet payment scope.
+export function fundingNetworkKey(
+  identity: string,
+  active: ActiveWallet | undefined,
+  payment: BillingPaymentConfig | undefined,
+) {
+  return JSON.stringify([
+    identity,
+    active && [
+      active.uuid,
+      active.account,
+      active.authChainID ?? active.chainID,
+      active.authRevision ?? active.revision,
+    ],
+    payment?.network,
   ]);
 }
 

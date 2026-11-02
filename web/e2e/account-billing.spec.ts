@@ -228,12 +228,14 @@ for (const appearance of appearanceCases) {
       .getByRole("button", { name: appearance.language === "zh" ? "刷新余额" : "Refresh balance" })
       .click();
     await expect(page.getByRole("alert")).toContainText(
-      appearance.language === "zh" ? "已取消网络切换" : "Network switch cancelled",
+      appearance.language === "zh" ? "无法切换到 Test Network" : "Unable to switch to Test Network",
     );
     await expect(page.getByRole("alert")).not.toContainText("private provider details");
     await expect(page.locator("#billing-payment-network")).toHaveAttribute("aria-invalid", "true");
     await expect(page.locator("#billing-network-error")).toContainText(
-      appearance.language === "zh" ? "已取消网络切换" : "Network switch cancelled",
+      appearance.language === "zh"
+        ? "钱包尚未准备好在此网络签署付款。请在钱包中确认切换网络后重试。"
+        : "Your wallet is not ready to sign payment on this network. Confirm the switch in your wallet and retry.",
     );
     await expect(page.locator(".billing-wallet-balance")).toContainText(
       appearance.language === "zh" ? "不可用" : "Unavailable",
@@ -242,6 +244,12 @@ for (const appearance of appearanceCases) {
       appearance.language === "zh" ? "无法检查" : "Unable to check",
     );
     expect(writes).toEqual([]);
+    await page.locator("#billing-topup-amount").fill("1");
+    await expect(
+      page.getByRole("button", {
+        name: appearance.language === "zh" ? "充值并授权" : "Top up & authorize",
+      }),
+    ).toBeDisabled();
     await checkView("payment-switch-rejected");
     await page
       .getByRole("button", {

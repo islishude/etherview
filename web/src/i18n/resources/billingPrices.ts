@@ -25,14 +25,9 @@ export const billingPriceResources = {
         refresh: "Refresh balance",
         loading: "Checking balance…",
         switchError: {
-          rejected:
-            "Network switch cancelled. Your wallet is not ready to sign payment on {{network}}. Confirm the switch in your wallet and retry.",
-          mismatch:
-            "Your wallet did not switch to {{network}}. Payment signing is blocked. Retry the network switch.",
-          invalid:
-            "Your wallet returned an invalid network-switch response for {{network}}. Payment signing is blocked. Retry the network switch.",
-          failed:
-            "Unable to switch to {{network}}. Your wallet is not ready to sign payment on this network. Confirm the switch in your wallet and retry.",
+          message: "Unable to switch to {{network}}",
+          description:
+            "Your wallet is not ready to sign payment on this network. Confirm the switch in your wallet and retry.",
         },
         balanceUnavailable: "Unavailable",
         unavailable: "Unable to check wallet balance. Refresh to retry.",
@@ -81,12 +76,8 @@ export const billingPriceResources = {
         refresh: "刷新余额",
         loading: "正在检查余额…",
         switchError: {
-          rejected:
-            "已取消网络切换，钱包尚未准备好在 {{network}} 签署付款。请在钱包中确认切网后重试。",
-          mismatch: "钱包未实际切换到 {{network}}，暂时无法签署付款。请重试切换网络。",
-          invalid: "钱包切换到 {{network}} 时返回异常，暂时无法签署付款。请重试切换网络。",
-          failed:
-            "未能切换到 {{network}}，钱包尚未准备好在该网络签署付款。请在钱包中确认切网后重试。",
+          message: "无法切换到 {{network}}",
+          description: "钱包尚未准备好在此网络签署付款。请在钱包中确认切换网络后重试。",
         },
         balanceUnavailable: "不可用",
         unavailable: "无法检查钱包余额，请刷新重试。",

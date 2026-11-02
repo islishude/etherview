@@ -1324,7 +1324,11 @@ credit to the user/explorer-chain account. The frontend selects chain then token
 clears drafts on selection changes and binds wallet operations to that option.
 Explicit network selection invokes the injected wallet switch directly. Failed
 switches retain the new selection, display unavailable balance and stop further
-work until explicit retry. The payment-view scope retains site-bound SIWE identity
+work until explicit balance-refresh retry succeeds. Payment submission is disabled
+and guarded while switching or after failure; dismissing the message, editing the
+amount or selecting another token on the same network does not clear the failure.
+The notification names the network briefly, while the network selector retains
+a separate wallet-readiness explanation. The payment-view scope retains site-bound SIWE identity
 and stays on the payment network until history, prices or route departure;
 restoration failure disconnects local wallet/authentication state (ADR-0020).
 Balance read failures display only unavailable, with an accessible icon retry.
