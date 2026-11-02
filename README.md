@@ -65,7 +65,7 @@ and volumes; choose different published ports if running both concurrently.
 
 ## Development
 
-Toolchains: Go >=1.27.3, Node.js 26.13.0, and pnpm 12.16.1 (pinned in
+Toolchains: Go >=1.27.3, Node.js 26.13.0, and pnpm 12.17.0 (pinned in
 `package.json`). The compiler workspace requires exactly Node.js 26.13.0.
 
 ```sh
