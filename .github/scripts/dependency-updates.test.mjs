@@ -300,13 +300,92 @@ test("discovery preserves network failures and explicit version errors", async (
   const special = await discover(registry, root, "node", undefined, async () => ["99.0.0"]);
   assert.equal(special[0].status, "review");
 });
-test("official release adapters filter revoked, yanked and prerelease releases and paginate", async () => {
+test("npm releases follow only latest even when next and untagged versions are higher", async () => {
   assert.deepEqual(
     await releases({ source: "npm", package: "x" }, async () => ({
-      versions: { "1.0.0": {}, "1.1.0": { deprecated: "bad" } },
+      "dist-tags": { latest: "12.16.1", "next-12": "12.17.0", next: "13.0.0" },
+      versions: {
+        "12.16.0": {},
+        "12.16.1": {},
+        "12.17.0": {},
+        "12.18.0": {},
+        "13.0.0": {},
+      },
     })),
-    ["1.0.0"],
+    ["12.16.1"],
   );
+});
+test("npm releases reject invalid latest metadata without falling back to other versions", async () => {
+  for (const metadata of [
+    { versions: { "1.2.4": {} } },
+    { "dist-tags": { next: "1.2.4" }, versions: { "1.2.4": {} } },
+    { "dist-tags": { latest: 123 }, versions: { "1.2.4": {} } },
+    { "dist-tags": { latest: "invalid" }, versions: { "1.2.4": {} } },
+    { "dist-tags": { latest: "1.3.0-rc.1" }, versions: { "1.3.0-rc.1": {}, "1.2.4": {} } },
+    { "dist-tags": { latest: "1.2.5" }, versions: { "1.2.4": {} } },
+    { "dist-tags": { latest: "1.2.5" } },
+    {
+      "dist-tags": { latest: "1.2.5", next: "1.3.0" },
+      versions: { "1.2.4": {}, "1.2.5": { deprecated: "revoked" }, "1.3.0": {} },
+    },
+  ]) {
+    await assert.rejects(
+      releases({ source: "npm", package: "x" }, async () => metadata),
+      /npm latest tag must reference a published non-deprecated stable version/,
+    );
+  }
+});
+test("npm discovery enforces latest for automatic and explicit updates and preserves major review", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "dependency-latest-"));
+  try {
+    const dep = fixture(dir);
+    const metadata = {
+      "dist-tags": { latest: "1.2.3", next: "1.3.0" },
+      versions: { "1.2.2": {}, "1.2.3": {}, "1.2.4": {}, "1.3.0": {}, "2.0.0": {} },
+    };
+    const registry = { dependencies: [dep] };
+    const getReleases = (entry) => releases(entry, async () => metadata);
+    const check = async (requested) =>
+      (await discover(registry, dir, dep.id, requested, getReleases))[0];
+
+    const current = await check();
+    assert.equal(current.status, "current");
+    assert.equal(current.candidate, null);
+    assert.equal(current.latest, null);
+    for (const requested of ["1.2.4", "1.3.0"]) {
+      const rejected = await check(requested);
+      assert.equal(rejected.status, "error");
+      assert.match(rejected.reason, /requested version is unavailable/);
+    }
+
+    metadata["dist-tags"].latest = "1.2.4";
+    for (const requested of [undefined, "1.2.4"]) {
+      const update = await check(requested);
+      assert.equal(update.status, "update");
+      assert.equal(update.candidate, "1.2.4");
+      assert.equal(update.latest, "1.2.4");
+    }
+
+    metadata["dist-tags"].latest = "2.0.0";
+    const review = await check();
+    assert.equal(review.status, "review");
+    assert.equal(review.latest, "2.0.0");
+    assert.equal(review.candidate, null);
+    assert.equal((await check("2.0.0")).status, "error");
+
+    metadata["dist-tags"].latest = "1.2.2";
+    assert.equal((await check()).status, "current");
+    assert.equal((await check("1.2.2")).status, "error");
+
+    delete metadata["dist-tags"].latest;
+    const invalid = await check();
+    assert.equal(invalid.status, "error");
+    assert.match(invalid.reason, /npm latest tag/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("official release adapters filter revoked, yanked and prerelease releases and paginate", async () => {
   assert.deepEqual(
     await releases({ source: "pypi", package: "x" }, async () => ({
       releases: { "1.0": [{ yanked: true }], 1.1: [{ yanked: false }], 1.2: [] },

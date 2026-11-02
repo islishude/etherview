@@ -285,12 +285,21 @@ export async function releases(dep, request = fetchData) {
         .split(/\s+/)
         .map((v) => v.replace(/^v/, ""));
     }
-    case "npm":
-      return Object.entries(
-        (await request(`https://registry.npmjs.org/${encodeURIComponent(dep.package)}`)).versions,
+    case "npm": {
+      const metadata = await request(
+        `https://registry.npmjs.org/${encodeURIComponent(dep.package)}`,
+      );
+      const latest = metadata["dist-tags"]?.latest;
+      // A plain semver may still belong to next; only the latest channel is eligible.
+      if (
+        typeof latest !== "string" ||
+        !versionParts(latest) ||
+        !metadata.versions?.[latest] ||
+        metadata.versions[latest].deprecated
       )
-        .filter(([, value]) => !value.deprecated)
-        .map(([version]) => version);
+        throw new Error("npm latest tag must reference a published non-deprecated stable version");
+      return [latest];
+    }
     case "pypi":
       return Object.entries((await request(`https://pypi.org/pypi/${dep.package}/json`)).releases)
         .filter(([, files]) => files.some((f) => !f.yanked))

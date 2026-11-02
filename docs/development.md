@@ -111,7 +111,12 @@ unregistered field values. Non-JSON pins retain exact text templates and counts.
   tests. It also runs through `make test-workflow-scripts` and ordinary CI.
 
 Automatic candidates stay within the current major version; `0.x` candidates
-stay within the current minor. One dependency and all its linked locations form
+stay within the current minor. Registered npm dependencies follow only
+`dist-tags.latest`, including explicit version requests; `next` and other tags
+are not candidates. Missing, unpublished, prerelease or deprecated `latest`
+versions fail discovery without falling back to other versions. A `latest`
+version outside the automatic upgrade boundary is reported for review.
+One dependency and all its linked locations form
 one PR. pnpm and Python locks are regenerated with their package managers.
 Only govulncheck is bumped as part of the initial automation installation;
 other discovered updates receive separate review.
