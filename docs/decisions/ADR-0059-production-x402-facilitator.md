@@ -34,10 +34,18 @@ is separate from liveness and reports dependency degradation.
 
 ## Acceptance
 
-P60-T26 owns automated local delivery. P60-T27 owns real AWS KMS and funded
-multi-network acceptance. Neither mocked KMS nor local-chain results establish
-production readiness. Existing funded testnet evidence does not cover this new
-facilitator implementation.
+P60-T26 owns automated local delivery. P60-T27 owns local end-to-end acceptance
+using a pinned Rustack KMS emulator and two independent Anvil networks, without
+Geth or real AWS/public-testnet prerequisites. Actual AWS SDK HTTP signing
+compatibility must pass; fake KMS and keystore tests cannot substitute for it.
+Both standard payment methods must pass on each network in all/split topologies,
+with recovery coverage and independent chain/writer reconciliation.
+
+The dual-Anvil facility is dedicated to T27 and does not replace Preview's
+Geth/Anvil topology. Local credentials and emulator endpoints remain test-scoped.
+Simulation does not establish real AWS IAM enforcement, production key isolation
+or public-network production readiness. P70 release gates remain separate.
+Existing funded testnet evidence does not cover this new facilitator implementation.
 
 ## Read-only submission progress
 

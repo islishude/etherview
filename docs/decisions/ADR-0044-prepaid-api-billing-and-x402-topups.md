@@ -166,7 +166,8 @@ credit remain one fenced writer transaction. No bridge, market-rate oracle,
 legacy balance conversion or startup backfill is introduced. P60-T25 tracks
 local acceptance; this decision alone is not completion evidence.
 P60-T25 does not require a new live testnet gate. P60-T25 evidence used the former local Permit2 fixture;
-P60-T26 migrates it to standard contracts and P60-T27 owns real-network acceptance.
+P60-T26 migrates it to standard contracts and P60-T27 owns Rustack KMS and
+dual-Anvil local acceptance.
 
 Preview additionally runs a payment-only Anvil network (31337), leaving indexing
 and SIWE on 48815. Both networks predeploy six- and eighteen-decimal local tokens.
@@ -181,8 +182,12 @@ uncertain payments still require reconciliation before any new attempt.
 
 [ADR-0059](ADR-0059-production-x402-facilitator.md) defines the standalone
 multi-chain signing and durable transaction boundary. P60-T26 replaces the local
-custom Permit2 settlement fixture with the standard contract path. P60-T27 retains
-separate real AWS and multi-network acceptance.
+custom Permit2 settlement fixture with the standard contract path. P60-T27 uses
+separate local acceptance using Rustack KMS and two independent Anvil networks,
+without Geth or real AWS/public-testnet prerequisites. This dedicated test topology
+does not replace Preview. Simulation does not establish real AWS IAM enforcement,
+production key isolation or public-network production readiness; P70 release gates
+remain separate.
 
 ## Payment network display names
 

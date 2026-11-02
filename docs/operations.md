@@ -1972,5 +1972,25 @@ afterward. Account credit reconciliation remains the existing API-side operator
 procedure. Rotation of signer/network configuration requires resolving pending
 transactions first; never delete journal rows to bypass a pending payment.
 
-Local automated acceptance belongs to P60-T26. Real KMS signing and funded
-multi-network end-to-end acceptance remain P60-T27 and require separate evidence.
+P60-T26 local acceptance is complete. P60-T27 uses a dedicated local facility
+using pinned Rustack KMS and two independent Anvil networks, without Geth or real
+AWS/public-testnet prerequisites. This does not replace the existing Preview
+topology. Use local test credentials and test-scoped emulator endpoints; never
+apply emulator endpoint overrides to production facilitator processes.
+
+Run `make test-rustack-x402` for an isolated, disposable run in both role layouts.
+It builds Rustack from commit `ffc10378c64280a78bf6b73fff51612bbba0eb66`; the
+published 0.10.0 image lacks the required secp256k1 key support. Use
+`make test-rustack-x402-prebuilt` only after both the production image and
+`etherview-rustack:ffc10378c64280a78bf6b73fff51612bbba0eb66` are loaded. The test
+creates its own Compose project, two Anvil state volumes and KMS key, then removes
+them on teardown. It publishes ephemeral loopback service ports and temporarily
+uses a host RPC fault proxy reachable from Docker for lost-broadcast-response
+coverage. KMS outage coverage pauses/resumes the emulator to retain its signing
+identity; it makes no KMS restart-persistence claim.
+
+Its [acceptance requirements](testing.md#standalone-facilitator-acceptance) require
+actual AWS SDK HTTP signing, both payment methods on both networks in all/split
+layouts, recovery checks and independent chain/writer reconciliation. Local
+simulation does not establish real AWS IAM enforcement, production key isolation
+or public-network production readiness; P70 release gates remain separate.

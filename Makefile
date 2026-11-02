@@ -319,6 +319,17 @@ test-runtime-e2e-prebuilt:
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
+.PHONY: test-rustack-x402 test-rustack-x402-prebuilt
+
+test-rustack-x402: docker-build
+	@DOCKER="$(DOCKER)" e2e/x402local/build-rustack.sh
+	@$(MAKE) --no-print-directory test-rustack-x402-prebuilt
+
+test-rustack-x402-prebuilt:
+	@$(call require-image,$(IMAGE),test-rustack-x402-prebuilt: run 'make docker-build' first)
+	@$(call require-image,etherview-rustack:ffc10378c64280a78bf6b73fff51612bbba0eb66,test-rustack-x402-prebuilt: run 'make test-rustack-x402' first)
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" $(GO) test -count=1 -v -timeout=20m -tags=runtimee2e,rustacke2e -run '^TestRustackDualAnvil$$' ./e2e/x402local
+
 test-preview-metadata: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 

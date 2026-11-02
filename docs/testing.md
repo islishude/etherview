@@ -1405,7 +1405,34 @@ the production facilitator and standard EIP-3009/Permit2 contract paths in
 all/split topologies. `node --test preview/anvil/test.mjs` verifies persisted
 standard Permit2 nonce bitmaps and exact approval consumption across restart.
 Run generation, lint, schema, deployment, docs and plan gates for this change.
-Mocked KMS and local chain evidence do not close P60-T27 real-environment acceptance.
+P60-T27 uses a separate local acceptance facility using a pinned
+[Rustack](https://github.com/tyrchen/rustack) version or commit and two independent
+Anvil networks. It must not start or depend on Geth; existing Preview tests above
+retain their topology and do not substitute for T27 evidence. The facility is not
+part of the ordinary Preview gate. Run `make test-rustack-x402` to build the
+production image and pinned Rustack source, then execute both topologies.
+`make test-rustack-x402-prebuilt` runs the same checks with those images already
+loaded. The dedicated Go build tags are `runtimee2e,rustacke2e`.
+
+First verify `ECC_SECG_P256K1`, `SIGN_VERIFY`, `GetPublicKey` and
+`Sign(DIGEST, ECDSA_SHA_256)` through actual AWS SDK HTTP calls, including public-key
+parsing, signature recovery and address matching. Missing emulator capabilities
+block acceptance until a pinned revision passes; fake KMS or keystore substitution
+cannot satisfy this check.
+
+Use distinct chain IDs, RPC endpoints and persistent directories for both Anvil
+instances, with standard EIP-3009/Permit2 contracts and local test funds on each.
+Run the production facilitator with Rustack KMS signing for both methods on each
+network in all/split topologies. Independently reconcile transactions, token
+transfers, PostgreSQL settlement journals, unique credits and priced API debits.
+Cover duplicates, KMS outage/recovery, isolated chain failure, delayed mining,
+uncertain broadcast and facilitator restart, preserving the original transaction,
+nonce uniqueness and exactly-once credit. Scope test credentials and emulator
+endpoints to this facility and record version, environment, results and
+reconciliation evidence before closing T27.
+
+Local simulation does not establish real AWS IAM enforcement, production key
+isolation or public-network production readiness. P70 release gates remain separate.
 
 ## Top-up progress
 

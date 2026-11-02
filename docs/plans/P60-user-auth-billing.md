@@ -1,6 +1,6 @@
 # P60 — User Accounts, Billing & Personal Tools
 
-Status: `in_progress`
+Status: `done`
 
 ## Outcome
 
@@ -56,7 +56,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T24 | done   | P60-T12, P60-T22                    | Payment-view wallet scope with immediate network selection, retained failed selections and site-bound SIWE identity; Anvil indexing and real Sepolia payments           | controlled transitions, failed-selection retry, departure restoration, hostile wallet/session races, exact approval and separate live payment/API-debit evidence |
 | P60-T25 | done   | P60-T24                             | Multi-chain, multi-token x402 funding with token-specific precision and fixed conversion into unified credit; persistent Preview Anvil payment chain behind the gateway | Four chain/token combinations, atomic credit and replay, browser selection, gateway, restart/outage and all/split acceptance; local acceptance only              |
 | P60-T26 | done   | P60-T25                             | Production standalone multi-chain facilitator, keystore/KMS, durable settlement/progress, recoverable top-up steps and shared Preview                                   | Unit/race, durable journal and concurrent-chain recovery, standard-contract dual-chain, schema/runtime and deployment gates passed; local-only acceptance        |
-| P60-T27 | todo   | P60-T26                             | Real AWS KMS and multi-network testnet facilitator acceptance                                                                                                           | Requires operator-provided KMS identity, funded testnet accounts and independent reconciliation                                                                  |
+| P60-T27 | done   | P60-T26                             | Rustack KMS and two independent Anvil networks for local facilitator acceptance                                                                                         | AWS SDK HTTP signing compatibility, both payment methods on both networks, all/split recovery and independent chain/writer reconciliation                        |
 
 ## Acceptance
 
@@ -64,8 +64,11 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
       the payment-view scope preserves site-bound identity and restores the original
       network on departure (P60-T24).
 - [x] Durable broadcast-backed progress and recoverable bilingual top-up steps
-      preserve exactly-once credit and all/split parity (P60-T26). Local acceptance
-      does not satisfy P60-T27's real-environment requirements.
+      preserve exactly-once credit and all/split parity (P60-T26). This evidence
+      does not cover P60-T27's Rustack KMS and dual-Anvil acceptance.
+- [x] P60-T27: AWS SDK HTTP signing through Rustack and both payment methods on
+      two independent Anvil networks pass all/split recovery and independent
+      chain/writer reconciliation under the acceptance criteria below.
 
 - [x] P60-T23: The etherview.* operation namespace is used end to end without legacy aliases or backfills; live payment acceptance remains separate.
 
@@ -123,11 +126,11 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 
 ## Current Blockers
 
-P60-T26 local delivery is complete. P60-T27 real-environment acceptance is
-separate and awaits an authorized AWS KMS identity/key, funded multi-network
-accounts and independent RPC/writer reconciliation. Its clearing conditions are
-recorded under the standalone facilitator acceptance below. Earlier P60-T17/T24
-live evidence does not cover this new service. P70 release gates remain separate.
+P60-T26 and P60-T27 local acceptance are complete. No P60 feature blocker
+remains. Rustack SDK compatibility and dual-Anvil all/split reconciliation passed;
+real AWS provisioning and public-testnet funding are outside T27's local scope.
+Earlier P60-T17/T24 live evidence retains its original scope, and P70 release
+gates remain separate.
 
 ## Evidence
 
@@ -294,8 +297,42 @@ Anvil persistence, license/dependency, docs and plan checks. Durable progress al
 passed frontend/browser recovery regressions, PostgreSQL race checks and delayed-
 mining Anvil all/split parity, including uncertain-response recovery.
 
-P60-T27 remains deferred: supply the real KMS workload identity and key, funded
-accounts on two EVM networks with approved token/proxy deployments, and independent
-RPC/writer observations. Close it only after real signing, both payment methods,
-unique account credit and priced API debit have matching reconciliation evidence.
-Mock KMS and local chains do not satisfy that acceptance.
+### Rustack KMS and dual-Anvil acceptance (P60-T27)
+
+Completed on 2026-11-02 using Rustack commit
+`ffc10378c64280a78bf6b73fff51612bbba0eb66`, built from its locked source with the
+upstream Dockerfile. The published 0.10.0 image rejected `ECC_SECG_P256K1`;
+the pinned source passed actual AWS SDK HTTP `CreateKey`, `GetPublicKey` and
+`Sign(DIGEST, ECDSA_SHA_256)`, including `SIGN_VERIFY` metadata, SPKI validation
+and Ethereum signature/address recovery. No fake KMS or keystore substitution
+was used.
+
+The root production image's standalone facilitator passed against two independent
+Anvil v1.8.7 networks (31337/31338), each with its own RPC and persistent volume,
+standard EIP-3009/Permit2 contracts and local funds. Both monolith (`all`) and
+distributed (`split`) layouts independently reconciled eight successful receipts
+and exact token transfer logs with journaled transaction bytes, KMS sender,
+contiguous nonces, eight unique account credits totaling 800 and one priced API
+debit of 2, leaving 798 available and zero reserved. The facility starts no Geth;
+existing Preview topology remains unchanged.
+
+Duplicate payments and exact Permit2 allowance consumption passed. KMS outage
+left one unsigned failed reservation with no credit; recovery permitted new
+payments. Anvil restart retained transfers and receipts while the other network
+continued settling. Delayed mining exposed broadcast progress. A fault proxy
+forwarded a real transaction and discarded its broadcast response; facilitator
+restart recovered the identical bytes/hash/nonce, and operator reconciliation
+credited it once with replay rejection. No pending journal rows remained.
+
+Acceptance: `make test-rustack-x402` built both images and passed both layouts
+(91.38 seconds for the Go suite); the prebuilt target also passed. Facilitator
+unit/race and PostgreSQL integration/race, `make lint-go`, deployment, workflow
+scripts, documentation and plan checks passed on macOS arm64 with Docker Linux
+arm64 and PostgreSQL 18. The runtime tests retain no production secrets and
+remove their isolated projects and volumes after execution.
+
+This local simulation does not establish real AWS IAM enforcement, production
+key isolation or public-network production readiness. KMS outage uses pause/resume
+and makes no emulator key-persistence claim. P70 release gates and historical
+P60-T17/T24/T26 evidence retain their original scope. Public APIs, database schema
+and production runtime code are unchanged.

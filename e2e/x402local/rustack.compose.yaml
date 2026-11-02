@@ -1,0 +1,77 @@
+# P60-T27: dedicated KMS and dual-Anvil overlay; never starts Geth.
+services:
+  rustack:
+    image: etherview-rustack:ffc10378c64280a78bf6b73fff51612bbba0eb66
+    environment:
+      SERVICES: kms
+      GATEWAY_LISTEN: 0.0.0.0:4566
+    ports: ["127.0.0.1::4566"]
+
+  anvil:
+    command:
+      [
+        "exec anvil --host 0.0.0.0 --port 8545 --chain-id 31337 --state /home/foundry/chain.json --state-interval 1 --preserve-historical-states",
+      ]
+    volumes: [anvil-one:/home/foundry]
+    stop_signal: SIGINT
+
+  anvil-two:
+    image: ghcr.io/foundry-rs/foundry:v1.8.7
+    entrypoint: [sh, -ec]
+    command:
+      [
+        "exec anvil --host 0.0.0.0 --port 8545 --chain-id 31338 --state /home/foundry/chain.json --state-interval 1 --preserve-historical-states",
+      ]
+    volumes: [anvil-two:/home/foundry]
+    stop_signal: SIGINT
+    ports: ["127.0.0.1:${T27_ANVIL_TWO_PORT:-0}:8545"]
+    healthcheck:
+      test: [CMD, cast, block-number, --rpc-url, http://127.0.0.1:8545]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  x402-fixture-two:
+    extends:
+      file: compose.yaml
+      service: x402-fixture
+    depends_on:
+      anvil-two:
+        condition: service_healthy
+    environment:
+      RPC_URL: http://anvil-two:8545
+
+  x402-facilitator:
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      AWS_ENDPOINT_URL_KMS: http://rustack:4566
+      AWS_ACCESS_KEY_ID: t27-local
+      AWS_SECRET_ACCESS_KEY: t27-local-only
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_MAX_ATTEMPTS: "1"
+    volumes:
+      - ${T27_ARTIFACTS}/facilitator.yaml:/etc/etherview/facilitator.yaml:ro
+      - ${T27_ARTIFACTS}/anvil-one-rpc:/run/secrets/x402-anvil:ro
+      - ${T27_ARTIFACTS}/anvil-two-rpc:/run/secrets/x402-anvil-two:ro
+    secrets: !override [x402-db, x402-token]
+    depends_on:
+      rustack:
+        condition: service_healthy
+      x402-fixture-two:
+        condition: service_completed_successfully
+
+  etherview:
+    volumes:
+      - ${T27_ARTIFACTS}/config.yaml:/etc/etherview/config.yaml:ro
+    environment:
+      ETHERVIEW_X402_FACILITATOR_HEADERS: '{"eip155:31337":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"},"eip155:31338":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"}}'
+
+  api:
+    volumes:
+      - ${T27_ARTIFACTS}/config.yaml:/etc/etherview/config.yaml:ro
+    environment:
+      ETHERVIEW_X402_FACILITATOR_HEADERS: '{"eip155:31337":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"},"eip155:31338":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"}}'
+
+volumes:
+  anvil-one:
+  anvil-two:
