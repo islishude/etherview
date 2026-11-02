@@ -7,7 +7,7 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
 
-test("toolchain minimums accept stable upgrades and reject invalid or unavailable tools", () =>
+test("toolchain versions accept compatible upgrades and reject invalid or unavailable tools", () =>
   sandbox(({ dir, env }) => {
     const checker = join(root, ".github/scripts/toolchain-check.sh");
     const source = readFileSync(checker, "utf8");
@@ -41,7 +41,12 @@ test("toolchain minimums accept stable upgrades and reject invalid or unavailabl
         const versions = [...minimums];
         versions[index] = (prefix ?? "") + newer.join(".");
         const result = run(versions);
-        assert.equal(result.status, 0, result.stdout + result.stderr);
+        if (label === "pnpm" && component === 0) {
+          assert.notEqual(result.status, 0);
+          assert.match(result.stdout, /must use major/);
+        } else {
+          assert.equal(result.status, 0, result.stdout + result.stderr);
+        }
       }
       for (const [version, message] of [
         [(prefix ?? "") + "0.0.0", /below minimum/],

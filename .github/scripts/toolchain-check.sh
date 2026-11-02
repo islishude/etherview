@@ -7,7 +7,7 @@ NODE_BIN="${NODE:-node}"
 PNPM_BIN="${PNPM:-pnpm}"
 MINIMUM_GO="go1.27.3"
 MINIMUM_NODE="v26.13.0"
-MINIMUM_PNPM="12.15.0"
+MINIMUM_PNPM="12.16.1"
 
 normalize_version() {
   local raw="$1"
@@ -81,6 +81,10 @@ check_tool() {
 
   if ! version_at_least "$current" "$minimum_clean"; then
     echo "toolchain-check: $label version $current is below minimum $minimum_clean"
+    return 1
+  fi
+  if [ "$label" = "pnpm" ] && [ "${current%%.*}" != "${minimum_clean%%.*}" ]; then
+    echo "toolchain-check: pnpm version $current must use major ${minimum_clean%%.*}"
     return 1
   fi
 }

@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.15.0",
+  "packageManager": "pnpm@12.16.1",
   "engines": {
     "node": ">= 26.13.0",
-    "pnpm": ">= 12.15.0"
+    "pnpm": "^12.16.1"
   },
   "scripts": {
     "lint:preview": "oxlint --config .oxlintrc.json preview",

@@ -6,6 +6,8 @@ packages:
   - preview/contracts
 
 engineStrict: true
+# Use the installed pnpm when it satisfies engines.pnpm; CI pins packageManager.
+pmOnFail: ignore
 ignoreScripts: true
 # Required peers are explicit dependencies. Safe is used only for artifacts,
 # so its unused Ethers v5 peer must not be installed.

@@ -163,7 +163,7 @@
       "pins": [
         {
           "path": "package.json",
-          "template": ">= {{version}}",
+          "template": "^{{version}}",
           "jsonPath": [
             "engines",
             "pnpm"
@@ -177,28 +177,8 @@
           ]
         },
         {
-          "path": "Dockerfile",
-          "template": "    && env PNPM_VERSION={{version}} ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \\",
-          "count": 1
-        },
-        {
-          "path": "Dockerfile",
-          "template": "    && test \"$(pnpm --version)\" = \"{{version}}\"",
-          "count": 1
-        },
-        {
-          "path": "e2e/hardhat3/Dockerfile",
-          "template": "    && env PNPM_VERSION={{version}} ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \\",
-          "count": 1
-        },
-        {
-          "path": "e2e/hardhat3/Dockerfile",
-          "template": "    && test \"$(pnpm --version)\" = \"{{version}}\"",
-          "count": 1
-        },
-        {
           "path": "e2e/hardhat3/package.json",
-          "template": ">={{version}}",
+          "template": "^{{version}}",
           "jsonPath": [
             "engines",
             "pnpm"
@@ -217,11 +197,6 @@
         {
           "path": "docs/development.md",
           "template": "`pnpm-lock.yaml`. Install pnpm {{version}} (pinned by `packageManager`), then run",
-          "count": 1
-        },
-        {
-          "path": "docs/development.md",
-          "template": "with `PNPM_VERSION={{version}}`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then",
           "count": 1
         },
         {

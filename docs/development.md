@@ -234,7 +234,7 @@ through both `make lint` and root `pnpm run lint`. Use `make format-check` for a
 check; `make lint` and CI include it. Both commands install the locked root pnpm
 workspace. `pnpm-workspace.yaml` owns the workspace list, install policy and
 dependency overrides; `api`, `web`, `compiler`, and `e2e/hardhat3` share one root
-`pnpm-lock.yaml`. Install pnpm 12.15.0 (pinned by `packageManager`), then run
+`pnpm-lock.yaml`. Install pnpm 12.16.1 (pinned by `packageManager`), then run
 `pnpm install --frozen-lockfile` (or `make pnpm-install`) at the repository root.
 When switching an existing checkout from npm, remove the generated root and
 workspace `node_modules` directories before installing. Dependency changes use
@@ -243,12 +243,18 @@ Workspace manifests retain their runtime constraints: the compiler requires
 exactly Node 26.13.0 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
 
 The workspace policy enforces engines and disables dependency lifecycle scripts.
+Local pnpm must satisfy `engines.pnpm`: at least the pinned minimum, within
+the same major version. Run `make toolchain-check` to enforce this range; pnpm
+12.16.1 itself does not reliably reject an incompatible `engines.pnpm` range.
+`pmOnFail: ignore` keeps the installed pnpm instead of switching to the exact
+`packageManager` version; CI uses that exact version. Docker installs the latest
+stable pnpm 12 release through the standalone installer and checks its major.
 Automatic peer installation is disabled, so the artifact-only Safe fixture's
 unused Ethers v5 peer is not installed. Required peers are explicit workspace
 dependencies, including the frontend test DOM library. API generation uses
 TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:26.13.0` image's curl to download the
 [official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
-with `PNPM_VERSION=12.15.0`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
+with `PNPM_VERSION=12`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
 uses the same workspace policy with frozen, filtered installs. CI pins
 `pnpm/action-setup@v6.1.0`. Dedicated compiler
 CI jobs use `pnpm --filter ./compiler install --frozen-lockfile`; a full
