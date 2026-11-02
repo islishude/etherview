@@ -1,0 +1,4 @@
+apiVersion: v2
+name: etherview-facilitator
+version: 0.1.0
+description: Standalone single-active multi-chain x402 settlement

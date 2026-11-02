@@ -788,7 +788,7 @@ a manual-refresh notice without withdrawing current profile fields.
 - ADR-0044 replaces per-request x402. Native `/api/v1` reads are free and reject
   `PAYMENT-SIGNATURE`; only the Account top-up payment endpoint accepts it.
   With billing enabled, every supported bounded `/v2/api` query reserves a user
-  account's permanent token-atomic credit after API-key quota and full compatibility
+  account's permanent six-decimal credit after API-key quota and full compatibility
   validation. Prices derive from explicit catalog complexity weights times
   `billing.base_price_atomic`; missing query prices fail closed. Personal billing
   converts whole-token decimal input exactly to atomic units and displays the
@@ -1007,7 +1007,9 @@ a manual-refresh notice without withdrawing current profile fields.
   are never recognized on native routes.
 - Operators create, rotate, list, and revoke deployment-wide API keys through
   the single CLI. An explicitly enabled Cookie-authenticated account boundary
-  additionally manages only its own scoped keys. Plaintext appears only in
+  additionally manages only its own scoped keys. Its list and creation tabs
+  are separate; users must revoke a key before soft-deleting it from their list.
+  Soft deletion retains the revoked credential row and all billing references. Plaintext appears only in
   create/rotate output. Rotation locks the active PostgreSQL row and commits
   the replacement digest plus old-key revocation in one transaction, preserving
   owner, name, scopes, and quota policy. See ADR-0035.
@@ -1102,17 +1104,24 @@ wildcard CORS without credentials, allowing browser-extension wallets. Beacon
 and Bundler retain the exact configurable Origin allowlist. The SPA continues
 using the generated same-origin client and injected wallet boundary.
 Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
-The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
+The independent `preview/cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
 
-Preview also runs the test-only x402 Facilitator and Local USD token on its
+Preview also runs the standalone x402 Facilitator and Local USD token on its
 Geth/Lighthouse chain. Token code, constructor storage, initial owner balance
 and Facilitator funding are predeployed in genesis. Startup validates the
 network bundle without deploying or funding contracts; recreation preserves
 chain and account state. The Facilitator is not a core role dependency;
 existing credit remains spendable during its outage. The API/all role owns the fingerprint pepper and the normal production
-billing components. The local Permit2 witness fixture and private-network HTTP
-exception remain development-only boundaries under ADR-0044.
+billing components. Standard Permit2/proxy contracts are predeployed; the private-network HTTP
+exception remains a development-only boundary under ADR-0044 and ADR-0059.
+
+A separate persistent Anvil payment fixture (31337) exposes wallet HTTP/WSS
+through `anvil.etherview.localhost` on the same loopback gateway. Both networks
+predeploy six- and eighteen-decimal tokens; Anvil loads a reviewed native snapshot
+only on an empty volume and rejects seed mismatches. The shared internal facilitator
+accepts a bounded per-network token whitelist. The indexed chain and SIWE identity remain 48815. P60-T25 tracks multi-option billing and unified-credit acceptance;
+the additional fixture alone does not enable it in the account API.
 
 ## Operator Recovery Boundary
 
@@ -1301,3 +1310,56 @@ at the chain head do not block published data. Exact NFT calls stay pinned to
 the selected hash. Wallet actions do not inherit unrelated browsing query
 invalidation; their wallet, chain and interaction-target checks remain local
 to the operation.
+
+### Multi-payment funding policy
+
+`billing.payment_chains` owns up to 32 payment networks, each with a required public display `name`, a server-side
+facilitator and up to 32 token options. Option IDs are globally unique; addresses
+are unique within a chain. Required precision is 0–255. Positive integer rate
+numerator/denominator converts token atomic units into six-decimal credit atomic
+units with exact integer arithmetic. Fractional, zero or overflowing results fail.
+Intents store the full public policy and resulting credit. Payments retain the
+on-chain amount; the atomic settlement transaction posts only the snapshotted
+credit to the user/explorer-chain account. The frontend selects chain then token,
+clears drafts on selection changes and binds wallet operations to that option.
+Explicit network selection invokes the injected wallet switch directly. Failed
+switches retain the new selection, display unavailable balance and stop further
+work until explicit balance-refresh retry succeeds. Payment submission is disabled
+and guarded while switching or after failure; dismissing the message, editing the
+amount or selecting another token on the same network does not clear the failure.
+The notification names the network briefly, while the network selector retains
+a separate wallet-readiness explanation. The payment-view scope retains site-bound SIWE identity
+and stays on the payment network until history, prices or route departure;
+restoration failure disconnects local wallet/authentication state (ADR-0020).
+Balance read failures display only unavailable, with an accessible icon retry.
+Facilitator credentials are network-keyed, API/all-only secrets and never public.
+
+### Standalone multi-chain facilitator
+
+ADR-0059 introduces an independent authenticated x402 process. Explicit network
+and asset routing selects an RPC and keystore/KMS signer. PostgreSQL journals
+payment identity and immutable signed transactions before broadcast; a singleton
+connection lock and per-chain queues prevent concurrent nonce allocation. Restart
+only reconciles original transaction hashes. Account credits remain owned by the
+existing API-side fenced ledger. Preview uses this same implementation with
+standard Permit2/proxy contracts on Geth and Anvil.
+Configuration decoding, bounded credential resolution and runtime construction are
+separate phases. Ordinary RPC URLs live in YAML; sensitive URLs use explicit
+file references. Server TLS and per-chain RPC plaintext permissions are independent.
+Database and bearer credentials additionally accept the fixed `X402_DATABASE_URL`
+and `X402_BEARER_TOKEN` environment pairs with mutually exclusive `_FILE` variants;
+nonblank environment sources override YAML file references.
+HTTP handlers call transport-independent settlement operations backed by the
+sqlc journal interface. Runtime construction owns reverse-order cleanup and
+idempotent shutdown; `--check-config` validates local inputs without external calls.
+
+### Top-up progress
+
+The account top-up card presents wallet signature, facilitator submission and
+transaction confirmation as distinct steps, with optional Permit2 approval
+steps and bilingual unknown-outcome guidance. The API observes the facilitator's
+authenticated read-only journal progress while the original settlement runs and
+publishes fenced observations on the intent. Browser intent polling begins at
+signed submission, preserves terminal results and known hashes, and restores
+durable observations on reload. Neither progress nor a transaction hash credits
+an account; ADR-0044 and ADR-0059 retain the settlement and publication boundaries.

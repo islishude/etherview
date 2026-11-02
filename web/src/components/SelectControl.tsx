@@ -1,7 +1,6 @@
 import "./SelectControl.css";
-import { ChevronDown } from "lucide-react";
 import type { ComponentPropsWithRef } from "react";
-import { UIIcon } from "./UIIcon";
+import { DropdownChevron } from "./DropdownChevron";
 
 /** Keep native selection, labels, keyboard behavior and form submission. */
 export function SelectControl(props: ComponentPropsWithRef<"select">) {
@@ -9,7 +8,7 @@ export function SelectControl(props: ComponentPropsWithRef<"select">) {
   return (
     <span className="select-control">
       <select {...props} />
-      <UIIcon icon={ChevronDown} className="select-control-chevron" />
+      <DropdownChevron className="select-control-chevron" />
     </span>
   );
 }

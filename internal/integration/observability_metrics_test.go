@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -164,7 +165,10 @@ func TestPostgresMetricSnapshotIsChainScopedAndRetainedAfterRefreshFailure(t *te
 	t.Cleanup(func() {
 		stop()
 		select {
-		case <-done:
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("metric collector stopped with an error: %v", err)
+			}
 		case <-time.After(time.Second):
 			t.Error("durable metric collector did not stop")
 		}
@@ -348,7 +352,10 @@ func TestX402SettlingMetricIsChainScopedAgedAndClearedByReconciliation(
 	t.Cleanup(func() {
 		stop()
 		select {
-		case <-done:
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("metric collector stopped with an error: %v", err)
+			}
 		case <-time.After(time.Second):
 			t.Error("billing metric collector did not stop")
 		}

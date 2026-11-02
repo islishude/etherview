@@ -173,6 +173,27 @@ test("all automatic entries update every registered linked occurrence", () =>
       audit(dir);
     }
   }));
+test("pnpm updates preserve caret engine ranges and exact package-manager pins", () => {
+  const dep = readRegistry(root).dependencies.find((entry) => entry.id === "pnpm");
+  const current = currentVersion(dep, root);
+  const [major, minor] = current.split(".").map(Number);
+  const next = `${major}.${minor + 1}.0`;
+  assert.ok(compatible(current, next));
+  assert.ok(!compatible(current, `${major + 1}.0.0`));
+  for (const path of ["Dockerfile", "e2e/hardhat3/Dockerfile"]) {
+    const dockerfile = readFileSync(join(root, path), "utf8");
+    assert.ok(dockerfile.includes(`env PNPM_VERSION=${major} ENV=`));
+    assert.ok(dockerfile.includes(`pnpm --version | grep -Eq '^${major}\\.[0-9]+\\.[0-9]+$'`));
+    assert.ok(!dep.pins.some((pin) => pin.path === path));
+  }
+  const changes = replacements(dep, next, root);
+  for (const path of ["package.json", "e2e/hardhat3/package.json"]) {
+    assert.equal(JSON.parse(readFileSync(join(root, path))).engines.pnpm, `^${current}`);
+    assert.equal(JSON.parse(changes.get(path)).engines.pnpm, `^${next}`);
+  }
+  assert.equal(JSON.parse(changes.get("package.json")).packageManager, `pnpm@${next}`);
+  assert.match(readFileSync(join(root, "pnpm-workspace.yaml"), "utf8"), /^pmOnFail: ignore$/m);
+});
 test("JSON pins ignore formatting and field order and update only registered fields", () =>
   sandbox((dir) => {
     const dep = fixture(dir);

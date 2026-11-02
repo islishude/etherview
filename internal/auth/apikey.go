@@ -31,6 +31,7 @@ var (
 	ErrMissingAPIKey      = errors.New("API key is required")
 	ErrAPIKeyLimitReached = errors.New("active API key limit reached")
 	ErrAPIKeyNotFound     = errors.New("API key not found")
+	ErrAPIKeyNotRevoked   = errors.New("API key is not revoked")
 	ErrAPIKeyNotActive    = errors.New("API key is not active")
 )
 
@@ -44,6 +45,7 @@ const (
 var allScopes = []Scope{ScopeRead, ScopeVerification}
 
 type APIKey struct {
+	DeletedAt   *time.Time
 	Prefix      string
 	Digest      []byte
 	Name        string
@@ -640,7 +642,7 @@ func (r *MemoryRepository) UserKey(
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	key, exists := r.records[prefix]
-	if !exists || key.OwnerUserID == nil || *key.OwnerUserID != userID {
+	if !exists || key.DeletedAt != nil || key.OwnerUserID == nil || *key.OwnerUserID != userID {
 		return APIKey{}, ErrAPIKeyNotFound
 	}
 	key.ownerActive = true
@@ -657,7 +659,7 @@ func (r *MemoryRepository) RotateForUser(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	current, exists := r.records[prefix]
-	if !exists || current.OwnerUserID == nil || *current.OwnerUserID != userID {
+	if !exists || current.DeletedAt != nil || current.OwnerUserID == nil || *current.OwnerUserID != userID {
 		return ErrAPIKeyNotFound
 	}
 	if current.RevokedAt != nil {
@@ -687,11 +689,12 @@ func (r *MemoryRepository) RevokeForUser(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	key, exists := r.records[prefix]
-	if !exists || key.OwnerUserID == nil || *key.OwnerUserID != userID {
+	if !exists || key.DeletedAt != nil || key.OwnerUserID == nil || *key.OwnerUserID != userID {
 		return APIKey{}, ErrAPIKeyNotFound
 	}
 	if key.RevokedAt != nil {
-		return APIKey{}, ErrAPIKeyNotActive
+		key.Digest = nil
+		return key, nil
 	}
 	revokedAt = revokedAt.UTC()
 	key.RevokedAt = &revokedAt
@@ -716,7 +719,7 @@ func (r *MemoryRepository) ListForUser(
 	items := make([]APIKey, 0)
 	active := 0
 	for _, key := range r.records {
-		if key.OwnerUserID == nil || *key.OwnerUserID != userID {
+		if key.DeletedAt != nil || key.OwnerUserID == nil || *key.OwnerUserID != userID {
 			continue
 		}
 		if key.RevokedAt == nil {
@@ -741,4 +744,22 @@ func (r *MemoryRepository) ListForUser(
 		items = items[:limit]
 	}
 	return items, active, nil
+}
+
+func (r *MemoryRepository) DeleteForUser(_ context.Context, userID, prefix string, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key, exists := r.records[prefix]
+	if !exists || key.OwnerUserID == nil || *key.OwnerUserID != userID {
+		return ErrAPIKeyNotFound
+	}
+	if key.RevokedAt == nil {
+		return ErrAPIKeyNotRevoked
+	}
+	if key.DeletedAt == nil {
+		at = at.UTC()
+		key.DeletedAt = &at
+		r.records[prefix] = key
+	}
+	return nil
 }

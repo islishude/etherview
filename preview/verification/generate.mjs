@@ -106,8 +106,17 @@ for (const [raw, account] of Object.entries(genesis.alloc)) {
         "0xca11bde05977b3631167028862be2a173976ca11": "Multicall3",
         "0x1820a4b7618bde71dce8cdc73aab6c95905fad24": "ERC1820Registry",
       }[address];
+    if (name === "LocalBillingToken18") name = "LocalBillingToken";
+    if (name === "X402ExactPermit2Proxy") name = "x402ExactPermit2Proxy";
     if (!name) throw Error(`Missing source mapping: ${address}`);
-    bundle = ["EntryPoint", "Multicall3", "ERC1820Registry", "SimpleAccountFactory"].includes(name)
+    bundle = [
+      "EntryPoint",
+      "Multicall3",
+      "ERC1820Registry",
+      "SimpleAccountFactory",
+      "Permit2",
+      "x402ExactPermit2Proxy",
+    ].includes(name)
       ? `${name}.json`
       : name === "SimpleAccount"
         ? "SimpleAccountFactory.json"

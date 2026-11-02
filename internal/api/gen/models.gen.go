@@ -378,6 +378,21 @@ func (e BillingAssetTransferMethod) Valid() bool {
 	}
 }
 
+// Defines values for BillingConfigCreditDecimals.
+const (
+	N6 BillingConfigCreditDecimals = 6
+)
+
+// Valid indicates whether the value is a known member of the BillingConfigCreditDecimals enum.
+func (e BillingConfigCreditDecimals) Valid() bool {
+	switch e {
+	case N6:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BillingConfigScheme.
 const (
 	BillingConfigSchemeExact BillingConfigScheme = "exact"
@@ -483,6 +498,27 @@ func (e BillingPaymentState) Valid() bool {
 	case BillingPaymentStateSettling:
 		return true
 	case BillingPaymentStateVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BillingTopupIntentSubmissionProgress.
+const (
+	BillingTopupIntentSubmissionProgressConfirming BillingTopupIntentSubmissionProgress = "confirming"
+	BillingTopupIntentSubmissionProgressSubmitting BillingTopupIntentSubmissionProgress = "submitting"
+	BillingTopupIntentSubmissionProgressUnknown    BillingTopupIntentSubmissionProgress = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the BillingTopupIntentSubmissionProgress enum.
+func (e BillingTopupIntentSubmissionProgress) Valid() bool {
+	switch e {
+	case BillingTopupIntentSubmissionProgressConfirming:
+		return true
+	case BillingTopupIntentSubmissionProgressSubmitting:
+		return true
+	case BillingTopupIntentSubmissionProgressUnknown:
 		return true
 	default:
 		return false
@@ -4383,13 +4419,9 @@ type BatchResultsOutcome_Results_Item struct {
 
 // BillingAccount defines model for BillingAccount.
 type BillingAccount struct {
-	// Asset A 20-byte address; responses use the EIP-55 checksum form.
-	Asset Address `json:"asset"`
-
 	// AvailableAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
 	AvailableAtomic BillingAggregateQuantity `json:"available_atomic"`
 	CreatedAt       time.Time                `json:"created_at"`
-	Network         string                   `json:"network"`
 
 	// ReservedAtomic A canonical non-negative decimal integer used for billing sums and counts that may exceed one uint256.
 	ReservedAtomic BillingAggregateQuantity `json:"reserved_atomic"`
@@ -4460,31 +4492,19 @@ type BillingAssetTransferMethod string
 type BillingConfig struct {
 	ApiBillingEnabled bool `json:"api_billing_enabled"`
 
-	// Asset A 20-byte address; responses use the EIP-55 checksum form.
-	Asset                *Address                     `json:"asset,omitempty"`
-	AssetDecimals        *int                         `json:"asset_decimals,omitempty"`
-	AssetEip712Name      *string                      `json:"asset_eip712_name,omitempty"`
-	AssetEip712Version   *string                      `json:"asset_eip712_version,omitempty"`
-	AssetTransferMethods []BillingAssetTransferMethod `json:"asset_transfer_methods"`
-
 	// BasePriceAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	BasePriceAtomic *Quantity `json:"base_price_atomic,omitempty"`
-
-	// MaximumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	MaximumTopupAmountAtomic *Quantity `json:"maximum_topup_amount_atomic,omitempty"`
-
-	// MinimumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	MinimumTopupAmountAtomic *Quantity               `json:"minimum_topup_amount_atomic,omitempty"`
-	Network                  *string                 `json:"network,omitempty"`
-	Operations               []BillingOperationPrice `json:"operations"`
-
-	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
-	Recipient             *Address                 `json:"recipient,omitempty"`
-	Scheme                BillingConfigScheme      `json:"scheme"`
-	TopupIntentTtlSeconds *int                     `json:"topup_intent_ttl_seconds,omitempty"`
-	X402TopupsEnabled     bool                     `json:"x402_topups_enabled"`
-	X402Version           BillingConfigX402Version `json:"x402_version"`
+	BasePriceAtomic       *Quantity                   `json:"base_price_atomic,omitempty"`
+	CreditDecimals        BillingConfigCreditDecimals `json:"credit_decimals"`
+	Operations            []BillingOperationPrice     `json:"operations"`
+	PaymentChains         []BillingPaymentChain       `json:"payment_chains"`
+	Scheme                BillingConfigScheme         `json:"scheme"`
+	TopupIntentTtlSeconds *int                        `json:"topup_intent_ttl_seconds,omitempty"`
+	X402TopupsEnabled     bool                        `json:"x402_topups_enabled"`
+	X402Version           BillingConfigX402Version    `json:"x402_version"`
 }
+
+// BillingConfigCreditDecimals defines model for BillingConfig.CreditDecimals.
+type BillingConfigCreditDecimals int
 
 // BillingConfigScheme defines model for BillingConfig.Scheme.
 type BillingConfigScheme string
@@ -4525,6 +4545,7 @@ type BillingPayment struct {
 	Operation           string                     `json:"operation"`
 	Payer               *Address                   `json:"payer,omitempty"`
 	PaymentFlow         BillingPaymentPaymentFlow  `json:"payment_flow"`
+	PaymentOption       *BillingPaymentOption      `json:"payment_option,omitempty"`
 	Purpose             BillingPaymentPurpose      `json:"purpose"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
@@ -4546,10 +4567,45 @@ type BillingPaymentPaymentFlow string
 // BillingPaymentPurpose defines model for BillingPayment.Purpose.
 type BillingPaymentPurpose string
 
+// BillingPaymentChain defines model for BillingPaymentChain.
+type BillingPaymentChain struct {
+	Name    string                 `json:"name"`
+	Network string                 `json:"network"`
+	Tokens  []BillingPaymentOption `json:"tokens"`
+}
+
 // BillingPaymentListResponse defines model for BillingPaymentListResponse.
 type BillingPaymentListResponse struct {
 	Data []BillingPayment `json:"data"`
 	Meta Meta             `json:"meta"`
+}
+
+// BillingPaymentOption defines model for BillingPaymentOption.
+type BillingPaymentOption struct {
+	// Asset A 20-byte address; responses use the EIP-55 checksum form.
+	Asset                Address                      `json:"asset"`
+	AssetDecimals        int                          `json:"asset_decimals"`
+	AssetEip712Name      *string                      `json:"asset_eip712_name,omitempty"`
+	AssetEip712Version   *string                      `json:"asset_eip712_version,omitempty"`
+	AssetTransferMethods []BillingAssetTransferMethod `json:"asset_transfer_methods"`
+
+	// CreditRateDenominator A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CreditRateDenominator Quantity `json:"credit_rate_denominator"`
+
+	// CreditRateNumerator A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CreditRateNumerator Quantity `json:"credit_rate_numerator"`
+	Id                  string   `json:"id"`
+
+	// MaximumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MaximumTopupAmountAtomic Quantity `json:"maximum_topup_amount_atomic"`
+
+	// MinimumTopupAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	MinimumTopupAmountAtomic Quantity `json:"minimum_topup_amount_atomic"`
+	Name                     string   `json:"name"`
+	Network                  string   `json:"network"`
+
+	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
+	Recipient Address `json:"recipient"`
 }
 
 // BillingPaymentState defines model for BillingPaymentState.
@@ -4594,30 +4650,41 @@ type BillingTopupIntent struct {
 	AmountAtomic Quantity `json:"amount_atomic"`
 
 	// Asset A 20-byte address; responses use the EIP-55 checksum form.
-	Asset       Address            `json:"asset"`
-	CreatedAt   time.Time          `json:"created_at"`
-	CreditedAt  *time.Time         `json:"credited_at,omitempty"`
-	ExpiresAt   time.Time          `json:"expires_at"`
-	FailureCode *string            `json:"failure_code,omitempty"`
-	Id          openapi_types.UUID `json:"id"`
-	Network     string             `json:"network"`
+	Asset     Address   `json:"asset"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreditAmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CreditAmountAtomic Quantity           `json:"credit_amount_atomic"`
+	CreditedAt         *time.Time         `json:"credited_at,omitempty"`
+	ExpiresAt          time.Time          `json:"expires_at"`
+	FailureCode        *string            `json:"failure_code,omitempty"`
+	Id                 openapi_types.UUID `json:"id"`
+	Network            string             `json:"network"`
 
 	// Payer A 20-byte address; responses use the EIP-55 checksum form.
-	Payer     Address             `json:"payer"`
-	PaymentId *openapi_types.UUID `json:"payment_id,omitempty"`
+	Payer         Address              `json:"payer"`
+	PaymentId     *openapi_types.UUID  `json:"payment_id,omitempty"`
+	PaymentOption BillingPaymentOption `json:"payment_option"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
-	Recipient       Address                 `json:"recipient"`
-	State           BillingTopupIntentState `json:"state"`
-	TransactionHash *Hash                   `json:"transaction_hash,omitempty"`
-	UpdatedAt       time.Time               `json:"updated_at"`
-	UserId          openapi_types.UUID      `json:"user_id"`
+	Recipient Address                 `json:"recipient"`
+	State     BillingTopupIntentState `json:"state"`
+
+	// SubmissionProgress Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
+	SubmissionProgress *BillingTopupIntentSubmissionProgress `json:"submission_progress,omitempty"`
+	TransactionHash    *Hash                                 `json:"transaction_hash,omitempty"`
+	UpdatedAt          time.Time                             `json:"updated_at"`
+	UserId             openapi_types.UUID                    `json:"user_id"`
 }
+
+// BillingTopupIntentSubmissionProgress Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
+type BillingTopupIntentSubmissionProgress string
 
 // BillingTopupIntentCreateRequest defines model for BillingTopupIntentCreateRequest.
 type BillingTopupIntentCreateRequest struct {
 	// AmountAtomic A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
-	AmountAtomic Quantity `json:"amount_atomic"`
+	AmountAtomic    Quantity `json:"amount_atomic"`
+	PaymentOptionId string   `json:"payment_option_id"`
 }
 
 // BillingTopupIntentListResponse defines model for BillingTopupIntentListResponse.
@@ -8585,6 +8652,11 @@ type ListCurrentUserAPIKeysParams struct {
 
 // CreateCurrentUserAPIKeyParams defines parameters for CreateCurrentUserAPIKey.
 type CreateCurrentUserAPIKeyParams struct {
+	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
+}
+
+// DeleteCurrentUserAPIKeyParams defines parameters for DeleteCurrentUserAPIKey.
+type DeleteCurrentUserAPIKeyParams struct {
 	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
 }
 

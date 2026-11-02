@@ -9,7 +9,6 @@ import (
 
 	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
-	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
@@ -214,11 +213,10 @@ func registerAuthBillingHousekeepers(
 	}
 	if cfg.Features.APIBilling {
 		ledger, err := billing.NewPrepaidLedger(writer, billing.PrepaidOptions{
-			ChainID: cfg.Chain.ID, Network: cfg.Billing.Network,
-			Asset:     ethcommon.HexToAddress(cfg.Billing.Asset),
-			Recipient: ethcommon.HexToAddress(cfg.Billing.Recipient),
-			TopupTTL:  cfg.Billing.TopupIntentTTL,
-			UsageTTL:  cfg.Billing.UsageReservationTTL,
+			ChainID: cfg.Chain.ID,
+
+			TopupTTL: cfg.Billing.TopupIntentTTL,
+			UsageTTL: cfg.Billing.UsageReservationTTL,
 		})
 		if err != nil {
 			return err

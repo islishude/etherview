@@ -454,3 +454,29 @@ func scopesFromStrings(values []string) ([]Scope, error) {
 	}
 	return NormalizeScopes(scopes)
 }
+
+func (r *PostgresRepository) DeleteForUser(ctx context.Context, userID, prefix string, at time.Time) error {
+	identifier, err := apiKeyUserUUID(userID)
+	if err != nil || !validPrefix(prefix) {
+		return ErrAPIKeyNotFound
+	}
+	return dbaccess.WithTransaction(ctx, r.db, func(queries *dbgen.Queries) error {
+		if _, err := queries.LockActiveUserForAPIKey(ctx, identifier); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrAPIKeyNotFound
+			}
+			return err
+		}
+		row, err := queries.LockUserAPIKeyForDeletion(ctx, prefix, identifier)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrAPIKeyNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if !row.RevokedAt.Valid {
+			return ErrAPIKeyNotRevoked
+		}
+		return queries.DeleteUserAPIKey(ctx, apiKeyTime(at), prefix, identifier)
+	})
+}

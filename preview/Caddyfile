@@ -129,6 +129,33 @@ https://geth.etherview.localhost {
 	}
 }
 
+https://anvil.etherview.localhost {
+	import tls_boundary
+	route {
+		import geth_origin
+		@websocket {
+			method GET
+			header_regexp Connection "(?i)(^|,)[[:blank:]]*upgrade[[:blank:]]*(,|$)"
+			header_regexp Upgrade "(?i)^websocket$"
+			path /
+		}
+		reverse_proxy @websocket {$PREVIEW_ANVIL_WS_UPSTREAM:anvil:8545} {
+			import transport
+			import node_response
+		}
+		@rpc {
+			method POST
+			path /
+		}
+		reverse_proxy @rpc {$PREVIEW_ANVIL_UPSTREAM:anvil:8545} {
+			import transport
+			import node_response
+		}
+		respond "not_found
+" 404
+	}
+}
+
 https://beacon.etherview.localhost {
 	import tls_boundary
 	route {

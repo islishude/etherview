@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ShellIcon } from "./DesignPrimitives";
+import { DropdownChevron } from "./DropdownChevron";
 
 /** A disclosure of ordinary navigation links, preserving native Tab navigation. */
 export function NavigationDisclosure({ label, children }: { label: string; children: ReactNode }) {
@@ -42,7 +42,7 @@ export function NavigationDisclosure({ label, children }: { label: string; child
         onClick={() => setOpen(!open)}
       >
         {label}
-        <ShellIcon name="chevron" />
+        <DropdownChevron />
       </button>
       <div
         className="navigation-popover"

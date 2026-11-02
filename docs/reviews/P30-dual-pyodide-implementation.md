@@ -112,7 +112,7 @@ Run from the repository root with the pinned toolchains:
 ```sh
 make compiler-install
 make test-vyper-matrix test-vyper-release
-go run ./cmd/testintegration -root . -packages './internal/integration ./internal/verify' -run Vyper -race
+go run ./e2e/cmd/testintegration -root . -packages './internal/integration ./internal/verify' -run Vyper -race
 make check
 make docker-build docker-image-check
 ```

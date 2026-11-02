@@ -1,4 +1,4 @@
-import type { BillingConfig } from "@/api/billing";
+import type { BillingConfig, BillingPaymentOption } from "@/api/billing";
 
 const MAX_ATOMIC = (1n << 256n) - 1n;
 
@@ -24,7 +24,7 @@ export function formatTokenAmount(atomic: string, decimals: number): string {
   return padded.slice(0, -decimals) + (fraction ? `.${fraction}` : "");
 }
 
-export function topupAmount(value: string, config: BillingConfig): string | undefined {
+export function topupAmount(value: string, config: BillingPaymentOption): string | undefined {
   if (config.asset_decimals === undefined) return;
   const atomic = parseTokenAmount(value, config.asset_decimals);
   if (!atomic) return;
@@ -38,21 +38,44 @@ export function topupAmount(value: string, config: BillingConfig): string | unde
     BigInt(atomic) > BigInt(config.maximum_topup_amount_atomic)
   )
     return;
+  if (creditAmount(atomic, config) === undefined) return;
   return atomic;
 }
 
-export function displayBillingAmount(atomic: string, config?: BillingConfig): string {
-  return config?.asset_decimals === undefined
-    ? `${atomic} atomic`
-    : formatTokenAmount(atomic, config.asset_decimals);
+export function creditAmount(
+  atomic: string,
+  option: Pick<BillingPaymentOption, "credit_rate_numerator" | "credit_rate_denominator">,
+): string | undefined {
+  const numerator = BigInt(option.credit_rate_numerator),
+    denominator = BigInt(option.credit_rate_denominator);
+  if (numerator <= 0n || denominator <= 0n) return;
+  const product = BigInt(atomic) * numerator;
+  if (product % denominator !== 0n) return;
+  const credit = product / denominator;
+  return credit > 0n && credit <= MAX_ATOMIC ? credit.toString() : undefined;
+}
+export function displayBillingAmount(
+  atomic: string,
+  config?: { asset_decimals?: number; credit_decimals?: number },
+): string {
+  const decimals = config?.asset_decimals ?? config?.credit_decimals;
+  return decimals === undefined ? `${atomic} atomic` : formatTokenAmount(atomic, decimals);
+}
+export function matchingAssetConfig(
+  record: { network: string; asset: string; payment_option?: BillingPaymentOption },
+  _config?: BillingConfig,
+): BillingPaymentOption | undefined {
+  // Historical token precision comes only from the immutable intent snapshot.
+  return record.payment_option;
 }
 
-export function matchingAssetConfig(
-  record: { network: string; asset: string },
-  config?: BillingConfig,
-): BillingConfig | undefined {
-  return record.network === config?.network &&
-    record.asset.toLowerCase() === config.asset?.toLowerCase()
-    ? config
-    : undefined;
+export function tokenCreditRate(option: BillingPaymentOption): string {
+  const numerator = BigInt(option.credit_rate_numerator) * 10n ** BigInt(option.asset_decimals);
+  const denominator = BigInt(option.credit_rate_denominator) * 1000000n;
+  let a = numerator,
+    b = denominator;
+  while (b !== 0n) [a, b] = [b, a % b];
+  return denominator / a === 1n
+    ? (numerator / a).toString()
+    : `${numerator / a} / ${denominator / a}`;
 }

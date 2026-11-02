@@ -204,3 +204,19 @@ installed package. The CLI deploys the official bytecode on the disposable
 Preview chain; it does not embed Safe into the explorer SPA, production binary
 or genesis. OpenZeppelin upgradeable contracts 5.6.1 and Solady 0.1.26 are
 MIT-licensed development dependencies used for these local fixtures.
+
+### Preview standard x402 contracts
+
+`preview/contracts/upstream/x402-standard.json` contains compiled runtime artifacts
+from Uniswap Permit2 (`cc56ad0f3439c502c246fc5cfcc3db92bb8b7219`, MIT) and x402
+(`71eb9a55e081e7b81ba3046d0bd17c3eb9c7bf81`, repository Apache-2.0; proxy Solidity
+sources carry MIT SPDX notices), including OpenZeppelin MIT code. License texts
+are in `preview-permit2-MIT.txt`, `preview-x402-Apache-2.0.txt` and
+`preview-openzeppelin-MIT.txt`. The pinned upstream URLs and compiler versions are
+recorded in the artifact. `preview/contracts/regenerate-x402.mjs` rebuilds it.
+Genesis initialization fills constructor immutable slots for each chain's canonical
+contract addresses; contract logic is unchanged.
+The Permit2 source bundle also includes Solmate ERC20 (AGPL-3.0-only) and
+SafeTransferLib (MIT). The AGPL text is in `preview-solmate-AGPL-3.0.txt`; complete
+corresponding Solidity sources and build settings are included in
+`preview/verification/Permit2.json`.

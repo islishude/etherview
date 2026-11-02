@@ -61,7 +61,8 @@ jobs:
           trap 'docker rm "$container"' EXIT
           mkdir -p "$RUNNER_TEMP/preview-tools"
           docker cp "$container:/usr/local/bin/anvil" "$RUNNER_TEMP/preview-tools/anvil"
-          ANVIL="$RUNNER_TEMP/preview-tools/anvil" make preview-contracts-check
+          docker cp "$container:/usr/local/bin/cast" "$RUNNER_TEMP/preview-tools/cast"
+          ANVIL="$RUNNER_TEMP/preview-tools/anvil" CAST="$RUNNER_TEMP/preview-tools/cast" make preview-contracts-check
           node preview/contracts/upstream.mjs --check
       - name: Validate Caddy gateway boundaries
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}

@@ -29,11 +29,11 @@ release acceptance and publication only.
 
 | ID      | Status  | Depends on                                  | Deliverable                                                                                                                       | Verification              |
 | ------- | ------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| P70-T01 | blocked | P10, P20, P30, P40, P50, P60                | Execution/API/token/holder/proxy/verification/authentication/billing and database-only current-chain ENS v1/v2 conformance matrix | conformance suite         |
-| P70-T02 | blocked | P10, P20, P30, P40, P50, P60                | Threat model, security audit, dependency, compiler, session, holder/payment and ENS source/CCIP/publication review                | security gates            |
-| P70-T03 | blocked | P10, P20, P30, P40, P50, P60                | Monolith/split E2E, migration/rollback, outage, reorg, holder/payment and background ENS recovery/soak suite                      | release CI                |
+| P70-T01 | todo    | P10, P20, P30, P40, P50, P60                | Execution/API/token/holder/proxy/verification/authentication/billing and database-only current-chain ENS v1/v2 conformance matrix | conformance suite         |
+| P70-T02 | todo    | P10, P20, P30, P40, P50, P60                | Threat model, security audit, dependency, compiler, session, holder/payment and ENS source/CCIP/publication review                | security gates            |
+| P70-T03 | todo    | P10, P20, P30, P40, P50, P60                | Monolith/split E2E, migration/rollback, outage, reorg, holder/payment and background ENS recovery/soak suite                      | release CI                |
 | P70-T04 | blocked | P10, P20, P30, P40, P50                     | 500 RPS reference capacity report including holder/ENS reads and concurrent background reconciliation, plus tuning guide          | load report               |
-| P70-T05 | blocked | P00, P10, P20, P30, P40, P50, P60           | User/operator/API/authentication/billing/holder/ENS synchronization and recovery/runbook/upgrade documentation                    | doc review and link check |
+| P70-T05 | todo    | P00, P10, P20, P30, P40, P50, P60           | User/operator/API/authentication/billing/holder/ENS synchronization and recovery/runbook/upgrade documentation                    | doc review and link check |
 | P70-T06 | todo    | P70-T01, P70-T02, P70-T03, P70-T04, P70-T05 | SBOM, checksums, signed multi-arch artifacts and v1.0.0 release                                                                   | release verification      |
 
 ## Acceptance
@@ -58,16 +58,17 @@ release acceptance and publication only.
 
 ## Current Blockers
 
-P70-T01, P70-T02, P70-T03, and P70-T05 are blocked by P60-T17's live EIP-3009
-and Permit2 payment acceptance. They become claimable after the preserved
-staging reports reconcile settlement, account credit, API debit, and independent
-writer/chain observations, and P60 is `done`. P60 owns the required operator
-inputs and clearing conditions; local Anvil evidence cannot replace this gate.
+P60-T17's live-payment gate is complete: acceptance verified finalized
+Sepolia settlement, account credit, successful priced Anvil queries and unique
+writer debits. P60-T24 and P60 are also complete after the required Go lint and
+focused race checks passed. P70-T01, P70-T02, P70-T03 and P70-T05 are now
+dependency-ready (`todo`), but their final release suites have not been claimed
+or completed. Payment acceptance does not close any final release gate.
 
 The current-chain ENS feature milestones and P30-T150/P30-T151 acceptance are
 complete with [new evidence](../reviews/ens-current-chain-acceptance.md). This
-clears only that feature dependency. The original P60 blocker and final release
-conformance, security, recovery/soak and documentation gates remain open.
+clears only that feature dependency. Final release conformance, security,
+recovery/soak and documentation gates remain open.
 Historical or bounded ENS samples do not prove full directory coverage.
 The name-directory/profile extension is tracked separately by P20-T30, P40-T28
 and P50-T82; its [local evidence](../reviews/ens-name-details-acceptance.md) does
@@ -96,7 +97,7 @@ No release is authorized by documentation cleanup.
 Final release acceptance remains incomplete. Feature-level historical checks
 remain in their owning plans and Git history; they do not close the release
 conformance, security, topology, documentation, or reference-capacity gates.
-P60-T17 still needs live staging reports, and P70-T04 still needs the final
+P60-T17 has completed live payment/debit acceptance; P70-T04 still needs the final
 accepted revision and image digest tested in the named reference environment.
 P30-T150 and P30-T151 have new local and representative live evidence for the rewrite.
 Full directory coverage remains separately reported deployment progress.

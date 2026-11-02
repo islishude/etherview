@@ -68,7 +68,7 @@ func (h *harness) fundHoldingsUser(ctx context.Context) *holdingsUser {
 	}
 	user.token = issued.Data.Token
 	var intent gen.BillingTopupIntentResponse
-	user.request(ctx, "/api/v1/billing/topup-intents", map[string]string{"amount_atomic": holdingsCredit}, "", http.StatusCreated, &intent)
+	user.request(ctx, "/api/v1/billing/topup-intents", gen.BillingTopupIntentCreateRequest{AmountAtomic: holdingsCredit, PaymentOptionId: "default"}, "", http.StatusCreated, &intent)
 	path := "/api/v1/billing/topup-intents/" + intent.Data.Id.String() + "/pay"
 	headers := user.request(ctx, path, nil, "", http.StatusPaymentRequired, nil)
 	codec, err := x402wire.NewCodec(x402wire.DefaultMaxHeaderBytes)

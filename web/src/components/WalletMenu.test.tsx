@@ -45,6 +45,7 @@ describe("WalletMenu", () => {
           rdns: "org.etherview.test",
         },
       ],
+      prepareLogin: vi.fn(async (selected) => selected),
       connecting: false,
       addingChain: false,
       discover: vi.fn(),

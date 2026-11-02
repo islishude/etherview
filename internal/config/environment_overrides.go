@@ -16,6 +16,17 @@ func applyRoleEnvironment(cfg *Config, lookup func(string) (string, bool), force
 		"TURNSTILE_VERIFICATION_ENABLED",
 		"TURNSTILE_CSV_EXPORT_ENABLED",
 		"FEATURE_X402_BILLING",
+		"X402_NETWORK",
+		"X402_ASSET",
+		"X402_ASSET_DECIMALS",
+		"X402_ASSET_EIP712_NAME",
+		"X402_ASSET_EIP712_VERSION",
+		"X402_RECIPIENT",
+		"X402_MINIMUM_TOPUP_AMOUNT_ATOMIC",
+		"X402_MAXIMUM_TOPUP_AMOUNT_ATOMIC",
+		"X402_ASSET_TRANSFER_METHODS",
+		"X402_FACILITATOR_URL",
+
 		"X402_COARSE_IP_RATE",
 		"X402_COARSE_IP_BURST",
 		"X402_MAX_BUFFERED_RESPONSE_BYTES",
@@ -145,7 +156,7 @@ func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 			return err
 		}
 		if headersJSON != "" {
-			headers, err := parseSecretHeaders(headersJSON)
+			headers, err := parsePaymentHeaders(headersJSON)
 			if err != nil {
 				return err
 			}
@@ -173,12 +184,6 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setExactString(lookup, "LOG_LEVEL", &cfg.Observability.LogLevel)
 	setExactString(lookup, "LOG_FORMAT", &cfg.Observability.LogFormat)
 	setString(lookup, "OTLP_TRACE_ENDPOINT", &cfg.Observability.OTLPTraceEndpoint)
-	setString(lookup, "X402_FACILITATOR_URL", &cfg.Billing.FacilitatorURL)
-	setString(lookup, "X402_NETWORK", &cfg.Billing.Network)
-	setString(lookup, "X402_ASSET", &cfg.Billing.Asset)
-	setString(lookup, "X402_ASSET_EIP712_NAME", &cfg.Billing.AssetEIP712Name)
-	setString(lookup, "X402_ASSET_EIP712_VERSION", &cfg.Billing.AssetEIP712Version)
-	setString(lookup, "X402_RECIPIENT", &cfg.Billing.Recipient)
 	for name, target := range map[string]*string{
 		"NATS_URL":    &cfg.Adapters.NATSURL,
 		"REDIS_URL":   &cfg.Adapters.RedisURL,
@@ -271,9 +276,7 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setUint8(lookup, "CHAIN_NATIVE_DECIMALS", &cfg.Chain.NativeDecimals); err != nil {
 		return err
 	}
-	if err := setUint8(lookup, "X402_ASSET_DECIMALS", &cfg.Billing.AssetDecimals); err != nil {
-		return err
-	}
+
 	if err := setInt32(lookup, "DATABASE_MAX_CONNECTIONS", &cfg.Database.MaxConnections); err != nil {
 		return err
 	}

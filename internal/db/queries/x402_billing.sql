@@ -438,56 +438,58 @@ SELECT count(*)::bigint AS expired_count
 FROM updated;
 
 -- name: ListUserBillingPayments :many
-SELECT *
-FROM billing_payments
-WHERE chain_id = sqlc.arg('chain_id')::numeric
-  AND user_id = sqlc.arg('user_id')::uuid
+SELECT sqlc.embed(p), i.payment_option
+FROM billing_payments p
+LEFT JOIN billing_topup_intents i ON i.id = p.topup_intent_id AND i.chain_id = p.chain_id
+WHERE p.chain_id = sqlc.arg('chain_id')::numeric
+  AND p.user_id = sqlc.arg('user_id')::uuid
   AND (
       sqlc.narg('before_created_at')::timestamptz IS NULL
-      OR (created_at, id) < (
+      OR (p.created_at, p.id) < (
           sqlc.narg('before_created_at')::timestamptz,
           sqlc.narg('before_id')::uuid
       )
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY p.created_at DESC, p.id DESC
 LIMIT sqlc.arg('page_limit');
 
 -- name: ListAdminBillingPayments :many
-SELECT *
-FROM billing_payments
-WHERE chain_id = sqlc.arg('chain_id')::numeric
+SELECT sqlc.embed(p), i.payment_option
+FROM billing_payments p
+LEFT JOIN billing_topup_intents i ON i.id = p.topup_intent_id AND i.chain_id = p.chain_id
+WHERE p.chain_id = sqlc.arg('chain_id')::numeric
   AND (
       sqlc.narg('state')::text IS NULL
-      OR state = sqlc.narg('state')::text
+      OR p.state = sqlc.narg('state')::text
   )
   AND (
       sqlc.narg('operation')::text IS NULL
-      OR operation = sqlc.narg('operation')::text
+      OR p.operation = sqlc.narg('operation')::text
   )
   AND (
       sqlc.narg('network')::text IS NULL
-      OR network = sqlc.narg('network')::text
+      OR p.network = sqlc.narg('network')::text
   )
   AND (
       sqlc.narg('asset')::bytea IS NULL
-      OR asset = sqlc.narg('asset')::bytea
+      OR p.asset = sqlc.narg('asset')::bytea
   )
   AND (
       sqlc.narg('from_time')::timestamptz IS NULL
-      OR created_at >= sqlc.narg('from_time')::timestamptz
+      OR p.created_at >= sqlc.narg('from_time')::timestamptz
   )
   AND (
       sqlc.narg('to_time')::timestamptz IS NULL
-      OR created_at < sqlc.narg('to_time')::timestamptz
+      OR p.created_at < sqlc.narg('to_time')::timestamptz
   )
   AND (
       sqlc.narg('before_created_at')::timestamptz IS NULL
-      OR (created_at, id) < (
+      OR (p.created_at, p.id) < (
           sqlc.narg('before_created_at')::timestamptz,
           sqlc.narg('before_id')::uuid
       )
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY p.created_at DESC, p.id DESC
 LIMIT sqlc.arg('page_limit');
 
 -- name: SummarizeBillingPayments :many

@@ -192,11 +192,6 @@ func TestRegisterAuthBillingHousekeepersIsFeatureAwareAndBounded(t *testing.T) {
 			cfg := config.Default()
 			cfg.Features.UserAuth = test.auth
 			cfg.Features.APIBilling = test.billing
-			if test.billing {
-				cfg.Billing.Network = "eip155:1"
-				cfg.Billing.Asset = "0x1111111111111111111111111111111111111111"
-				cfg.Billing.Recipient = "0x2222222222222222222222222222222222222222"
-			}
 			registry := components.NewRegistry()
 			if err := registerAuthBillingHousekeepers(
 				registry, &pgxpool.Pool{}, cfg, nil,

@@ -1,0 +1,16 @@
+.dropdown-chevron {
+  pointer-events: none;
+  color: var(--text-soft);
+  transition: rotate 180ms ease;
+}
+[aria-expanded="true"] > .dropdown-chevron,
+[aria-expanded="true"] + .dropdown-chevron {
+  rotate: 180deg;
+}
+:where(:hover, :focus-within) > .dropdown-chevron {
+  color: var(--text);
+}
+:where(:disabled, :has(> :disabled)) > .dropdown-chevron {
+  color: var(--text-soft);
+  opacity: 0.5;
+}

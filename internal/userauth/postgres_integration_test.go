@@ -220,6 +220,50 @@ func TestPostgresConcurrentChallengeConsumptionAndImmediateRevocation(t *testing
 	); !errors.Is(err, apiauth.ErrAPIKeyNotFound) {
 		t.Fatalf("cross-user revoke error = %v", err)
 	}
+	owner := authentication.Session.User.ID
+	deletedAt := time.Now().UTC().Truncate(time.Microsecond)
+	if err := userKeys.Delete(t.Context(), owner, replacement.Record.Prefix, deletedAt); !errors.Is(err, apiauth.ErrAPIKeyNotRevoked) {
+		t.Fatalf("active delete: %v", err)
+	}
+	if _, err := db.Exec(t.Context(), `UPDATE api_keys SET deleted_at = now() WHERE prefix = $1`, replacement.Record.Prefix); err == nil {
+		t.Fatal("database accepted deletion before revocation")
+	}
+	if err := userKeys.Delete(t.Context(), "7ac05a11-b7b2-4c2c-b786-a614cc1e3670", activeKey.Record.Prefix, deletedAt); !errors.Is(err, apiauth.ErrAPIKeyNotFound) {
+		t.Fatalf("cross-owner delete: %v", err)
+	}
+	var deletes sync.WaitGroup
+	deleteResults := make(chan error, 2)
+	for range 2 {
+		deletes.Go(func() { deleteResults <- userKeys.Delete(t.Context(), owner, activeKey.Record.Prefix, deletedAt) })
+	}
+	deletes.Wait()
+	close(deleteResults)
+	for err := range deleteResults {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := userKeys.Delete(t.Context(), owner, activeKey.Record.Prefix, deletedAt.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	var storedDeletedAt time.Time
+	if err := db.QueryRow(t.Context(), `SELECT deleted_at FROM api_keys WHERE prefix = $1`, activeKey.Record.Prefix).Scan(&storedDeletedAt); err != nil || !storedDeletedAt.Equal(deletedAt) {
+		t.Fatalf("retained timestamp: %v, %v", storedDeletedAt, err)
+	}
+	page, err := userKeys.List(t.Context(), owner, nil, 25)
+	if err != nil || len(page.Items) != 1 || page.Items[0].Prefix != replacement.Record.Prefix || page.ActiveCount != 1 {
+		t.Fatalf("list after deletion: %+v, %v", page, err)
+	}
+	if _, err := userKeys.Rotate(t.Context(), owner, activeKey.Record.Prefix); !errors.Is(err, apiauth.ErrAPIKeyNotFound) {
+		t.Fatalf("deleted rotate: %v", err)
+	}
+	if err := userKeys.Revoke(t.Context(), owner, activeKey.Record.Prefix, deletedAt); !errors.Is(err, apiauth.ErrAPIKeyNotFound) {
+		t.Fatalf("deleted revoke: %v", err)
+	}
+	if _, err := apiKeyManager.Authenticate(t.Context(), activeKey.Token); !errors.Is(err, apiauth.ErrRevokedAPIKey) {
+		t.Fatalf("deleted authentication: %v", err)
+	}
+
 	disabled := StatusDisabled
 	update, err := replicaRepository.UpdateUser(t.Context(), authentication.Session.User.ID, AdminUserUpdate{
 		Status: &disabled,

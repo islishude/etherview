@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-//go:generate go run ../../cmd/safe-manifest -input manifests/safe-proxy-sources.json -output manifests/safe-proxy-fingerprints.json
+//go:generate go run ../../tools/safe-manifest -input manifests/safe-proxy-sources.json -output manifests/safe-proxy-fingerprints.json
 
 const safeProxyDetectorVersion = "1.0.0+manifest.1"
 

@@ -7,7 +7,7 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "../..");
 
-test("toolchain minimums accept stable upgrades and reject invalid or unavailable tools", () =>
+test("toolchain versions accept compatible upgrades and reject invalid or unavailable tools", () =>
   sandbox(({ dir, env }) => {
     const checker = join(root, ".github/scripts/toolchain-check.sh");
     const source = readFileSync(checker, "utf8");
@@ -41,7 +41,12 @@ test("toolchain minimums accept stable upgrades and reject invalid or unavailabl
         const versions = [...minimums];
         versions[index] = (prefix ?? "") + newer.join(".");
         const result = run(versions);
-        assert.equal(result.status, 0, result.stdout + result.stderr);
+        if (label === "pnpm" && component === 0) {
+          assert.notEqual(result.status, 0);
+          assert.match(result.stdout, /must use major/);
+        } else {
+          assert.equal(result.status, 0, result.stdout + result.stderr);
+        }
       }
       for (const [version, message] of [
         [(prefix ?? "") + "0.0.0", /below minimum/],
@@ -79,6 +84,28 @@ test("toolchain minimums accept stable upgrades and reject invalid or unavailabl
       }
     }
   }));
+
+test("Docker dependency caches do not hide the installed pnpm runtime", () => {
+  for (const path of ["Dockerfile", "e2e/hardhat3/Dockerfile"]) {
+    const source = readFileSync(join(root, path), "utf8").replace(/\\\n/g, " ");
+    const home = source.match(/^ENV PNPM_HOME=(\S+)$/m)[1];
+    const installs = source
+      .split("\n")
+      .filter((line) => line.startsWith("RUN --mount=") && line.includes("pnpm "));
+    assert.ok(installs.length > 0, path);
+    for (const line of installs) {
+      const target = line.match(/target=([^\s,]+)/)[1];
+      assert.ok(
+        target !== home && !target.startsWith(`${home}/`),
+        `${path}: cache hides pnpm runtime`,
+      );
+      assert.ok(
+        line.includes(`--store-dir=${target}`),
+        `${path}: store must use the mounted cache`,
+      );
+    }
+  }
+});
 
 function sandbox(fn) {
   const dir = mkdtempSync(join(tmpdir(), "workflow scripts "));
@@ -347,6 +374,14 @@ test("Preview groups short checks and isolates heavy suites without losing failu
   const smoke = jobs.get("preview-smoke");
   assert.equal(smoke.split("uses: ./.github/actions/setup-preview").length - 1, 1);
   assert.match(smoke, /id: setup/);
+  for (const binary of ["anvil", "cast"]) {
+    assert.ok(
+      smoke.includes(
+        `docker cp "$container:/usr/local/bin/${binary}" "$RUNNER_TEMP/preview-tools/${binary}"`,
+      ),
+    );
+    assert.ok(smoke.includes(`${binary.toUpperCase()}="$RUNNER_TEMP/preview-tools/${binary}"`));
+  }
   assert.doesNotMatch(
     smoke,
     /browser:|PLAYWRIGHT_USE_BUNDLED|tools-e2e-full|PREVIEW_TOOLS_FULL|continue-on-error/,

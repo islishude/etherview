@@ -481,41 +481,42 @@ func (q *Queries) InsertBillingPayment(ctx context.Context, arg InsertBillingPay
 }
 
 const listAdminBillingPayments = `-- name: ListAdminBillingPayments :many
-SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
-FROM billing_payments
-WHERE chain_id = $1::numeric
+SELECT p.id, p.chain_id, p.fingerprint, p.reservation_owner, p.method, p.operation, p.resource_digest, p.requirement_digest, p.protocol_version, p.scheme, p.network, p.asset, p.amount_atomic, p.recipient, p.payer, p.user_id, p.api_key_prefix, p.facilitator_digest, p.transaction_hash, p.state, p.failure_code, p.reservation_expires_at, p.handler_started_at, p.verified_at, p.settling_at, p.settled_at, p.failed_at, p.expired_at, p.created_at, p.updated_at, p.purpose, p.asset_transfer_method, p.payment_flow, p.fingerprint_version, p.topup_intent_id, i.payment_option
+FROM billing_payments p
+LEFT JOIN billing_topup_intents i ON i.id = p.topup_intent_id AND i.chain_id = p.chain_id
+WHERE p.chain_id = $1::numeric
   AND (
       $2::text IS NULL
-      OR state = $2::text
+      OR p.state = $2::text
   )
   AND (
       $3::text IS NULL
-      OR operation = $3::text
+      OR p.operation = $3::text
   )
   AND (
       $4::text IS NULL
-      OR network = $4::text
+      OR p.network = $4::text
   )
   AND (
       $5::bytea IS NULL
-      OR asset = $5::bytea
+      OR p.asset = $5::bytea
   )
   AND (
       $6::timestamptz IS NULL
-      OR created_at >= $6::timestamptz
+      OR p.created_at >= $6::timestamptz
   )
   AND (
       $7::timestamptz IS NULL
-      OR created_at < $7::timestamptz
+      OR p.created_at < $7::timestamptz
   )
   AND (
       $8::timestamptz IS NULL
-      OR (created_at, id) < (
+      OR (p.created_at, p.id) < (
           $8::timestamptz,
           $9::uuid
       )
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY p.created_at DESC, p.id DESC
 LIMIT $10
 `
 
@@ -532,7 +533,12 @@ type ListAdminBillingPaymentsParams struct {
 	PageLimit       int32              `db:"page_limit" json:"page_limit"`
 }
 
-func (q *Queries) ListAdminBillingPayments(ctx context.Context, arg ListAdminBillingPaymentsParams) ([]BillingPayment, error) {
+type ListAdminBillingPaymentsRow struct {
+	BillingPayment BillingPayment `db:"billing_payment" json:"billing_payment"`
+	PaymentOption  []byte         `db:"payment_option" json:"payment_option"`
+}
+
+func (q *Queries) ListAdminBillingPayments(ctx context.Context, arg ListAdminBillingPaymentsParams) ([]ListAdminBillingPaymentsRow, error) {
 	rows, err := q.db.Query(ctx, listAdminBillingPayments,
 		arg.ChainID,
 		arg.State,
@@ -549,45 +555,46 @@ func (q *Queries) ListAdminBillingPayments(ctx context.Context, arg ListAdminBil
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BillingPayment{}
+	items := []ListAdminBillingPaymentsRow{}
 	for rows.Next() {
-		var i BillingPayment
+		var i ListAdminBillingPaymentsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.ChainID,
-			&i.Fingerprint,
-			&i.ReservationOwner,
-			&i.Method,
-			&i.Operation,
-			&i.ResourceDigest,
-			&i.RequirementDigest,
-			&i.ProtocolVersion,
-			&i.Scheme,
-			&i.Network,
-			&i.Asset,
-			&i.AmountAtomic,
-			&i.Recipient,
-			&i.Payer,
-			&i.UserID,
-			&i.ApiKeyPrefix,
-			&i.FacilitatorDigest,
-			&i.TransactionHash,
-			&i.State,
-			&i.FailureCode,
-			&i.ReservationExpiresAt,
-			&i.HandlerStartedAt,
-			&i.VerifiedAt,
-			&i.SettlingAt,
-			&i.SettledAt,
-			&i.FailedAt,
-			&i.ExpiredAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Purpose,
-			&i.AssetTransferMethod,
-			&i.PaymentFlow,
-			&i.FingerprintVersion,
-			&i.TopupIntentID,
+			&i.BillingPayment.ID,
+			&i.BillingPayment.ChainID,
+			&i.BillingPayment.Fingerprint,
+			&i.BillingPayment.ReservationOwner,
+			&i.BillingPayment.Method,
+			&i.BillingPayment.Operation,
+			&i.BillingPayment.ResourceDigest,
+			&i.BillingPayment.RequirementDigest,
+			&i.BillingPayment.ProtocolVersion,
+			&i.BillingPayment.Scheme,
+			&i.BillingPayment.Network,
+			&i.BillingPayment.Asset,
+			&i.BillingPayment.AmountAtomic,
+			&i.BillingPayment.Recipient,
+			&i.BillingPayment.Payer,
+			&i.BillingPayment.UserID,
+			&i.BillingPayment.ApiKeyPrefix,
+			&i.BillingPayment.FacilitatorDigest,
+			&i.BillingPayment.TransactionHash,
+			&i.BillingPayment.State,
+			&i.BillingPayment.FailureCode,
+			&i.BillingPayment.ReservationExpiresAt,
+			&i.BillingPayment.HandlerStartedAt,
+			&i.BillingPayment.VerifiedAt,
+			&i.BillingPayment.SettlingAt,
+			&i.BillingPayment.SettledAt,
+			&i.BillingPayment.FailedAt,
+			&i.BillingPayment.ExpiredAt,
+			&i.BillingPayment.CreatedAt,
+			&i.BillingPayment.UpdatedAt,
+			&i.BillingPayment.Purpose,
+			&i.BillingPayment.AssetTransferMethod,
+			&i.BillingPayment.PaymentFlow,
+			&i.BillingPayment.FingerprintVersion,
+			&i.BillingPayment.TopupIntentID,
+			&i.PaymentOption,
 		); err != nil {
 			return nil, err
 		}
@@ -636,18 +643,19 @@ func (q *Queries) ListBillingPaymentEvents(ctx context.Context, paymentID pgtype
 }
 
 const listUserBillingPayments = `-- name: ListUserBillingPayments :many
-SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
-FROM billing_payments
-WHERE chain_id = $1::numeric
-  AND user_id = $2::uuid
+SELECT p.id, p.chain_id, p.fingerprint, p.reservation_owner, p.method, p.operation, p.resource_digest, p.requirement_digest, p.protocol_version, p.scheme, p.network, p.asset, p.amount_atomic, p.recipient, p.payer, p.user_id, p.api_key_prefix, p.facilitator_digest, p.transaction_hash, p.state, p.failure_code, p.reservation_expires_at, p.handler_started_at, p.verified_at, p.settling_at, p.settled_at, p.failed_at, p.expired_at, p.created_at, p.updated_at, p.purpose, p.asset_transfer_method, p.payment_flow, p.fingerprint_version, p.topup_intent_id, i.payment_option
+FROM billing_payments p
+LEFT JOIN billing_topup_intents i ON i.id = p.topup_intent_id AND i.chain_id = p.chain_id
+WHERE p.chain_id = $1::numeric
+  AND p.user_id = $2::uuid
   AND (
       $3::timestamptz IS NULL
-      OR (created_at, id) < (
+      OR (p.created_at, p.id) < (
           $3::timestamptz,
           $4::uuid
       )
   )
-ORDER BY created_at DESC, id DESC
+ORDER BY p.created_at DESC, p.id DESC
 LIMIT $5
 `
 
@@ -659,7 +667,12 @@ type ListUserBillingPaymentsParams struct {
 	PageLimit       int32              `db:"page_limit" json:"page_limit"`
 }
 
-func (q *Queries) ListUserBillingPayments(ctx context.Context, arg ListUserBillingPaymentsParams) ([]BillingPayment, error) {
+type ListUserBillingPaymentsRow struct {
+	BillingPayment BillingPayment `db:"billing_payment" json:"billing_payment"`
+	PaymentOption  []byte         `db:"payment_option" json:"payment_option"`
+}
+
+func (q *Queries) ListUserBillingPayments(ctx context.Context, arg ListUserBillingPaymentsParams) ([]ListUserBillingPaymentsRow, error) {
 	rows, err := q.db.Query(ctx, listUserBillingPayments,
 		arg.ChainID,
 		arg.UserID,
@@ -671,45 +684,46 @@ func (q *Queries) ListUserBillingPayments(ctx context.Context, arg ListUserBilli
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BillingPayment{}
+	items := []ListUserBillingPaymentsRow{}
 	for rows.Next() {
-		var i BillingPayment
+		var i ListUserBillingPaymentsRow
 		if err := rows.Scan(
-			&i.ID,
-			&i.ChainID,
-			&i.Fingerprint,
-			&i.ReservationOwner,
-			&i.Method,
-			&i.Operation,
-			&i.ResourceDigest,
-			&i.RequirementDigest,
-			&i.ProtocolVersion,
-			&i.Scheme,
-			&i.Network,
-			&i.Asset,
-			&i.AmountAtomic,
-			&i.Recipient,
-			&i.Payer,
-			&i.UserID,
-			&i.ApiKeyPrefix,
-			&i.FacilitatorDigest,
-			&i.TransactionHash,
-			&i.State,
-			&i.FailureCode,
-			&i.ReservationExpiresAt,
-			&i.HandlerStartedAt,
-			&i.VerifiedAt,
-			&i.SettlingAt,
-			&i.SettledAt,
-			&i.FailedAt,
-			&i.ExpiredAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Purpose,
-			&i.AssetTransferMethod,
-			&i.PaymentFlow,
-			&i.FingerprintVersion,
-			&i.TopupIntentID,
+			&i.BillingPayment.ID,
+			&i.BillingPayment.ChainID,
+			&i.BillingPayment.Fingerprint,
+			&i.BillingPayment.ReservationOwner,
+			&i.BillingPayment.Method,
+			&i.BillingPayment.Operation,
+			&i.BillingPayment.ResourceDigest,
+			&i.BillingPayment.RequirementDigest,
+			&i.BillingPayment.ProtocolVersion,
+			&i.BillingPayment.Scheme,
+			&i.BillingPayment.Network,
+			&i.BillingPayment.Asset,
+			&i.BillingPayment.AmountAtomic,
+			&i.BillingPayment.Recipient,
+			&i.BillingPayment.Payer,
+			&i.BillingPayment.UserID,
+			&i.BillingPayment.ApiKeyPrefix,
+			&i.BillingPayment.FacilitatorDigest,
+			&i.BillingPayment.TransactionHash,
+			&i.BillingPayment.State,
+			&i.BillingPayment.FailureCode,
+			&i.BillingPayment.ReservationExpiresAt,
+			&i.BillingPayment.HandlerStartedAt,
+			&i.BillingPayment.VerifiedAt,
+			&i.BillingPayment.SettlingAt,
+			&i.BillingPayment.SettledAt,
+			&i.BillingPayment.FailedAt,
+			&i.BillingPayment.ExpiredAt,
+			&i.BillingPayment.CreatedAt,
+			&i.BillingPayment.UpdatedAt,
+			&i.BillingPayment.Purpose,
+			&i.BillingPayment.AssetTransferMethod,
+			&i.BillingPayment.PaymentFlow,
+			&i.BillingPayment.FingerprintVersion,
+			&i.BillingPayment.TopupIntentID,
+			&i.PaymentOption,
 		); err != nil {
 			return nil, err
 		}

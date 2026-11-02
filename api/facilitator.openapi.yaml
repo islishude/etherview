@@ -1,0 +1,159 @@
+openapi: 3.0.3
+info:
+  title: Etherview standalone x402 facilitator
+  version: 0.1.0
+  description: Separate service origin; these endpoints are not served by the explorer API.
+servers:
+  - url: https://facilitator.example.com
+security:
+  - bearerAuth: []
+paths:
+  /supported:
+    get:
+      operationId: facilitatorSupported
+      responses:
+        "200":
+          description: x402 v2 supported exact EVM networks and signer addresses.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [kinds, extensions, signers]
+                properties:
+                  kinds:
+                    type: array
+                    items:
+                      type: object
+                      required: [x402Version, scheme, network]
+                      properties:
+                        x402Version: { type: integer, enum: [2] }
+                        scheme: { type: string, enum: [exact] }
+                        network: { type: string, pattern: "^eip155:[1-9][0-9]*$" }
+                  extensions: { type: array, items: { type: string } }
+                  signers:
+                    { type: object, additionalProperties: { type: array, items: { type: string } } }
+  /verify:
+    post:
+      operationId: facilitatorVerify
+      requestBody: { $ref: "#/components/requestBodies/Payment" }
+      responses:
+        "200":
+          description: Verification result; no transaction is submitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [isValid]
+                properties:
+                  isValid: { type: boolean }
+                  invalidReason: { type: string }
+                  payer: { type: string }
+        "400": { description: Invalid or unsupported payload. }
+        "401": { description: Invalid bearer credential. }
+        "503": { description: Chain or database unavailable. }
+  /settle:
+    post:
+      operationId: facilitatorSettle
+      requestBody: { $ref: "#/components/requestBodies/Payment" }
+      responses:
+        "200":
+          description: Durable settlement outcome. New authorizations refused for chain capacity are journaled as failed with an empty transaction; existing authorizations retain their recorded outcome. Pending results always contain the original transaction hash.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, network]
+                properties:
+                  success: { type: boolean }
+                  network: { type: string }
+                  transaction: { type: string }
+                  errorReason: { type: string }
+                  payer: { type: string }
+                  amount: { type: string, pattern: "^[0-9]+$" }
+        "400": { description: Invalid or unsupported payload. }
+        "401": { description: Invalid bearer credential. }
+        "409": { description: Conflicting authorization reuse. }
+        "503":
+          {
+            description: "Outcome unavailable or an existing unsigned authorization is still in flight; do not automatically resubmit.",
+          }
+  /progress:
+    post:
+      operationId: facilitatorProgress
+      requestBody: { $ref: "#/components/requestBodies/Payment" }
+      responses:
+        "200":
+          description: Read-only journal observation bound to the exact authorization and request digest. Never submits or reconciles a payment.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettlementProgress"
+        "400": { description: Invalid or unsupported payload. }
+        "401": { description: Invalid bearer credential. }
+        "409": { description: Conflicting authorization reuse. }
+        "503": { description: Journal unavailable. }
+  /metrics:
+    get:
+      operationId: facilitatorMetrics
+      responses:
+        "200":
+          description: Bounded per-network Prometheus metrics.
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { description: Invalid bearer credential. }
+        "503": { description: Journal unavailable. }
+  /healthz:
+    get:
+      operationId: facilitatorLiveness
+      security: []
+      responses:
+        "204": { description: Process is alive. }
+  /readyz:
+    get:
+      operationId: facilitatorReadiness
+      security: []
+      responses:
+        "204": { description: Active and all configured chains healthy. }
+        "503": { description: Degraded; healthy chains remain usable. }
+components:
+  schemas:
+    SettlementProgress:
+      type: object
+      additionalProperties: false
+      required: [stage]
+      properties:
+        stage:
+          type: string
+          enum: [submitting, confirming, unknown]
+        transaction:
+          type: string
+          pattern: "^0x[0-9a-fA-F]{64}$"
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  requestBodies:
+    Payment:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [x402Version, paymentPayload, paymentRequirements]
+            properties:
+              x402Version: { type: integer, enum: [2] }
+              paymentPayload:
+                type: object
+                description: x402 v2 exact-EVM authorization payload. Integer amounts and nonces use strings.
+                additionalProperties: true
+              paymentRequirements:
+                type: object
+                required: [scheme, network, asset, amount, payTo, maxTimeoutSeconds, extra]
+                properties:
+                  scheme: { type: string, enum: [exact] }
+                  network: { type: string, pattern: "^eip155:[1-9][0-9]*$" }
+                  asset: { type: string }
+                  amount: { type: string, pattern: "^[1-9][0-9]*$" }
+                  payTo: { type: string }
+                  maxTimeoutSeconds: { type: integer, minimum: 1, maximum: 3600 }
+                  extra: { type: object, additionalProperties: true }

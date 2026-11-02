@@ -74,6 +74,8 @@ merging distinct invariants.
 
 - [ADR-0051 — Watchlist, Notifications and CSV](ADR-0051-watchlist-notifications-csv.md)
 
+- [ADR-0059 — Production multi-chain x402 facilitator](ADR-0059-production-x402-facilitator.md)
+
 ## Retired decisions
 
 - [ADR-0041 — Snapshot-Stable ENS Primary Names](ADR-0041-snapshot-stable-ens-primary-names.md):

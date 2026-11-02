@@ -1,4 +1,8 @@
 services:
+  nats:
+    image: nats:2.15-alpine
+    restart: unless-stopped
+
   ipfs:
     image: ipfs/kubo:v0.43.1
     command: ["daemon", "--migrate=false"]

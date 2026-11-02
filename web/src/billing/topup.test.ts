@@ -1,3 +1,4 @@
+import { testBillingConfig, testTopupIntent } from "@/billing/testFixtures";
 import {
   decodeFunctionData,
   encodeFunctionResult,
@@ -16,7 +17,6 @@ import {
   ensureExactPermit2Allowance,
   type TopupWallet,
 } from "./topup";
-import type { BillingConfig, BillingTopupIntent } from "@/api/billing";
 import { encodeBillingTypedData, type BillingSigningBinding } from "@/wallet/billing";
 
 const signer = privateKeyToAccount(`0x${"01".repeat(32)}`);
@@ -79,7 +79,11 @@ describe("Permit2 top-up approval", () => {
         amountAtomic: "1000",
       };
 
-      await ensureExactPermit2Allowance(wallet, binding);
+      const onProgress = vi.fn();
+      await ensureExactPermit2Allowance(wallet, binding, onProgress);
+      expect(onProgress.mock.calls.map(([progress]) => progress.stage)).toEqual(
+        allowance === 1000n ? [] : ["approval", "approvalConfirming"],
+      );
 
       if (allowance === 1000n) {
         expect(sendTransaction).not.toHaveBeenCalled();
@@ -100,7 +104,7 @@ describe("Permit2 top-up approval", () => {
 
 describe("x402 SDK top-up flow", () => {
   const network = "eip155:48815";
-  const config = {
+  const config = testBillingConfig({
     api_billing_enabled: true,
     x402_topups_enabled: true,
     x402_version: 2,
@@ -112,20 +116,23 @@ describe("x402 SDK top-up flow", () => {
     recipient,
     asset_eip712_name: "Local USD",
     asset_eip712_version: "1",
-  } satisfies BillingConfig;
-  const intent = {
-    id: "topup-test",
-    user_id: "user",
-    network,
-    asset,
-    recipient,
-    payer: account,
-    amount_atomic: "1000",
-    state: "open",
-    created_at: "2026-10-30T00:00:00Z",
-    updated_at: "2026-10-30T00:00:00Z",
-    expires_at: "2099-01-01T00:00:00Z",
-  } satisfies BillingTopupIntent;
+  });
+  const intent = testTopupIntent(
+    {
+      id: "topup-test",
+      user_id: "user",
+      network,
+      asset,
+      recipient,
+      payer: account,
+      amount_atomic: "1000",
+      state: "open",
+      created_at: "2026-10-30T00:00:00Z",
+      updated_at: "2026-10-30T00:00:00Z",
+      expires_at: "2099-01-01T00:00:00Z",
+    },
+    config,
+  );
 
   beforeEach(() => {
     // Node's Request needs an absolute URL; browsers resolve same-origin paths.
@@ -209,6 +216,27 @@ describe("x402 SDK top-up flow", () => {
     },
   );
 
+  it.each(["asset_decimals", "credit_rate_numerator", "network"] as const)(
+    "rejects a changed %s quote before wallet authorization",
+    async (field) => {
+      const { options, wallet, fetch } = fixture("eip3009");
+      const payment_option = {
+        ...options.intent.payment_option,
+        ...(field === "asset_decimals"
+          ? { asset_decimals: 18 }
+          : field === "network"
+            ? { network: "eip155:31337" }
+            : { credit_rate_numerator: "2" }),
+      };
+      await expect(
+        payBillingTopup({ ...options, intent: { ...options.intent, payment_option } }),
+      ).rejects.toBeInstanceOf(TopupAuthorizationError);
+      expect(wallet.signBillingTypedData).not.toHaveBeenCalled();
+      expect(wallet.sendTransaction).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("rechecks balance after Permit2 approval before signing", async () => {
     const { options, wallet } = fixture("permit2");
     wallet.readContract
@@ -263,6 +291,36 @@ describe("x402 SDK top-up flow", () => {
     );
   });
 
+  it("reports signing and submission at the actual boundaries", async () => {
+    const { options, fetch } = fixture("eip3009");
+    const stages: string[] = [];
+    const original = fetch.getMockImplementation()!;
+    fetch.mockImplementation(async (request) => {
+      if (request.headers.has("PAYMENT-SIGNATURE"))
+        expect(stages).toEqual(["signing", "submitting"]);
+      return original(request);
+    });
+    await payBillingTopup({ ...options, onProgress: ({ stage }) => stages.push(stage) });
+    expect(stages).toEqual(["signing", "submitting"]);
+  });
+
+  it.each([false, true])(
+    "classifies malformed receipts based on actual signed submission (%s)",
+    async (submitted) => {
+      const { options, fetch } = fixture("eip3009");
+      const original = fetch.getMockImplementation()!;
+      fetch.mockImplementation(async (request) => {
+        if (!submitted || request.headers.has("PAYMENT-SIGNATURE"))
+          return Response.json({ data: {} });
+        return original(request);
+      });
+      await expect(payBillingTopup(options)).rejects.toBeInstanceOf(
+        submitted ? TopupPendingError : TopupAuthorizationError,
+      );
+      expect(options.wallet.signBillingTypedData).toHaveBeenCalledTimes(submitted ? 1 : 0);
+    },
+  );
+
   it("preserves uncertain outcomes once a signed payment is submitted", async () => {
     const { options, fetch } = fixture("eip3009");
     const original = fetch.getMockImplementation()!;
@@ -270,7 +328,7 @@ describe("x402 SDK top-up flow", () => {
       if (request.headers.has("PAYMENT-SIGNATURE")) throw new Error("response lost");
       return original(request);
     });
-    await expect(payBillingTopup(options)).rejects.toThrow("response lost");
+    await expect(payBillingTopup(options)).rejects.toBeInstanceOf(TopupPendingError);
   });
 
   it("preserves settlement-pending responses", async () => {

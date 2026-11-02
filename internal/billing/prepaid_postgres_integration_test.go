@@ -14,15 +14,18 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	apiauth "github.com/islishude/etherview/internal/auth"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
+	"github.com/islishude/etherview/internal/billing/x402wire"
 )
 
 func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
 	db := newBillingPostgres(t)
 	userID := uuid.NewString()
-	var payer, asset, recipient common.Address
-	payer[19], asset[19], recipient[19] = 0xa1, 0xb1, 0xc1
+	var payer common.Address
+	payer[19] = 0xa1
 	insertBillingUser(t, db, userID, payer)
-	prepaid := newTestPrepaidLedger(t, db, asset, recipient)
+	prepaid := newTestPrepaidLedger(t, db)
 	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
 	if err != nil {
 		t.Fatal(err)
@@ -173,10 +176,10 @@ func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
 func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 	db := newBillingPostgres(t)
 	userID := uuid.NewString()
-	var payer, asset, recipient common.Address
-	payer[19], asset[19], recipient[19] = 0xa2, 0xb2, 0xc2
+	var payer common.Address
+	payer[19] = 0xa2
 	insertBillingUser(t, db, userID, payer)
-	prepaid := newTestPrepaidLedger(t, db, asset, recipient)
+	prepaid := newTestPrepaidLedger(t, db)
 	base := testReserveInput().ObservedAt
 	if _, err := prepaid.EnsureAccount(t.Context(), userID, base); err != nil {
 		t.Fatal(err)
@@ -276,6 +279,23 @@ func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 	assertBillingAccountAmounts(t, prepaid, userID, "100", "30", "70")
 	assertBillingEntryCount(t, db, "usage", committedReservation.Charge.ID, 1)
 
+	keyRepository, err := apiauth.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keyRepository.RevokeForUser(t.Context(), userID, "aaaaaaaaaa", base.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := keyRepository.DeleteForUser(t.Context(), userID, "aaaaaaaaaa", base.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	var historicalPrefix, historicalState string
+	if err := db.QueryRow(t.Context(), `SELECT api_key_prefix, state FROM billing_usage_charges WHERE id = $1`, committedReservation.Charge.ID).Scan(&historicalPrefix, &historicalState); err != nil || historicalPrefix != "aaaaaaaaaa" || historicalState != "committed" {
+		t.Fatalf("deleted key billing history: prefix=%s state=%s error=%v", historicalPrefix, historicalState, err)
+	}
+	assertBillingAccountAmounts(t, prepaid, userID, "100", "30", "70")
+	assertBillingEntryCount(t, db, "usage", committedReservation.Charge.ID, 1)
+
 	// Historical P66 payments remain audit facts and never create account credit.
 	legacy, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
 	if err != nil {
@@ -298,12 +318,11 @@ func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 func newTestPrepaidLedger(
 	t *testing.T,
 	database *pgxpool.Pool,
-	asset, recipient common.Address,
 ) *PrepaidLedger {
 	t.Helper()
 	ledger, err := NewPrepaidLedger(database, PrepaidOptions{
-		ChainID: 11155111, Network: "eip155:11155111", Asset: asset,
-		Recipient: recipient, TopupTTL: 10 * time.Minute, UsageTTL: 2 * time.Minute,
+		ChainID:  11155111,
+		TopupTTL: 10 * time.Minute, UsageTTL: 2 * time.Minute,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -320,10 +339,16 @@ func createReservedTopup(
 	amount string,
 	observedAt time.Time,
 	identity byte,
+	options ...paymentoption.Option,
 ) (TopupIntent, Reservation) {
 	t.Helper()
+	option := testPaymentOption("eip155:11155111", testReserveInput().Asset, testReserveInput().Recipient)
+	if len(options) > 0 {
+		option = options[0]
+	}
 	intent, err := prepaid.CreateTopupIntent(t.Context(), CreateTopupIntentInput{
 		UserID: userID, Payer: payer, AmountAtomic: amount, ObservedAt: observedAt,
+		PaymentOption: option,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -401,5 +426,141 @@ func assertBillingEntryCount(
 	}
 	if count != want {
 		t.Fatalf("billing entry kind=%s source=%s count=%d want=%d", kind, sourceID, count, want)
+	}
+}
+
+func TestMultiPaymentCreditsShareAccountAndFreezePolicy(t *testing.T) {
+	db := newBillingPostgres(t)
+	userID := uuid.NewString()
+	input := testReserveInput()
+	payer := common.HexToAddress("0x3333333333333333333333333333333333333333")
+	insertBillingUser(t, db, userID, payer)
+	prepaid := newTestPrepaidLedger(t, db)
+	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, network := range []string{"eip155:48815", "eip155:31337"} {
+		for j, decimals := range []uint8{6, 18} {
+			option := testPaymentOption(network, input.Asset, input.Recipient)
+			option.AssetDecimals = &decimals
+			amount := "100"
+			option.CreditRateNumerator = "3"
+			if j == 1 {
+				option.Asset = "0x4444444444444444444444444444444444444444"
+				amount = "100000000000000"
+				option.CreditRateDenominator = "1000000000000"
+			}
+			now := input.ObservedAt.Add(time.Duration(i*2+j) * time.Minute)
+			intent, reservation := createReservedTopup(t, prepaid, payments, userID, payer, amount, now, byte(20+i*2+j), option)
+			if _, err := db.Exec(t.Context(), `UPDATE billing_topup_intents SET payment_option=jsonb_set(payment_option,'{credit_rate_numerator}','"99"'::jsonb) WHERE id=$1::uuid`, intent.ID); err == nil {
+				t.Fatal("snapshot mutation was accepted")
+			}
+			option.CreditRateNumerator = "99"
+			if intent.CreditAmountAtomic != "300" || intent.PaymentOption.CreditRateNumerator != "3" {
+				t.Fatal("snapshot changed")
+			}
+			if _, err := payments.MarkVerified(t.Context(), VerifiedInput{PaymentID: reservation.Payment.ID, Owner: reservation.Owner, Payer: payer, UserID: &userID, ObservedAt: now.Add(time.Second)}); err != nil {
+				t.Fatal(err)
+			}
+			if err := prepaid.BeginTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, now.Add(2*time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			hash := common.Hash{31: byte(20 + i*2 + j)}
+			if _, err := prepaid.CreditTopup(t.Context(), reservation.Payment.ID, reservation.Owner, hash, now.Add(3*time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := prepaid.CreditTopup(t.Context(), reservation.Payment.ID, reservation.Owner, hash, now.Add(4*time.Second)); !errors.Is(err, ErrStateConflict) {
+				t.Fatalf("replay: %v", err)
+			}
+			if reservation.Payment.AmountAtomic != amount {
+				t.Fatal("payment amount converted")
+			}
+		}
+	}
+	assertBillingAccountAmounts(t, prepaid, userID, "1200", "0", "1200")
+}
+
+func TestTopupProgressIsFencedAndDoesNotCredit(t *testing.T) {
+	db := newBillingPostgres(t)
+	userID := uuid.NewString()
+	payer := common.HexToAddress("0x1111111111111111111111111111111111111111")
+	insertBillingUser(t, db, userID, payer)
+	prepaid := newTestPrepaidLedger(t, db)
+	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := testReserveInput().ObservedAt
+	intent, reservation := createReservedTopup(t, prepaid, payments, userID, payer, "50", base, 71)
+	_, err = payments.MarkVerified(t.Context(), VerifiedInput{PaymentID: reservation.Payment.ID, Owner: reservation.Owner, Payer: payer, UserID: &userID, ObservedAt: base.Add(time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = prepaid.BeginTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, base.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	hash := common.HexToHash("0x1234")
+	progress := x402wire.SettlementProgress{Stage: "confirming", Transaction: hash.Hex()}
+	observe := func(owner string, p x402wire.SettlementProgress, at time.Time) error {
+		return prepaid.ObserveTopupProgress(t.Context(), reservation.Payment.ID, owner, intent.ID, p, at)
+	}
+	if err = observe(uuid.NewString(), progress, base.Add(3*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("stale owner: %v", err)
+	}
+	if err = observe(reservation.Owner, progress, base.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := prepaid.TopupIntent(t.Context(), userID, intent.ID)
+	if err != nil || got.State != TopupIntentSettling || got.TransactionHash == nil || *got.TransactionHash != hash || got.SubmissionProgress != "confirming" {
+		t.Fatalf("progress: %+v %v", got, err)
+	}
+	if err = observe(reservation.Owner, x402wire.SettlementProgress{Stage: "submitting"}, base.Add(4*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("regression: %v", err)
+	}
+	if err = observe(reservation.Owner, progress, base.Add(time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("old observation: %v", err)
+	}
+	if _, err = prepaid.CreditTopup(t.Context(), reservation.Payment.ID, reservation.Owner, common.HexToHash("0x5678"), base.Add(4*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("different hash: %v", err)
+	}
+	account, err := prepaid.CreditTopup(t.Context(), reservation.Payment.ID, reservation.Owner, hash, base.Add(4*time.Second))
+	if err != nil || account.AvailableAtomic != "50" {
+		t.Fatalf("credit: %+v %v", account, err)
+	}
+	if err = observe(reservation.Owner, progress, base.Add(5*time.Second)); !errors.Is(err, ErrStateConflict) {
+		t.Fatalf("terminal overwrite: %v", err)
+	}
+}
+
+func TestDefinitiveCapacityRefusalReopensTopupIntent(t *testing.T) {
+	db := newBillingPostgres(t)
+	userID := uuid.NewString()
+	var payer common.Address
+	payer[19] = 0xa1
+	insertBillingUser(t, db, userID, payer)
+	prepaid := newTestPrepaidLedger(t, db)
+	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := testReserveInput().ObservedAt
+	intent, reservation := createReservedTopup(t, prepaid, payments, userID, payer, "50", base, 1)
+	if _, err = payments.MarkVerified(t.Context(), VerifiedInput{PaymentID: reservation.Payment.ID, Owner: reservation.Owner, Payer: payer, UserID: &userID, ObservedAt: base.Add(time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if err = prepaid.BeginTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, base.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err = prepaid.FailTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, x402wire.CodeFacilitatorRejected, base.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := prepaid.TopupIntent(t.Context(), userID, intent.ID)
+	if err != nil || reopened.State != TopupIntentOpen {
+		t.Fatalf("refusal left intent stuck: %+v %v", reopened, err)
+	}
+	payment, err := payments.Get(t.Context(), reservation.Payment.ID)
+	if err != nil || payment.State != StateFailed || payment.TransactionHash != nil {
+		t.Fatalf("refusal left payment uncertain: %+v %v", payment, err)
 	}
 }

@@ -944,10 +944,10 @@ expect_render_failure billing-with-additional-tcp-range-spanning-443 \
   --set-json 'networkPolicy.additionalEgress=[{"ports":[{"protocol":"TCP","port":400,"endPort":500}]}]'
 expect_render_failure billing-with-non-root-facilitator \
   -f "$script_dir/values-x402.yaml" \
-  --set-string config.billing.facilitator_url=https://facilitator.example.com/nested
+  --set-string 'config.billing.payment_chains[0].facilitator_url=https://facilitator.example.com/nested'
 expect_render_failure billing-with-non-443-facilitator \
   -f "$script_dir/values-x402.yaml" \
-  --set-string config.billing.facilitator_url=https://facilitator.example.com:8443
+  --set-string 'config.billing.payment_chains[0].facilitator_url=https://facilitator.example.com:8443'
 expect_render_failure external-billing-without-fingerprint-pepper \
   -f "$script_dir/values-x402.yaml" \
   --set externalSecret.enabled=true \

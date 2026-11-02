@@ -23,7 +23,7 @@ Etherscan verification submission, status, and the ABI/source probes needed by
 Hardhat and Foundry. A supplied valid key with the wrong scope fails with a
 stable forbidden response and never falls back to anonymous or paid access.
 
-Only an active Cookie-authenticated user may list, create, rotate, or revoke
+Only an active Cookie-authenticated user may list, create, rotate, revoke, or delete
 their own keys. Writes require exact same-origin and the session-bound CSRF
 token. Cross-owner prefixes are indistinguishable from missing prefixes. API
 keys never authorize account or administrator routes.
@@ -31,8 +31,17 @@ keys never authorize account or administrator routes.
 Creation locks the active user row and checks the configured active-key maximum
 in the same writer transaction as insertion. Rotation atomically stores a new
 digest and revokes the old key while preserving owner, name, scopes, and quota.
-Revocation is idempotent. Disabling a user permanently revokes all their keys
-in the same transaction as the user status change.
+Revocation is idempotent and uses `POST /users/me/api-keys/{prefix}/revoke`.
+`DELETE /users/me/api-keys/{prefix}` soft-deletes only an already revoked key;
+active keys return `409 api_key_not_revoked`. The writer locks the active user
+then the owned key before recording the first `deleted_at`. Repeated deletion
+is idempotent. A database constraint requires revocation before deletion.
+Deleted keys disappear from user lists and cannot be rotated or revoked through
+user management, but their rows and billing references remain durable. No
+restore operation is provided. The account key workspace separates list and
+creation into tabs, with one-time token disclosure after creation. Disabling a
+user permanently revokes all their keys in the same transaction as the user
+status change.
 
 PostgreSQL stores only the keyed digest. Create and rotation responses expose
 the plaintext token once and are `no-store`; list responses never contain it.

@@ -6,9 +6,9 @@ FROM node:26.13.0 AS node-builder
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}/bin:${PATH}"
 RUN curl -fsSL https://get.pnpm.io/install.sh -o /tmp/install-pnpm.sh \
-    && env PNPM_VERSION=12.15.0 ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \
+    && env PNPM_VERSION=12 ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \
     && rm /tmp/install-pnpm.sh \
-    && test "$(pnpm --version)" = "12.15.0"
+    && pnpm --version | grep -Eq '^12\.[0-9]+\.[0-9]+$'
 
 FROM node-builder AS web-builder
 WORKDIR /src
@@ -17,7 +17,7 @@ COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web install --frozen-lockfile --store-dir=/pnpm/store
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm-cache pnpm --filter . --filter ./web install --frozen-lockfile --store-dir=/pnpm-cache
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/tsconfig.worker.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
@@ -36,8 +36,8 @@ COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store \
-    pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm/store
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm-cache \
+    pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm-cache
 WORKDIR /src/compiler
 COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/check-licenses.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
 COPY compiler/vyper/wasm ./vyper/wasm/
@@ -70,12 +70,14 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY compiler/vyper ./compiler/vyper
+COPY compiler/geas ./compiler/geas
 COPY web/webui.go ./web/webui.go
 COPY api/openapi.yaml ./api/openapi.yaml
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go install -trimpath -ldflags="-s -w" ./cmd/...
+    go install -trimpath -ldflags="-s -w" ./cmd/... \
+    && go build -trimpath -ldflags="-s -w" -o /go/bin/etherview-geas-compiler ./compiler/geas
 
 FROM production-base AS production
 ARG VERSION=dev
@@ -90,6 +92,7 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
+COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/x402facilitator /x402facilitator
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
 COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers

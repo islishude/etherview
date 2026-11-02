@@ -1,3 +1,4 @@
+import { testBillingConfig } from "@/billing/testFixtures";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import axe from "axe-core";
@@ -340,29 +341,31 @@ function configResponse() {
 }
 
 function billingConfigResponse() {
-  return envelope({
-    api_billing_enabled: true,
-    x402_topups_enabled: true,
-    network: "eip155:1",
-    asset,
-    recipient,
-    minimum_topup_amount_atomic: "1",
-    maximum_topup_amount_atomic: amount,
-    asset_transfer_methods: ["eip3009", "permit2"],
-    operations: [],
-    asset_decimals: 6,
-    base_price_atomic: "1",
-    x402_version: 2,
-    scheme: "exact",
-    asset_eip712_name: "Billing Token",
-    asset_eip712_version: "1",
-  });
+  return envelope(
+    testBillingConfig({
+      api_billing_enabled: true,
+      x402_topups_enabled: true,
+      network: "eip155:1",
+      asset,
+      recipient,
+      minimum_topup_amount_atomic: "1",
+      maximum_topup_amount_atomic: amount,
+      asset_transfer_methods: ["eip3009", "permit2"],
+      operations: [],
+      asset_decimals: 6,
+      base_price_atomic: "1",
+      x402_version: 2,
+      scheme: "exact",
+      asset_eip712_name: "Billing Token",
+      asset_eip712_version: "1",
+    }),
+  );
 }
 
 function billingAccountResponse() {
   return envelope({
     user_id: currentUserID,
-    network: "eip155:1",
+
     asset,
     total_credit_atomic: amount,
     total_debit_atomic: "0",

@@ -65,7 +65,8 @@ func upload(ctx context.Context, client *http.Client, opts options) (string, err
 	}
 	reader, writer := io.Pipe()
 	form := multipart.NewWriter(writer)
-	completed := make(chan error, 1)
+	completed := make(chan struct{})
+	var producerErr error
 	go func() {
 		// Kubo query-unescapes the multipart filename, including '+' as space.
 		part, writeErr := form.CreateFormFile("file", url.QueryEscape(filepath.Base(opts.input)))
@@ -76,7 +77,8 @@ func upload(ctx context.Context, client *http.Client, opts options) (string, err
 			writeErr = form.Close()
 		}
 		_ = writer.CloseWithError(writeErr)
-		completed <- writeErr
+		producerErr = writeErr
+		close(completed)
 	}()
 	query := url.Values{
 		"cid-version": {"1"}, "hash": {"sha2-256"}, "raw-leaves": {"true"},
@@ -86,6 +88,7 @@ func upload(ctx context.Context, client *http.Client, opts options) (string, err
 	response, requestErr := rpcRequest(ctx, client, opts.api+"/api/v0/add", query, reader, form.FormDataContentType())
 	if requestErr != nil {
 		_ = reader.CloseWithError(io.ErrClosedPipe)
+		// Join the producer; the request failure remains the primary error.
 		<-completed
 		return "", requestErr
 	}
@@ -95,8 +98,8 @@ func upload(ctx context.Context, client *http.Client, opts options) (string, err
 	// only then close and join the producer (also on partial/error responses).
 	body, err := io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
 	_ = reader.CloseWithError(io.ErrClosedPipe)
-	writeErr := <-completed
-	if writeErr != nil {
+	<-completed
+	if producerErr != nil {
 		return "", errors.New("upload stream failed")
 	}
 	if err != nil || len(body) > 1<<20 || rpcStreamError(response) {

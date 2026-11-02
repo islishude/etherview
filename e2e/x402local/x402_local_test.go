@@ -109,11 +109,11 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 			t.Errorf("tear down x402 local %s: %v", mode, err)
 		}
 	})
-	if _, err := project.Run(ctx, "build", "x402-fixture", "x402-facilitator"); err != nil {
+	if _, err := project.Run(ctx, "build", "x402-fixture"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := project.Run(ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "--remove-orphans"); err != nil {
-		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "metadata", "maintenance", "api")
+		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "etherview", "metadata", "maintenance", "api", "x402-facilitator")
 		t.Fatalf("%v\n%s", err, diagnostics)
 	}
 	t.Cleanup(func() {
@@ -147,7 +147,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstHeader := topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "eip3009")
+	firstHeader := topupWithDelayedMining(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "eip3009")
 	replay := postTopupPayment(t, httpClient, publicOrigin, csrf, firstHeader.intentID, firstHeader.header)
 	if replay.StatusCode != http.StatusConflict {
 		t.Fatalf("EIP-3009 replay status=%d", replay.StatusCode)
@@ -155,7 +155,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	_ = replay.Body.Close()
 
 	approveExact(t, rpcClient, ownerKey, owner, big.NewInt(100))
-	topup(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "permit2")
+	topupWithDelayedMining(t, httpClient, rpcClient, codec, publicOrigin, csrf, owner, "permit2")
 	if allowance := tokenUint(t, rpcClient, "allowance", owner, common.HexToAddress(permit2Address)); allowance.Sign() != 0 {
 		t.Fatalf("Permit2 exact allowance remained %s after settlement", allowance)
 	}
@@ -268,6 +268,7 @@ type topupPayment struct {
 	header   string
 }
 
+// topup exercises ordinary settlement on either Geth or Anvil.
 func topup(
 	t *testing.T,
 	client *http.Client,
@@ -280,12 +281,72 @@ func topup(
 	t.Helper()
 	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, "100")
 	response := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+	checkTopupResponse(t, response, method)
+	return payment
+}
+
+// topupWithDelayedMining requires the Anvil runtime fixture's mining controls.
+func topupWithDelayedMining(
+	t *testing.T,
+	client *http.Client,
+	rpcClient *ethclient.Client,
+	codec *x402wire.Codec,
+	origin, csrf string,
+	owner common.Address,
+	method string,
+) topupPayment {
+	t.Helper()
+	payment := authorizeTopup(t, client, rpcClient, codec, origin, csrf, owner, method, "100")
+	// Hold real blocks so the production API must expose broadcast evidence
+	// before settlement returns. Both all and split topologies execute this path.
+	if err := rpcClient.Client().CallContext(t.Context(), nil, "evm_setAutomine", false); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = rpcClient.Client().CallContext(cleanup, nil, "evm_setAutomine", true)
+	}()
+	result := make(chan *http.Response, 1)
+	go func() { result <- postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header) }()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		var observation gen.BillingTopupIntentResponse
+		doJSON(t, client, http.MethodGet, origin+"/api/v1/billing/topup-intents/"+payment.intentID, origin, "", nil, http.StatusOK, &observation)
+		if observation.Data.SubmissionProgress != nil && *observation.Data.SubmissionProgress == gen.BillingTopupIntentSubmissionProgressConfirming {
+			if observation.Data.State != gen.BillingTopupIntentStateSettling || observation.Data.TransactionHash == nil {
+				t.Fatalf("invalid progress: %+v", observation.Data)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("broadcast progress not published: %+v", observation.Data)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if err := rpcClient.Client().CallContext(t.Context(), nil, "evm_mine"); err != nil {
+		t.Fatal(err)
+	}
+	if err := rpcClient.Client().CallContext(t.Context(), nil, "evm_setAutomine", true); err != nil {
+		t.Fatal(err)
+	}
+	var response *http.Response
+	select {
+	case response = <-result:
+	case <-time.After(15 * time.Second):
+		t.Fatal("settlement did not finish after mining")
+	}
+	checkTopupResponse(t, response, method)
+	return payment
+}
+
+func checkTopupResponse(t *testing.T, response *http.Response, method string) {
+	t.Helper()
+	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK || response.Header.Get(x402wire.PaymentResponseHeader) == "" {
 		body, _ := io.ReadAll(response.Body)
 		t.Fatalf("%s top-up status=%d body=%s", method, response.StatusCode, body)
 	}
-	_ = response.Body.Close()
-	return payment
 }
 
 func authorizeTopup(
@@ -298,9 +359,14 @@ func authorizeTopup(
 	method, amount string,
 ) topupPayment {
 	t.Helper()
+	return authorizeTopupOption(t, client, rpcClient, codec, origin, csrf, owner, method, amount, "default")
+}
+
+func authorizeTopupOption(t *testing.T, client *http.Client, rpcClient *ethclient.Client, codec *x402wire.Codec, origin, csrf string, owner common.Address, method, amount, optionID string) topupPayment {
+	t.Helper()
 	var intent gen.BillingTopupIntentResponse
 	doJSON(t, client, http.MethodPost, origin+"/api/v1/billing/topup-intents", origin, csrf,
-		map[string]string{"amount_atomic": amount}, http.StatusCreated, &intent)
+		map[string]string{"amount_atomic": amount, "payment_option_id": optionID}, http.StatusCreated, &intent)
 	challenge := postTopupPayment(t, client, origin, csrf, intent.Data.Id.String(), "")
 	if challenge.StatusCode != http.StatusPaymentRequired {
 		t.Fatalf("%s challenge status=%d", method, challenge.StatusCode)
@@ -426,7 +492,7 @@ func consumeBalanceAction(client *http.Client, origin, key string, owner common.
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close() //nolint:errcheck
+	defer func() { _ = response.Body.Close() }() //nolint:errcheck
 	var envelope struct {
 		Status string `json:"status"`
 	}
@@ -446,7 +512,7 @@ func logicalFailure(t *testing.T, client *http.Client, origin, key string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close() //nolint:errcheck
+	defer func() { _ = response.Body.Close() }() //nolint:errcheck
 	var envelope struct {
 		Status string `json:"status"`
 	}
@@ -610,7 +676,7 @@ func doJSON(
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close() //nolint:errcheck
+	defer func() { _ = response.Body.Close() }() //nolint:errcheck
 	if response.StatusCode != want {
 		t.Fatalf("%s %s status=%d want=%d", method, target, response.StatusCode, want)
 	}

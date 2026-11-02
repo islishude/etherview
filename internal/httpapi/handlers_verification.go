@@ -597,7 +597,7 @@ func operationUsesAPIKeyScope(operation string) bool {
 		"createAuthChallenge", "verifyAuthChallenge", "getAuthSession",
 		"logoutAuthSession", "updateCurrentUser", "listCurrentUserAPIKeys",
 		"createCurrentUserAPIKey", "rotateCurrentUserAPIKey",
-		"revokeCurrentUserAPIKey", "listAdminUsers", "updateAdminUser",
+		"revokeCurrentUserAPIKey", "deleteCurrentUserAPIKey", "listAdminUsers", "updateAdminUser",
 		"revokeAdminUserSessions", "getBillingConfig",
 		"listCurrentUserBillingPayments", "listAdminBillingPayments",
 		"getAdminBillingSummary":

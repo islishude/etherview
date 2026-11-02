@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/big"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -15,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/etherscanops"
@@ -431,12 +431,7 @@ func validateUserAuthConfig(cfg Config) error {
 
 var (
 	caip2EVMNetworkPattern = regexp.MustCompile(`^eip155:[1-9][0-9]*$`)
-	decimalAtomicPattern   = regexp.MustCompile(`^[1-9][0-9]*$`)
 	httpHeaderNamePattern  = regexp.MustCompile(`^[!#$%&'*+\-.^_` + "`" + `|~0-9A-Za-z]+$`)
-	maximumBillingAtomic   = new(big.Int).Sub(
-		new(big.Int).Lsh(big.NewInt(1), 256),
-		big.NewInt(1),
-	)
 )
 
 func validateBillingConfig(cfg Config) error {
@@ -473,12 +468,17 @@ func validateBillingConfig(cfg Config) error {
 	if billing.FingerprintPepper != "" && len(billing.FingerprintPepper) < 32 {
 		errs = append(errs, errors.New("billing fingerprint pepper must contain at least 32 bytes"))
 	}
-	for name, value := range billing.FacilitatorHeaders {
-		canonical := http.CanonicalHeaderKey(name)
-		if !httpHeaderNamePattern.MatchString(name) || canonical != name || value == "" ||
-			strings.ContainsAny(value, "\r\n") || forbiddenFacilitatorHeader(canonical) {
-			errs = append(errs, errors.New("billing facilitator headers contain an invalid or forbidden entry"))
-			break
+	for network, headers := range billing.FacilitatorHeaders {
+		if !caip2EVMNetworkPattern.MatchString(network) {
+			errs = append(errs, errors.New("invalid facilitator header network"))
+		}
+		for name, value := range headers {
+			canonical := http.CanonicalHeaderKey(name)
+			if !httpHeaderNamePattern.MatchString(name) || canonical != name || value == "" ||
+				strings.ContainsAny(value, "\r\n") || forbiddenFacilitatorHeader(canonical) {
+				errs = append(errs, errors.New("billing facilitator headers contain an invalid or forbidden entry"))
+				break
+			}
 		}
 	}
 	for index, raw := range billing.FacilitatorAllowedCIDRs {
@@ -495,6 +495,9 @@ func validateBillingConfig(cfg Config) error {
 		errs = append(errs, errors.New("billing.base_price_atomic requires features.api_billing"))
 	}
 	if !cfg.Features.APIBilling {
+		if len(billing.PaymentChains) > 0 {
+			errs = append(errs, errors.New("payment chains require x402 top-ups"))
+		}
 		if cfg.Features.X402Topups {
 			errs = append(errs, errors.New("features.x402_topups requires features.api_billing"))
 		}
@@ -503,51 +506,48 @@ func validateBillingConfig(cfg Config) error {
 		}
 		return errors.Join(errs...)
 	}
-	if !caip2EVMNetworkPattern.MatchString(billing.Network) {
-		errs = append(errs, errors.New("billing.network must be a canonical eip155 CAIP-2 network"))
-	}
-	if !validFixedHex(billing.Asset, 20) {
-		errs = append(errs, errors.New("billing.asset must be a 20-byte 0x-prefixed address"))
-	}
+
 	if !cfg.Features.X402Topups {
-		if len(billing.AssetTransferMethods) != 0 || billing.MinimumTopupAmountAtomic != "" ||
-			billing.MaximumTopupAmountAtomic != "" {
-			errs = append(errs, errors.New("billing top-up policy requires features.x402_topups"))
+		if len(billing.PaymentChains) != 0 {
+			errs = append(errs, errors.New("payment chains require x402 top-ups"))
 		}
 		return errors.Join(errs...)
 	}
 	if cfg.Server.PublicURL == "" {
 		errs = append(errs, errors.New("features.x402_topups requires server.public_url"))
 	}
-	if err := validateFacilitatorOrigin(billing.FacilitatorURL, billing.FacilitatorUnsafeAllowHTTP); err != nil {
-		errs = append(errs, err)
+	if len(billing.PaymentChains) < 1 || len(billing.PaymentChains) > 32 {
+		errs = append(errs, errors.New("billing.payment_chains requires 1 to 32 chains"))
 	}
-	if !validFixedHex(billing.Recipient, 20) {
-		errs = append(errs, errors.New("billing.recipient must be a 20-byte 0x-prefixed address"))
-	}
-	methods := make(map[string]bool, len(billing.AssetTransferMethods))
-	for _, method := range billing.AssetTransferMethods {
-		if method != "eip3009" && method != "permit2" || methods[method] {
-			errs = append(errs, errors.New("billing.asset_transfer_methods must contain unique eip3009 or permit2 values"))
-			break
+	networks, ids := map[string]bool{}, map[string]bool{}
+	for _, chain := range billing.PaymentChains {
+		if len(chain.Name) == 0 || utf8.RuneCountInString(chain.Name) > 128 || strings.TrimSpace(chain.Name) == "" {
+			errs = append(errs, errors.New("payment chain name requires 1 to 128 characters and must not be blank"))
 		}
-		methods[method] = true
-	}
-	if len(methods) == 0 {
-		errs = append(errs, errors.New("billing.asset_transfer_methods is required for x402 top-ups"))
-	}
-	if methods["eip3009"] {
-		if value := billing.AssetEIP712Name; value == "" || value != strings.TrimSpace(value) || len(value) > 128 {
-			errs = append(errs, errors.New("billing.asset_eip712_name must contain between 1 and 128 trimmed bytes for eip3009"))
+		if !caip2EVMNetworkPattern.MatchString(chain.Network) || networks[chain.Network] {
+			errs = append(errs, errors.New("invalid or duplicate payment network"))
 		}
-		if value := billing.AssetEIP712Version; value == "" || value != strings.TrimSpace(value) || len(value) > 32 {
-			errs = append(errs, errors.New("billing.asset_eip712_version must contain between 1 and 32 trimmed bytes for eip3009"))
+		networks[chain.Network] = true
+		if err := validateFacilitatorOrigin(chain.FacilitatorURL, billing.FacilitatorUnsafeAllowHTTP); err != nil {
+			errs = append(errs, err)
+		}
+		if len(chain.Tokens) < 1 || len(chain.Tokens) > 32 {
+			errs = append(errs, errors.New("payment chain requires 1 to 32 tokens"))
+		}
+		assets := map[string]bool{}
+		for _, token := range chain.Tokens {
+			token.Network = chain.Network
+			if token.Validate() != nil || ids[token.ID] || assets[strings.ToLower(token.Asset)] {
+				errs = append(errs, errors.New("invalid or duplicate payment token policy"))
+			}
+			ids[token.ID] = true
+			assets[strings.ToLower(token.Asset)] = true
 		}
 	}
-	minimum, minimumOK := billingAtomic(billing.MinimumTopupAmountAtomic)
-	maximum, maximumOK := billingAtomic(billing.MaximumTopupAmountAtomic)
-	if !minimumOK || !maximumOK || minimum.Cmp(maximum) > 0 {
-		errs = append(errs, errors.New("billing top-up amount bounds must be canonical positive uint256 values with minimum <= maximum"))
+	for network := range billing.FacilitatorHeaders {
+		if !networks[network] {
+			errs = append(errs, errors.New("facilitator headers refer to an unconfigured network"))
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -564,14 +564,6 @@ func validateFacilitatorOrigin(raw string, unsafeAllowHTTP bool) error {
 		return errors.New("billing.facilitator_url must be a root HTTP origin when facilitator_unsafe_allow_http is enabled")
 	}
 	return nil
-}
-
-func billingAtomic(value string) (*big.Int, bool) {
-	if !decimalAtomicPattern.MatchString(value) || len(value) > 78 {
-		return nil, false
-	}
-	amount, ok := new(big.Int).SetString(value, 10)
-	return amount, ok && amount.Cmp(maximumBillingAtomic) <= 0 && amount.String() == value
 }
 
 func validateHTTPSOrigin(name, raw string) error {

@@ -219,29 +219,42 @@ export type BillingOperationPrice = {
     amount_atomic: Quantity;
 };
 
+export type BillingPaymentOption = {
+    id: string;
+    name: string;
+    credit_rate_numerator: Quantity;
+    credit_rate_denominator: Quantity;
+    network: string;
+    asset: Address;
+    asset_decimals: number;
+    asset_eip712_name?: string;
+    asset_eip712_version?: string;
+    recipient: Address;
+    minimum_topup_amount_atomic: Quantity;
+    maximum_topup_amount_atomic: Quantity;
+    asset_transfer_methods: Array<BillingAssetTransferMethod>;
+};
+
+export type BillingPaymentChain = {
+    name: string;
+    network: string;
+    tokens: Array<BillingPaymentOption>;
+};
+
 export type BillingConfig = {
+    credit_decimals: 6;
+    payment_chains: Array<BillingPaymentChain>;
     base_price_atomic?: Quantity;
     api_billing_enabled: boolean;
     x402_topups_enabled: boolean;
     x402_version: 2;
     scheme: 'exact';
-    network?: string;
-    asset?: Address;
-    asset_decimals?: number;
-    asset_eip712_name?: string;
-    asset_eip712_version?: string;
-    recipient?: Address;
-    minimum_topup_amount_atomic?: Quantity;
-    maximum_topup_amount_atomic?: Quantity;
     topup_intent_ttl_seconds?: number;
-    asset_transfer_methods: Array<BillingAssetTransferMethod>;
     operations: Array<BillingOperationPrice>;
 };
 
 export type BillingAccount = {
     user_id: string;
-    network: string;
-    asset: Address;
     total_credit_atomic: BillingAggregateQuantity;
     total_debit_atomic: BillingAggregateQuantity;
     reserved_atomic: BillingAggregateQuantity;
@@ -253,6 +266,7 @@ export type BillingAccount = {
 export type BillingTopupIntentState = 'open' | 'processing' | 'settling' | 'credited' | 'failed' | 'expired';
 
 export type BillingTopupIntentCreateRequest = {
+    payment_option_id: string;
     amount_atomic: Quantity;
 };
 
@@ -263,6 +277,8 @@ export type BillingAdjustmentRequest = {
 };
 
 export type BillingTopupIntent = {
+    payment_option: BillingPaymentOption;
+    credit_amount_atomic: Quantity;
     id: string;
     user_id: string;
     amount_atomic: Quantity;
@@ -273,6 +289,10 @@ export type BillingTopupIntent = {
     state: BillingTopupIntentState;
     payment_id?: string | null;
     transaction_hash?: Hash | null;
+    /**
+     * Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
+     */
+    submission_progress?: 'submitting' | 'confirming' | 'unknown';
     failure_code?: string | null;
     expires_at: string;
     credited_at?: string | null;
@@ -322,6 +342,7 @@ export type BillingPayment = {
     state: BillingPaymentState;
     network: string;
     asset: Address;
+    payment_option?: BillingPaymentOption;
     amount_atomic: Quantity;
     recipient: Address;
     payer?: Address | null;
@@ -3021,7 +3042,7 @@ export type RevokeCurrentUserApiKeyData = {
         prefix: string;
     };
     query?: never;
-    url: '/users/me/api-keys/{prefix}';
+    url: '/users/me/api-keys/{prefix}/revoke';
 };
 
 export type RevokeCurrentUserApiKeyErrors = {
@@ -3041,6 +3062,36 @@ export type RevokeCurrentUserApiKeyResponses = {
 };
 
 export type RevokeCurrentUserApiKeyResponse = RevokeCurrentUserApiKeyResponses[keyof RevokeCurrentUserApiKeyResponses];
+
+export type DeleteCurrentUserApiKeyData = {
+    body?: never;
+    headers: {
+        'X-CSRF-Token': string;
+    };
+    path: {
+        prefix: string;
+    };
+    query?: never;
+    url: '/users/me/api-keys/{prefix}';
+};
+
+export type DeleteCurrentUserApiKeyErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type DeleteCurrentUserApiKeyError = DeleteCurrentUserApiKeyErrors[keyof DeleteCurrentUserApiKeyErrors];
+
+export type DeleteCurrentUserApiKeyResponses = {
+    /**
+     * Revoked API key soft-deleted, or already deleted. Active keys return 409 api_key_not_revoked.
+     */
+    204: void;
+};
+
+export type DeleteCurrentUserApiKeyResponse = DeleteCurrentUserApiKeyResponses[keyof DeleteCurrentUserApiKeyResponses];
 
 export type ListAdminUsersData = {
     body?: never;

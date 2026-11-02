@@ -11,6 +11,7 @@ const (
 	PhaseSupported   Phase = "supported"
 	PhaseVerify      Phase = "verify"
 	PhaseSettle      Phase = "settle"
+	PhaseProgress    Phase = "progress"
 )
 
 // FailureClass lets the billing state machine distinguish a definite

@@ -49,23 +49,23 @@ func checkBillingFacilitator(
 	if factory == nil {
 		return errors.New(doctorBillingCheckFailed)
 	}
-	checker, err := factory(x402wire.ClientOptions{
-		BaseURL:          cfg.Billing.FacilitatorURL,
-		UnsafeAllowHTTP:  cfg.Billing.FacilitatorUnsafeAllowHTTP,
-		AllowedCIDRs:     cfg.Billing.FacilitatorAllowedCIDRs,
-		Timeout:          cfg.Billing.FacilitatorTimeout,
-		MaxResponseBytes: cfg.Billing.FacilitatorMaxResponseBytes,
-		Headers:          cfg.Billing.FacilitatorHeaders,
-	})
-	if err != nil {
-		return stableDoctorBillingError(err)
+	for _, chain := range cfg.Billing.PaymentChains {
+		checker, err := factory(x402wire.ClientOptions{
+			BaseURL: chain.FacilitatorURL, UnsafeAllowHTTP: cfg.Billing.FacilitatorUnsafeAllowHTTP,
+			AllowedCIDRs: cfg.Billing.FacilitatorAllowedCIDRs, Timeout: cfg.Billing.FacilitatorTimeout,
+			MaxResponseBytes: cfg.Billing.FacilitatorMaxResponseBytes, Headers: cfg.Billing.FacilitatorHeaders[chain.Network],
+		})
+		if err != nil {
+			return stableDoctorBillingError(err)
+		}
+		if checker == nil {
+			return errors.New(doctorBillingCheckFailed)
+		}
+		if err := checker.CheckSupported(ctx, chain.Network); err != nil {
+			return stableDoctorBillingError(err)
+		}
 	}
-	if checker == nil {
-		return errors.New(doctorBillingCheckFailed)
-	}
-	return stableDoctorBillingError(
-		checker.CheckSupported(ctx, cfg.Billing.Network),
-	)
+	return nil
 }
 
 func stableDoctorBillingError(err error) error {

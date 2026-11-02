@@ -185,24 +185,30 @@ func newHarness(t *testing.T) *harness {
 		"compose.yaml",
 		"e2e/previewmetadata/compose.yaml",
 	)
+	// Public test credentials must be readable by the nonroot facilitator container.
+	facilitatorDatabaseURL := filepath.Join(artifacts, "facilitator-database-url")
+	if err := os.WriteFile(facilitatorDatabaseURL, []byte("postgres://etherview:"+previewDatabasePassword+"@postgres:5432/etherview?sslmode=disable\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	project.Env = map[string]string{
-		"PREVIEW_COMPILER_CACHE_DIR":      compilerDirectory,
-		"ETHERVIEW_IMAGE":                 image,
-		"ETHERVIEW_CONFIG_FILE":           filepath.Join(root, "preview", "config.yaml"),
-		"GETH_IMAGE":                      "ethereum/client-go:v1.17.10",
-		"RUSTFS_ACCESS_KEY":               "etherview",
-		"RUSTFS_SECRET_KEY":               "etherview-dev-only",
-		"PREVIEW_BLOB_READ_SECRET":        "preview-read-dev-only",
-		"PREVIEW_BLOB_WRITE_SECRET":       "preview-write-dev-only",
-		"PREVIEW_NETWORK_DIR":             network,
-		"LIGHTHOUSE_HTTP_PORT":            "0",
-		"ETHERVIEW_METADATA_IPFS_GATEWAY": metadataGateway,
-		"ETHERVIEW_METRICS_PORT":          "0",
-		"GETH_HTTP_PORT":                  "0",
-		"GETH_WS_PORT":                    "0",
-		"POSTGRES_PASSWORD":               previewDatabasePassword,
-		"IPFS_API_PORT":                   "0",
-		"PREVIEW_HTTPS_PORT":              "0",
+		"X402_FACILITATOR_DATABASE_URL_FILE": facilitatorDatabaseURL,
+		"PREVIEW_COMPILER_CACHE_DIR":         compilerDirectory,
+		"ETHERVIEW_IMAGE":                    image,
+		"ETHERVIEW_CONFIG_FILE":              filepath.Join(root, "preview", "config.yaml"),
+		"GETH_IMAGE":                         "ethereum/client-go:v1.17.10",
+		"RUSTFS_ACCESS_KEY":                  "etherview",
+		"RUSTFS_SECRET_KEY":                  "etherview-dev-only",
+		"PREVIEW_BLOB_READ_SECRET":           "preview-read-dev-only",
+		"PREVIEW_BLOB_WRITE_SECRET":          "preview-write-dev-only",
+		"PREVIEW_NETWORK_DIR":                network,
+		"LIGHTHOUSE_HTTP_PORT":               "0",
+		"ETHERVIEW_METADATA_IPFS_GATEWAY":    metadataGateway,
+		"ETHERVIEW_METRICS_PORT":             "0",
+		"GETH_HTTP_PORT":                     "0",
+		"GETH_WS_PORT":                       "0",
+		"POSTGRES_PASSWORD":                  previewDatabasePassword,
+		"IPFS_API_PORT":                      "0",
+		"PREVIEW_HTTPS_PORT":                 "0",
 	}
 	return &harness{t: t, root: root, project: project, artifacts: artifacts, image: image}
 }

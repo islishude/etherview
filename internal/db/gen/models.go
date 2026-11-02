@@ -160,6 +160,7 @@ type ApiKey struct {
 	Burst         int32              `db:"burst" json:"burst"`
 	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	RevokedAt     pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 	OwnerUserID   pgtype.UUID        `db:"owner_user_id" json:"owner_user_id"`
 	Scopes        []string           `db:"scopes" json:"scopes"`
 }
@@ -204,8 +205,6 @@ type BeaconObservationGeneration struct {
 type BillingAccount struct {
 	UserID            pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network           string             `db:"network" json:"network"`
-	Asset             []byte             `db:"asset" json:"asset"`
 	TotalCreditAtomic pgtype.Numeric     `db:"total_credit_atomic" json:"total_credit_atomic"`
 	TotalDebitAtomic  pgtype.Numeric     `db:"total_debit_atomic" json:"total_debit_atomic"`
 	ReservedAtomic    pgtype.Numeric     `db:"reserved_atomic" json:"reserved_atomic"`
@@ -217,8 +216,6 @@ type BillingAccountEntry struct {
 	ID           pgtype.UUID        `db:"id" json:"id"`
 	UserID       pgtype.UUID        `db:"user_id" json:"user_id"`
 	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network      string             `db:"network" json:"network"`
-	Asset        []byte             `db:"asset" json:"asset"`
 	Direction    string             `db:"direction" json:"direction"`
 	Kind         string             `db:"kind" json:"kind"`
 	AmountAtomic pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
@@ -277,26 +274,30 @@ type BillingPaymentEvent struct {
 }
 
 type BillingTopupIntent struct {
-	ID              pgtype.UUID        `db:"id" json:"id"`
-	UserID          pgtype.UUID        `db:"user_id" json:"user_id"`
-	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network         string             `db:"network" json:"network"`
-	Asset           []byte             `db:"asset" json:"asset"`
-	AmountAtomic    pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
-	Recipient       []byte             `db:"recipient" json:"recipient"`
-	Payer           []byte             `db:"payer" json:"payer"`
-	State           string             `db:"state" json:"state"`
-	ActivePaymentID pgtype.UUID        `db:"active_payment_id" json:"active_payment_id"`
-	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
-	FailureCode     *string            `db:"failure_code" json:"failure_code"`
-	ExpiresAt       pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
-	ProcessingAt    pgtype.Timestamptz `db:"processing_at" json:"processing_at"`
-	SettlingAt      pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
-	CreditedAt      pgtype.Timestamptz `db:"credited_at" json:"credited_at"`
-	FailedAt        pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
-	ExpiredAt       pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID                        pgtype.UUID        `db:"id" json:"id"`
+	UserID                    pgtype.UUID        `db:"user_id" json:"user_id"`
+	ChainID                   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Network                   string             `db:"network" json:"network"`
+	Asset                     []byte             `db:"asset" json:"asset"`
+	PaymentOption             []byte             `db:"payment_option" json:"payment_option"`
+	CreditAmountAtomic        pgtype.Numeric     `db:"credit_amount_atomic" json:"credit_amount_atomic"`
+	AmountAtomic              pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	Recipient                 []byte             `db:"recipient" json:"recipient"`
+	Payer                     []byte             `db:"payer" json:"payer"`
+	State                     string             `db:"state" json:"state"`
+	ActivePaymentID           pgtype.UUID        `db:"active_payment_id" json:"active_payment_id"`
+	TransactionHash           []byte             `db:"transaction_hash" json:"transaction_hash"`
+	SubmissionProgress        *string            `db:"submission_progress" json:"submission_progress"`
+	SubmissionTransactionHash []byte             `db:"submission_transaction_hash" json:"submission_transaction_hash"`
+	FailureCode               *string            `db:"failure_code" json:"failure_code"`
+	ExpiresAt                 pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	ProcessingAt              pgtype.Timestamptz `db:"processing_at" json:"processing_at"`
+	SettlingAt                pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
+	CreditedAt                pgtype.Timestamptz `db:"credited_at" json:"credited_at"`
+	FailedAt                  pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	ExpiredAt                 pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type BillingUsageCharge struct {
@@ -305,8 +306,6 @@ type BillingUsageCharge struct {
 	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
 	ApiKeyPrefix         string             `db:"api_key_prefix" json:"api_key_prefix"`
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Network              string             `db:"network" json:"network"`
-	Asset                []byte             `db:"asset" json:"asset"`
 	Method               string             `db:"method" json:"method"`
 	Operation            string             `db:"operation" json:"operation"`
 	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
@@ -1634,6 +1633,22 @@ type ExternalMetadatum struct {
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	TerminalAt          pgtype.Timestamptz `db:"terminal_at" json:"terminal_at"`
 	IdentityHash        []byte             `db:"identity_hash" json:"identity_hash"`
+}
+
+type FacilitatorSettlement struct {
+	AuthorizationID string             `db:"authorization_id" json:"authorization_id"`
+	RequestDigest   []byte             `db:"request_digest" json:"request_digest"`
+	RequestBody     []byte             `db:"request_body" json:"request_body"`
+	Network         string             `db:"network" json:"network"`
+	SignerAddress   []byte             `db:"signer_address" json:"signer_address"`
+	Nonce           pgtype.Numeric     `db:"nonce" json:"nonce"`
+	RawTransaction  []byte             `db:"raw_transaction" json:"raw_transaction"`
+	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
+	State           string             `db:"state" json:"state"`
+	BroadcastStatus string             `db:"broadcast_status" json:"broadcast_status"`
+	Response        []byte             `db:"response" json:"response"`
+	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type GenesisAccountObservation struct {

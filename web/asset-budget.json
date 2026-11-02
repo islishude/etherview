@@ -3,6 +3,8 @@
   "maximumInitialRawBytes": 1000000,
   "maximumInitialGzipBytes": 310000,
   "forbiddenInitialPatterns": [
+    "ens-normalize",
+    "normalizeName-",
     "codemirror-vendor",
     "ContractArtifactPanel-",
     "EntityPage-",

@@ -9,22 +9,14 @@
   width: 100%;
   min-width: 0;
   appearance: none;
-  padding-right: 2.65rem;
+  padding-right: 36px;
   cursor: pointer;
 }
 .select-control > .select-control-chevron {
   position: absolute;
-  right: 0.8rem;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--text-soft);
-}
-.select-control:focus-within > .select-control-chevron {
-  color: var(--brand);
-}
-.select-control:has(select:disabled) > .select-control-chevron {
-  opacity: 0.5;
 }
 select:disabled {
   cursor: not-allowed;

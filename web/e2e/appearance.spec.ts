@@ -48,7 +48,9 @@ for (const { width, language, theme } of appearanceCases) {
             icon.getAttribute("height") === String(size) &&
             style.width === `${size}px` &&
             style.height === `${size}px` &&
-            style.strokeWidth === "2px" &&
+            (icon.classList.contains("dropdown-chevron")
+              ? size === 14 && style.strokeWidth === "1.5px"
+              : style.strokeWidth === "2px") &&
             icon.getAttribute("aria-hidden") === "true" &&
             icon.getAttribute("focusable") === "false"
             ? []

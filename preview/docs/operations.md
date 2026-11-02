@@ -134,7 +134,7 @@ returns `settlement_pending` with the signed transaction hash. Resume the chain,
 inspect that exact receipt, then use the [billing reconciliation procedure](../../docs/operations.md#prepaid-api-billing-and-x402-top-ups);
 never create a replacement payment to recover an uncertain settlement.
 
-Permit2 here is the test token's local witness settlement implementation. This
+Permit2 uses the standard Permit2 and x402 proxy predeployed contracts. This
 is product/accounting acceptance only; P60-T17 still requires both live-method
 reports and independent writer/chain reconciliation.
 
@@ -404,6 +404,24 @@ Local USD code and initial state are part of genesis; no x402 initializer runs
 at startup. Existing network bundles require explicit recreation after genesis
 changes, which discards their local chain and billing data.
 
+## NATS wake notifications
+
+Preview starts Core NATS by default with the application roles. It carries only
+best-effort wake notifications; PostgreSQL remains authoritative and periodic
+polling continues during an outage. NATS availability does not gate application
+readiness, and clients reconnect automatically when the broker returns.
+
+The broker listens on the Compose network at `nats://nats:4222`, with no
+published host port, JetStream, or persistent volume. `make start-preview` pulls
+and starts it; `make recreate-preview` recreates it with the runtime services,
+and `make stop-preview` removes it with the project.
+
+Set `ETHERVIEW_NATS_URL` in `.local/preview.env` (or `PREVIEW_ENV_FILE`) to use
+another broker. Set `ETHERVIEW_NATS_URL=` explicitly to disable application
+connections while leaving the broker service running. Run `make recreate-preview`
+to apply either change. An unset variable selects the internal broker even when
+using a custom application config file.
+
 ## External source configuration
 
 Preview enables Sourcify at `https://sourcify.dev/server` and enables
@@ -463,3 +481,43 @@ The fixed source inventory and checksums live in `preview/verification`.
 Sources are not discovered from public services during startup. Refreshing
 sources is an explicit reviewed development operation; see
 [verification source maintenance](testing.md#genesis-verification-inputs).
+
+### Anvil payment-chain fixture
+
+Anvil uses chain ID `31337`; wallets connect through
+`https://anvil.etherview.localhost` (WebSocket: `wss://anvil.etherview.localhost`).
+The explorer and SIWE login still use Preview Geth chain `48815`. The existing
+wildcard gateway certificate covers the new name. The node and its facilitator
+have no direct host ports. Use only the public local development accounts.
+
+The `anvil-data` volume owns spent authorizations and balances. Stop/recreate
+through the normal Preview Compose lifecycle to allow its final state dump.
+A changed genesis digest, missing saved state or orphan state file rejects
+startup; do not delete only the digest to bypass this protection. An intentional
+full Preview reset removes its volumes and billing database together. Restoring
+an older chain snapshot against a newer billing database requires reconciliation
+of uncertain payments before new funding. Periodic snapshots cannot guarantee
+preservation after abrupt host or storage loss.
+
+After changing token constructors, regenerate the reviewed allocations with
+`make preview-contracts-generate` and verification inputs with
+`node preview/verification/generate.mjs`. The generation target also updates the
+Anvil seed. These materials are never regenerated during ordinary startup.
+
+### Four payment options
+
+The Preview billing configuration exposes `default` (Geth 6 decimals, rate 1),
+`preview-usd18` (Geth 18 decimals, two credits per token), `anvil-usd6`
+(Anvil 6 decimals, three credits per token) and `anvil-usd18` (Anvil 18 decimals,
+four credits per token). All fund the same SIWE/explorer-chain account on 48815.
+The chain and token selectors clear the draft amount when changed; history uses
+the policy captured when the intent was created. Anvil's RPC is available at
+`https://anvil.etherview.localhost` through preview-gateway.
+
+The single `x402-facilitator` now serves both payment chains and persists its
+journal in PostgreSQL. Checked-in keystore/password/bearer files under
+`preview/facilitator` are public development fixtures. When overriding
+`POSTGRES_PASSWORD`, also provide `X402_FACILITATOR_DATABASE_URL_FILE` referencing
+a matching local database URL file. No production credentials belong in these
+fixtures. Stop the facilitator before an operator-authorized exact-transaction
+rebroadcast, as described in the shared operations guide.

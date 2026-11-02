@@ -163,7 +163,7 @@
       "pins": [
         {
           "path": "package.json",
-          "template": ">= {{version}}",
+          "template": "^{{version}}",
           "jsonPath": [
             "engines",
             "pnpm"
@@ -177,28 +177,8 @@
           ]
         },
         {
-          "path": "Dockerfile",
-          "template": "    && env PNPM_VERSION={{version}} ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \\",
-          "count": 1
-        },
-        {
-          "path": "Dockerfile",
-          "template": "    && test \"$(pnpm --version)\" = \"{{version}}\"",
-          "count": 1
-        },
-        {
-          "path": "e2e/hardhat3/Dockerfile",
-          "template": "    && env PNPM_VERSION={{version}} ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \\",
-          "count": 1
-        },
-        {
-          "path": "e2e/hardhat3/Dockerfile",
-          "template": "    && test \"$(pnpm --version)\" = \"{{version}}\"",
-          "count": 1
-        },
-        {
           "path": "e2e/hardhat3/package.json",
-          "template": ">={{version}}",
+          "template": "^{{version}}",
           "jsonPath": [
             "engines",
             "pnpm"
@@ -217,11 +197,6 @@
         {
           "path": "docs/development.md",
           "template": "`pnpm-lock.yaml`. Install pnpm {{version}} (pinned by `packageManager`), then run",
-          "count": 1
-        },
-        {
-          "path": "docs/development.md",
-          "template": "with `PNPM_VERSION={{version}}`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then",
           "count": 1
         },
         {
@@ -267,11 +242,6 @@
         {
           "path": "Dockerfile",
           "template": "FROM golang:{{version}} AS go-builder",
-          "count": 1
-        },
-        {
-          "path": "e2e/x402local/facilitator.Dockerfile",
-          "template": "FROM golang:{{version}} AS build",
           "count": 1
         },
         {
@@ -362,6 +332,16 @@
           "path": "docs/operations.md",
           "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
           "count": 1
+        },
+        {
+          "path": "preview/anvil/generate.mjs",
+          "template": "if (!execFileSync(binary, [\"--version\"], { encoding: \"utf8\" }).includes(\"{{version}}\"))",
+          "count": 1
+        },
+        {
+          "path": "preview/compose/x402.yaml",
+          "template": "    image: ghcr.io/foundry-rs/foundry:v{{version}}",
+          "count": 1
         }
       ],
       "commands": [],
@@ -399,7 +379,7 @@
         },
         {
           "path": ".github/scripts/make-targets.test.mjs",
-          "template": "          \"caddy:{{version}}-alpine\",",
+          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\", \"etherview-preview-bundler:local\"]",
           "count": 1
         },
         {

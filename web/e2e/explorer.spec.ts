@@ -248,6 +248,12 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
   page,
 }) => {
   const snapshots: string[] = [];
+  const normalizationRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.includes("/assets/ens-normalize-")) {
+      normalizationRequests.push(request.url());
+    }
+  });
   await page.route("**/api/v1/config", async (route) => {
     const response = await route.fetch();
     const payload = (await response.json()) as { data: { features: Record<string, boolean> } };
@@ -299,9 +305,11 @@ test("ENS primary names stay snapshot-stable, disclose addresses, and normalize 
   await page.goto("/transactions");
 
   const search = page.getByRole("searchbox", { name: "Search" });
+  expect(normalizationRequests).toEqual([]);
   await search.fill("RaFFY🚴‍♂️.eTh");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page).toHaveURL(/q=raffy/);
+  expect(normalizationRequests).toHaveLength(1);
   await expect(page.getByText("raffy🚴‍♂.eth", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2339,306 +2347,272 @@ test("primary shell meets the WCAG 2.1 AA automated baseline on a narrow viewpor
   expect(externalRequests).toEqual([]);
 });
 
-test("embedded SIWE account, billing, and administrator flows retain the wallet and generated-API boundaries", async ({
-  page,
-}) => {
-  test.setTimeout(120_000);
-  const authRequests: BrowserAuthRequest[] = [];
-  let authenticated = false;
-  let currentDisplayName: string | null = "Browser Admin";
-  let targetRole: "user" | "admin" = "user";
-  let targetStatus: "active" | "disabled" = "active";
-  let personalKey = {
-    prefix: "abcdefghij",
-    name: "Browser indexer",
-    scopes: ["api:read"] as Array<"api:read" | "contract:verify">,
-    status: "active" as "active" | "revoked",
-  };
+for (const initiallyConnected of [false, true]) {
+  test(`embedded SIWE account, billing, and administrator flows retain the wallet and generated-API boundaries (connected: ${initiallyConnected})`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const authRequests: BrowserAuthRequest[] = [];
+    let authenticated = false;
+    let currentDisplayName: string | null = "Browser Admin";
+    let targetRole: "user" | "admin" = "user";
+    let targetStatus: "active" | "disabled" = "active";
+    let personalKey = {
+      prefix: "abcdefghij",
+      name: "Browser indexer",
+      scopes: ["api:read"] as Array<"api:read" | "contract:verify">,
+      status: "active" as "active" | "revoked",
+    };
 
-  const currentUser = () => ({
-    id: authCurrentUserID,
-    chain_id: "1",
-    address: walletAccount,
-    role: "admin",
-    status: "active",
-    display_name: currentDisplayName,
-    created_at: "2026-01-01T00:00:00Z",
-    updated_at: "2026-01-01T00:00:00Z",
-    last_login_at: "2026-01-01T00:00:00Z",
-  });
-  const targetUser = () => ({
-    id: authTargetUserID,
-    chain_id: "1",
-    address,
-    role: targetRole,
-    status: targetStatus,
-    display_name: null,
-    created_at: "2026-01-02T00:00:00Z",
-    updated_at: "2026-01-02T00:00:00Z",
-    last_login_at: "2026-01-02T00:00:00Z",
-  });
-  const authSession = () => ({
-    authenticated: true,
-    csrf_token: authCSRFToken,
-    expires_at: "2099-01-08T00:00:00Z",
-    user: currentUser(),
-  });
-  const envelope = (data: unknown, meta: Record<string, unknown> = {}) => ({
-    data,
-    meta: {
-      request_id: "embedded-auth-e2e",
+    const currentUser = () => ({
+      id: authCurrentUserID,
       chain_id: "1",
-      ...meta,
-    },
-  });
-  const record = (request: import("@playwright/test").Request) => {
-    const url = new URL(request.url());
-    authRequests.push({
-      body: request.postData(),
-      headers: request.headers(),
-      method: request.method(),
-      pathname: url.pathname,
-      search: url.search,
+      address: walletAccount,
+      role: "admin",
+      status: "active",
+      display_name: currentDisplayName,
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z",
+      last_login_at: "2026-01-01T00:00:00Z",
     });
-  };
-
-  await page.route("**/api/v1/config", async (route) => {
-    await route.fulfill({
-      contentType: "application/json",
-      json: envelope({
+    const targetUser = () => ({
+      id: authTargetUserID,
+      chain_id: "1",
+      address,
+      role: targetRole,
+      status: targetStatus,
+      display_name: null,
+      created_at: "2026-01-02T00:00:00Z",
+      updated_at: "2026-01-02T00:00:00Z",
+      last_login_at: "2026-01-02T00:00:00Z",
+    });
+    const authSession = () => ({
+      authenticated: true,
+      csrf_token: authCSRFToken,
+      expires_at: "2099-01-08T00:00:00Z",
+      user: currentUser(),
+    });
+    const envelope = (data: unknown, meta: Record<string, unknown> = {}) => ({
+      data,
+      meta: {
+        request_id: "embedded-auth-e2e",
         chain_id: "1",
-        chain_name: "Ethereum",
-        native_symbol: "ETH",
-        native_name: "Ether",
-        native_decimals: 18,
-        features: {
-          trace: true,
-          mempool: true,
-          historical_state: true,
-          verification: false,
-          nft_metadata: true,
-          pricing: false,
-          sourcify: false,
-          user_auth: true,
-          user_api_keys: true,
-          api_billing: true,
-          x402_topups: false,
-        },
-      }),
+        ...meta,
+      },
     });
-  });
-  await page.route("**/api/v1/auth/**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    record(request);
-    switch (`${request.method()} ${url.pathname}`) {
-      case "GET /api/v1/auth/session":
-        await route.fulfill({
-          contentType: "application/json",
-          json: envelope(authenticated ? authSession() : { authenticated: false }),
-        });
-        return;
-      case "POST /api/v1/auth/challenge":
-        await route.fulfill({
-          contentType: "application/json",
-          json: envelope({
-            challenge_id: authChallengeID,
-            message: authSIWEMessage,
-            expires_at: authSIWEExpiresAt,
-          }),
-          status: 201,
-        });
-        return;
-      case "POST /api/v1/auth/verify":
-        authenticated = true;
-        await route.fulfill({
-          contentType: "application/json",
-          json: envelope(authSession()),
-          status: 201,
-        });
-        return;
-      case "POST /api/v1/auth/logout":
-        authenticated = false;
-        await route.fulfill({ body: "", status: 204 });
-        return;
-      default:
-        await route.fulfill({ status: 404 });
-    }
-  });
-  await page.route("**/api/v1/users/me", async (route) => {
-    const request = route.request();
-    record(request);
-    const body = request.postDataJSON() as { display_name: string | null };
-    currentDisplayName = body.display_name;
-    await route.fulfill({
-      contentType: "application/json",
-      json: envelope(currentUser()),
-    });
-  });
-  await page.route("**/api/v1/users/me/api-keys**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    record(request);
-    const key = () => ({
-      ...personalKey,
-      rate_per_second: 20,
-      burst: 40,
-      created_at: "2026-08-10T00:00:00Z",
-      ...(personalKey.status === "revoked" ? { revoked_at: "2026-08-10T01:00:00Z" } : {}),
-    });
-    if (request.method() === "GET" && url.pathname === "/api/v1/users/me/api-keys") {
+    const record = (request: import("@playwright/test").Request) => {
+      const url = new URL(request.url());
+      authRequests.push({
+        body: request.postData(),
+        headers: request.headers(),
+        method: request.method(),
+        pathname: url.pathname,
+        search: url.search,
+      });
+    };
+
+    await page.route("**/api/v1/config", async (route) => {
       await route.fulfill({
         contentType: "application/json",
         json: envelope({
-          items: [key()],
-          policy: {
-            rate_per_second: 20,
-            burst: 40,
-            maximum_active: 5,
-            active_count: personalKey.status === "active" ? 1 : 0,
-            allowed_scopes: ["api:read", "contract:verify"],
+          chain_id: "1",
+          chain_name: "Ethereum",
+          native_symbol: "ETH",
+          native_name: "Ether",
+          native_decimals: 18,
+          features: {
+            trace: true,
+            mempool: true,
+            historical_state: true,
+            verification: false,
+            nft_metadata: true,
+            pricing: false,
+            sourcify: false,
+            user_auth: true,
+            user_api_keys: true,
+            api_billing: true,
+            x402_topups: false,
           },
         }),
       });
-      return;
-    }
-    if (request.method() === "POST" && url.pathname === "/api/v1/users/me/api-keys") {
-      const body = request.postDataJSON() as {
-        name: string;
-        scopes: Array<"api:read" | "contract:verify">;
-      };
-      personalKey = {
-        prefix: "abcdefghij",
-        name: body.name,
-        scopes: body.scopes,
-        status: "active",
-      };
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope({ token: userAPIKeyToken, key: key() }),
-        status: 201,
-      });
-      return;
-    }
-    if (request.method() === "POST" && url.pathname.endsWith("/rotate")) {
-      personalKey = { ...personalKey, prefix: "bcdefghij2" };
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope({ token: rotatedUserAPIKeyToken, key: key() }),
-        status: 201,
-      });
-      return;
-    }
-    if (request.method() === "DELETE") {
-      personalKey = { ...personalKey, status: "revoked" };
-      await route.fulfill({ body: "", status: 204 });
-      return;
-    }
-    await route.fulfill({ status: 404 });
-  });
-  await page.route("**/api/v1/admin/users**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    record(request);
-    if (request.method() === "GET" && url.pathname === "/api/v1/admin/users") {
-      const cursor = url.searchParams.get("cursor");
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope(
-          cursor === authUserCursor ? [currentUser()] : [targetUser()],
-          cursor === authUserCursor ? {} : { next_cursor: authUserCursor },
-        ),
-      });
-      return;
-    }
-    if (
-      request.method() === "PATCH" &&
-      url.pathname === `/api/v1/admin/users/${authTargetUserID}`
-    ) {
-      const body = request.postDataJSON() as {
-        role?: "user" | "admin";
-        status?: "active" | "disabled";
-      };
-      targetRole = body.role ?? targetRole;
-      targetStatus = body.status ?? targetStatus;
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope(targetUser()),
-      });
-      return;
-    }
-    if (
-      request.method() === "POST" &&
-      url.pathname === `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`
-    ) {
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope({ revoked_sessions: "3" }),
-      });
-      return;
-    }
-    await route.fulfill({ status: 404 });
-  });
-  const billingPayment = (overrides: Record<string, unknown> = {}) => ({
-    id: billingPaymentID,
-    operation: "getBlock",
-    state: "settled",
-    network: "eip155:84532",
-    asset: billingAsset,
-    amount_atomic: billingAmount,
-    recipient: billingRecipient,
-    payer: billingPayer,
-    transaction_hash: `0x${"6".repeat(64)}`,
-    created_at: "2026-07-25T23:58:00Z",
-    updated_at: "2026-07-26T00:00:00Z",
-    settled_at: "2026-07-26T00:00:00Z",
-    ...overrides,
-  });
-  await page.route("**/api/v1/billing/payments**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    record(request);
-    const cursor = url.searchParams.get("cursor");
-    await route.fulfill({
-      contentType: "application/json",
-      json: envelope(
-        [
-          billingPayment({
-            api_key_prefix: billingAPIKeyPrefix,
-            user_id: billingHiddenUserID,
-          }),
-        ],
-        cursor === billingPersonalCursor ? {} : { next_cursor: billingPersonalCursor },
-      ),
     });
-  });
-  await page.route("**/api/v1/admin/billing/**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    record(request);
-    if (request.method() === "GET" && url.pathname === "/api/v1/admin/billing/summary") {
+    await page.route("**/api/v1/auth/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      record(request);
+      switch (`${request.method()} ${url.pathname}`) {
+        case "GET /api/v1/auth/session":
+          await route.fulfill({
+            contentType: "application/json",
+            json: envelope(authenticated ? authSession() : { authenticated: false }),
+          });
+          return;
+        case "POST /api/v1/auth/challenge":
+          await route.fulfill({
+            contentType: "application/json",
+            json: envelope({
+              challenge_id: authChallengeID,
+              message: authSIWEMessage,
+              expires_at: authSIWEExpiresAt,
+            }),
+            status: 201,
+          });
+          return;
+        case "POST /api/v1/auth/verify":
+          authenticated = true;
+          await route.fulfill({
+            contentType: "application/json",
+            json: envelope(authSession()),
+            status: 201,
+          });
+          return;
+        case "POST /api/v1/auth/logout":
+          authenticated = false;
+          await route.fulfill({ body: "", status: 204 });
+          return;
+        default:
+          await route.fulfill({ status: 404 });
+      }
+    });
+    await page.route("**/api/v1/users/me", async (route) => {
+      const request = route.request();
+      record(request);
+      const body = request.postDataJSON() as { display_name: string | null };
+      currentDisplayName = body.display_name;
       await route.fulfill({
         contentType: "application/json",
-        json: envelope({
-          amount_atomic: billingAmount,
-          from_time: "2026-07-25T00:00:00Z",
-          payment_count: billingCount,
-          rows: [
-            {
-              amount_atomic: billingAmount,
-              asset: billingAsset,
-              network: "eip155:84532",
-              operation: "getBlock",
-              payment_count: billingCount,
-              state: "settled",
-            },
-          ],
-          to_time: "2026-07-26T00:00:00Z",
-        }),
+        json: envelope(currentUser()),
       });
-      return;
-    }
-    if (request.method() === "GET" && url.pathname === "/api/v1/admin/billing/payments") {
+    });
+    let personalKeyDeleted = false;
+    await page.route("**/api/v1/users/me/api-keys**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      record(request);
+      const key = () => ({
+        ...personalKey,
+        rate_per_second: 20,
+        burst: 40,
+        created_at: "2026-08-10T00:00:00Z",
+        ...(personalKey.status === "revoked" ? { revoked_at: "2026-08-10T01:00:00Z" } : {}),
+      });
+      if (request.method() === "GET" && url.pathname === "/api/v1/users/me/api-keys") {
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope({
+            items: personalKeyDeleted ? [] : [key()],
+            policy: {
+              rate_per_second: 20,
+              burst: 40,
+              maximum_active: 5,
+              active_count: personalKey.status === "active" ? 1 : 0,
+              allowed_scopes: ["api:read", "contract:verify"],
+            },
+          }),
+        });
+        return;
+      }
+      if (request.method() === "POST" && url.pathname === "/api/v1/users/me/api-keys") {
+        const body = request.postDataJSON() as {
+          name: string;
+          scopes: Array<"api:read" | "contract:verify">;
+        };
+        personalKey = {
+          prefix: "abcdefghij",
+          name: body.name,
+          scopes: body.scopes,
+          status: "active",
+        };
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope({ token: userAPIKeyToken, key: key() }),
+          status: 201,
+        });
+        return;
+      }
+      if (request.method() === "POST" && url.pathname.endsWith("/rotate")) {
+        personalKey = { ...personalKey, prefix: "bcdefghij2" };
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope({ token: rotatedUserAPIKeyToken, key: key() }),
+          status: 201,
+        });
+        return;
+      }
+      if (request.method() === "POST" && url.pathname.endsWith("/revoke")) {
+        personalKey = { ...personalKey, status: "revoked" };
+        await route.fulfill({ body: "", status: 204 });
+        return;
+      }
+      if (request.method() === "DELETE") {
+        personalKeyDeleted = true;
+        await route.fulfill({ body: "", status: 204 });
+        return;
+      }
+      await route.fulfill({ status: 404 });
+    });
+    await page.route("**/api/v1/admin/users**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      record(request);
+      if (request.method() === "GET" && url.pathname === "/api/v1/admin/users") {
+        const cursor = url.searchParams.get("cursor");
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope(
+            cursor === authUserCursor ? [currentUser()] : [targetUser()],
+            cursor === authUserCursor ? {} : { next_cursor: authUserCursor },
+          ),
+        });
+        return;
+      }
+      if (
+        request.method() === "PATCH" &&
+        url.pathname === `/api/v1/admin/users/${authTargetUserID}`
+      ) {
+        const body = request.postDataJSON() as {
+          role?: "user" | "admin";
+          status?: "active" | "disabled";
+        };
+        targetRole = body.role ?? targetRole;
+        targetStatus = body.status ?? targetStatus;
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope(targetUser()),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        url.pathname === `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`
+      ) {
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope({ revoked_sessions: "3" }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 404 });
+    });
+    const billingPayment = (overrides: Record<string, unknown> = {}) => ({
+      id: billingPaymentID,
+      operation: "getBlock",
+      state: "settled",
+      network: "eip155:84532",
+      asset: billingAsset,
+      amount_atomic: billingAmount,
+      recipient: billingRecipient,
+      payer: billingPayer,
+      transaction_hash: `0x${"6".repeat(64)}`,
+      created_at: "2026-07-25T23:58:00Z",
+      updated_at: "2026-07-26T00:00:00Z",
+      settled_at: "2026-07-26T00:00:00Z",
+      ...overrides,
+    });
+    await page.route("**/api/v1/billing/payments**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      record(request);
       const cursor = url.searchParams.get("cursor");
       await route.fulfill({
         contentType: "application/json",
@@ -2646,377 +2620,448 @@ test("embedded SIWE account, billing, and administrator flows retain the wallet 
           [
             billingPayment({
               api_key_prefix: billingAPIKeyPrefix,
-              failure_code: "settlement_unknown",
-              state: "settling",
-              user_id: billingAdminUserID,
+              user_id: billingHiddenUserID,
             }),
           ],
-          cursor === billingAdminCursor ? {} : { next_cursor: billingAdminCursor },
+          cursor === billingPersonalCursor ? {} : { next_cursor: billingPersonalCursor },
         ),
       });
-      return;
-    }
-    await route.fulfill({ status: 404 });
-  });
-  await page.addInitScript(
-    ({ account, signature }) => {
-      const requests: WalletRequest[] = [];
-      const listeners = new Map<string, Set<(value: unknown) => void>>();
-      const provider = {
-        async request({ method, params }: WalletRequest) {
-          requests.push({ method, params });
-          if (method === "eth_requestAccounts") return [account];
-          if (method === "eth_accounts") return [account];
-          if (method === "eth_chainId") return "0x1";
-          if (method === "personal_sign") return signature;
-          throw new Error(`unexpected wallet method: ${method}`);
-        },
-        on(event: string, listener: (value: unknown) => void) {
-          const current = listeners.get(event) ?? new Set();
-          current.add(listener);
-          listeners.set(event, current);
-        },
-        removeListener(event: string, listener: (value: unknown) => void) {
-          listeners.get(event)?.delete(listener);
-        },
-      };
-      const detail = Object.freeze({
-        info: Object.freeze({
-          uuid: "00000000-0000-4000-8000-000000000065",
-          name: "SIWE E2E Wallet",
-          icon: "data:image/png;base64,",
-          rdns: "org.etherview.siwe-e2e",
-        }),
-        provider,
-      });
-      window.addEventListener("eip6963:requestProvider", () => {
-        window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
-      });
-      (window as AuthWalletWindow).__etherviewE2EAuthWallet = {
-        requests,
-        emit(event, value) {
-          for (const listener of listeners.get(event) ?? []) listener(value);
-        },
-      };
-    },
-    { account: walletAccount, signature: authSignature },
-  );
-
-  const response = await page.goto("/account");
-  expect(response?.status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "Wallet connection" })).toBeVisible();
-  await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
-  await expect(page.getByText("Not logged in", { exact: true }).last()).toBeVisible();
-
-  await activateInView(page.locator(".auth-action-panel button"));
-  await expect(
-    page.locator(".identity-card").getByText("User authenticated", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  const walletRequests = await page.evaluate(
-    () => (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
-  );
-  expect(walletRequests.map(({ method }) => method)).toEqual([
-    "eth_requestAccounts",
-    "eth_chainId",
-    "eth_chainId",
-    "eth_accounts",
-    "personal_sign",
-    "eth_chainId",
-    "eth_accounts",
-  ]);
-  expect(walletRequests.filter(({ method }) => method === "personal_sign")).toEqual([
-    {
-      method: "personal_sign",
-      params: [`0x${Buffer.from(authSIWEMessage, "utf8").toString("hex")}`, walletAccount],
-    },
-  ]);
-
-  for (const selector of [".authenticated-user", ".wallet-account"]) {
-    await activateInView(page.locator(".wallet-summary"));
-    const identityLink = page.locator(selector);
-    await expect(identityLink).toHaveAttribute("href", `/address/${walletAccount}`);
-    await identityLink.focus();
-    await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(new RegExp(`/address/${walletAccount}`));
-    await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
-    await activateInView(page.locator(".wallet-summary"));
-    await expect(page.locator(".wallet-menu")).toHaveAttribute("open", "");
-    await activateInView(
-      page.locator(".wallet-popover").getByRole("link", { name: "Open account", exact: true }),
+    });
+    await page.route("**/api/v1/admin/billing/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      record(request);
+      if (request.method() === "GET" && url.pathname === "/api/v1/admin/billing/summary") {
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope({
+            amount_atomic: billingAmount,
+            from_time: "2026-07-25T00:00:00Z",
+            payment_count: billingCount,
+            rows: [
+              {
+                amount_atomic: billingAmount,
+                asset: billingAsset,
+                network: "eip155:84532",
+                operation: "getBlock",
+                payment_count: billingCount,
+                state: "settled",
+              },
+            ],
+            to_time: "2026-07-26T00:00:00Z",
+          }),
+        });
+        return;
+      }
+      if (request.method() === "GET" && url.pathname === "/api/v1/admin/billing/payments") {
+        const cursor = url.searchParams.get("cursor");
+        await route.fulfill({
+          contentType: "application/json",
+          json: envelope(
+            [
+              billingPayment({
+                api_key_prefix: billingAPIKeyPrefix,
+                failure_code: "settlement_unknown",
+                state: "settling",
+                user_id: billingAdminUserID,
+              }),
+            ],
+            cursor === billingAdminCursor ? {} : { next_cursor: billingAdminCursor },
+          ),
+        });
+        return;
+      }
+      await route.fulfill({ status: 404 });
+    });
+    await page.addInitScript(
+      ({ account, signature }) => {
+        const requests: WalletRequest[] = [];
+        const listeners = new Map<string, Set<(value: unknown) => void>>();
+        let chain = sessionStorage.getItem("siwe-test-chain") ?? "0x2";
+        const provider = {
+          async request({ method, params }: WalletRequest) {
+            requests.push({ method, params });
+            if (method === "eth_requestAccounts") return [account];
+            if (method === "eth_accounts") return [account];
+            if (method === "eth_chainId") return chain;
+            if (method === "wallet_switchEthereumChain") {
+              chain = "0x1";
+              sessionStorage.setItem("siwe-test-chain", chain);
+              for (const listener of listeners.get("chainChanged") ?? []) listener(chain);
+              return null;
+            }
+            if (method === "personal_sign") return signature;
+            throw new Error(`unexpected wallet method: ${method}`);
+          },
+          on(event: string, listener: (value: unknown) => void) {
+            const current = listeners.get(event) ?? new Set();
+            current.add(listener);
+            listeners.set(event, current);
+          },
+          removeListener(event: string, listener: (value: unknown) => void) {
+            listeners.get(event)?.delete(listener);
+          },
+        };
+        const detail = Object.freeze({
+          info: Object.freeze({
+            uuid: "00000000-0000-4000-8000-000000000065",
+            name: "SIWE E2E Wallet",
+            icon: "data:image/png;base64,",
+            rdns: "org.etherview.siwe-e2e",
+          }),
+          provider,
+        });
+        window.addEventListener("eip6963:requestProvider", () => {
+          window.dispatchEvent(new CustomEvent("eip6963:announceProvider", { detail }));
+        });
+        (window as AuthWalletWindow).__etherviewE2EAuthWallet = {
+          requests,
+          emit(event, value) {
+            for (const listener of listeners.get(event) ?? []) listener(value);
+          },
+        };
+      },
+      { account: walletAccount, signature: authSignature },
     );
-    await expect(page).toHaveURL(/\/account$/);
-    await activateInView(page.locator(".wallet-summary"));
-  }
 
-  const challengeRequest = authRequests.find(
-    ({ pathname }) => pathname === "/api/v1/auth/challenge",
-  );
-  const verifyRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/auth/verify");
-  expect(challengeRequest?.body).toBe(JSON.stringify({ address: walletAccount }));
-  expect(challengeRequest?.headers.origin).toBe("http://127.0.0.1:4173");
-  expect(verifyRequest?.body).toBe(
-    JSON.stringify({
-      challenge_id: authChallengeID,
-      signature: authSignature,
-    }),
-  );
-  expect(verifyRequest?.headers.origin).toBe("http://127.0.0.1:4173");
-  expect(
-    await page.evaluate(
-      (token) =>
-        [...Array(localStorage.length).keys()].every(
-          (index) => localStorage.getItem(localStorage.key(index) ?? "") !== token,
-        ),
-      authCSRFToken,
-    ),
-  ).toBe(true);
-  await expect(page.locator("body")).not.toContainText(authCSRFToken);
+    const response = await page.goto("/account");
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole("heading", { name: "Wallet connection" })).toBeVisible();
+    await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
+    await expect(page.getByText("Not logged in", { exact: true }).last()).toBeVisible();
 
-  expect(
-    authRequests.filter(
-      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
-    ),
-  ).toHaveLength(0);
-  await page.reload();
-  await expect(
-    page.locator(".identity-card").getByText("User authenticated", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
-  expect(
-    authRequests.filter(
-      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
-    ),
-  ).toHaveLength(0);
-
-  await activateInView(page.locator(".wallet-summary"));
-  await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
-  await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
-  expect(
-    authRequests.filter(
-      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
-    ),
-  ).toHaveLength(0);
-
-  page.on("dialog", async (dialog) => dialog.accept());
-  const accountSections = page.getByRole("navigation", { name: "Account sections" });
-  await activateInView(accountSections.getByRole("link", { name: "API Keys", exact: true }));
-  await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
-  const openWallet = page.locator(".wallet-menu[open] > summary");
-  if (await openWallet.count()) await openWallet.click();
-  await page.screenshot({
-    path: test.info().outputPath("account-api-keys-mobile.png"),
-    fullPage: true,
-  });
-  await activateInView(page.getByRole("button", { name: "切换到中文" }));
-  await expect(page.getByText(/最小权限凭据/)).toBeVisible();
-  await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
-  await activateInView(page.getByRole("button", { name: "Switch to English" }));
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(page.getByRole("textbox", { name: "Key name" })).toHaveCount(0);
-  await activateInView(page.getByRole("button", { name: "Add API key" }));
-  await page
-    .locator(".account-create-form")
-    .screenshot({ path: test.info().outputPath("api-key-create-desktop.png") });
-  await page.getByRole("textbox", { name: "Key name" }).fill("Production verifier");
-  await page.getByRole("checkbox", { name: /Contract verification/ }).check();
-  await activateInView(page.getByRole("button", { name: "Create key" }));
-  await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
-    userAPIKeyToken,
-  );
-  expect(page.url()).not.toContain(userAPIKeyToken);
-  expect(
-    await page.evaluate(
-      (token) =>
-        Object.values(localStorage).every((value) => value !== token) &&
-        Object.values(sessionStorage).every((value) => value !== token),
-      userAPIKeyToken,
-    ),
-  ).toBe(true);
-  await activateInView(page.getByRole("button", { name: "I saved the token" }));
-  await activateInView(page.getByRole("button", { name: "Rotate" }));
-  await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
-    rotatedUserAPIKeyToken,
-  );
-  await activateInView(page.getByRole("button", { name: "I saved the token" }));
-  await activateInView(page.getByRole("button", { name: "Revoke" }));
-  await expect(
-    page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
-  ).toBeVisible();
-  const personalKeyWrites = authRequests.filter(
-    ({ method, pathname }) => pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
-  );
-  expect(personalKeyWrites).toHaveLength(3);
-  for (const request of personalKeyWrites) {
-    expect(request.headers["x-csrf-token"]).toBe(authCSRFToken);
-    expect(request.headers.origin).toBe("http://127.0.0.1:4173");
-  }
-
-  await activateInView(accountSections.getByRole("link", { name: "Billing", exact: true }));
-
-  await page.getByRole("tab", { name: "History", exact: true }).click();
-  await page.getByRole("combobox", { name: "Record type" }).selectOption("payments");
-  const personalHistory = page.locator(".billing-history-section");
-  await expect(personalHistory.getByRole("heading", { name: "History" })).toBeVisible();
-  await expect(personalHistory.getByText(`${billingAmount} atomic`, { exact: true })).toBeVisible();
-  await expect(personalHistory).not.toContainText(billingHiddenUserID);
-  await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);
-  await expect(personalHistory.getByRole("columnheader", { name: "User ID" })).toHaveCount(0);
-  await activateInView(personalHistory.getByRole("button", { name: "Next page" }));
-  await expect(personalHistory.getByText("Page 2", { exact: true })).toBeVisible();
-  const personalCursorRequest = authRequests.find(
-    ({ pathname, search }) =>
-      pathname === "/api/v1/billing/payments" &&
-      new URLSearchParams(search).get("cursor") === billingPersonalCursor,
-  );
-  expect(personalCursorRequest).toBeDefined();
-  expect(new URLSearchParams(personalCursorRequest?.search).has("address")).toBe(false);
-  expect(new URLSearchParams(personalCursorRequest?.search).has("user_id")).toBe(false);
-
-  await activateInView(accountSections.getByRole("link", { name: "Overview", exact: true }));
-  await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
-  await activateInView(page.getByRole("button", { name: "Save profile" }));
-  await expect(page.getByRole("status")).toContainText("Profile saved.");
-  const profileRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/users/me");
-  expect(profileRequest?.body).toBe(JSON.stringify({ display_name: "Updated Browser Admin" }));
-  expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
-  expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
-
-  await page.getByRole("button", { name: "Account", exact: true }).click();
-  await activateInView(page.getByRole("link", { name: "User admin" }));
-  await expect(page.getByRole("heading", { name: "User administration" })).toBeVisible();
-  await expect(page.getByText(address, { exact: true })).toBeVisible();
-  await page.getByRole("combobox", { name: `Role for ${address}` }).selectOption("admin");
-  await page.getByRole("combobox", { name: `Status for ${address}` }).selectOption("disabled");
-  await activateInView(page.getByRole("button", { name: "Save user" }));
-  await expect(page.getByRole("status")).toContainText("Updated 0x111111…111111.");
-  await activateInView(page.getByRole("button", { name: "Revoke sessions" }));
-  await expect(page.getByRole("status")).toContainText("Revoked 3 session(s) for 0x111111…111111.");
-  const adminPatchRequest = authRequests.find(
-    ({ method, pathname }) =>
-      method === "PATCH" && pathname === `/api/v1/admin/users/${authTargetUserID}`,
-  );
-  const adminRevokeRequest = authRequests.find(
-    ({ method, pathname }) =>
-      method === "POST" && pathname === `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`,
-  );
-  expect(adminPatchRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
-  expect(adminRevokeRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
-
-  await activateInView(page.getByRole("button", { name: "Next page" }));
-  await expect(
-    page
-      .getByRole("navigation", {
-        name: "Administrative user pages",
-      })
-      .getByText("Page 2", { exact: true }),
-  ).toBeVisible();
-  const cursorRequest = authRequests.find(({ pathname, search }) => {
-    if (pathname !== "/api/v1/admin/users") return false;
-    return new URLSearchParams(search).get("cursor") === authUserCursor;
-  });
-  expect(cursorRequest).toBeDefined();
-
-  await page.getByRole("button", { name: "Account", exact: true }).click();
-  await activateInView(page.getByRole("link", { name: "Billing admin" }));
-  await expect(page.getByRole("heading", { name: "Billing administration" })).toBeVisible();
-  await page.screenshot({ path: test.info().outputPath("billing-admin-desktop.png") });
-  await expect(page.getByText("Settlement unknown", { exact: true })).toBeVisible();
-  await expect(page.getByText(billingAdminUserID, { exact: true })).toBeVisible();
-  await expect(page.getByText(billingAPIKeyPrefix, { exact: true })).toBeVisible();
-  await expect(page.getByText(billingAmount, { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
-
-  await page.getByRole("combobox", { name: "State" }).selectOption("settling");
-  await page.getByRole("combobox", { name: "Operation" }).selectOption("getBlock");
-  await page.getByRole("textbox", { name: "Network" }).fill("eip155:84532");
-  await page.getByRole("textbox", { name: "Asset" }).fill(billingAsset);
-  await activateInView(page.getByRole("button", { name: "Apply filters" }));
-  await expect
-    .poll(() =>
-      authRequests.some(({ pathname, search }) => {
-        if (pathname !== "/api/v1/admin/billing/payments") return false;
-        const query = new URLSearchParams(search);
-        return (
-          query.get("state") === "settling" &&
-          query.get("operation") === "getBlock" &&
-          query.get("network") === "eip155:84532" &&
-          query.get("asset") === billingAsset
-        );
+    if (initiallyConnected) {
+      await activateInView(page.locator(".wallet-summary"));
+      await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
+      await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+      await activateInView(page.locator(".wallet-summary"));
+    }
+    await activateInView(page.locator(".auth-action-panel button"));
+    await expect(
+      page.locator(".identity-card").getByText("User authenticated", {
+        exact: true,
       }),
-    )
-    .toBe(true);
-
-  await activateInView(page.getByRole("button", { name: "Next page" }));
-  await expect(
-    page
-      .getByRole("navigation", {
-        name: "Administrative payment ledger pages",
-      })
-      .getByText("Page 2", { exact: true }),
-  ).toBeVisible();
-  const billingCursorRequest = authRequests.find(
-    ({ pathname, search }) =>
-      pathname === "/api/v1/admin/billing/payments" &&
-      new URLSearchParams(search).get("cursor") === billingAdminCursor,
-  );
-  expect(billingCursorRequest).toBeDefined();
-
-  const billingRequests = authRequests.filter(({ pathname }) => pathname.includes("/billing/"));
-  expect(billingRequests.length).toBeGreaterThanOrEqual(6);
-  for (const request of billingRequests) {
-    expect(request.method).toBe("GET");
-    expect(request.body).toBeNull();
-    expect(request.headers["payment-signature"]).toBeUndefined();
-    expect(request.headers["x-csrf-token"]).toBeUndefined();
-  }
-  expect(
-    await page.evaluate(
-      (token) =>
-        [...Array(localStorage.length).keys()].every(
-          (index) => localStorage.getItem(localStorage.key(index) ?? "") !== token,
-        ),
-      authCSRFToken,
-    ),
-  ).toBe(true);
-  await expect(page.locator("body")).not.toContainText(authCSRFToken);
-
-  await activateInView(page.getByRole("button", { name: "切换到中文" }));
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "计费管理", level: 1 })).toBeVisible();
-  const adminScan = await new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .analyze();
-  expect(adminScan.violations, JSON.stringify(adminScan.violations, null, 2)).toEqual([]);
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  expect(overflow).toBeLessThanOrEqual(1);
-
-  await page.evaluate(() => {
-    (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit("accountsChanged", [
-      "0x4444444444444444444444444444444444444444",
+    ).toBeVisible();
+    const walletRequests = await page.evaluate(
+      () => (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
+    );
+    expect(walletRequests.map(({ method }) => method)).toEqual([
+      "eth_requestAccounts",
+      "eth_chainId",
+      "eth_chainId",
+      "wallet_switchEthereumChain",
+      "eth_chainId",
+      "eth_accounts",
+      "eth_chainId",
+      "eth_accounts",
+      "personal_sign",
+      "eth_chainId",
+      "eth_accounts",
     ]);
+    expect(walletRequests.filter(({ method }) => method === "personal_sign")).toEqual([
+      {
+        method: "personal_sign",
+        params: [`0x${Buffer.from(authSIWEMessage, "utf8").toString("hex")}`, walletAccount],
+      },
+    ]);
+
+    for (const selector of [".authenticated-user", ".wallet-account"]) {
+      await activateInView(page.locator(".wallet-summary"));
+      const identityLink = page.locator(selector);
+      await expect(identityLink).toHaveAttribute("href", `/address/${walletAccount}`);
+      await identityLink.focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(new RegExp(`/address/${walletAccount}`));
+      await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
+      await activateInView(page.locator(".wallet-summary"));
+      await expect(page.locator(".wallet-menu")).toHaveAttribute("open", "");
+      await activateInView(
+        page.locator(".wallet-popover").getByRole("link", { name: "Open account", exact: true }),
+      );
+      await expect(page).toHaveURL(/\/account$/);
+      await activateInView(page.locator(".wallet-summary"));
+    }
+
+    const challengeRequest = authRequests.find(
+      ({ pathname }) => pathname === "/api/v1/auth/challenge",
+    );
+    const verifyRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/auth/verify");
+    expect(challengeRequest?.body).toBe(JSON.stringify({ address: walletAccount }));
+    expect(challengeRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+    expect(verifyRequest?.body).toBe(
+      JSON.stringify({
+        challenge_id: authChallengeID,
+        signature: authSignature,
+      }),
+    );
+    expect(verifyRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+    expect(
+      await page.evaluate(
+        (token) =>
+          [...Array(localStorage.length).keys()].every(
+            (index) => localStorage.getItem(localStorage.key(index) ?? "") !== token,
+          ),
+        authCSRFToken,
+      ),
+    ).toBe(true);
+    await expect(page.locator("body")).not.toContainText(authCSRFToken);
+
+    expect(
+      authRequests.filter(
+        ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+      ),
+    ).toHaveLength(0);
+    await page.reload();
+    await expect(
+      page.locator(".identity-card").getByText("User authenticated", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
+    expect(
+      authRequests.filter(
+        ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+      ),
+    ).toHaveLength(0);
+
+    await activateInView(page.locator(".wallet-summary"));
+    await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
+    await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+    expect(
+      authRequests.filter(
+        ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+      ),
+    ).toHaveLength(0);
+
+    page.on("dialog", async (dialog) => dialog.accept());
+    const accountSections = page.getByRole("navigation", { name: "Account sections" });
+    await activateInView(accountSections.getByRole("link", { name: "API Keys", exact: true }));
+    await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await assertA11yAndNoOverflow(page, "account API keys in English narrow mode");
+    const openWallet = page.locator(".wallet-menu[open] > summary");
+    if (await openWallet.count()) await openWallet.click();
+    await page.screenshot({
+      path: test.info().outputPath("account-api-keys-mobile.png"),
+      fullPage: true,
+    });
+    await activateInView(page.getByRole("button", { name: "切换到中文" }));
+    await expect(page.getByRole("tab", { name: "列表", exact: true })).toBeVisible();
+    await assertA11yAndNoOverflow(page, "account API keys in Chinese narrow mode");
+    await activateInView(page.getByRole("tab", { name: "创建", exact: true }));
+    await expect(page.locator(".api-key-card")).toHaveCount(0);
+    await expect(page.locator("#api-key-name")).toBeVisible();
+    await assertA11yAndNoOverflow(page, "API key creation in Chinese narrow mode");
+    await activateInView(page.getByRole("tab", { name: "列表", exact: true }));
+    await activateInView(page.getByRole("button", { name: "Switch to English" }));
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(page.getByRole("textbox", { name: "Key name" })).toHaveCount(0);
+    await activateInView(page.getByRole("tab", { name: "Create", exact: true }));
+    await page
+      .locator(".account-create-form")
+      .screenshot({ path: test.info().outputPath("api-key-create-desktop.png") });
+    await page.getByRole("textbox", { name: "Key name" }).fill("Production verifier");
+    await page.getByRole("checkbox", { name: /Contract verification/ }).check();
+    await activateInView(page.getByRole("button", { name: "Create key" }));
+    await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
+      userAPIKeyToken,
+    );
+    expect(page.url()).not.toContain(userAPIKeyToken);
+    expect(
+      await page.evaluate(
+        (token) =>
+          Object.values(localStorage).every((value) => value !== token) &&
+          Object.values(sessionStorage).every((value) => value !== token),
+        userAPIKeyToken,
+      ),
+    ).toBe(true);
+    await activateInView(page.getByRole("button", { name: "I saved the token" }));
+    await activateInView(page.getByRole("button", { name: "Rotate" }));
+    await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
+      rotatedUserAPIKeyToken,
+    );
+    await activateInView(page.getByRole("button", { name: "I saved the token" }));
+    await activateInView(page.getByRole("button", { name: "Revoke" }));
+    await expect(
+      page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
+    ).toBeVisible();
+    await activateInView(page.getByRole("button", { name: "Delete", exact: true }));
+    await expect(page.locator(".api-key-card")).toHaveCount(0);
+    const personalKeyWrites = authRequests.filter(
+      ({ method, pathname }) =>
+        pathname.startsWith("/api/v1/users/me/api-keys") && method !== "GET",
+    );
+    expect(personalKeyWrites).toHaveLength(4);
+    for (const request of personalKeyWrites) {
+      expect(request.headers["x-csrf-token"]).toBe(authCSRFToken);
+      expect(request.headers.origin).toBe("http://127.0.0.1:4173");
+    }
+
+    await activateInView(accountSections.getByRole("link", { name: "Billing", exact: true }));
+
+    await page.getByRole("tab", { name: "History", exact: true }).click();
+    await page.getByRole("combobox", { name: "Record type" }).selectOption("payments");
+    const personalHistory = page.locator(".billing-history-section");
+    await expect(personalHistory.getByRole("heading", { name: "History" })).toBeVisible();
+    await expect(
+      personalHistory.getByText(`${billingAmount} atomic`, { exact: true }),
+    ).toBeVisible();
+    await expect(personalHistory).not.toContainText(billingHiddenUserID);
+    await expect(personalHistory).not.toContainText(billingAPIKeyPrefix);
+    await expect(personalHistory.getByRole("columnheader", { name: "User ID" })).toHaveCount(0);
+    await activateInView(personalHistory.getByRole("button", { name: "Next page" }));
+    await expect(personalHistory.getByText("Page 2", { exact: true })).toBeVisible();
+    const personalCursorRequest = authRequests.find(
+      ({ pathname, search }) =>
+        pathname === "/api/v1/billing/payments" &&
+        new URLSearchParams(search).get("cursor") === billingPersonalCursor,
+    );
+    expect(personalCursorRequest).toBeDefined();
+    expect(new URLSearchParams(personalCursorRequest?.search).has("address")).toBe(false);
+    expect(new URLSearchParams(personalCursorRequest?.search).has("user_id")).toBe(false);
+
+    await activateInView(accountSections.getByRole("link", { name: "Overview", exact: true }));
+    await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
+    await activateInView(page.getByRole("button", { name: "Save profile" }));
+    await expect(page.getByRole("status")).toContainText("Profile saved.");
+    const profileRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/users/me");
+    expect(profileRequest?.body).toBe(JSON.stringify({ display_name: "Updated Browser Admin" }));
+    expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+    expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+
+    await page.getByRole("button", { name: "Account", exact: true }).click();
+    await activateInView(page.getByRole("link", { name: "User admin" }));
+    await expect(page.getByRole("heading", { name: "User administration" })).toBeVisible();
+    await expect(page.getByText(address, { exact: true })).toBeVisible();
+    await page.getByRole("combobox", { name: `Role for ${address}` }).selectOption("admin");
+    await page.getByRole("combobox", { name: `Status for ${address}` }).selectOption("disabled");
+    await activateInView(page.getByRole("button", { name: "Save user" }));
+    await expect(page.getByRole("status")).toContainText("Updated 0x111111…111111.");
+    await activateInView(page.getByRole("button", { name: "Revoke sessions" }));
+    await expect(page.getByRole("status")).toContainText(
+      "Revoked 3 session(s) for 0x111111…111111.",
+    );
+    const adminPatchRequest = authRequests.find(
+      ({ method, pathname }) =>
+        method === "PATCH" && pathname === `/api/v1/admin/users/${authTargetUserID}`,
+    );
+    const adminRevokeRequest = authRequests.find(
+      ({ method, pathname }) =>
+        method === "POST" && pathname === `/api/v1/admin/users/${authTargetUserID}/sessions/revoke`,
+    );
+    expect(adminPatchRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+    expect(adminRevokeRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
+
+    await activateInView(page.getByRole("button", { name: "Next page" }));
+    await expect(
+      page
+        .getByRole("navigation", {
+          name: "Administrative user pages",
+        })
+        .getByText("Page 2", { exact: true }),
+    ).toBeVisible();
+    const cursorRequest = authRequests.find(({ pathname, search }) => {
+      if (pathname !== "/api/v1/admin/users") return false;
+      return new URLSearchParams(search).get("cursor") === authUserCursor;
+    });
+    expect(cursorRequest).toBeDefined();
+
+    await page.getByRole("button", { name: "Account", exact: true }).click();
+    await activateInView(page.getByRole("link", { name: "Billing admin" }));
+    await expect(page.getByRole("heading", { name: "Billing administration" })).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("billing-admin-desktop.png") });
+    await expect(page.getByText("Settlement unknown", { exact: true })).toBeVisible();
+    await expect(page.getByText(billingAdminUserID, { exact: true })).toBeVisible();
+    await expect(page.getByText(billingAPIKeyPrefix, { exact: true })).toBeVisible();
+    await expect(page.getByText(billingAmount, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
+
+    await page.getByRole("combobox", { name: "State" }).selectOption("settling");
+    await page.getByRole("combobox", { name: "Operation" }).selectOption("getBlock");
+    await page.getByRole("textbox", { name: "Network" }).fill("eip155:84532");
+    await page.getByRole("textbox", { name: "Asset" }).fill(billingAsset);
+    await activateInView(page.getByRole("button", { name: "Apply filters" }));
+    await expect
+      .poll(() =>
+        authRequests.some(({ pathname, search }) => {
+          if (pathname !== "/api/v1/admin/billing/payments") return false;
+          const query = new URLSearchParams(search);
+          return (
+            query.get("state") === "settling" &&
+            query.get("operation") === "getBlock" &&
+            query.get("network") === "eip155:84532" &&
+            query.get("asset") === billingAsset
+          );
+        }),
+      )
+      .toBe(true);
+
+    await activateInView(page.getByRole("button", { name: "Next page" }));
+    await expect(
+      page
+        .getByRole("navigation", {
+          name: "Administrative payment ledger pages",
+        })
+        .getByText("Page 2", { exact: true }),
+    ).toBeVisible();
+    const billingCursorRequest = authRequests.find(
+      ({ pathname, search }) =>
+        pathname === "/api/v1/admin/billing/payments" &&
+        new URLSearchParams(search).get("cursor") === billingAdminCursor,
+    );
+    expect(billingCursorRequest).toBeDefined();
+
+    const billingRequests = authRequests.filter(({ pathname }) => pathname.includes("/billing/"));
+    expect(billingRequests.length).toBeGreaterThanOrEqual(6);
+    for (const request of billingRequests) {
+      expect(request.method).toBe("GET");
+      expect(request.body).toBeNull();
+      expect(request.headers["payment-signature"]).toBeUndefined();
+      expect(request.headers["x-csrf-token"]).toBeUndefined();
+    }
+    expect(
+      await page.evaluate(
+        (token) =>
+          [...Array(localStorage.length).keys()].every(
+            (index) => localStorage.getItem(localStorage.key(index) ?? "") !== token,
+          ),
+        authCSRFToken,
+      ),
+    ).toBe(true);
+    await expect(page.locator("body")).not.toContainText(authCSRFToken);
+
+    await activateInView(page.getByRole("button", { name: "切换到中文" }));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByRole("heading", { name: "计费管理", level: 1 })).toBeVisible();
+    const adminScan = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(adminScan.violations, JSON.stringify(adminScan.violations, null, 2)).toEqual([]);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+
+    await page.evaluate(() => {
+      (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit("accountsChanged", [
+        "0x4444444444444444444444444444444444444444",
+      ]);
+    });
+    await expect(page.getByRole("heading", { name: "需要已认证的用户会话。" })).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          authRequests.filter(
+            ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+          ).length,
+      )
+      .toBe(1);
+    const logoutRequest = authRequests.find(
+      ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+    );
+    expect(logoutRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
   });
-  await expect(page.getByRole("heading", { name: "需要已认证的用户会话。" })).toBeVisible();
-  await expect
-    .poll(
-      () =>
-        authRequests.filter(
-          ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
-        ).length,
-    )
-    .toBe(1);
-  const logoutRequest = authRequests.find(
-    ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
-  );
-  expect(logoutRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
-});
+}
 
 test("EIP-6963 contract reads and writes stay inside the selected wallet boundary", async ({
   page,

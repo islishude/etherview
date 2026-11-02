@@ -7,7 +7,6 @@ import (
 
 	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/config"
@@ -41,30 +40,34 @@ func newTopupDispatcher(
 	if payments == nil || accounts == nil {
 		return nil, errors.New("enabled x402 top-ups require payment and prepaid ledgers")
 	}
-	facilitator, err := x402wire.NewClient(x402wire.ClientOptions{
-		BaseURL:          cfg.Billing.FacilitatorURL,
-		UnsafeAllowHTTP:  cfg.Billing.FacilitatorUnsafeAllowHTTP,
-		AllowedCIDRs:     cfg.Billing.FacilitatorAllowedCIDRs,
-		Timeout:          cfg.Billing.FacilitatorTimeout,
-		MaxResponseBytes: cfg.Billing.FacilitatorMaxResponseBytes,
-		Headers:          cfg.Billing.FacilitatorHeaders,
-	})
-	if err != nil {
-		return nil, err
-	}
 	codec, err := x402wire.NewCodec(cfg.Billing.MaxPaymentHeaderBytes)
 	if err != nil {
 		return nil, err
 	}
-	return billing.NewTopupDispatcher(billing.TopupDispatcherOptions{
-		Payments: payments, Accounts: accounts, Facilitator: facilitator,
-		Codec: codec, FingerprintPepper: []byte(cfg.Billing.FingerprintPepper),
-		PublicOrigin: cfg.Server.PublicURL, Methods: cfg.Billing.AssetTransferMethods,
-		MaxTimeoutSeconds: int(cfg.Billing.RequirementMaxTimeout / time.Second),
-		AssetName:         cfg.Billing.AssetEIP712Name,
-		AssetVersion:      cfg.Billing.AssetEIP712Version, Logger: logger,
-		Observer: observer,
-	})
+	routes := map[string]*billing.TopupDispatcher{}
+	for _, chain := range cfg.Billing.PaymentChains {
+		facilitator, err := x402wire.NewClient(x402wire.ClientOptions{
+			BaseURL: chain.FacilitatorURL, UnsafeAllowHTTP: cfg.Billing.FacilitatorUnsafeAllowHTTP,
+			AllowedCIDRs: cfg.Billing.FacilitatorAllowedCIDRs, Timeout: cfg.Billing.FacilitatorTimeout,
+			MaxResponseBytes: cfg.Billing.FacilitatorMaxResponseBytes, Headers: cfg.Billing.FacilitatorHeaders[chain.Network],
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, token := range chain.Tokens {
+			route, err := billing.NewTopupDispatcher(billing.TopupDispatcherOptions{
+				Network: chain.Network, Payments: payments, Accounts: accounts, Facilitator: facilitator, Codec: codec,
+				FingerprintPepper: []byte(cfg.Billing.FingerprintPepper), PublicOrigin: cfg.Server.PublicURL,
+				Methods: token.AssetTransferMethods, MaxTimeoutSeconds: int(cfg.Billing.RequirementMaxTimeout / time.Second),
+				AssetName: token.AssetEIP712Name, AssetVersion: token.AssetEIP712Version, Logger: logger, Observer: observer,
+			})
+			if err != nil {
+				return nil, err
+			}
+			routes[token.ID] = route
+		}
+	}
+	return billing.NewMultiTopupDispatcher(routes)
 }
 
 func newPrepaidServices(
@@ -76,11 +79,8 @@ func newPrepaidServices(
 	if !cfg.Features.APIBilling {
 		return nil, nil, nil
 	}
-	asset := common.HexToAddress(cfg.Billing.Asset)
-	recipient := common.HexToAddress(cfg.Billing.Recipient)
 	ledger, err := billing.NewPrepaidLedger(db, billing.PrepaidOptions{
-		ChainID: cfg.Chain.ID, Network: cfg.Billing.Network,
-		Asset: asset, Recipient: recipient,
+		ChainID:  cfg.Chain.ID,
 		TopupTTL: cfg.Billing.TopupIntentTTL,
 		UsageTTL: cfg.Billing.UsageReservationTTL,
 	})

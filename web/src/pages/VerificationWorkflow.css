@@ -4,15 +4,13 @@
 }
 .compiler-version-select input {
   width: 100%;
-  padding-right: 2rem;
+  padding-right: 36px;
 }
 .compiler-version-chevron {
   position: absolute;
-  right: 0.65rem;
+  right: 12px;
   top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--text-soft);
+  translate: 0 -50%;
 }
 .compiler-version-popup {
   position: absolute;

@@ -299,8 +299,8 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 			select {
 			case <-deadline.C:
 				stop()
-				<-done
-				t.Fatalf("overview code=%s observed=%v err=%v", code, observed, err)
+				runErr := <-done
+				t.Fatalf("overview code=%s observed=%v err=%v discovery err=%v", code, observed, err, runErr)
 			case <-time.After(10 * time.Millisecond):
 			}
 		}

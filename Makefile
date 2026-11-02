@@ -31,11 +31,11 @@ GOLANGCI_LINT ?= golangci-lint
 GOVULNCHECK_VERSION ?= v1.9.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v2.0.1
-GOLANGCI_LINT_VERSION ?= v2.14.0
+GOLANGCI_LINT_VERSION ?= v2.15.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 MKCERT_VERSION ?= v1.4.4
 
-GENERATED_PATHS := \
+GENERATED_PATHS := internal/facilitator/contract.gen.go \
 	internal/verify/vyper_runtime_policy_generated.go \
 	internal/api/gen/models.gen.go \
 	internal/db/gen \
@@ -54,7 +54,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := bundler x402-facilitator geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := nats bundler x402-facilitator anvil geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -152,13 +152,14 @@ toolchain-check:
 	@.github/scripts/toolchain-check.sh
 
 plan-check:
-	$(GO) run ./cmd/plancheck -root .
+	$(GO) test -count=1 -v -run '^TestRepositoryPlans$$' ./internal/plancheck
 
 docs-check:
 	$(NODE) .github/scripts/docs-check.mjs
 
 openapi-check: pnpm-install
 	$(PNPM) --dir api run check:schema
+	$(NODE) api/check-schema.mjs api/facilitator.openapi.yaml
 	$(PNPM) --dir api run test
 
 source-check:
@@ -281,13 +282,13 @@ test-workflow-scripts: test-dependency-updates
 test-integration: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
+		$(GO) run ./e2e/cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
 			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
 
 test-integration-race: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
+		$(GO) run ./e2e/cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
 			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
 
 test-rustfs:
@@ -306,7 +307,7 @@ test-schema-e2e: docker-build
 test-schema-e2e-prebuilt:
 	@$(call require-image,$(IMAGE),test-schema-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) run ./cmd/testschemae2e -root .
+		$(GO) run ./e2e/cmd/testschemae2e -root .
 
 test-runtime-e2e: docker-build
 	@$(MAKE) --no-print-directory test-runtime-e2e-prebuilt
@@ -318,11 +319,22 @@ test-runtime-e2e-prebuilt:
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
 		$(GO) test -p=1 -count=1 -v -tags=runtimee2e ./e2e/runtime ./e2e/x402local
 
+.PHONY: test-rustack-x402 test-rustack-x402-prebuilt
+
+test-rustack-x402: docker-build
+	@DOCKER="$(DOCKER)" e2e/x402local/build-rustack.sh
+	@$(MAKE) --no-print-directory test-rustack-x402-prebuilt
+
+test-rustack-x402-prebuilt:
+	@$(call require-image,$(IMAGE),test-rustack-x402-prebuilt: run 'make docker-build' first)
+	@$(call require-image,etherview-rustack:ffc10378c64280a78bf6b73fff51612bbba0eb66,test-rustack-x402-prebuilt: run 'make test-rustack-x402' first)
+	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" $(GO) test -count=1 -v -timeout=20m -tags=runtimee2e,rustacke2e -run '^TestRustackDualAnvil$$' ./e2e/x402local
+
 test-preview-metadata: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local etherview-x402-local-facilitator:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -423,7 +435,7 @@ benchmark:
 benchmark-integration: web-build
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "./internal/integration" \
+		$(GO) run ./e2e/cmd/testintegration -root . -packages "./internal/integration" \
 		-benchmark '^BenchmarkCorePersistenceAndProjection$$' -benchtime "$(BENCHTIME)"
 
 benchmark-vyper-wasm: compiler-install
@@ -431,7 +443,7 @@ benchmark-vyper-wasm: compiler-install
 	$(PYTHON) compiler/vyper/wasm/benchmark.py
 
 test-load:
-	@$(GO) run ./cmd/loadtest
+	@$(GO) run ./e2e/cmd/loadtest
 
 test-soak:
 	@ETHERVIEW_LOAD_RATE=500 \
@@ -443,14 +455,14 @@ test-soak:
 		ETHERVIEW_LOAD_MIN_THROUGHPUT_RATIO=0.99 \
 		ETHERVIEW_LOAD_MAX_LAG=2 \
 		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
-		$(GO) run ./cmd/loadtest
+		$(GO) run ./e2e/cmd/loadtest
 
 
 # Deployment checks
 
 .PHONY: deployment-check docker-check docker-image-check compose-check helm-check
 
-deployment-check: docker-check compose-check helm-check
+deployment-check: docker-check compose-check helm-check facilitator-deployment-check
 
 docker-check:
 	@command -v "$(DOCKER)" >/dev/null 2>&1 || { echo "docker-check: docker is required"; exit 1; }
@@ -516,11 +528,10 @@ preview-env:
 preview-network-runtime: preview-env
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs check
 
-preview-x402-images:
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml build x402-facilitator
+preview-x402-images: docker-build
 
 preview-images: preview-env preview-x402-images preview-bundler-image
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
@@ -557,7 +568,7 @@ clean-preview-compiler-cache: preview-bundler-image
 
 start-x402-local: docker-build
 	@case "$(X402_LOCAL_TOPOLOGY)" in monolith|distributed) ;; *) echo "X402_LOCAL_TOPOLOGY must be monolith or distributed"; exit 1;; esac
-	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" build x402-fixture x402-facilitator
+	@DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" build x402-fixture
 	@ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f "$(X402_LOCAL_COMPOSE)" \
 		--profile "$(X402_LOCAL_TOPOLOGY)" up -d --no-build --wait --wait-timeout 180 --remove-orphans
 	@echo "x402 local: explorer=http://localhost:$${X402_LOCAL_PORT:-18080} anvil=http://localhost:$${X402_LOCAL_ANVIL_PORT:-18545} topology=$(X402_LOCAL_TOPOLOGY)"
@@ -590,11 +601,13 @@ preview-contracts-generate: pnpm-install
 	$(NODE) preview/contracts/ens-upstream.mjs
 	$(NODE) preview/contracts/upstream.mjs
 	$(NODE) preview/contracts/generate.mjs
+	$(NODE) preview/anvil/generate.mjs
 
 preview-contracts-check: pnpm-install
 	$(NODE) preview/contracts/generate.mjs --check
+	$(NODE) preview/anvil/generate.mjs --check
 	$(NODE) preview/verification/generate.mjs --check
-	$(NODE) --test preview/contracts/test.mjs
+	$(NODE) --test preview/contracts/test.mjs preview/anvil/test.mjs
 
 test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt
@@ -617,7 +630,7 @@ preview-tool:
 
 test-preview-tools: pnpm-install
 	$(NODE) --test preview/contracts/tools/*.test.mjs
-	$(GO) test ./cmd/previewblob
+	$(GO) test ./preview/cmd/previewblob
 
 test-preview-tools-e2e: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-tools-e2e-prebuilt
@@ -632,3 +645,7 @@ test-preview-tools-e2e-full-prebuilt: preview-e2e-check
 	PREVIEW_TOOLS_FULL=1 IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewToolsFull$$' ./e2e/previewmetadata
 
 check: test-preview-tools
+
+.PHONY: facilitator-deployment-check
+facilitator-deployment-check: docker-check
+	HELM="$(HELM)" deploy/facilitator/helm/test.sh

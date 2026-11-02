@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base32"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -68,47 +70,32 @@ func (h *Handler) billingConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := gen.BillingConfig{
-		ApiBillingEnabled:    h.cfg.Features.APIBilling,
-		X402TopupsEnabled:    h.cfg.Features.X402Topups,
-		Scheme:               gen.BillingConfigSchemeExact,
-		X402Version:          gen.BillingConfigX402VersionN2,
-		AssetTransferMethods: make([]gen.BillingAssetTransferMethod, 0, len(h.cfg.Billing.AssetTransferMethods)),
-		Operations:           make([]gen.BillingOperationPrice, 0, len(etherscanops.EligibleIDs())),
+		ApiBillingEnabled: h.cfg.Features.APIBilling,
+		X402TopupsEnabled: h.cfg.Features.X402Topups,
+		Scheme:            gen.BillingConfigSchemeExact,
+		X402Version:       gen.BillingConfigX402VersionN2,
+		CreditDecimals:    gen.N6, PaymentChains: []gen.BillingPaymentChain{},
+		Operations: make([]gen.BillingOperationPrice, 0, len(etherscanops.EligibleIDs())),
 	}
 	if !data.ApiBillingEnabled {
 		writeJSON(w, http.StatusOK, gen.BillingConfigResponse{Data: data, Meta: h.meta(r)})
 		return
 	}
 
-	asset, err := checksumAddress(h.cfg.Billing.Asset)
-	if err != nil {
-		h.handleBillingFailure(w, r, "map public billing configuration", err)
-		return
-	}
-	data.Network = cloneStringPointer(h.cfg.Billing.Network)
-	data.Asset = billingAPIAddressPointer(asset)
-	decimals := int(h.cfg.Billing.AssetDecimals)
-	data.AssetDecimals = &decimals
-	if h.cfg.Billing.AssetEIP712Name != "" {
-		data.AssetEip712Name = cloneStringPointer(h.cfg.Billing.AssetEIP712Name)
-		data.AssetEip712Version = cloneStringPointer(h.cfg.Billing.AssetEIP712Version)
-	}
-	if h.cfg.Features.X402Topups {
-		recipient, recipientErr := checksumAddress(h.cfg.Billing.Recipient)
-		if recipientErr != nil {
-			h.handleBillingFailure(w, r, "map public billing configuration", recipientErr)
-			return
+	ttl := int(h.cfg.Billing.TopupIntentTTL / time.Second)
+	data.TopupIntentTtlSeconds = &ttl
+	for _, chain := range h.cfg.Billing.PaymentChains {
+		public := gen.BillingPaymentChain{Name: chain.Name, Network: chain.Network, Tokens: []gen.BillingPaymentOption{}}
+		for _, token := range chain.Tokens {
+			token.Network = chain.Network
+			model, err := billingOptionModel(token)
+			if err != nil {
+				h.handleBillingFailure(w, r, "map payment option", err)
+				return
+			}
+			public.Tokens = append(public.Tokens, model)
 		}
-		data.Recipient = billingAPIAddressPointer(recipient)
-		minimum := gen.Quantity(h.cfg.Billing.MinimumTopupAmountAtomic)
-		maximum := gen.Quantity(h.cfg.Billing.MaximumTopupAmountAtomic)
-		data.MinimumTopupAmountAtomic = &minimum
-		data.MaximumTopupAmountAtomic = &maximum
-		ttl := int(h.cfg.Billing.TopupIntentTTL / time.Second)
-		data.TopupIntentTtlSeconds = &ttl
-		for _, method := range h.cfg.Billing.AssetTransferMethods {
-			data.AssetTransferMethods = append(data.AssetTransferMethods, gen.BillingAssetTransferMethod(method))
-		}
+		data.PaymentChains = append(data.PaymentChains, public)
 	}
 
 	prices, err := etherscanops.Prices(h.cfg.Billing.BasePriceAtomic)
@@ -338,6 +325,13 @@ func (h *Handler) billingPaymentModel(payment billing.Payment) (gen.BillingPayme
 		Network:             payment.Network, Asset: asset,
 		AmountAtomic: gen.Quantity(payment.AmountAtomic), Recipient: recipient,
 		CreatedAt: payment.CreatedAt.UTC(), UpdatedAt: payment.UpdatedAt.UTC(),
+	}
+	if payment.PaymentOption != nil {
+		option, err := billingOptionModel(*payment.PaymentOption)
+		if err != nil {
+			return gen.BillingPayment{}, err
+		}
+		model.PaymentOption = &option
 	}
 	if payment.TopupIntentID != nil {
 		intentID, intentErr := uuid.Parse(*payment.TopupIntentID)
@@ -687,7 +681,19 @@ func cloneStringPointer(value string) *string {
 	return &copy
 }
 
-func billingAPIAddressPointer(value string) *gen.Address {
-	address := gen.Address(value)
-	return &address
+func billingOptionModel(option paymentoption.Option) (gen.BillingPaymentOption, error) {
+	if option.Validate() != nil {
+		return gen.BillingPaymentOption{}, billing.ErrIntegrity
+	}
+	option.Asset = common.HexToAddress(option.Asset).Hex()
+	option.Recipient = common.HexToAddress(option.Recipient).Hex()
+	raw, err := json.Marshal(option)
+	if err != nil {
+		return gen.BillingPaymentOption{}, billing.ErrIntegrity
+	}
+	var model gen.BillingPaymentOption
+	if json.Unmarshal(raw, &model) != nil {
+		return model, billing.ErrIntegrity
+	}
+	return model, nil
 }

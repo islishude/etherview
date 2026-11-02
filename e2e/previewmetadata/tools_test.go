@@ -65,7 +65,7 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 	helper := ""
 	if full {
 		helper = filepath.Join(h.artifacts, "previewblob")
-		build := exec.CommandContext(ctx, "go", "build", "-o", helper, "./cmd/previewblob")
+		build := exec.CommandContext(ctx, "go", "build", "-o", helper, "./preview/cmd/previewblob")
 		build.Dir = h.root
 		if output, err := build.CombinedOutput(); err != nil {
 			t.Fatalf("blob helper build: %v\n%s", err, output)

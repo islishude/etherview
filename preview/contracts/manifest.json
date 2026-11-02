@@ -23,9 +23,9 @@
     },
     "controllerSourceSha256": "b1c99edcb0ecfb7c46fe0263ecf1b133192774900bc2fb0b3b89d815b337a4f9",
     "priceOracleSourceSha256": "f79df80b515465dec44cc6c42757134690cd7a427695743f56c275c5ca0dadc3",
-    "billingSourceSha256": "fbd57d3959abf7ffe8b043ff7170fc550b991c13718d976af441b37a452c34fa"
+    "billingSourceSha256": "409d37111aa6d1d5ce77441896571f9f376cc32638db17af2c4feb47fad1b0fa"
   },
-  "allocationSha256": "85ec0e8553fb3613cea5b206c66792947a60279daa32e238d99afa94acfc0958",
+  "allocationSha256": "57986ff823605dd558fb50953772ff0fe536a62efeac1840b569f0d6b887ee9d",
   "sources": {
     "accountAbstraction": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410",
     "ens": "9b034936a42f462fc04bc0a929a419ede5e18d59"
@@ -6162,7 +6162,7 @@
     },
     "LocalBillingToken": {
       "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
-      "codeHash": "0xd8c594502b6e0ba2fbd7cd9972a7b73f4aa8222f49da40243e65747d0b585ddc",
+      "codeHash": "0x06a10073f241787684f20d00c546e465ebebbf317a7f29bb8081bcc7c588a247",
       "abi": [
         {
           "inputs": [
@@ -6185,6 +6185,11 @@
               "internalType": "uint256",
               "name": "amount",
               "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "decimals_",
+              "type": "uint8"
             }
           ],
           "stateMutability": "nonpayable",
@@ -6384,6 +6389,264 @@
           "type": "function"
         },
         {
+          "inputs": [],
+          "name": "symbol",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "totalSupply",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "transfer",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "transferFrom",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validAfter",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validBefore",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "nonce",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint8",
+              "name": "v",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "r",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "s",
+              "type": "bytes32"
+            }
+          ],
+          "name": "transferWithAuthorization",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "version",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        }
+      ]
+    },
+    "LocalBillingToken18": {
+      "address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
+      "codeHash": "0x06a10073f241787684f20d00c546e465ebebbf317a7f29bb8081bcc7c588a247",
+      "abi": [
+        {
+          "inputs": [
+            {
+              "internalType": "string",
+              "name": "name_",
+              "type": "string"
+            },
+            {
+              "internalType": "string",
+              "name": "version_",
+              "type": "string"
+            },
+            {
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint8",
+              "name": "decimals_",
+              "type": "uint8"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "spender",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256"
+            }
+          ],
+          "name": "Approval",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256"
+            }
+          ],
+          "name": "Transfer",
+          "type": "event"
+        },
+        {
+          "inputs": [],
+          "name": "PERMIT2",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "X402_EXACT_PERMIT2_PROXY",
+          "outputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
           "inputs": [
             {
               "internalType": "address",
@@ -6391,12 +6654,60 @@
               "type": "address"
             },
             {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            }
+          ],
+          "name": "allowance",
+          "outputs": [
+            {
               "internalType": "uint256",
               "name": "",
               "type": "uint256"
             }
           ],
-          "name": "permit2NonceUsed",
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "spender",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "approve",
+          "outputs": [
+            {
+              "internalType": "bool",
+              "name": "",
+              "type": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "",
+              "type": "bytes32"
+            }
+          ],
+          "name": "authorizationState",
           "outputs": [
             {
               "internalType": "bool",
@@ -6411,43 +6722,45 @@
           "inputs": [
             {
               "internalType": "address",
-              "name": "from",
+              "name": "",
               "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "amount",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "nonce",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "deadline",
-              "type": "uint256"
-            },
-            {
-              "internalType": "address",
-              "name": "to",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "validAfter",
-              "type": "uint256"
-            },
-            {
-              "internalType": "bytes",
-              "name": "signature",
-              "type": "bytes"
             }
           ],
-          "name": "settlePermit2",
-          "outputs": [],
-          "stateMutability": "nonpayable",
+          "name": "balanceOf",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "decimals",
+          "outputs": [
+            {
+              "internalType": "uint8",
+              "name": "",
+              "type": "uint8"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [],
+          "name": "name",
+          "outputs": [
+            {
+              "internalType": "string",
+              "name": "",
+              "type": "string"
+            }
+          ],
+          "stateMutability": "view",
           "type": "function"
         },
         {
@@ -6597,6 +6910,1259 @@
         }
       ]
     },
+    "Permit2": {
+      "address": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "codeHash": "0xb43712c2ae86f7574db5aca8e14b846cae021f9dbf37f2fe5920529852f6fa94",
+      "abi": [
+        {
+          "type": "function",
+          "name": "DOMAIN_SEPARATOR",
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "allowance",
+          "inputs": [
+            {
+              "name": "",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "amount",
+              "type": "uint160",
+              "internalType": "uint160"
+            },
+            {
+              "name": "expiration",
+              "type": "uint48",
+              "internalType": "uint48"
+            },
+            {
+              "name": "nonce",
+              "type": "uint48",
+              "internalType": "uint48"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "approve",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint160",
+              "internalType": "uint160"
+            },
+            {
+              "name": "expiration",
+              "type": "uint48",
+              "internalType": "uint48"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "invalidateNonces",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "newNonce",
+              "type": "uint48",
+              "internalType": "uint48"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "invalidateUnorderedNonces",
+          "inputs": [
+            {
+              "name": "wordPos",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "mask",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "lockdown",
+          "inputs": [
+            {
+              "name": "approvals",
+              "type": "tuple[]",
+              "internalType": "struct IAllowanceTransfer.TokenSpenderPair[]",
+              "components": [
+                {
+                  "name": "token",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "spender",
+                  "type": "address",
+                  "internalType": "address"
+                }
+              ]
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "nonceBitmap",
+          "inputs": [
+            {
+              "name": "",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "permit",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "permitBatch",
+              "type": "tuple",
+              "internalType": "struct IAllowanceTransfer.PermitBatch",
+              "components": [
+                {
+                  "name": "details",
+                  "type": "tuple[]",
+                  "internalType": "struct IAllowanceTransfer.PermitDetails[]",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint160",
+                      "internalType": "uint160"
+                    },
+                    {
+                      "name": "expiration",
+                      "type": "uint48",
+                      "internalType": "uint48"
+                    },
+                    {
+                      "name": "nonce",
+                      "type": "uint48",
+                      "internalType": "uint48"
+                    }
+                  ]
+                },
+                {
+                  "name": "spender",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "sigDeadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "permit",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "permitSingle",
+              "type": "tuple",
+              "internalType": "struct IAllowanceTransfer.PermitSingle",
+              "components": [
+                {
+                  "name": "details",
+                  "type": "tuple",
+                  "internalType": "struct IAllowanceTransfer.PermitDetails",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint160",
+                      "internalType": "uint160"
+                    },
+                    {
+                      "name": "expiration",
+                      "type": "uint48",
+                      "internalType": "uint48"
+                    },
+                    {
+                      "name": "nonce",
+                      "type": "uint48",
+                      "internalType": "uint48"
+                    }
+                  ]
+                },
+                {
+                  "name": "spender",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "sigDeadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "permitTransferFrom",
+          "inputs": [
+            {
+              "name": "permit",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.PermitTransferFrom",
+              "components": [
+                {
+                  "name": "permitted",
+                  "type": "tuple",
+                  "internalType": "struct ISignatureTransfer.TokenPermissions",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                    }
+                  ]
+                },
+                {
+                  "name": "nonce",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "transferDetails",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.SignatureTransferDetails",
+              "components": [
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "requestedAmount",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "permitTransferFrom",
+          "inputs": [
+            {
+              "name": "permit",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.PermitBatchTransferFrom",
+              "components": [
+                {
+                  "name": "permitted",
+                  "type": "tuple[]",
+                  "internalType": "struct ISignatureTransfer.TokenPermissions[]",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                    }
+                  ]
+                },
+                {
+                  "name": "nonce",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "transferDetails",
+              "type": "tuple[]",
+              "internalType": "struct ISignatureTransfer.SignatureTransferDetails[]",
+              "components": [
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "requestedAmount",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "permitWitnessTransferFrom",
+          "inputs": [
+            {
+              "name": "permit",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.PermitTransferFrom",
+              "components": [
+                {
+                  "name": "permitted",
+                  "type": "tuple",
+                  "internalType": "struct ISignatureTransfer.TokenPermissions",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                    }
+                  ]
+                },
+                {
+                  "name": "nonce",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "transferDetails",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.SignatureTransferDetails",
+              "components": [
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "requestedAmount",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "witness",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "witnessTypeString",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "permitWitnessTransferFrom",
+          "inputs": [
+            {
+              "name": "permit",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.PermitBatchTransferFrom",
+              "components": [
+                {
+                  "name": "permitted",
+                  "type": "tuple[]",
+                  "internalType": "struct ISignatureTransfer.TokenPermissions[]",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                    }
+                  ]
+                },
+                {
+                  "name": "nonce",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "transferDetails",
+              "type": "tuple[]",
+              "internalType": "struct ISignatureTransfer.SignatureTransferDetails[]",
+              "components": [
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "requestedAmount",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "witness",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            },
+            {
+              "name": "witnessTypeString",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "transferFrom",
+          "inputs": [
+            {
+              "name": "transferDetails",
+              "type": "tuple[]",
+              "internalType": "struct IAllowanceTransfer.AllowanceTransferDetails[]",
+              "components": [
+                {
+                  "name": "from",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "amount",
+                  "type": "uint160",
+                  "internalType": "uint160"
+                },
+                {
+                  "name": "token",
+                  "type": "address",
+                  "internalType": "address"
+                }
+              ]
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "transferFrom",
+          "inputs": [
+            {
+              "name": "from",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "to",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint160",
+              "internalType": "uint160"
+            },
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "event",
+          "name": "Approval",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint160",
+              "indexed": false,
+              "internalType": "uint160"
+            },
+            {
+              "name": "expiration",
+              "type": "uint48",
+              "indexed": false,
+              "internalType": "uint48"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "Lockdown",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": false,
+              "internalType": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address",
+              "indexed": false,
+              "internalType": "address"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "NonceInvalidation",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "newNonce",
+              "type": "uint48",
+              "indexed": false,
+              "internalType": "uint48"
+            },
+            {
+              "name": "oldNonce",
+              "type": "uint48",
+              "indexed": false,
+              "internalType": "uint48"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "Permit",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "spender",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "amount",
+              "type": "uint160",
+              "indexed": false,
+              "internalType": "uint160"
+            },
+            {
+              "name": "expiration",
+              "type": "uint48",
+              "indexed": false,
+              "internalType": "uint48"
+            },
+            {
+              "name": "nonce",
+              "type": "uint48",
+              "indexed": false,
+              "internalType": "uint48"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "UnorderedNonceInvalidation",
+          "inputs": [
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "word",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+            },
+            {
+              "name": "mask",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "error",
+          "name": "AllowanceExpired",
+          "inputs": [
+            {
+              "name": "deadline",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        },
+        {
+          "type": "error",
+          "name": "ExcessiveInvalidation",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InsufficientAllowance",
+          "inputs": [
+            {
+              "name": "amount",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        },
+        {
+          "type": "error",
+          "name": "InvalidAmount",
+          "inputs": [
+            {
+              "name": "maxAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        },
+        {
+          "type": "error",
+          "name": "InvalidContractSignature",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidNonce",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidSignature",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidSignatureLength",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidSigner",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "LengthMismatch",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "SignatureExpired",
+          "inputs": [
+            {
+              "name": "signatureDeadline",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ]
+    },
+    "X402ExactPermit2Proxy": {
+      "address": "0x402085c248EeA27D92E8b30b2C58ed07f9E20001",
+      "codeHash": "0xf6b451924519e06a08000e253d311fc20cb3f5ffe7ce2a57323126e5391cb412",
+      "abi": [
+        {
+          "type": "constructor",
+          "inputs": [
+            {
+              "name": "_permit2",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "PERMIT2",
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "",
+              "type": "address",
+              "internalType": "contract ISignatureTransfer"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "WITNESS_TYPEHASH",
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "WITNESS_TYPE_STRING",
+          "inputs": [],
+          "outputs": [
+            {
+              "name": "",
+              "type": "string",
+              "internalType": "string"
+            }
+          ],
+          "stateMutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "settle",
+          "inputs": [
+            {
+              "name": "permit",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.PermitTransferFrom",
+              "components": [
+                {
+                  "name": "permitted",
+                  "type": "tuple",
+                  "internalType": "struct ISignatureTransfer.TokenPermissions",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                    }
+                  ]
+                },
+                {
+                  "name": "nonce",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "witness",
+              "type": "tuple",
+              "internalType": "struct x402ExactPermit2Proxy.Witness",
+              "components": [
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "function",
+          "name": "settleWithPermit",
+          "inputs": [
+            {
+              "name": "permit2612",
+              "type": "tuple",
+              "internalType": "struct x402BasePermit2Proxy.EIP2612Permit",
+              "components": [
+                {
+                  "name": "value",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "r",
+                  "type": "bytes32",
+                  "internalType": "bytes32"
+                },
+                {
+                  "name": "s",
+                  "type": "bytes32",
+                  "internalType": "bytes32"
+                },
+                {
+                  "name": "v",
+                  "type": "uint8",
+                  "internalType": "uint8"
+                }
+              ]
+            },
+            {
+              "name": "permit",
+              "type": "tuple",
+              "internalType": "struct ISignatureTransfer.PermitTransferFrom",
+              "components": [
+                {
+                  "name": "permitted",
+                  "type": "tuple",
+                  "internalType": "struct ISignatureTransfer.TokenPermissions",
+                  "components": [
+                    {
+                      "name": "token",
+                      "type": "address",
+                      "internalType": "address"
+                    },
+                    {
+                      "name": "amount",
+                      "type": "uint256",
+                      "internalType": "uint256"
+                    }
+                  ]
+                },
+                {
+                  "name": "nonce",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                },
+                {
+                  "name": "deadline",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "witness",
+              "type": "tuple",
+              "internalType": "struct x402ExactPermit2Proxy.Witness",
+              "components": [
+                {
+                  "name": "to",
+                  "type": "address",
+                  "internalType": "address"
+                },
+                {
+                  "name": "validAfter",
+                  "type": "uint256",
+                  "internalType": "uint256"
+                }
+              ]
+            },
+            {
+              "name": "signature",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "outputs": [],
+          "stateMutability": "nonpayable"
+        },
+        {
+          "type": "event",
+          "name": "EIP2612PermitFailedWithData",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "data",
+              "type": "bytes",
+              "indexed": false,
+              "internalType": "bytes"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "EIP2612PermitFailedWithPanic",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "errorCode",
+              "type": "uint256",
+              "indexed": false,
+              "internalType": "uint256"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "EIP2612PermitFailedWithReason",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "owner",
+              "type": "address",
+              "indexed": true,
+              "internalType": "address"
+            },
+            {
+              "name": "reason",
+              "type": "string",
+              "indexed": false,
+              "internalType": "string"
+            }
+          ],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "Settled",
+          "inputs": [],
+          "anonymous": false
+        },
+        {
+          "type": "event",
+          "name": "SettledWithPermit",
+          "inputs": [],
+          "anonymous": false
+        },
+        {
+          "type": "error",
+          "name": "InvalidAmount",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidDestination",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidOwner",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "InvalidPermit2Address",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "PaymentTooEarly",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "Permit2612AmountMismatch",
+          "inputs": []
+        },
+        {
+          "type": "error",
+          "name": "ReentrancyGuardReentrantCall",
+          "inputs": []
+        }
+      ]
+    },
     "SenderCreator": {
       "address": "0x0A630a99Df908A81115A3022927Be82f9299987e",
       "codeHash": "0xa7d4dd260bca9c96da49f7c0682fdda7f0074694d935815a336d3e60ee3ec6ad",
@@ -6699,12 +8265,15 @@
     }
   },
   "allocationAddresses": [
+    "0x000000000022d473030f116ddee9f6b43ac78ba3",
     "0x0a630a99df908a81115a3022927be82f9299987e",
+    "0x402085c248eea27d92e8b30b2c58ed07f9e20001",
     "0x433709009b8330fda32311df1c2afa402ed8d009",
     "0x43ca3d2c94be00692d207c6a1e60d8b325c6f12f",
     "0x446c29fbfef829f81e236a2376191f648dbef995",
     "0x6d925938edb8a16b3035a4cf34faa090f490202a",
     "0x70997970c51812dc3a010c7d01b50e0d17dc79c8",
+    "0x71c95911e9a5d330f4d621842ec243ee1343292e",
     "0x8464135c8f25da09e49bc8782676a84730c318bc",
     "0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199",
     "0x9ef4c86838638daea46d5517442f5c23fe1dd34c",

@@ -26,6 +26,7 @@ SELECT prefix, name, rate_per_second, burst, created_at, revoked_at,
        owner_user_id, scopes
 FROM api_keys
 WHERE owner_user_id = sqlc.arg('user_id')::uuid
+  AND deleted_at IS NULL
   AND (
       sqlc.narg('before_created_at')::timestamptz IS NULL
       OR (created_at, prefix) < (
@@ -37,11 +38,12 @@ ORDER BY created_at DESC, prefix DESC
 LIMIT sqlc.arg('page_limit');
 
 -- name: LockUserAPIKey :one
-SELECT prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
+SELECT prefix, digest, name, rate_per_second, burst, created_at, revoked_at, deleted_at,
        owner_user_id, scopes
 FROM api_keys
 WHERE prefix = sqlc.arg('prefix')
   AND owner_user_id = sqlc.arg('user_id')::uuid
+  AND deleted_at IS NULL
 FOR UPDATE;
 
 -- name: RevokeUserAPIKey :one
@@ -49,7 +51,8 @@ UPDATE api_keys
 SET revoked_at = COALESCE(revoked_at, sqlc.arg('revoked_at'))
 WHERE prefix = sqlc.arg('prefix')
   AND owner_user_id = sqlc.arg('user_id')::uuid
-RETURNING prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
+  AND deleted_at IS NULL
+RETURNING prefix, digest, name, rate_per_second, burst, created_at, revoked_at, deleted_at,
           owner_user_id, scopes;
 
 -- name: RevokeAllUserAPIKeys :exec
@@ -57,3 +60,17 @@ UPDATE api_keys
 SET revoked_at = sqlc.arg('revoked_at')
 WHERE owner_user_id = sqlc.arg('user_id')::uuid
   AND revoked_at IS NULL;
+
+-- name: LockUserAPIKeyForDeletion :one
+SELECT revoked_at, deleted_at
+FROM api_keys
+WHERE prefix = sqlc.arg('prefix')
+  AND owner_user_id = sqlc.arg('user_id')::uuid
+FOR UPDATE;
+
+-- name: DeleteUserAPIKey :exec
+UPDATE api_keys
+SET deleted_at = COALESCE(deleted_at, sqlc.arg('deleted_at'))
+WHERE prefix = sqlc.arg('prefix')
+  AND owner_user_id = sqlc.arg('user_id')::uuid
+  AND revoked_at IS NOT NULL;

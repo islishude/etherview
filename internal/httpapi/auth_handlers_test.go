@@ -89,6 +89,8 @@ type fakeUserAPIKeys struct {
 	createdScope []auth.Scope
 	rotated      string
 	revoked      string
+	deleted      string
+	deleteErr    error
 }
 
 func (fake *fakeUserAPIKeys) Policy() auth.UserKeyPolicy {
@@ -416,7 +418,7 @@ func TestCurrentUserAPIKeyLifecycleRequiresSessionOriginAndCSRF(t *testing.T) {
 		t.Fatalf("create status=%d body=%s name=%q scopes=%v", recorder.Code, recorder.Body.String(), keys.createdName, keys.createdScope)
 	}
 
-	request = httptest.NewRequest(http.MethodDelete, "/api/v1/users/me/api-keys/"+prefix, nil)
+	request = httptest.NewRequest(http.MethodPost, "/api/v1/users/me/api-keys/"+prefix+"/revoke", nil)
 	request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
 	request.Header.Set("Origin", testAuthOrigin)
 	request.Header.Set("X-CSRF-Token", "csrf")
@@ -425,6 +427,40 @@ func TestCurrentUserAPIKeyLifecycleRequiresSessionOriginAndCSRF(t *testing.T) {
 	if recorder.Code != http.StatusNoContent || keys.revoked != prefix {
 		t.Fatalf("revoke status=%d prefix=%q body=%s", recorder.Code, keys.revoked, recorder.Body.String())
 	}
+	for _, tc := range []struct {
+		name                 string
+		cookie, origin, csrf string
+		err                  error
+		status               int
+		code                 string
+	}{
+		{"delete", "session", testAuthOrigin, "csrf", nil, http.StatusNoContent, ""},
+		{"active", "session", testAuthOrigin, "csrf", auth.ErrAPIKeyNotRevoked, http.StatusConflict, "api_key_not_revoked"},
+		{"missing or other owner", "session", testAuthOrigin, "csrf", auth.ErrAPIKeyNotFound, http.StatusNotFound, "api_key_not_found"},
+		{"session required", "", testAuthOrigin, "csrf", nil, http.StatusUnauthorized, ""},
+		{"origin required", "session", "", "csrf", nil, http.StatusForbidden, ""},
+		{"csrf required", "session", testAuthOrigin, "", nil, http.StatusForbidden, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			keys.deleted = ""
+			keys.deleteErr = tc.err
+			request := httptest.NewRequest(http.MethodDelete, "/api/v1/users/me/api-keys/"+prefix, nil)
+			if tc.cookie != "" {
+				request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: tc.cookie})
+			}
+			request.Header.Set("Origin", tc.origin)
+			request.Header.Set("X-CSRF-Token", tc.csrf)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != tc.status || !strings.Contains(recorder.Body.String(), tc.code) {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if (tc.status == http.StatusForbidden || tc.status == http.StatusUnauthorized) && keys.deleted != "" {
+				t.Fatal("unauthorized delete reached service")
+			}
+		})
+	}
+
 }
 
 func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
@@ -447,7 +483,7 @@ func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
 		}
 	}
 	for _, operation := range []string{
-		"getAuthSession", "listCurrentUserAPIKeys", "listAdminUsers",
+		"getAuthSession", "listCurrentUserAPIKeys", "deleteCurrentUserAPIKey", "revokeCurrentUserAPIKey", "listAdminUsers",
 		"listCurrentUserBillingPayments",
 		"listCurrentUserPushSubscriptions", "saveCurrentUserPushSubscription", "deleteCurrentUserPushSubscription",
 	} {
@@ -644,4 +680,9 @@ func assertAuthError(
 	if response.Error.Code != code {
 		t.Fatalf("error=%+v want code=%q", response.Error, code)
 	}
+}
+
+func (fake *fakeUserAPIKeys) Delete(_ context.Context, _, prefix string, _ time.Time) error {
+	fake.deleted = prefix
+	return fake.deleteErr
 }

@@ -29,3 +29,25 @@ there is no official/custom classification or fallback policy.
 
 Preview Bundler release identity and safe-validation boundaries are owned by
 [ADR-0057](../../docs/decisions/ADR-0057-preview-rundler.md).
+
+### Second payment network
+
+The Preview Compose stack also runs Anvil with chain ID 31337. It is a payment
+fixture only: the explorer and SIWE identity continue using Geth chain 48815.
+`preview/anvil/generate.mjs` derives a deterministic payment genesis from the
+reviewed token allocations, including both six- and eighteen-decimal tokens and
+public development accounts. No contracts are deployed during startup.
+
+The Anvil volume records its seed digest and state. Restarts load saved state
+without funding accounts again, and changed seeds fail closed until an explicit
+volume reset. A one-second checkpoint interval limits but does not eliminate
+state loss after an abrupt host failure; normal shutdown dumps state before exit.
+One internal production facilitator serves both Geth and Anvil, with independent
+chain queues and a shared PostgreSQL journal. Each chain enforces token and
+recipient whitelists; standard Permit2 and x402 proxy contracts are predeployed.
+
+The existing Caddy gateway exposes HTTP JSON-RPC and WebSocket RPC on
+`anvil.etherview.localhost`. Anvil has no host port. Gateway policy matches the
+local Geth wallet endpoint, including wildcard local-development CORS, bounded
+requests, scrubbed errors and no retries. Neither payment network is a core
+readiness dependency. Multi-option account funding is tracked by P60-T25.

@@ -4,11 +4,14 @@ package x402locale2e
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -23,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/testcompose"
@@ -134,6 +138,31 @@ func TestPreviewX402(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	gateway, err := project.Port(ctx, "preview-gateway", 443)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := os.ReadFile(filepath.Join(root, ".local/preview-tls/rootCA.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(ca) {
+		t.Fatal("invalid gateway CA")
+	}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}, DialContext: func(c context.Context, network, address string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(c, network, gateway)
+	}}
+	defer transport.CloseIdleConnections()
+	anvilRPC, err := rpc.DialOptions(ctx, "https://anvil.etherview.localhost", rpc.WithHTTPClient(&http.Client{Transport: transport, Timeout: 20 * time.Second}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	anvil := ethclient.NewClient(anvilRPC)
+	defer anvil.Close()
+	if id, err := anvil.ChainID(ctx); err != nil || id.Int64() != 31337 {
+		t.Fatalf("gateway Anvil chain: %v %v", id, err)
+	}
 	csrf := signIn(t, client, origin, ownerKey, owner)
 	key := createUserAPIKey(t, client, origin, csrf, "preview")
 	for index, mode := range []string{"split", "all"} {
@@ -170,6 +199,46 @@ func TestPreviewX402(t *testing.T) {
 		if value := tokenUintAt(t, rpcClient, token, "allowance", owner, common.HexToAddress(permit2Address)); value.Sign() != 0 {
 			t.Fatalf("remaining allowance=%s", value)
 		}
+		for _, option := range []struct {
+			id             string
+			client         *ethclient.Client
+			asset          common.Address
+			amount, credit string
+		}{
+			{"preview-usd18", rpcClient, common.HexToAddress("0x71c95911e9a5d330f4d621842ec243ee1343292e"), "1000000000000", "2"},
+			{"anvil-usd6", anvil, token, "100", "300"},
+			{"anvil-usd18", anvil, common.HexToAddress("0x71c95911e9a5d330f4d621842ec243ee1343292e"), "1000000000000", "4"},
+		} {
+			beforeToken := tokenUintAt(t, option.client, option.asset, "balanceOf", common.HexToAddress(recipientAddress))
+			beforeAccount := billingAccount(t, client, origin)
+			payment := authorizeTopupOption(t, client, option.client, codec, origin, csrf, owner, "eip3009", option.amount, option.id)
+			response := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("%s %s payment=%d", mode, option.id, response.StatusCode)
+			}
+			delta := new(big.Int).Sub(tokenUintAt(t, option.client, option.asset, "balanceOf", common.HexToAddress(recipientAddress)), beforeToken)
+			afterAccount := billingAccount(t, client, origin)
+			beforeCredit, _ := new(big.Int).SetString(beforeAccount.TotalCreditAtomic, 10)
+			afterCredit, _ := new(big.Int).SetString(afterAccount.TotalCreditAtomic, 10)
+			if delta.String() != option.amount || new(big.Int).Sub(afterCredit, beforeCredit).String() != option.credit {
+				t.Fatalf("%s token/credit mismatch: %s %+v", option.id, delta, afterAccount)
+			}
+			replay := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+			_ = replay.Body.Close()
+			if replay.StatusCode != http.StatusConflict {
+				t.Fatalf("%s replay=%d", option.id, replay.StatusCode)
+			}
+		}
+		anvilBefore := tokenUintAt(t, anvil, token, "balanceOf", owner)
+		run("up", "-d", "--no-build", "--no-deps", "--force-recreate", "--wait", "anvil")
+		if anvilBefore.Cmp(tokenUintAt(t, anvil, token, "balanceOf", owner)) != 0 {
+			t.Fatal("Anvil recreation lost balances")
+		}
+		run("stop", "anvil")
+		// Anvil failure must not interrupt settlement on the independent Geth chain.
+		topup(t, client, rpcClient, codec, origin, csrf, owner, "eip3009")
+		run("up", "-d", "--no-build", "--no-deps", "--wait", "anvil")
 		before := tokenUintAt(t, rpcClient, token, "balanceOf", owner)
 		nonce, err := rpcClient.NonceAt(ctx, common.HexToAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8"), nil)
 		if err != nil {
@@ -186,13 +255,13 @@ func TestPreviewX402(t *testing.T) {
 			t.Fatal(err)
 		}
 		account := billingAccount(t, client, origin)
-		credit, debit := strconv.Itoa((index+1)*200), strconv.Itoa((index+1)*2)
+		credit, debit := strconv.Itoa((index+1)*606), strconv.Itoa((index+1)*2)
 		recipient := tokenUintAt(t, rpcClient, token, "balanceOf", common.HexToAddress(recipientAddress))
-		if account.TotalCreditAtomic != credit || account.TotalDebitAtomic != debit || account.ReservedAtomic != "0" || recipient.String() != credit || account.AvailableAtomic != strconv.Itoa((index+1)*198) {
+		if account.TotalCreditAtomic != credit || account.TotalDebitAtomic != debit || account.ReservedAtomic != "0" || recipient.String() != strconv.Itoa((index+1)*300) || account.AvailableAtomic != strconv.Itoa((index+1)*604) {
 			t.Fatalf("%s chain/ledger mismatch: %+v recipient=%s", mode, account, recipient)
 		}
 		t.Logf("%s: credit=%s debit=%s available=%s recipient=%s; replay, exact allowance, recreation and outage passed", mode, credit, debit, account.AvailableAtomic, recipient)
-		run("start", "x402-facilitator")
+		run("up", "-d", "--no-build", "--no-deps", "--wait", "anvil", "x402-facilitator")
 	}
 	// A broadcast on a paused PoS chain is uncertain, not rejected. Preserve
 	// its immutable hash and reconcile after mining resumes without resending.
@@ -219,7 +288,7 @@ func TestPreviewX402(t *testing.T) {
 	if intent.Data.PaymentId == nil || intent.Data.TransactionHash == nil || *intent.Data.TransactionHash != settled.Transaction || string(intent.Data.State) != "settling" {
 		t.Fatalf("pending payment was not retained: %+v", intent.Data)
 	}
-	if account := billingAccount(t, client, origin); account.TotalCreditAtomic != "400" {
+	if account := billingAccount(t, client, origin); account.TotalCreditAtomic != "1212" {
 		t.Fatalf("pending credit=%+v", account)
 	}
 	run("start", "validator")
@@ -246,7 +315,7 @@ func TestPreviewX402(t *testing.T) {
 	}
 	account := billingAccount(t, client, origin)
 	recipient := tokenUintAt(t, rpcClient, token, "balanceOf", common.HexToAddress(recipientAddress))
-	if account.TotalCreditAtomic != "401" || account.TotalDebitAtomic != "4" || account.AvailableAtomic != "397" || recipient.String() != "401" {
+	if account.TotalCreditAtomic != "1213" || account.TotalDebitAtomic != "4" || account.AvailableAtomic != "1209" || recipient.String() != "601" {
 		t.Fatalf("reconciled account=%+v recipient=%s", account, recipient)
 	}
 	t.Log("paused-chain pending hash, resumed receipt, one-shot reconciliation and replay passed")

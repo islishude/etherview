@@ -338,7 +338,7 @@ for (const language of ["en", "zh"] as const) {
         height: element.getBoundingClientRect().height,
       };
     });
-    expect(control.size).toBe(16);
+    expect(control.size).toBe(14);
     expect(control.right).toBeGreaterThan(control.size + 12);
     expect(control.size / control.height).toBeGreaterThan(0.3);
     await page.screenshot({

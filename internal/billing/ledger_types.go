@@ -5,6 +5,7 @@ package billing
 
 import (
 	"errors"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -53,6 +54,7 @@ var (
 type Digest [32]byte
 
 type Payment struct {
+	PaymentOption        *paymentoption.Option
 	ID                   string
 	ChainID              uint64
 	Operation            string

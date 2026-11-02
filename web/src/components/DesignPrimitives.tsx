@@ -1,4 +1,4 @@
-import { ChevronDown, Menu, Monitor, Moon, Sun, X } from "lucide-react";
+import { Menu, Monitor, Moon, Sun, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import type { ComponentPropsWithoutRef } from "react";
 
@@ -27,15 +27,10 @@ function classes(base: string, extra: string | undefined): string {
   return extra ? `${base} ${extra}` : base;
 }
 
-export function ShellIcon({
-  name,
-}: {
-  name: "menu" | "close" | "chevron" | "moon" | "sun" | "monitor";
-}) {
+export function ShellIcon({ name }: { name: "menu" | "close" | "moon" | "sun" | "monitor" }) {
   const icons = {
     menu: Menu,
     close: X,
-    chevron: ChevronDown,
     moon: Moon,
     sun: Sun,
     monitor: Monitor,

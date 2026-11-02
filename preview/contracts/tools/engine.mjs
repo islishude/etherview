@@ -654,27 +654,31 @@ export class Engine {
     const blobBaseFee = BigInt(await this.rpc.request({ method: "eth_blobBaseFee" }));
     const helper = this.options["blob-helper"];
     const marker = Number(BigInt("0x" + digest(this.run.state.id).slice(0, 2)));
-    const result = execFileSync(helper ?? "go", helper ? [] : ["run", "./cmd/previewblob"], {
-      cwd: root,
-      input: stringify({
-        chainId: "48815",
-        key,
-        to: this.account.address,
-        nonce: await this.rpc.getTransactionCount({
-          address: this.account.address,
-          blockTag: "pending",
+    const result = execFileSync(
+      helper ?? "go",
+      helper ? [] : ["run", "./preview/cmd/previewblob"],
+      {
+        cwd: root,
+        input: stringify({
+          chainId: "48815",
+          key,
+          to: this.account.address,
+          nonce: await this.rpc.getTransactionCount({
+            address: this.account.address,
+            blockTag: "pending",
+          }),
+          fee: fees.maxFeePerGas,
+          tip: fees.maxPriorityFeePerGas > 0n ? fees.maxPriorityFeePerGas : 1n,
+          blobFee: blobBaseFee * 2n + 1000000000n,
+          count,
+          marker,
         }),
-        fee: fees.maxFeePerGas,
-        tip: fees.maxPriorityFeePerGas > 0n ? fees.maxPriorityFeePerGas : 1n,
-        blobFee: blobBaseFee * 2n + 1000000000n,
-        count,
-        marker,
-      }),
-      encoding: "utf8",
-      maxBuffer: 2 * 1024 * 1024,
-      timeout: 180000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+        encoding: "utf8",
+        maxBuffer: 2 * 1024 * 1024,
+        timeout: 180000,
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     const signed = JSON.parse(result);
     const directory = path.join(this.run.dir, "blobs");
     fs.mkdirSync(directory, { recursive: true });
