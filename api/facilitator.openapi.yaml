@@ -57,7 +57,7 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/Payment" }
       responses:
         "200":
-          description: Durable settlement outcome. Pending results always contain the original transaction hash.
+          description: Durable settlement outcome. New authorizations refused for chain capacity are journaled as failed with an empty transaction; existing authorizations retain their recorded outcome. Pending results always contain the original transaction hash.
           content:
             application/json:
               schema:
@@ -75,7 +75,7 @@ paths:
         "409": { description: Conflicting authorization reuse. }
         "503":
           {
-            description: "Unavailable, busy or awaiting reconciliation; do not automatically resubmit.",
+            description: "Outcome unavailable or an existing unsigned authorization is still in flight; do not automatically resubmit.",
           }
   /progress:
     post:

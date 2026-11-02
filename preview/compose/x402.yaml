@@ -3,7 +3,7 @@ services:
     image: ${ETHERVIEW_IMAGE:-etherview:local}
     entrypoint: ["/x402facilitator"]
     command: [--config=/etc/etherview/facilitator.yaml]
-    secrets: [x402-db, x402-token, x402-key, x402-password, x402-geth, x402-anvil]
+    secrets: [x402-db, x402-token, x402-key, x402-password]
     depends_on:
       geth:
         condition: service_started

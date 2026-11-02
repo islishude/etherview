@@ -300,12 +300,45 @@ test("facilitator deployments share production image and override its entrypoint
       assert.ok(!service.build.dockerfile || service.build.dockerfile === "Dockerfile");
       assert.deepEqual(service.entrypoint, ["/x402facilitator"]);
       assert.deepEqual(service.command, ["--config=/etc/etherview/facilitator.yaml"]);
+      assert.doesNotMatch(JSON.stringify(service.secrets ?? []), /x402-(geth|anvil)/);
       if (service.healthcheck) {
         assert.deepEqual(service.healthcheck.test, [
           "CMD",
           "/x402facilitator",
           "--healthcheck=http://127.0.0.1:8081/healthz",
         ]);
+      }
+    }
+  }
+});
+
+test("only standalone facilitator explicitly inherits X402 credential environment", () => {
+  const names = [
+    "X402_DATABASE_URL",
+    "X402_DATABASE_URL_FILE",
+    "X402_BEARER_TOKEN",
+    "X402_BEARER_TOKEN_FILE",
+  ];
+  const absent = Object.fromEntries(names.map((name) => [name, undefined]));
+  const supplied = Object.fromEntries(names.map((name) => [name, `fixture-${name}`]));
+  for (const file of [
+    "compose.yaml",
+    "e2e/x402local/compose.yaml",
+    "deploy/facilitator/compose.yaml",
+  ]) {
+    const args = ["-f", file, "--profile", "monolith", "--profile", "distributed"];
+    for (const service of Object.values(render(args, absent).services)) {
+      // Compose renders an unbound passthrough as null, not an empty value.
+      for (const name of names) assert.equal(service.environment?.[name] ?? undefined, undefined);
+    }
+    for (const [role, service] of Object.entries(render(args, supplied).services)) {
+      for (const name of names) {
+        assert.equal(
+          service.environment?.[name],
+          file === "deploy/facilitator/compose.yaml" && role === "x402-facilitator"
+            ? supplied[name]
+            : undefined,
+        );
       }
     }
   }

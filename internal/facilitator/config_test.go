@@ -12,13 +12,13 @@ import (
 )
 
 func testConfig() Config {
-	return Config{Listen: "127.0.0.1:8081", DatabaseURLFile: "db", BearerTokenFile: "token", UnsafeLocalHTTP: true, Signers: map[string]SignerConfig{"key": {Type: "keystore", Address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", KeystoreFile: "key", PasswordFile: "pass"}}, Chains: []ChainConfig{{Network: "eip155:31337", RPCURLFile: "rpc", Signer: "key", MaxGas: 500000, MaxFeePerGas: "100000000000", Confirmations: 1, Recipients: []string{"0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"}, Tokens: []TokenConfig{{Address: "0x5FbDB2315678afecb367f032d93F642f64180aa3", Methods: []string{"eip3009", "permit2"}}}}}}
+	return Config{Server: ServerConfig{Listen: "127.0.0.1:8081", AllowInsecureHTTP: true}, Database: DatabaseConfig{URLFile: "db"}, Auth: AuthConfig{BearerTokenFile: "token"}, Signers: map[string]SignerConfig{"key": {Type: "keystore", Address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", KeystoreFile: "key", PasswordFile: "pass"}}, Chains: []ChainConfig{{Network: "eip155:31337", RPC: RPCConfig{URLFile: "rpc", AllowInsecureHTTP: true}, Signer: "key", MaxGas: 500000, MaxFeePerGas: "100000000000", Confirmations: 1, Recipients: []string{"0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"}, Tokens: []TokenConfig{{Address: "0x5FbDB2315678afecb367f032d93F642f64180aa3", Methods: []string{"eip3009", "permit2"}}}}}}
 }
 func TestConfigValidation(t *testing.T) {
 	if err := testConfig().Validate(); err != nil {
 		t.Fatal(err)
 	}
-	cases := map[string]func(*Config){"duplicate chain": func(c *Config) { c.Chains = append(c.Chains, c.Chains[0]) }, "duplicate token": func(c *Config) { c.Chains[0].Tokens = append(c.Chains[0].Tokens, c.Chains[0].Tokens[0]) }, "unknown signer": func(c *Config) { c.Chains[0].Signer = "missing" }, "network": func(c *Config) { c.Chains[0].Network = "eip155:031337" }, "fee": func(c *Config) { c.Chains[0].MaxFeePerGas = "0" }, "confirmations": func(c *Config) { c.Chains[0].Confirmations = 0 }, "TLS": func(c *Config) { c.UnsafeLocalHTTP = false }, "recipient": func(c *Config) { c.Chains[0].Recipients = nil }, "method": func(c *Config) { c.Chains[0].Tokens[0].Methods = []string{"arbitrary"} }}
+	cases := map[string]func(*Config){"duplicate chain": func(c *Config) { c.Chains = append(c.Chains, c.Chains[0]) }, "duplicate token": func(c *Config) { c.Chains[0].Tokens = append(c.Chains[0].Tokens, c.Chains[0].Tokens[0]) }, "unknown signer": func(c *Config) { c.Chains[0].Signer = "missing" }, "network": func(c *Config) { c.Chains[0].Network = "eip155:031337" }, "fee": func(c *Config) { c.Chains[0].MaxFeePerGas = "0" }, "confirmations": func(c *Config) { c.Chains[0].Confirmations = 0 }, "TLS": func(c *Config) { c.Server.AllowInsecureHTTP = false }, "recipient": func(c *Config) { c.Chains[0].Recipients = nil }, "method": func(c *Config) { c.Chains[0].Tokens[0].Methods = []string{"arbitrary"} }}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
 			c := testConfig()

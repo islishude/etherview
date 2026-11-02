@@ -1,11 +1,15 @@
 secretName: facilitator-secrets
+certificateConfigMapName: facilitator-certificate
 egressCIDRs: [10.20.0.0/24]
 config:
-  listen: 0.0.0.0:8081
-  database_url_file: /run/secrets/database-url
-  bearer_token_file: /run/secrets/bearer-token
-  tls_cert_file: /run/secrets/tls.crt
-  tls_key_file: /run/secrets/tls.key
+  server:
+    listen: 0.0.0.0:8081
+    tls_cert_file: /etc/etherview/certs/tls.crt
+    tls_key_file: /run/secrets/tls.key
+  database:
+    url_file: /run/secrets/database-url
+  auth:
+    bearer_token_file: /run/secrets/bearer-token
   signers:
     managed:
       type: aws_kms
@@ -14,7 +18,8 @@ config:
       key_arn: arn:aws:kms:us-east-1:123456789012:key/test
   chains:
     - network: eip155:11155111
-      rpc_url_file: /run/secrets/rpc-url
+      rpc:
+        url_file: /run/secrets/rpc-url
       signer: managed
       max_gas: 500000
       max_fee_per_gas: "100000000000"

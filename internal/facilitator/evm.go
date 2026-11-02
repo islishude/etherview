@@ -28,7 +28,7 @@ type chainClient struct {
 	client  *ethclient.Client
 	signer  digestSigner
 	config  ChainConfig
-	queries *dbgen.Queries
+	queries settlementJournal
 	guard   func(context.Context) error
 }
 

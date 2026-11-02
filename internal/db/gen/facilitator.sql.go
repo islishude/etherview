@@ -122,6 +122,38 @@ func (q *Queries) FacilitatorPendingCount(ctx context.Context, network string) (
 	return count, err
 }
 
+const facilitatorRejectUnsubmitted = `-- name: FacilitatorRejectUnsubmitted :execrows
+INSERT INTO facilitator_settlements
+    (authorization_id, request_digest, request_body, network, signer_address, state, response)
+VALUES ($1, $2, $3,
+        $4, $5, 'failed', $6)
+ON CONFLICT DO NOTHING
+`
+
+type FacilitatorRejectUnsubmittedParams struct {
+	AuthorizationID string `db:"authorization_id" json:"authorization_id"`
+	RequestDigest   []byte `db:"request_digest" json:"request_digest"`
+	RequestBody     []byte `db:"request_body" json:"request_body"`
+	Network         string `db:"network" json:"network"`
+	SignerAddress   []byte `db:"signer_address" json:"signer_address"`
+	Response        []byte `db:"response" json:"response"`
+}
+
+func (q *Queries) FacilitatorRejectUnsubmitted(ctx context.Context, arg FacilitatorRejectUnsubmittedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorRejectUnsubmitted,
+		arg.AuthorizationID,
+		arg.RequestDigest,
+		arg.RequestBody,
+		arg.Network,
+		arg.SignerAddress,
+		arg.Response,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const facilitatorReserve = `-- name: FacilitatorReserve :execrows
 INSERT INTO facilitator_settlements (authorization_id,request_digest,request_body,network,signer_address)
 VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING

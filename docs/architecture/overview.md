@@ -1339,6 +1339,15 @@ connection lock and per-chain queues prevent concurrent nonce allocation. Restar
 only reconciles original transaction hashes. Account credits remain owned by the
 existing API-side fenced ledger. Preview uses this same implementation with
 standard Permit2/proxy contracts on Geth and Anvil.
+Configuration decoding, bounded credential resolution and runtime construction are
+separate phases. Ordinary RPC URLs live in YAML; sensitive URLs use explicit
+file references. Server TLS and per-chain RPC plaintext permissions are independent.
+Database and bearer credentials additionally accept the fixed `X402_DATABASE_URL`
+and `X402_BEARER_TOKEN` environment pairs with mutually exclusive `_FILE` variants;
+nonblank environment sources override YAML file references.
+HTTP handlers call transport-independent settlement operations backed by the
+sqlc journal interface. Runtime construction owns reverse-order cleanup and
+idempotent shutdown; `--check-config` validates local inputs without external calls.
 
 ### Top-up progress
 

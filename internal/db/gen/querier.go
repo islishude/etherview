@@ -389,6 +389,7 @@ type Querier interface {
 	FacilitatorGet(ctx context.Context, authorizationID string) (FacilitatorSettlement, error)
 	FacilitatorPending(ctx context.Context, network string) ([]FacilitatorSettlement, error)
 	FacilitatorPendingCount(ctx context.Context, network string) (int64, error)
+	FacilitatorRejectUnsubmitted(ctx context.Context, arg FacilitatorRejectUnsubmittedParams) (int64, error)
 	FacilitatorReserve(ctx context.Context, arg FacilitatorReserveParams) (int64, error)
 	FacilitatorSaveSigned(ctx context.Context, arg FacilitatorSaveSignedParams) (int64, error)
 	FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error)

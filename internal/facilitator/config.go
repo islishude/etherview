@@ -4,27 +4,50 @@ package facilitator
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
+	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"gopkg.in/yaml.v3"
 )
 
-// Config contains only file references for secrets, never secret values.
+// Config declares ordinary settings and explicit secret file references.
 type Config struct {
-	Listen          string                  `yaml:"listen"`
-	DatabaseURLFile string                  `yaml:"database_url_file"`
-	BearerTokenFile string                  `yaml:"bearer_token_file"`
-	TLSCertFile     string                  `yaml:"tls_cert_file"`
-	TLSKeyFile      string                  `yaml:"tls_key_file"`
-	UnsafeLocalHTTP bool                    `yaml:"unsafe_local_http"`
-	Signers         map[string]SignerConfig `yaml:"signers"`
-	Chains          []ChainConfig           `yaml:"chains"`
+	Server   ServerConfig            `yaml:"server"`
+	Database DatabaseConfig          `yaml:"database"`
+	Auth     AuthConfig              `yaml:"auth"`
+	Signers  map[string]SignerConfig `yaml:"signers"`
+	Chains   []ChainConfig           `yaml:"chains"`
 }
+type ServerConfig struct {
+	Listen            string `yaml:"listen"`
+	TLSCertFile       string `yaml:"tls_cert_file"`
+	TLSKeyFile        string `yaml:"tls_key_file"`
+	AllowInsecureHTTP bool   `yaml:"allow_insecure_http"`
+}
+type DatabaseConfig struct {
+	URLFile string `yaml:"url_file"`
+}
+type AuthConfig struct {
+	BearerTokenFile string `yaml:"bearer_token_file"`
+}
+type RPCConfig struct {
+	URL               string `yaml:"url"`
+	URLFile           string `yaml:"url_file"`
+	AllowInsecureHTTP bool   `yaml:"allow_insecure_http"`
+}
+
+// ConfigError exposes only a closed error code and a schema-owned field path.
+type ConfigError struct{ Code, Field string }
+
+func (e *ConfigError) Error() string       { return e.Code + ": " + e.Field }
+func configError(code, field string) error { return &ConfigError{Code: code, Field: field} }
 
 type SignerConfig struct {
 	Type         string `yaml:"type"`
@@ -37,7 +60,7 @@ type SignerConfig struct {
 
 type ChainConfig struct {
 	Network       string        `yaml:"network"`
-	RPCURLFile    string        `yaml:"rpc_url_file"`
+	RPC           RPCConfig     `yaml:"rpc"`
 	Signer        string        `yaml:"signer"`
 	Tokens        []TokenConfig `yaml:"tokens"`
 	Recipients    []string      `yaml:"recipients"`
@@ -55,21 +78,21 @@ func LoadConfig(path string) (Config, error) {
 	var c Config
 	f, err := os.Open(path)
 	if err != nil {
-		return c, errors.New("config_unavailable")
+		return c, configError("config_unavailable", "config")
 	}
 	defer func() { _ = f.Close() }()
 	body, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(body) > 1<<20 {
-		return c, errors.New("invalid_config")
+		return c, configError("invalid_config", "config")
 	}
 	d := yaml.NewDecoder(bytes.NewReader(body))
 	d.KnownFields(true)
 	if d.Decode(&c) != nil {
-		return c, errors.New("invalid_config")
+		return c, configError("invalid_config", "config")
 	}
 	var extra any
 	if !errors.Is(d.Decode(&extra), io.EOF) {
-		return c, errors.New("invalid_config")
+		return c, configError("invalid_config", "config")
 	}
 	return c, c.Validate()
 }
@@ -88,14 +111,24 @@ func validAddress(raw string) bool {
 }
 
 func (c Config) Validate() error {
-	bad := errors.New("invalid_config")
-	if c.Listen == "" || c.DatabaseURLFile == "" || c.BearerTokenFile == "" || len(c.Chains) == 0 || len(c.Chains) > 32 || len(c.Signers) == 0 || len(c.Signers) > 32 {
+	bad := configError("invalid_config", "config")
+	if c.Server.Listen == "" || len(c.Chains) == 0 || len(c.Chains) > 32 || len(c.Signers) == 0 || len(c.Signers) > 32 {
 		return bad
 	}
-	if !c.UnsafeLocalHTTP && (c.TLSCertFile == "" || c.TLSKeyFile == "") {
-		return bad
+	if !c.Server.AllowInsecureHTTP && (c.Server.TLSCertFile == "" || c.Server.TLSKeyFile == "") {
+		return configError("invalid_config", "server")
 	}
+	_, port, err := net.SplitHostPort(c.Server.Listen)
+	number, portErr := strconv.ParseUint(port, 10, 16)
+	if err != nil || portErr != nil || number == 0 {
+		return configError("invalid_config", "server.listen")
+	}
+	if c.Server.AllowInsecureHTTP && (c.Server.TLSCertFile != "" || c.Server.TLSKeyFile != "") {
+		return configError("conflicting_config", "server")
+	}
+
 	for id, s := range c.Signers {
+		bad := configError("invalid_config", "signers")
 		if id == "" || !validAddress(s.Address) {
 			return bad
 		}
@@ -114,7 +147,11 @@ func (c Config) Validate() error {
 		}
 	}
 	seen := map[string]bool{}
-	for _, ch := range c.Chains {
+	for i, ch := range c.Chains {
+		bad := configError("invalid_config", fmt.Sprintf("chains[%d]", i))
+		if err := ch.RPC.validate(fmt.Sprintf("chains[%d].rpc", i)); err != nil {
+			return err
+		}
 		if _, ok := networkID(ch.Network); !ok || seen[ch.Network] {
 			return bad
 		}
@@ -123,7 +160,7 @@ func (c Config) Validate() error {
 			return bad
 		}
 		fee, ok := new(big.Int).SetString(ch.MaxFeePerGas, 10)
-		if !ok || fee.Sign() <= 0 || fee.BitLen() > 256 || ch.MaxGas < 21000 || ch.MaxGas > 30000000 || ch.Confirmations == 0 || ch.Confirmations > 256 || ch.RPCURLFile == "" || len(ch.Tokens) == 0 || len(ch.Tokens) > 32 || len(ch.Recipients) == 0 || len(ch.Recipients) > 32 {
+		if !ok || fee.Sign() <= 0 || fee.BitLen() > 256 || ch.MaxGas < 21000 || ch.MaxGas > 30000000 || ch.Confirmations == 0 || ch.Confirmations > 256 || len(ch.Tokens) == 0 || len(ch.Tokens) > 32 || len(ch.Recipients) == 0 || len(ch.Recipients) > 32 {
 			return bad
 		}
 		addresses := map[common.Address]bool{}
@@ -153,28 +190,19 @@ func (c Config) Validate() error {
 	return nil
 }
 
-func secretFile(path string, limit int64) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, errors.New("secret_unavailable")
+func (r RPCConfig) validate(field string) error {
+	if (r.URL == "") == (r.URLFile == "") {
+		return configError("invalid_source", field)
 	}
-	defer func() { _ = f.Close() }()
-	b, err := io.ReadAll(io.LimitReader(f, limit+1))
-	if err != nil || len(b) == 0 || int64(len(b)) > limit {
-		return nil, errors.New("invalid_secret")
+	if r.URL != "" {
+		return validateRPCURL(r.URL, r.AllowInsecureHTTP, field+".url")
 	}
-	return b, nil
+	return nil
 }
-
-func rpcURL(path string, local bool) (string, error) {
-	b, err := secretFile(path, 8192)
-	if err != nil {
-		return "", err
-	}
-	raw := strings.TrimSpace(string(b))
+func validateRPCURL(raw string, local bool, field string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || u.Fragment != "" || (u.Scheme != "https" && (!local || u.Scheme != "http")) {
-		return "", errors.New("invalid_rpc_url")
+	if len(raw) > 8192 || strings.TrimSpace(raw) != raw || err != nil || u.Hostname() == "" || u.Fragment != "" || (u.Scheme != "https" && (!local || u.Scheme != "http")) {
+		return configError("invalid_rpc_url", field)
 	}
-	return raw, nil
+	return nil
 }

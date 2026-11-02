@@ -5,6 +5,7 @@ package facilitator
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -22,6 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/islishude/etherview/internal/billing/x402wire"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	x402 "github.com/x402-foundation/x402/go/v2"
 	exactclient "github.com/x402-foundation/x402/go/v2/mechanisms/evm/exact/client"
@@ -31,15 +33,18 @@ import (
 const fixturePayerKey = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
 type journalRPC struct {
-	t         *testing.T
-	chain     int64
-	config    ChainConfig
-	queries   *dbgen.Queries
-	mu        sync.Mutex
-	tx        *types.Transaction
-	sends     atomic.Int64
-	blocked   atomic.Bool
-	broadcast chan struct{}
+	t             *testing.T
+	chain         int64
+	config        ChainConfig
+	queries       *dbgen.Queries
+	mu            sync.Mutex
+	tx            *types.Transaction
+	sends         atomic.Int64
+	blocked       atomic.Bool
+	broadcast     chan struct{}
+	pauseVerify   atomic.Bool
+	verifyEntered chan struct{}
+	verifyRelease chan struct{}
 }
 
 func (m *journalRPC) handler(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +72,14 @@ func (m *journalRPC) handler(w http.ResponseWriter, r *http.Request) {
 			result = "0x"
 		}
 	case "eth_call":
+		if m.pauseVerify.CompareAndSwap(true, false) {
+			close(m.verifyEntered)
+			select {
+			case <-m.verifyRelease:
+			case <-r.Context().Done():
+				return
+			}
+		}
 		var call map[string]string
 		_ = json.Unmarshal(in.Params[0], &call)
 		data := call["input"]
@@ -145,9 +158,26 @@ func signedTestRequest(t *testing.T, network string) paymentRequest {
 		t.Fatal(err)
 	}
 	payload.Accepted = req
-	return paymentRequest{X402Version: 2, PaymentRequirements: req, PaymentPayload: payload}
+	payload.Resource = &x402.ResourceInfo{URL: "http://localhost/pay", MimeType: "application/json"}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codec, err := x402wire.NewCodec(x402wire.DefaultMaxHeaderBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := make(http.Header)
+	header.Set(x402wire.PaymentSignatureHeader, base64.StdEncoding.EncodeToString(raw))
+	normalized, err := codec.DecodePaymentSignature(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload = normalized.Payload()
+	return paymentRequest{X402Version: 2, PaymentRequirements: payload.Accepted, PaymentPayload: payload}
 }
 func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
+	clearCredentialEnvironment(t)
 	pool, url := journalDB(t)
 	cfg := testConfig()
 	dir := t.TempDir()
@@ -158,8 +188,8 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 		}
 		return p
 	}
-	cfg.DatabaseURLFile = write("database", []byte(url))
-	cfg.BearerTokenFile = write("token", []byte(strings.Repeat("t", 32)))
+	cfg.Database.URLFile = write("database", []byte(url))
+	cfg.Auth.BearerTokenFile = write("token", []byte(strings.Repeat("t", 32)))
 	keyData, err := os.ReadFile("../../preview/facilitator/keystore.json")
 	if err != nil {
 		t.Fatal(err)
@@ -174,11 +204,79 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 	cfg.Chains = append(cfg.Chains, other)
 	mocks := []*journalRPC{}
 	for i, id := range []int64{31337, 48815} {
-		m := &journalRPC{t: t, chain: id, config: cfg.Chains[i], queries: dbgen.New(pool), broadcast: make(chan struct{})}
+		m := &journalRPC{t: t, chain: id, config: cfg.Chains[i], queries: dbgen.New(pool), broadcast: make(chan struct{}), verifyEntered: make(chan struct{}), verifyRelease: make(chan struct{})}
 		server := httptest.NewServer(http.HandlerFunc(m.handler))
 		defer server.Close()
-		cfg.Chains[i].RPCURLFile = write(fmt.Sprint("rpc", i), []byte(server.URL))
+		cfg.Chains[i].RPC.URLFile = write(fmt.Sprint("rpc", i), []byte(server.URL))
 		mocks = append(mocks, m)
+	}
+
+	for _, source := range []string{"direct", "file"} {
+		t.Run("environment_"+source, func(t *testing.T) {
+			injected := cfg
+			injected.Database.URLFile = "missing-yaml-db"
+			injected.Auth.BearerTokenFile = "missing-yaml-token"
+			if source == "direct" {
+				t.Setenv("X402_DATABASE_URL", url)
+				t.Setenv("X402_BEARER_TOKEN", strings.Repeat("e", 32))
+			} else {
+				t.Setenv("X402_DATABASE_URL_FILE", cfg.Database.URLFile)
+				t.Setenv("X402_BEARER_TOKEN_FILE", write("env-token", []byte(strings.Repeat("e", 32))))
+			}
+			service, e := New(t.Context(), injected)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer service.Close()
+			for _, token := range []string{strings.Repeat("e", 32), strings.Repeat("t", 32)} {
+				request := httptest.NewRequest(http.MethodGet, "/supported", nil)
+				request.Header.Set("Authorization", "Bearer "+token)
+				result := httptest.NewRecorder()
+				service.Handler().ServeHTTP(result, request)
+				expected := http.StatusOK
+				if token == strings.Repeat("t", 32) {
+					expected = http.StatusUnauthorized
+				}
+				if result.Code != expected {
+					t.Fatalf("authentication status %d, want %d", result.Code, expected)
+				}
+			}
+		})
+	}
+	// Every startup failure after acquiring resources must release the singleton
+	// lock so a corrected configuration can immediately start.
+	for _, stage := range []string{"signer", "chain_identity", "rpc", "cancelled"} {
+		t.Run("startup_cleanup_"+stage, func(t *testing.T) {
+			broken := cfg
+			broken.Chains = append([]ChainConfig(nil), cfg.Chains...)
+			broken.Signers = map[string]SignerConfig{"key": cfg.Signers["key"]}
+			ctx := t.Context()
+			switch stage {
+			case "signer":
+				sc := broken.Signers["key"]
+				sc.PasswordFile = write("wrong-password", []byte("wrong"))
+				broken.Signers["key"] = sc
+			case "chain_identity":
+				broken.Chains[1].Network = "eip155:999"
+			case "rpc":
+				broken.Chains[1].RPC = RPCConfig{URL: "http://127.0.0.1:1", AllowInsecureHTTP: true}
+			case "cancelled":
+				cancelled, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = cancelled
+			}
+			failed, e := New(ctx, broken)
+			if e == nil {
+				failed.Close()
+				t.Fatal("startup should fail")
+			}
+			recovered, e := New(t.Context(), cfg)
+			if e != nil {
+				t.Fatal("startup leaked resources", e)
+			}
+			recovered.Close()
+			recovered.Close()
+		})
 	}
 	s, err := New(t.Context(), cfg)
 	if err != nil {
@@ -192,6 +290,34 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, request)
 		return w
+	}
+
+	// A duplicate can refuse admission while its first copy is verifying but
+	// has not reserved yet. Both must replay the durable refusal, without signing.
+	racing := signedTestRequest(t, cfg.Chains[0].Network)
+	mocks[0].pauseVerify.Store(true)
+	releaseVerify := sync.OnceFunc(func() { close(mocks[0].verifyRelease) })
+	defer releaseVerify()
+	raceDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() { raceDone <- post(racing) }()
+	select {
+	case <-mocks[0].verifyEntered:
+	case w := <-raceDone:
+		t.Fatalf("verification did not pause: %s", w.Body)
+	case <-time.After(5 * time.Second):
+		t.Fatal("verification did not start")
+	}
+	if w := post(racing); w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"chain_busy"`)) {
+		t.Fatalf("concurrent refusal failed: %d %s", w.Code, w.Body)
+	}
+	releaseVerify()
+	select {
+	case w := <-raceDone:
+		if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"chain_busy"`)) || mocks[0].sends.Load() != 0 {
+			t.Fatalf("reservation loser signed or lost refusal: %d %s", w.Code, w.Body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("reservation loser did not finish")
 	}
 	first := signedTestRequest(t, cfg.Chains[0].Network)
 	mocks[0].blocked.Store(true)
@@ -243,9 +369,26 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 	if mocks[0].sends.Load() != 1 {
 		t.Fatal("progress broadcast another transaction")
 	}
-	busy := post(signedTestRequest(t, cfg.Chains[0].Network))
-	if busy.Code != http.StatusServiceUnavailable {
-		t.Fatalf("same-chain serialization failed: %d", busy.Code)
+
+	wireServer := httptest.NewServer(s.Handler())
+	defer wireServer.Close()
+	wireClient, e := x402wire.NewClient(x402wire.ClientOptions{BaseURL: wireServer.URL, UnsafeAllowHTTP: true, AllowedCIDRs: []string{"127.0.0.0/8"}, Timeout: 2 * time.Second, MaxResponseBytes: 1 << 20, Headers: map[string]string{"Authorization": "Bearer " + strings.Repeat("t", 32)}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	settleWire := func(in paymentRequest) (*x402.SettleResponse, error) {
+		p, _ := json.Marshal(in.PaymentPayload)
+		r, _ := json.Marshal(in.PaymentRequirements)
+		return wireClient.Settle(t.Context(), p, r)
+	}
+	refused := signedTestRequest(t, cfg.Chains[0].Network)
+	refusal, e := settleWire(refused)
+	if !x402wire.IsFailure(e, x402wire.FailureRejected) || refusal == nil || refusal.Transaction != "" {
+		t.Fatalf("busy request not definitively rejected: %+v %v", refusal, e)
+	}
+	pending, e := settleWire(first)
+	if !x402wire.IsFailure(e, x402wire.FailureSettlementPending) || pending == nil || pending.Transaction == "" {
+		t.Fatalf("in-flight duplicate was rejected: %+v %v", pending, e)
 	}
 	second := post(signedTestRequest(t, cfg.Chains[1].Network))
 	var result x402.SettleResponse
@@ -265,6 +408,10 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 	if err = json.Unmarshal(replay.Body.Bytes(), &result); err != nil || !result.Success || mocks[0].sends.Load() != 1 {
 		t.Fatal("durable replay rebroadcast", replay.Body)
 	}
+	refusal, e = settleWire(refused)
+	if !x402wire.IsFailure(e, x402wire.FailureRejected) || refusal == nil || mocks[0].sends.Load() != 1 {
+		t.Fatal("refused authorization was later submitted", e)
+	}
 	s.Close()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -281,6 +428,9 @@ func TestFacilitatorConcurrentChainsAndDurableReplay(t *testing.T) {
 	replay = post(first)
 	if err = json.Unmarshal(replay.Body.Bytes(), &result); err != nil || !result.Success || mocks[0].sends.Load() != 1 {
 		t.Fatal("restart rebroadcast a settled authorization", replay.Body)
+	}
+	if w := post(refused); w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"chain_busy"`)) || mocks[0].sends.Load() != 1 {
+		t.Fatal("restart forgot durable refusal", w.Body)
 	}
 	conflict := first
 	conflict.PaymentRequirements.Amount = "101"

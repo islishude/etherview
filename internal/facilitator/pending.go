@@ -5,13 +5,12 @@ import (
 	"errors"
 
 	"github.com/ethereum/go-ethereum/common"
-	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
 // pendingJournal adapts the SDK cache interface to the durable authorization journal.
 // SDK signature keys are deliberately not authoritative; the validated nonce identity
 // in the request context is shared by every signature encoding of that authorization.
-type pendingJournal struct{ queries *dbgen.Queries }
+type pendingJournal struct{ queries settlementJournal }
 
 func (p pendingJournal) Get(ctx context.Context, _ string) (string, bool, error) {
 	id, ok := ctx.Value(authorizationContext{}).(string)

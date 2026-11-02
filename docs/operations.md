@@ -1932,10 +1932,73 @@ lock function; do not grant user-account credit writes. It shares the migrated
 PostgreSQL database, not API credentials. Each network/account must be reserved
 exclusively for this transaction sender.
 
-Mount the database URL, bearer token (at least 32 bytes), TLS key/certificate,
-RPC URLs and optional encrypted Ethereum keystore/password as separate read-only
-files. The production config must leave `unsafe_local_http` false. Bind the
-signer to its expected address. For AWS KMS use a fixed key ARN, region,
+Use the `server`, `database`, `auth`, `signers` and `chains` sections shown in
+the example. Supply the database URL and bearer token through environment or file
+injection as described below. Mount the TLS private key and optional encrypted
+keystore/password as read-only secrets. Mount the public
+TLS certificate separately as ordinary configuration. Standalone Compose expects
+`./certs/tls.crt`; Helm requires `certificateConfigMapName` naming a ConfigMap
+with `tls.crt`. Its listener is fixed to `0.0.0.0:8081` to match the Service and probes.
+
+The facilitator supports these fixed credential environment pairs:
+
+| Direct value        | File source              | YAML fallback            |
+| ------------------- | ------------------------ | ------------------------ |
+| `X402_DATABASE_URL` | `X402_DATABASE_URL_FILE` | `database.url_file`      |
+| `X402_BEARER_TOKEN` | `X402_BEARER_TOKEN_FILE` | `auth.bearer_token_file` |
+
+Set at most one member of each pair: setting both, even to empty strings, fails.
+A nonblank environment value overrides the YAML file without reading it. Blank
+direct values or readable empty/whitespace environment files fall back to YAML; an
+unreadable environment file or oversized value fails without fallback. A valid
+source is mandatory. Limits apply before trimming: 8 KiB for the database URL,
+4 KiB for the bearer token, which must retain at least 32 bytes after trimming.
+The `database` and `auth` sections may be omitted when environment injection supplies
+them. RPC, signer and TLS configuration have no new environment overrides.
+
+Standalone Compose forwards these four variables only when present; do not export
+both forms. Preview and E2E Compose do not inherit them from the host. Helm accepts
+only Secret selectors through `secretEnv`, for example:
+
+```yaml
+secretEnv:
+  X402_DATABASE_URL:
+    name: facilitator-credentials
+    key: database-url
+  X402_BEARER_TOKEN:
+    name: facilitator-credentials
+    key: bearer-token
+```
+
+Do not put plaintext credentials in Helm values or the ConfigMap. The selectors
+attach only to the facilitator container; TLS and signer file mounts retain their
+existing scope. `--check-config` uses the same environment as startup, still without
+external calls or signing. Diagnostics never include environment values or paths.
+
+Set ordinary RPC destinations directly in `chains[].rpc.url`. Use `rpc.url_file`
+instead when the complete URL contains credentials, including API keys embedded
+in paths; automatic credential detection is not reliable. Exactly one source is
+required. Fixed Preview Geth/Anvil URLs require neither extra files nor secrets.
+Production server TLS is mandatory; `server.allow_insecure_http` is a local-only
+exception. Each `rpc.allow_insecure_http` is an independent local-only exception,
+false by default. Enabling either one never enables the other.
+
+Replace old configuration files completely: top-level `listen`, `database_url_file`,
+`bearer_token_file`, `unsafe_local_http` and chain `rpc_url_file` are rejected.
+No configuration aliases, general environment overrides or YAML interpolation are supported.
+Database schema and payment protocols do not change. Stop the old singleton,
+replace configuration and mounts together, validate, then start the new process.
+
+Run `/x402facilitator --config=/etc/etherview/facilitator.yaml --check-config`
+with the deployment mounts before startup. This checks strict YAML and bounded
+local files, including the TLS key/certificate pair, without connecting to
+PostgreSQL/RPC/KMS or decrypting a signing key. It does not establish readiness.
+Errors contain stable codes and schema field positions; signer positions are
+zero-based in sorted signer-ID order. Inspect that field and its mounted file
+locally; never paste credentials into logs. Startup still validates database
+ownership, signing identity, chain IDs and required contracts.
+
+Bind the signer to its expected address. For AWS KMS use a fixed key ARN, region,
 `ECC_SECG_P256K1` and `SIGN_VERIFY`; give the facilitator workload only
 `kms:GetPublicKey` and `kms:Sign` for that key. Use workload identity, not static
 AWS keys in configuration. Only the facilitator receives this identity.

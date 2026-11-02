@@ -21,11 +21,22 @@ func main() {
 		os.Exit(1)
 	}
 }
-func run() error {
-	path := flag.String("config", "/etc/etherview/facilitator.yaml", "configuration file")
-	health := flag.String("healthcheck", "", "local liveness URL")
-	recoverID := flag.String("rebroadcast", "", "operator-authorized exact journal transaction rebroadcast")
-	flag.Parse()
+func run() error { return runArgs(os.Args[1:]) }
+func runArgs(args []string) error {
+	flags := flag.NewFlagSet("x402facilitator", flag.ContinueOnError)
+	check := flags.Bool("check-config", false, "validate configuration and local files without external calls")
+	path := flags.String("config", "/etc/etherview/facilitator.yaml", "configuration file")
+	health := flags.String("healthcheck", "", "local liveness URL")
+	recoverID := flags.String("rebroadcast", "", "operator-authorized exact journal transaction rebroadcast")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if flags.NArg() != 0 || (*check && (*health != "" || *recoverID != "")) {
+		return errors.New("invalid_arguments")
+	}
 	if *health != "" {
 		client := &http.Client{Timeout: 2 * time.Second}
 		r, err := client.Get(*health)
@@ -42,6 +53,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if *check {
+		return facilitator.CheckConfig(config)
+	}
 	startup, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	service, err := facilitator.New(startup, config)
 	cancel()
@@ -54,15 +68,15 @@ func run() error {
 		defer stop()
 		return service.Rebroadcast(ctx, *recoverID)
 	}
-	server := &http.Server{Addr: config.Listen, Handler: service.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: config.Server.Listen, Handler: service.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	failure := make(chan error, 1)
 	go func() {
-		if config.UnsafeLocalHTTP {
+		if config.Server.AllowInsecureHTTP {
 			failure <- server.ListenAndServe()
 		} else {
-			failure <- server.ListenAndServeTLS(config.TLSCertFile, config.TLSKeyFile)
+			failure <- server.ListenAndServeTLS(config.Server.TLSCertFile, config.Server.TLSKeyFile)
 		}
 	}()
 	select {

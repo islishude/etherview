@@ -1,7 +1,10 @@
-listen: 0.0.0.0:8081
-database_url_file: /run/secrets/x402-db
-bearer_token_file: /run/secrets/x402-token
-unsafe_local_http: true
+server:
+  listen: 0.0.0.0:8081
+  allow_insecure_http: true
+database:
+  url_file: /run/secrets/x402-db
+auth:
+  bearer_token_file: /run/secrets/x402-token
 signers:
   preview:
     type: keystore
@@ -10,7 +13,9 @@ signers:
     password_file: /run/secrets/x402-password
 chains:
   - network: eip155:31337
-    rpc_url_file: /run/secrets/x402-anvil
+    rpc:
+      url: http://anvil:8545
+      allow_insecure_http: true
     signer: preview
     max_gas: 500000
     max_fee_per_gas: "100000000000"

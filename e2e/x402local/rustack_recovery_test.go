@@ -22,6 +22,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"gopkg.in/yaml.v3"
 )
 
 // Only the facilitator uses this proxy; independent chain evidence bypasses it.
@@ -80,8 +81,22 @@ func (h *rustackHarness) installProxy(t *testing.T, artifacts string) {
 	}
 	server.Start()
 	t.Cleanup(server.Close)
-	endpoint := fmt.Sprintf("http://host.docker.internal:%d\n", server.Listener.Addr().(*net.TCPAddr).Port)
-	if err = os.WriteFile(filepath.Join(artifacts, "anvil-one-rpc"), []byte(endpoint), 0644); err != nil {
+	endpoint := fmt.Sprintf("http://host.docker.internal:%d", server.Listener.Addr().(*net.TCPAddr).Port)
+	path := filepath.Join(artifacts, "facilitator.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err = yaml.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	config["chains"].([]any)[0].(map[string]any)["rpc"] = map[string]any{"url": endpoint, "allow_insecure_http": true}
+	data, err = yaml.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, data, 0644); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -532,3 +532,35 @@ func TestTopupProgressIsFencedAndDoesNotCredit(t *testing.T) {
 		t.Fatalf("terminal overwrite: %v", err)
 	}
 }
+
+func TestDefinitiveCapacityRefusalReopensTopupIntent(t *testing.T) {
+	db := newBillingPostgres(t)
+	userID := uuid.NewString()
+	var payer common.Address
+	payer[19] = 0xa1
+	insertBillingUser(t, db, userID, payer)
+	prepaid := newTestPrepaidLedger(t, db)
+	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := testReserveInput().ObservedAt
+	intent, reservation := createReservedTopup(t, prepaid, payments, userID, payer, "50", base, 1)
+	if _, err = payments.MarkVerified(t.Context(), VerifiedInput{PaymentID: reservation.Payment.ID, Owner: reservation.Owner, Payer: payer, UserID: &userID, ObservedAt: base.Add(time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if err = prepaid.BeginTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, base.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err = prepaid.FailTopupSettlement(t.Context(), reservation.Payment.ID, reservation.Owner, intent.ID, x402wire.CodeFacilitatorRejected, base.Add(3*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := prepaid.TopupIntent(t.Context(), userID, intent.ID)
+	if err != nil || reopened.State != TopupIntentOpen {
+		t.Fatalf("refusal left intent stuck: %+v %v", reopened, err)
+	}
+	payment, err := payments.Get(t.Context(), reservation.Payment.ID)
+	if err != nil || payment.State != StateFailed || payment.TransactionHash != nil {
+		t.Fatalf("refusal left payment uncertain: %+v %v", payment, err)
+	}
+}

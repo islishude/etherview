@@ -107,7 +107,7 @@ services:
     command: [--config=/etc/etherview/facilitator.yaml]
     volumes:
       - ./facilitator.yaml:/etc/etherview/facilitator.yaml:ro
-    secrets: [x402-db, x402-token, x402-key, x402-password, x402-anvil]
+    secrets: [x402-db, x402-token, x402-key, x402-password]
     healthcheck:
       test: [CMD, /x402facilitator, --healthcheck=http://127.0.0.1:8081/healthz]
       interval: 2s
@@ -221,7 +221,3 @@ secrets:
     file: ../../preview/facilitator/password
   x402-key:
     file: ../../preview/facilitator/keystore.json
-  x402-geth:
-    file: ../../preview/facilitator/geth-rpc
-  x402-anvil:
-    file: ../../preview/facilitator/anvil-rpc

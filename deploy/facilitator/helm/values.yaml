@@ -1,8 +1,12 @@
 image: etherview:local
 secretName: ""
+# ConfigMap containing the public TLS certificate under tls.crt.
+certificateConfigMapName: ""
 serviceAccountAnnotations: {}
-# Non-secret configuration; all credentials must reference /run/secrets files.
+# Non-secret configuration; credentials use file references or secretEnv selectors.
 config: {}
+# Only X402_DATABASE_URL / X402_BEARER_TOKEN, each with {name, key} of a Secret.
+secretEnv: {}
 # Explicit RPC, KMS and PostgreSQL destination CIDRs.
 egressCIDRs: []
 resources:

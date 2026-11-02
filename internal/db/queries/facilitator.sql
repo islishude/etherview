@@ -25,3 +25,10 @@ SELECT * FROM facilitator_settlements WHERE network=$1 AND state IN ('reserved',
 -- name: FacilitatorConfirmBroadcast :execrows
 UPDATE facilitator_settlements SET broadcast_status='confirmed',updated_at=now()
 WHERE authorization_id=$1 AND transaction_hash=$2 AND broadcast_status <> 'confirmed';
+
+-- name: FacilitatorRejectUnsubmitted :execrows
+INSERT INTO facilitator_settlements
+    (authorization_id, request_digest, request_body, network, signer_address, state, response)
+VALUES (sqlc.arg(authorization_id), sqlc.arg(request_digest), sqlc.arg(request_body),
+        sqlc.arg(network), sqlc.arg(signer_address), 'failed', sqlc.arg(response))
+ON CONFLICT DO NOTHING;

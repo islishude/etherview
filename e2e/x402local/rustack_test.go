@@ -224,12 +224,9 @@ func writeRustackConfig(t *testing.T, root, directory, arn string, address commo
 	facilitator["signers"] = map[string]any{"preview": map[string]any{"type": "aws_kms", "address": address.Hex(), "key_arn": arn, "region": "us-east-1"}}
 	second = read("facilitator.yaml")["chains"].([]any)[0].(map[string]any)
 	second["network"] = "eip155:31338"
-	second["rpc_url_file"] = "/run/secrets/x402-anvil-two"
+	second["rpc"] = map[string]any{"url": "http://anvil-two:8545", "allow_insecure_http": true}
 	facilitator["chains"] = append(facilitator["chains"].([]any), second)
 	write("facilitator.yaml", facilitator)
-	if err := os.WriteFile(filepath.Join(directory, "anvil-two-rpc"), []byte("http://anvil-two:8545\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func runRustackMode(t *testing.T, mode string) {

@@ -57,6 +57,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T25 | done   | P60-T24                             | Multi-chain, multi-token x402 funding with token-specific precision and fixed conversion into unified credit; persistent Preview Anvil payment chain behind the gateway | Four chain/token combinations, atomic credit and replay, browser selection, gateway, restart/outage and all/split acceptance; local acceptance only              |
 | P60-T26 | done   | P60-T25                             | Production standalone multi-chain facilitator, keystore/KMS, durable settlement/progress, recoverable top-up steps and shared Preview                                   | Unit/race, durable journal and concurrent-chain recovery, standard-contract dual-chain, schema/runtime and deployment gates passed; local-only acceptance        |
 | P60-T27 | done   | P60-T26                             | Rustack KMS and two independent Anvil networks for local facilitator acceptance                                                                                         | AWS SDK HTTP signing compatibility, both payment methods on both networks, all/split recovery and independent chain/writer reconciliation                        |
+| P60-T30 | done   | P60-T26, P60-T27                    | Facilitator configuration, lifecycle and deployment refactor under ADR-0059                                                                                             | Strict config/offline CLI, secret isolation, lifecycle and PostgreSQL race, aggregate/deployment, runtime/Preview/Rustack acceptance passed                      |
 
 ## Acceptance
 
@@ -336,3 +337,15 @@ key isolation or public-network production readiness. KMS outage uses pause/resu
 and makes no emulator key-persistence claim. P70 release gates and historical
 P60-T17/T24/T26 evidence retain their original scope. Public APIs, database schema
 and production runtime code are unchanged.
+
+### Facilitator configuration and lifecycle (P60-T30)
+
+Ordinary RPC URLs and public certificates are configuration; credentials remain
+explicit process-scoped files. Independent server/RPC transport policies, offline
+configuration checks, HTTP/settlement/journal boundaries and reverse-order startup
+cleanup are implemented across Compose, Helm, Preview and local acceptance facilities.
+Configuration/CLI race and PostgreSQL race regressions passed, including redacted
+logs and immediate lock reacquisition after failed startup. `make check`, runtime
+all/split, Preview split/all and Rustack KMS dual-Anvil acceptance passed. Existing
+protocol, journal and exactly-once credit semantics remain unchanged; this is local
+acceptance, not new AWS IAM or public-network evidence.

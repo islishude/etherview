@@ -63,3 +63,44 @@ authorization bodies, credentials or raw transactions.
 Progress uses the existing authenticated service transport and is observational;
 failures do not cancel settlement or authorize another attempt. Operator exact-byte
 rebroadcast also records confirmed broadcast evidence on success.
+
+## Configuration and lifecycle boundaries
+
+P60-T30 separates `server`, `database`, `auth`, `signers` and `chains`.
+Ordinary RPC destinations use `chains[].rpc.url`; credential-bearing destinations
+use the mutually exclusive `url_file`. Local plaintext RPC permission belongs
+to each RPC configuration, independently of the server's local plaintext exception.
+There are no legacy aliases, general environment overrides or YAML interpolation.
+Only `X402_DATABASE_URL` / `X402_DATABASE_URL_FILE` and `X402_BEARER_TOKEN` /
+`X402_BEARER_TOKEN_FILE` can override their YAML file sources. Presence of both
+members of a pair is an error, even when empty. A nonblank environment value wins;
+a blank direct value or readable blank environment file falls back to YAML. An unreadable
+or oversized selected source fails without fallback. Both startup and offline
+checks apply the same bounded, redacted resolution rules.
+AWS SDK workload identity remains the KMS credential source.
+
+Database URLs and bearer credentials are process-scoped environment or file inputs;
+encrypted keystores/passwords and TLS private keys remain file inputs. Public TLS certificates and ordinary
+addresses are configuration, not secrets. URL path credentials cannot be inferred
+reliably: operators must select file injection for sensitive URLs.
+
+Strict decoding and bounded local-file resolution precede external initialization.
+`--check-config` performs those offline checks without decrypting signing keys or
+contacting dependencies; it is not readiness evidence. Errors identify only a
+stable code and schema-owned field path. HTTP transport calls a separate settlement
+operation, which uses a narrow journal interface implemented by generated sqlc
+queries. Startup owns resource acquisition; failure and idempotent shutdown release
+resources in reverse order after stopping monitors. Existing singleton, nonce,
+journal, protocol and API-side credit semantics remain unchanged.
+
+## Capacity refusals
+
+A new authorization refused because its chain is busy or has unresolved work is
+atomically inserted as a failed journal entry with an empty transaction and a
+standard settlement rejection. This fences later submission of the refused
+authorization and lets the API finish its one-shot attempt as failed rather than
+unknown. Insert conflicts never overwrite an existing owner: digest conflicts
+fail, recorded outcomes replay, signed transactions return their original pending
+hash, and unsigned in-flight reservations remain uncertain. Database failures
+still preserve uncertainty. A submission that loses its reservation to a concurrent
+refusal replays that refusal and never signs. No automatic settlement retry is added.

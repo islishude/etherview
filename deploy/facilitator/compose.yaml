@@ -6,8 +6,14 @@ services:
       context: ../..
       target: production
     command: [--config=/etc/etherview/facilitator.yaml]
+    environment:
+      - X402_DATABASE_URL
+      - X402_DATABASE_URL_FILE
+      - X402_BEARER_TOKEN
+      - X402_BEARER_TOKEN_FILE
     volumes:
       - ./config.yaml:/etc/etherview/facilitator.yaml:ro
+      - ./certs:/etc/etherview/certs:ro
       - ./secrets:/run/secrets:ro
     expose: [8081]
     read_only: true

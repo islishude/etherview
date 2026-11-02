@@ -1398,6 +1398,24 @@ production-contract compatibility claim.
 
 ## Standalone facilitator acceptance
 
+Capacity-refusal regressions cover simultaneous same-chain top-ups, strict client
+classification, API failed-payment publication and intent reopening, refusal replay across restart,
+pending-chain admission, existing unsigned/signed owners, digest conflicts and
+PostgreSQL reservation/refusal races. A refused authorization must never obtain
+signed bytes; an existing transaction must retain its original hash.
+
+P60-T30 additionally covers mutually exclusive RPC sources, independent listener
+and RPC plaintext permissions, strict legacy/unknown/duplicate YAML rejection,
+bounded files, redacted field errors and offline `--check-config`. Credential
+environment regressions cover direct/file precedence, blank fallback, present-but-empty
+pair conflicts, source failures, size limits, CLI log redaction and real PostgreSQL
+startup/authentication. Compose checks keep host credentials out of Preview/E2E;
+Helm checks render only explicit Secret selectors into the facilitator container. Lifecycle
+regressions exercise failed startup followed by immediate lock reacquisition,
+reverse cleanup and repeated close. `deploy/facilitator/helm/test.sh` validates
+the rendered ConfigMap through the real Go configuration loader and rejects
+conflicting sources and listener settings incompatible with probes.
+
 Run `go test -race ./internal/facilitator ./cmd/x402facilitator` for configuration,
 protocol routing, authentication and keystore/KMS signature regressions. Run
 `go run ./e2e/cmd/testintegration -packages ./internal/facilitator -race` for durable

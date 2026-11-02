@@ -51,8 +51,6 @@ services:
       AWS_MAX_ATTEMPTS: "1"
     volumes:
       - ${T27_ARTIFACTS}/facilitator.yaml:/etc/etherview/facilitator.yaml:ro
-      - ${T27_ARTIFACTS}/anvil-one-rpc:/run/secrets/x402-anvil:ro
-      - ${T27_ARTIFACTS}/anvil-two-rpc:/run/secrets/x402-anvil-two:ro
     secrets: !override [x402-db, x402-token]
     depends_on:
       rustack:

@@ -131,7 +131,7 @@ func TestKeystoreSigner(t *testing.T) {
 	if err = os.WriteFile(cfg.PasswordFile, []byte("test-password\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	signer, err := loadSigner(t.Context(), cfg)
+	signer, err := loadSigner(t.Context(), cfg, signerFiles{key: data, password: []byte("test-password\n")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestKeystoreSigner(t *testing.T) {
 	if err = os.WriteFile(cfg.PasswordFile, []byte("wrong"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = loadSigner(t.Context(), cfg); err == nil {
+	if _, err = loadSigner(t.Context(), cfg, signerFiles{key: data, password: []byte("wrong")}); err == nil {
 		t.Fatal("accepted wrong password")
 	}
 }

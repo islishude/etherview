@@ -1,6 +1,6 @@
 {{- if not .Values.secretName }}{{ fail "secretName is required" }}{{ end }}
 {{- if not .Values.egressCIDRs }}{{ fail "egressCIDRs is required" }}{{ end }}
-{{- if .Values.config.unsafe_local_http }}{{ fail "production TLS is required" }}{{ end }}
+{{- if .Values.config.server.allow_insecure_http }}{{ fail "production TLS is required" }}{{ end }}
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -38,6 +38,16 @@ spec:
           image: {{ .Values.image | quote }}
           command: ["/x402facilitator"]
           args: [--config=/etc/etherview/facilitator.yaml]
+          {{- with .Values.secretEnv }}
+          env:
+            {{- range $name, $secret := . }}
+            - name: {{ $name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret.name | quote }}
+                  key: {{ $secret.key | quote }}
+            {{- end }}
+          {{- end }}
           ports: [{name: https, containerPort: 8081}]
           securityContext:
             readOnlyRootFilesystem: true
@@ -54,10 +64,13 @@ spec:
             httpGet: {path: /readyz, port: https, scheme: HTTPS}
           volumeMounts:
             - {name: config, mountPath: /etc/etherview, readOnly: true}
+            - {name: certificate, mountPath: /etc/etherview/certs, readOnly: true}
             - {name: secrets, mountPath: /run/secrets, readOnly: true}
       volumes:
         - name: config
           configMap: {name: {{ .Release.Name }}}
+        - name: certificate
+          configMap: {name: {{ .Values.certificateConfigMapName }}}
         - name: secrets
           secret: {secretName: {{ .Values.secretName }}, defaultMode: 0440}
 ---

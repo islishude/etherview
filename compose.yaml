@@ -207,7 +207,3 @@ secrets:
     file: ./preview/facilitator/password
   x402-key:
     file: ./preview/facilitator/keystore.json
-  x402-geth:
-    file: ./preview/facilitator/geth-rpc
-  x402-anvil:
-    file: ./preview/facilitator/anvil-rpc

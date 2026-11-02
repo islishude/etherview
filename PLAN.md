@@ -109,5 +109,7 @@ P40-T31 completed latest-processed holder, NFT owner and statistics reads, inclu
 P60-T26 completed the standalone multi-chain facilitator, durable broadcast progress
 and recoverable top-up steps with local acceptance. P60-T27 completed Rustack KMS
 and dual-Anvil end-to-end acceptance in both all/split layouts, including fault
-recovery and independent receipt/journal/credit/debit reconciliation. P60 is done
-within its accepted scope; P70 release gates remain separate.
+recovery and independent receipt/journal/credit/debit reconciliation. P60-T30
+owns the subsequent configuration/lifecycle refactor; P70 release gates remain separate.
+
+P60-T30 completed facilitator configuration, lifecycle and deployment simplification with aggregate, PostgreSQL race and runtime/Preview/Rustack acceptance; existing payment and journal contracts remain unchanged.

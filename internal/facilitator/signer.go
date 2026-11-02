@@ -100,7 +100,7 @@ func newKMSSigner(ctx context.Context, c SignerConfig, client kmsAPI) (digestSig
 	return s, nil
 }
 
-func loadSigner(ctx context.Context, c SignerConfig) (digestSigner, error) {
+func loadSigner(ctx context.Context, c SignerConfig, files signerFiles) (digestSigner, error) {
 	if c.Type == "aws_kms" {
 		cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(c.Region))
 		if err != nil {
@@ -108,16 +108,7 @@ func loadSigner(ctx context.Context, c SignerConfig) (digestSigner, error) {
 		}
 		return newKMSSigner(ctx, c, kms.NewFromConfig(cfg))
 	}
-	data, err := secretFile(c.KeystoreFile, 1<<20)
-	if err != nil {
-		return nil, err
-	}
-	password, err := secretFile(c.PasswordFile, 4096)
-	if err != nil {
-		return nil, err
-	}
-	defer clear(password)
-	key, err := keystore.DecryptKey(data, strings.TrimRight(string(password), "\r\n"))
+	key, err := keystore.DecryptKey(files.key, strings.TrimRight(string(files.password), "\r\n"))
 	if err != nil {
 		return nil, errors.New("keystore_unlock_failed")
 	}
