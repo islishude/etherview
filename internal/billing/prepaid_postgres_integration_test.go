@@ -22,8 +22,8 @@ import (
 func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
 	db := newBillingPostgres(t)
 	userID := uuid.NewString()
-	var payer, asset, recipient common.Address
-	payer[19], asset[19], recipient[19] = 0xa1, 0xb1, 0xc1
+	var payer common.Address
+	payer[19] = 0xa1
 	insertBillingUser(t, db, userID, payer)
 	prepaid := newTestPrepaidLedger(t, db)
 	payments, err := NewPostgresLedger(db, 11155111, 2*time.Minute)
@@ -176,8 +176,8 @@ func TestPrepaidTopupCreditsOnceAndPendingReusesKnownHash(t *testing.T) {
 func TestPrepaidUsageSharesBalanceAndExpiresReservations(t *testing.T) {
 	db := newBillingPostgres(t)
 	userID := uuid.NewString()
-	var payer, asset, recipient common.Address
-	payer[19], asset[19], recipient[19] = 0xa2, 0xb2, 0xc2
+	var payer common.Address
+	payer[19] = 0xa2
 	insertBillingUser(t, db, userID, payer)
 	prepaid := newTestPrepaidLedger(t, db)
 	base := testReserveInput().ObservedAt
