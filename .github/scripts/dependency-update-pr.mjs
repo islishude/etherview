@@ -16,7 +16,7 @@ import {
 export function branchName(dependency, version) {
   if (!/^[a-z][a-z0-9-]*$/.test(dependency) || !versionParts(version))
     throw new Error("invalid update identity");
-  return `codex/dependency-update-${dependency}-${version}`;
+  return `deps/${dependency}-${version}`;
 }
 export function disposition(prs) {
   return prs.length ? "retain" : "create";

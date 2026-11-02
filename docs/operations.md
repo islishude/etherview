@@ -1816,7 +1816,7 @@ existing CI results before manually merging. Its preparation evidence is limited
 to the listed candidate checks. Review-only entries report their candidate and
 reason in the discovery summary; they do not silently install new runtime bytes.
 
-A PR uses `codex/dependency-update-<dependency>-<version>`. Repeat runs retain open,
+A PR uses `deps/<dependency>-<version>`. Repeat runs retain open,
 closed and merged PRs; closing a PR suppresses that exact candidate. For a new
 attempt at a rejected version, a maintainer can reopen the existing PR after
 review. If the branch was pushed but PR creation failed, retrying from the same

@@ -494,6 +494,8 @@ test("publication evidence binds base, paths, content hash and file modes", () =
     validateChanges(":100755 100755 a b M\0Makefile\0", report);
     assert.throws(() => validateChanges(":100644 100755 a b M\0Makefile\0", report), /mode/);
     assert.throws(() => validateChanges(":100644 100644 a b M\0other\0", report), /inventory/);
+    assert.equal(branchName("pnpm", "12.17.0"), "deps/pnpm-12.17.0");
+    assert.equal(branchName("go-licenses", "2.0.0"), "deps/go-licenses-2.0.0");
     assert.throws(() => branchName("../bad", "1.0.0"));
     for (const state of ["OPEN", "CLOSED", "MERGED"])
       assert.equal(disposition([{ state }]), "retain");
@@ -560,8 +562,10 @@ test("publication recovers failed PR creation without rewriting a branch, then r
       opened = false,
       creates = 0;
     const api = (args) => {
-      if (args[0] === "pr" && args[1] === "list")
+      if (args[0] === "pr" && args[1] === "list") {
+        assert.equal(args[args.indexOf("--head") + 1], "deps/example-1.2.4");
         return JSON.stringify(opened ? [{ state: "OPEN", isCrossRepository: false }] : []);
+      }
       if (args[0] === "api")
         return JSON.stringify({
           commits: [
@@ -572,6 +576,7 @@ test("publication recovers failed PR creation without rewriting a branch, then r
           ],
         });
       if (args[1] === "create") {
+        assert.equal(args[args.indexOf("--head") + 1], "deps/example-1.2.4");
         creates++;
         if (fail) throw new Error("permission failure");
         opened = true;
@@ -581,8 +586,9 @@ test("publication recovers failed PR creation without rewriting a branch, then r
     };
     const args = { root: checkout, dependency: dep.id, version: "1.2.4", artifact };
     await assert.rejects(publish(args, api), /permission/);
-    const branch = branchName(dep.id, "1.2.4"),
+    const branch = "deps/example-1.2.4",
       pushed = git(["rev-parse", branch], checkout);
+    assert.equal(git(["rev-parse", `refs/heads/${branch}`], remote), pushed);
     git(["checkout", "--detach", base], checkout);
     fail = false;
     await publish(args, api);
