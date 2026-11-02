@@ -13,7 +13,7 @@ COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter ./e2e/hardhat3 install --frozen-lockfile --store-dir=/pnpm/store
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm-cache pnpm --filter ./e2e/hardhat3 install --frozen-lockfile --store-dir=/pnpm-cache
 
 WORKDIR /repo/e2e/hardhat3
 COPY e2e/hardhat3/hardhat.config.ts e2e/hardhat3/cache-inspect.mjs e2e/hardhat3/compile-yul.mjs e2e/hardhat3/constructor-args.mjs e2e/hardhat3/deploy.mjs e2e/hardhat3/tamper-slots.mjs e2e/hardhat3/transaction-sender.mjs e2e/hardhat3/upgrade.mjs ./

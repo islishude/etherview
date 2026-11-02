@@ -17,7 +17,7 @@ COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store pnpm --filter . --filter ./web install --frozen-lockfile --store-dir=/pnpm/store
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm-cache pnpm --filter . --filter ./web install --frozen-lockfile --store-dir=/pnpm-cache
 COPY web/index.html web/asset-budget.json web/tsconfig.json web/tsconfig.app.json web/tsconfig.node.json web/tsconfig.worker.json web/vite.config.ts ./web/
 COPY web/scripts ./web/scripts
 COPY web/src ./web/src
@@ -36,8 +36,8 @@ COPY web/package.json ./web/
 COPY api/package.json ./api/
 COPY compiler/package.json ./compiler/
 COPY e2e/hardhat3/package.json ./e2e/hardhat3/
-RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm/store \
-    pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm/store
+RUN --mount=type=cache,id=etherview-pnpm,target=/pnpm-cache \
+    pnpm --filter ./compiler install --frozen-lockfile --store-dir=/pnpm-cache
 WORKDIR /src/compiler
 COPY compiler/compile.mjs compiler/build-sea.mjs compiler/build-runtime.mjs compiler/check-licenses.mjs compiler/elf-runtime.mjs compiler/test-elf-runtime.mjs compiler/test-sea.mjs ./
 COPY compiler/vyper/wasm ./vyper/wasm/

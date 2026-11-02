@@ -85,6 +85,28 @@ test("toolchain versions accept compatible upgrades and reject invalid or unavai
     }
   }));
 
+test("Docker dependency caches do not hide the installed pnpm runtime", () => {
+  for (const path of ["Dockerfile", "e2e/hardhat3/Dockerfile"]) {
+    const source = readFileSync(join(root, path), "utf8").replace(/\\\n/g, " ");
+    const home = source.match(/^ENV PNPM_HOME=(\S+)$/m)[1];
+    const installs = source
+      .split("\n")
+      .filter((line) => line.startsWith("RUN --mount=") && line.includes("pnpm "));
+    assert.ok(installs.length > 0, path);
+    for (const line of installs) {
+      const target = line.match(/target=([^\s,]+)/)[1];
+      assert.ok(
+        target !== home && !target.startsWith(`${home}/`),
+        `${path}: cache hides pnpm runtime`,
+      );
+      assert.ok(
+        line.includes(`--store-dir=${target}`),
+        `${path}: store must use the mounted cache`,
+      );
+    }
+  }
+});
+
 function sandbox(fn) {
   const dir = mkdtempSync(join(tmpdir(), "workflow scripts "));
   const bin = join(dir, "bin"),

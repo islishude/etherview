@@ -255,7 +255,9 @@ dependencies, including the frontend test DOM library. API generation uses
 TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:26.13.0` image's curl to download the
 [official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
 with `PNPM_VERSION=12`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
-uses the same workspace policy with frozen, filtered installs. CI pins
+uses the same workspace policy with frozen, filtered installs. Dependency caches
+mount at `/pnpm-cache`, outside `PNPM_HOME`, so they cannot hide the installed
+pnpm runtime and its store links. CI pins
 `pnpm/action-setup@v6.1.0`. Dedicated compiler
 CI jobs use `pnpm --filter ./compiler install --frozen-lockfile`; a full
 `pnpm install --frozen-lockfile` installs all workspaces. Resolve package files
