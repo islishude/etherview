@@ -9,20 +9,20 @@ has a persistence foundation in P20-T27. Its `TestENSSync` PostgreSQL regression
 cover source identity, coverage gaps, immutable facts and publications,
 idempotency, retry exhaustion, lease/generation/dependency fencing, local
 canonical detach/reattach, and read-only unknown-name lookups. Run them through
-`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENSSync'`;
+`go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run '^TestENSSync'`;
 they also run in the maintained full integration/race suites. Schema changes
 continue to require the production-image `make test-schema-e2e` gate.
 
 P20-T28 adds `TestENSCollector` PostgreSQL race regressions for autonomous
 discovery, ordered versions/deletions/renewal, restart and concurrent cursors,
 history/deployment gaps, core attachment changes and reorg/reattachment. Run the combined suite with
-`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS(Sync|Collector)'`.
+`go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run '^TestENS(Sync|Collector)'`.
 The RPC fixture is local evidence, not live Mainnet acceptance.
 
 P20-T28/P20-T29 and P40-T27 add real pinned v2 lifecycle/projection fixtures,
 background worker/publication and database-only reader tests. Run the combined
 PostgreSQL race suite with
-`go run ./cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
+`go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run '^TestENS'`.
 The v2 regressions cover unknown subregistry links without source-wide shutdown,
 untrusted-emitter isolation, link repair, and bounded graph cursor progress across
 restarts. Search regressions exercise invalid ENS names through the query reader
@@ -251,8 +251,10 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   versions are supported by this minimum-version check; older, malformed, and
   prerelease versions fail. Full pnpm installation and compiler builds additionally
   enforce the compiler workspace's exact Node 26.13.0 engine.
-- `make plan-check`: validate plan links, IDs, statuses, dependencies, evidence,
-  and parent/child state.
+- `make plan-check`: run `TestRepositoryPlans` in `internal/plancheck` with
+  caching disabled to validate current repository plan links, IDs, statuses,
+  dependencies, evidence, and parent/child state. The same test also runs in
+  the ordinary Go test suite; fixture tests cover invalid planning documents.
 - `make docs-check`: compare maintained high-risk documentation with current
   Makefile/Compose profiles, Preview Genesis lifecycle, compiler runtime
   identity, enrichment stages, and the Etherscan action allowlist.
@@ -721,7 +723,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   separately approved compiler or external-service boundaries.
   See [Metadata gate](../preview/docs/testing.md#metadata-gate).
 
-- `go test -race ./cmd/ipfs`: streaming upload/download regressions for binary
+- `go test -race ./preview/cmd/ipfs`: streaming upload/download regressions for binary
   and empty files, Kubo multipart filename encoding, literal and URI-encoded
   paths, encoded traversal rejection, input type, RPC and stream errors,
   cancellation/timeouts, non-overwriting publication and temporary cleanup.
@@ -822,7 +824,7 @@ correctness checks:
 | `panic: test timed out after 10m0s` after migrations succeeded                               | The managed integration runner did not apply its explicit package timeout. Confirm the emitted command contains `-timeout=15m0s`; do not drop packages, tests, tags, or concurrency to make CI green.                                        |
 | `compiler_unavailable` after the bounded external download deadline                          | This is an external compiler-artifact boundary, not proof of a Compose feature regression. Retain diagnostics and rerun the unchanged exact target once; repeated failure requires source/network diagnosis rather than weaker verification. |
 
-`cmd/testintegration` owns the PostgreSQL integration invocation. Its
+`e2e/cmd/testintegration` owns the PostgreSQL integration invocation. Its
 15-minute timeout applies independently to each Go package and remains below
 the CI job's 20-minute outer bound, leaving time for dependency setup,
 migrations, and teardown. If the explicit 15-minute limit is reached, inspect
@@ -939,7 +941,7 @@ boolean overrides and independent client policies. TLS and redirect rejection,
 request bounds, hostile responses and explicit source-publication consent remain
 covered by the Sourcify regressions. Credential changes also run
 `go test ./internal/httpapi -run TestVerifierV2SourcifyEtherscanCredentials`
-and `go run ./cmd/testintegration -packages ./internal/verify -race -run
+and `go run ./e2e/cmd/testintegration -packages ./internal/verify -race -run
 TestSourcifyCredentialsPostgresWorkerRestart`. These cover separate Etherview
 and Etherscan credentials, response/log redaction, authenticated encryption,
 active-job deduplication, durable restart, and forwarding to a local HTTPS
@@ -948,7 +950,7 @@ consent reset and clearing completed mutation/form state; bilingual browser
 coverage lives in `web/e2e/sourcify.spec.ts`. Source import additionally runs
 `go test ./internal/verify ./internal/httpapi -run
 'TestSourcifyImportV2|TestVerifierV2SourcifyImport'` and
-`go run ./cmd/testintegration -packages ./internal/verify -race -run
+`go run ./e2e/cmd/testintegration -packages ./internal/verify -race -run
 TestSourcifyImportPostgresLocalPublication`. Local HTTPS fixtures verify GET-only
 retrieval, exact large source-chain IDs, independent local target identity,
 supported compiler preparation and hostile-source
@@ -1398,7 +1400,7 @@ production-contract compatibility claim.
 
 Run `go test -race ./internal/facilitator ./cmd/x402facilitator` for configuration,
 protocol routing, authentication and keystore/KMS signature regressions. Run
-`go run ./cmd/testintegration -packages ./internal/facilitator -race` for durable
+`go run ./e2e/cmd/testintegration -packages ./internal/facilitator -race` for durable
 reservation, nonce uniqueness, immutable transaction bytes and singleton-lock
 recovery. The existing `make test-runtime-e2e` and `make test-preview-x402` exercise
 the production facilitator and standard EIP-3009/Permit2 contract paths in
@@ -1442,7 +1444,7 @@ focused billing/topup and PersonalBilling tests followed by `make web-test`,
 `make web-lint`, and `make test-e2e`; account billing browser tests hold signing
 and settlement responses to inspect every main step in both languages.
 
-Run `go run ./cmd/testintegration -packages "./internal/billing ./internal/facilitator"`
+Run `go run ./e2e/cmd/testintegration -packages "./internal/billing ./internal/facilitator"`
 for journal authentication/digest checks, concurrent read-only progress and
 writer ownership/hash/terminal fences. The x402 package in
 `make test-runtime-e2e` disables Anvil automining until broadcast progress is

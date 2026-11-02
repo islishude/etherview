@@ -28,7 +28,7 @@ func (h *harness) assertLocalGateway(ctx context.Context) {
 	}
 	h.ipfsAPI = "http://" + api
 	h.ipfsBinary = filepath.Join(h.t.TempDir(), "ipfs")
-	build := exec.CommandContext(ctx, valueOrDefault("GO", "go"), "build", "-o", h.ipfsBinary, "./cmd/ipfs")
+	build := exec.CommandContext(ctx, valueOrDefault("GO", "go"), "build", "-o", h.ipfsBinary, "./preview/cmd/ipfs")
 	build.Dir = h.root
 	if output, err := build.CombinedOutput(); err != nil {
 		h.t.Fatalf("build IPFS tool: %v\n%s", err, output)

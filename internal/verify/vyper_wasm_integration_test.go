@@ -24,7 +24,7 @@ func newVyperWASMDatabase(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	url := os.Getenv("ETHERVIEW_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("run through cmd/testintegration")
+		t.Skip("run through e2e/cmd/testintegration")
 	}
 	admin := openCompilerCacheLockTestDatabase(t, url, "vyper-wasm-admin", 2)
 	var suffix [8]byte

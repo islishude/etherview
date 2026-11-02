@@ -109,7 +109,7 @@ checks are preserved. The separate API-only compiler-download exception remains
 available for Docker Desktop fake-IP routing. Neither exception is a production
 SSRF policy or permission to contact unrelated private services.
 
-`cmd/ipfs` uploads and pins one file, or downloads a CID/path atomically without
+`preview/cmd/ipfs` uploads and pins one file, or downloads a CID/path atomically without
 overwriting an existing file, through the loopback Kubo RPC API. See
 [IPFS file tool](../../docs/operations.md#ipfs-file-tool) for commands and defaults.
 The gateway proxy never exposes that management API.

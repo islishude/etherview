@@ -214,14 +214,14 @@ See [IPFS gateway](../preview/docs/operations.md#ipfs-gateway).
 
 ### IPFS file tool
 
-The independent `cmd/ipfs` command uses the local Kubo management API. This
+The independent `preview/cmd/ipfs` command uses the local Kubo management API. This
 API is published only on `127.0.0.1:5001`; the HTTPS proxy serves `/ipfs/` reads
 and does not expose management operations. No host IPFS CLI is needed.
 
 ```sh
-go run ./cmd/ipfs upload --api http://127.0.0.1:5001 ./file.json
-go run ./cmd/ipfs upload --wrap --api http://127.0.0.1:5001 ./metadata.json
-go run ./cmd/ipfs download --api http://127.0.0.1:5001 --output ./download.json CID/metadata.json
+go run ./preview/cmd/ipfs upload --api http://127.0.0.1:5001 ./file.json
+go run ./preview/cmd/ipfs upload --wrap --api http://127.0.0.1:5001 ./metadata.json
+go run ./preview/cmd/ipfs download --api http://127.0.0.1:5001 --output ./download.json CID/metadata.json
 ```
 
 Upload accepts one regular file and pins its CIDv1 SHA-256/raw-leaf content.
@@ -241,7 +241,7 @@ Both commands default to `--api http://127.0.0.1:5001` and `--timeout 5m`.
 HTTPS endpoints use system certificate trust. RPC redirects and environment
 proxies are disabled. Diagnostics go to stderr; exit codes are 0 for success,
 2 for argument errors, and 1 for operation failures. Build an independent
-binary with `go build -o /tmp/etherview-ipfs ./cmd/ipfs`.
+binary with `go build -o /tmp/etherview-ipfs ./preview/cmd/ipfs`.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the

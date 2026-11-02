@@ -152,7 +152,7 @@ toolchain-check:
 	@.github/scripts/toolchain-check.sh
 
 plan-check:
-	$(GO) run ./cmd/plancheck -root .
+	$(GO) test -count=1 -v -run '^TestRepositoryPlans$$' ./internal/plancheck
 
 docs-check:
 	$(NODE) .github/scripts/docs-check.mjs
@@ -282,13 +282,13 @@ test-workflow-scripts: test-dependency-updates
 test-integration: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
+		$(GO) run ./e2e/cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" \
 			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
 
 test-integration-race: web-build compiler-install
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
+		$(GO) run ./e2e/cmd/testintegration -root . -packages "$(INTEGRATION_GO_PACKAGES)" -race \
 			-shard "$(INTEGRATION_SHARD)" -shards "$(INTEGRATION_SHARDS)"
 
 test-rustfs:
@@ -307,7 +307,7 @@ test-schema-e2e: docker-build
 test-schema-e2e-prebuilt:
 	@$(call require-image,$(IMAGE),test-schema-e2e-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	@COMPOSE="$(COMPOSE)" DOCKER="$(DOCKER)" IMAGE="$(IMAGE)" \
-		$(GO) run ./cmd/testschemae2e -root .
+		$(GO) run ./e2e/cmd/testschemae2e -root .
 
 test-runtime-e2e: docker-build
 	@$(MAKE) --no-print-directory test-runtime-e2e-prebuilt
@@ -435,7 +435,7 @@ benchmark:
 benchmark-integration: web-build
 	@INTEGRATION_DATABASE_URL="$(INTEGRATION_DATABASE_URL)" COMPOSE="$(COMPOSE)" \
 		DOCKER="$(DOCKER)" GO="$(GO)" \
-		$(GO) run ./cmd/testintegration -root . -packages "./internal/integration" \
+		$(GO) run ./e2e/cmd/testintegration -root . -packages "./internal/integration" \
 		-benchmark '^BenchmarkCorePersistenceAndProjection$$' -benchtime "$(BENCHTIME)"
 
 benchmark-vyper-wasm: compiler-install
@@ -443,7 +443,7 @@ benchmark-vyper-wasm: compiler-install
 	$(PYTHON) compiler/vyper/wasm/benchmark.py
 
 test-load:
-	@$(GO) run ./cmd/loadtest
+	@$(GO) run ./e2e/cmd/loadtest
 
 test-soak:
 	@ETHERVIEW_LOAD_RATE=500 \
@@ -455,7 +455,7 @@ test-soak:
 		ETHERVIEW_LOAD_MIN_THROUGHPUT_RATIO=0.99 \
 		ETHERVIEW_LOAD_MAX_LAG=2 \
 		ETHERVIEW_LOAD_PROFILE=p70-reference-capacity \
-		$(GO) run ./cmd/loadtest
+		$(GO) run ./e2e/cmd/loadtest
 
 
 # Deployment checks
@@ -630,7 +630,7 @@ preview-tool:
 
 test-preview-tools: pnpm-install
 	$(NODE) --test preview/contracts/tools/*.test.mjs
-	$(GO) test ./cmd/previewblob
+	$(GO) test ./preview/cmd/previewblob
 
 test-preview-tools-e2e: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-tools-e2e-prebuilt

@@ -16,7 +16,7 @@ const inputs = [
   "preview/bundler-start.mjs",
   "preview/genesis.json",
   "preview/generate.sh",
-  "cmd/previewensmanifest/main.go",
+  "preview/cmd/previewensmanifest/main.go",
   "preview/contracts/manifest.json",
   "preview/contracts/allocation.json",
   "preview/contracts/generate.mjs",
@@ -148,7 +148,7 @@ export function prepareNetwork(directory, { checkOnly = false, env = process.env
       env.GO || "go",
       [
         "run",
-        "./cmd/previewensmanifest",
+        "./preview/cmd/previewensmanifest",
         "-genesis",
         path.join(temporary, "metadata/genesis.json"),
         "-output",

@@ -1104,7 +1104,7 @@ wildcard CORS without credentials, allowing browser-extension wallets. Beacon
 and Bundler retain the exact configurable Origin allowlist. The SPA continues
 using the generated same-origin client and injected wallet boundary.
 Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
-The independent `cmd/ipfs` operator tool uses Kubo's loopback management API,
+The independent `preview/cmd/ipfs` operator tool uses Kubo's loopback management API,
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
 
 Preview also runs the standalone x402 Facilitator and Local USD token on its

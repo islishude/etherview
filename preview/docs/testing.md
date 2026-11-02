@@ -146,7 +146,7 @@ cloud acceptance milestones.
   gateway or P2P retrieval participates. Its startup script imports the reviewed
   CIDv1 directory with `/metadata.json` and verifies the exact CID, 205 bytes and
   SHA-256 `a87d3d327d1a2c7f839000c080e07cd152b49ddf653f1a5afa5144eeec103d8d`.
-  The test builds `cmd/ipfs` and exercises wrapped/repeated uploads, empty and
+  The test builds `preview/cmd/ipfs` and exercises wrapped/repeated uploads, empty and
   binary file roundtrips, unknown-CID failure, and gateway restart persistence.
   Trusted TLS must pass, an untrusted CA must fail, and the HTTPS gateway must
   not expose the management API. The reviewed solc 0.8.30 ERC-721/ERC-4906
