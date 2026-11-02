@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { shorten } from "@/components/format";
 import { testBillingConfig, testTopupIntent } from "@/billing/testFixtures";
 import { encodeAbiParameters } from "viem";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -19,6 +21,14 @@ const state = vi.hoisted(() => ({
   crossChain: false,
   withBillingChain: vi.fn(),
   closeBillingChain: vi.fn(),
+}));
+vi.mock("@/api/publicConfig", () => ({
+  usePublicConfig: () => ({ data: { chain_id: "1" } }),
+}));
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ params, children }: { params: { hash: string }; children: ReactNode }) => (
+    <a href={`/tx/${params.hash}?tab=overview`}>{children}</a>
+  ),
 }));
 vi.mock("@/auth/AuthProvider", () => ({
   useAuth: () => ({
@@ -650,7 +660,11 @@ describe("personal billing workspace", () => {
         "Waiting for transaction confirmation",
       ),
     );
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash))).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash)).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
     vi.mocked(billing.getBillingTopupIntent).mockResolvedValue({
       ...intent,
       state: "credited",
@@ -684,8 +698,86 @@ describe("personal billing workspace", () => {
         "Waiting for transaction confirmation",
       ),
     );
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash))).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash)).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
     expect(payBillingTopup).not.toHaveBeenCalled();
+  });
+
+  it.each(["eip155:1", "eip155:2"])(
+    "keeps immediate results bound to intent network %s",
+    async (network) => {
+      vi.mocked(payBillingTopup).mockResolvedValue({
+        intent: { ...intent, state: "credited", network, transaction_hash: transactionHash },
+        account,
+      });
+      const { user, rerender } = setup();
+      await ready();
+      await user.type(screen.getByRole("textbox"), "1");
+      await user.click(screen.getByRole("button", { name: "Top up & authorize" }));
+      await screen.findByRole("heading", { name: "Top-up successful" });
+      state.chainID = "2";
+      rerender();
+      const displayed = screen.getByTitle(transactionHash);
+      expect(displayed).toHaveTextContent(shorten(transactionHash));
+      if (network === "eip155:1")
+        expect(displayed.closest("a")).toHaveAttribute(
+          "href",
+          `/tx/${transactionHash}?tab=overview`,
+        );
+      else expect(displayed.closest("a")).toBeNull();
+      await user.click(screen.getByRole("button", { name: "Continue topping up" }));
+      expect(screen.queryByTitle(transactionHash)).not.toBeInTheDocument();
+    },
+  );
+
+  it("uses the recovered transaction network instead of the selected payment option", async () => {
+    const recovered = {
+      ...intent,
+      network: "eip155:2",
+      state: "settling" as const,
+      transaction_hash: transactionHash,
+    };
+    vi.mocked(billing.listCurrentBillingTopupIntents).mockResolvedValue(list([recovered]));
+    vi.mocked(billing.getBillingTopupIntent).mockResolvedValue(recovered);
+    setup();
+    expect(await screen.findByTitle(transactionHash)).toHaveTextContent(shorten(transactionHash));
+    expect(screen.getByTitle(transactionHash).closest("a")).toBeNull();
+  });
+
+  it("keeps authorization hashes bound to the originating intent on failure", async () => {
+    const approvalHash = `0x${"a".repeat(64)}` as const;
+    vi.mocked(payBillingTopup).mockImplementation(async ({ onProgress }) => {
+      onProgress?.({ stage: "approval", approvalHash });
+      throw new Error("failed");
+    });
+    const { user, rerender } = setup();
+    await ready();
+    await user.type(screen.getByRole("textbox"), "1");
+    await user.click(screen.getByRole("button", { name: "Top up & authorize" }));
+    await screen.findByRole("alert");
+    state.chainID = "2";
+    rerender();
+    expect(screen.getByTitle(approvalHash).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${approvalHash}?tab=overview`,
+    );
+  });
+
+  it("does not link historical transactions from a different chain", async () => {
+    vi.mocked(billing.listCurrentBillingTopupIntents).mockResolvedValue(
+      list([
+        { ...intent, network: "eip155:2", state: "credited", transaction_hash: transactionHash },
+      ]),
+    );
+    const { user } = setup();
+    await ready();
+    await openHistory(user);
+    await user.click(await screen.findByText("Details", { exact: true }));
+    expect(screen.getByTitle(transactionHash)).toHaveTextContent(shorten(transactionHash));
+    expect(screen.getByTitle(transactionHash).closest("a")).toBeNull();
   });
 
   it("formats historical amounts using their immutable option snapshot", async () => {
@@ -725,7 +817,11 @@ describe("personal billing workspace", () => {
     expect(await screen.findByText("456 atomic", { exact: true })).toBeVisible();
     expect(screen.getByText("Page 1")).toBeVisible();
     await user.click(screen.getByText("Details", { exact: true }));
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash))).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash)).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
     expect(document.body).not.toHaveTextContent("hidden-user");
     expect(document.body).not.toHaveTextContent("hidden-key");
     await user.click(screen.getByRole("button", { name: "Next page" }));
@@ -800,7 +896,11 @@ describe("personal billing workspace", () => {
     });
     const pendingError = await screen.findByRole("alert");
     expect(pendingError).toHaveTextContent("Payment status is unavailable");
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash))).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash)).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
     expect(screen.queryByRole("button", { name: "Top up & authorize" })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("private status error");
     vi.mocked(billing.getBillingTopupIntent).mockResolvedValue({ ...intent, state: "failed" });
@@ -866,7 +966,7 @@ describe("personal billing workspace", () => {
     vi.mocked(billing.listCurrentBillingTopupIntents).mockResolvedValue(list([pendingIntent]));
     vi.mocked(billing.getBillingTopupIntent).mockResolvedValue(pendingIntent);
     const { user, client } = setup();
-    expect(await screen.findByText(transactionHash)).toBeVisible();
+    expect(await screen.findByText(shorten(transactionHash))).toBeVisible();
     expect(document.querySelector(".billing-topup-status.pending")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Continue topping up" })).not.toBeInTheDocument();
     await openHistory(user);
@@ -896,7 +996,11 @@ describe("personal billing workspace", () => {
     vi.mocked(billing.getBillingTopupIntent).mockRejectedValue(new Error("lookup unavailable"));
     const { client } = setup();
     expect(await screen.findByText("Payment status is unavailable")).toBeVisible();
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash))).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash)).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
     // A newer pending intent can push the currently tracked one off page one.
     vi.mocked(billing.listCurrentBillingTopupIntents).mockResolvedValue(
       list([{ ...intent, id: "topup-b", state: "settling", transaction_hash: otherHash }]),
@@ -906,7 +1010,11 @@ describe("personal billing workspace", () => {
         queryKey: ["private-account", "user-a:2099-01-01", "billing", "recovery"],
       });
     });
-    expect(screen.getByText(transactionHash)).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash))).toBeVisible();
+    expect(screen.getByText(shorten(transactionHash)).closest("a")).toHaveAttribute(
+      "href",
+      `/tx/${transactionHash}?tab=overview`,
+    );
     expect(screen.queryByText(otherHash)).not.toBeInTheDocument();
     expect(billing.getBillingTopupIntent).toHaveBeenCalledWith(intent.id);
     expect(billing.getBillingTopupIntent).not.toHaveBeenCalledWith("topup-b");
@@ -926,7 +1034,7 @@ describe("personal billing workspace", () => {
     await user.type(screen.getByRole("textbox"), "1.25");
     expect(billing.createBillingTopupIntent).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Top up & authorize" }));
-    expect(await screen.findByText(transactionHash)).toBeVisible();
+    expect(await screen.findByText(shorten(transactionHash))).toBeVisible();
     await openHistory(user);
     await user.click(screen.getByRole("tab", { name: "Payment" }));
     expect(screen.queryByRole("button", { name: "Top up & authorize" })).not.toBeInTheDocument();

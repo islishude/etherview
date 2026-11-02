@@ -422,6 +422,16 @@ for (const appearance of appearanceCases) {
     await checkView("topup-confirming");
     releasePayment();
     await expect(page.locator(".billing-topup-status.success")).toBeVisible();
+    const resultHash = page.locator(".billing-topup-status.success code");
+    await expect(resultHash).toHaveText(`${hash.slice(0, 8)}…${hash.slice(-6)}`);
+    await expect(resultHash).toHaveAttribute("title", hash);
+    const hashBounds = await resultHash.boundingBox();
+    const stepsBounds = await page.locator(".billing-topup-steps").boundingBox();
+    expect(hashBounds).not.toBeNull();
+    expect(stepsBounds).not.toBeNull();
+    expect(Math.abs(hashBounds!.x - stepsBounds!.x)).toBeLessThan(1);
+    // This payment uses chain 31337 while the explorer indexes chain 1.
+    await expect(page.locator(".billing-topup-status.success a")).toHaveCount(0);
     await checkView("topup-success");
     await page
       .getByRole("button", {

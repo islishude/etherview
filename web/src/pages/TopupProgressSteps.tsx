@@ -1,7 +1,7 @@
 import { Check } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useTranslation } from "react-i18next";
-import { CopyableField } from "@/components/CopyButton";
+import { BillingTransactionHash } from "./BillingTransactionHash";
 import type { TopupProgress } from "@/billing/progress";
 
 export function TopupProgressSteps({
@@ -9,11 +9,15 @@ export function TopupProgressSteps({
   approvalRequired,
   state,
   transactionHash,
+  transactionNetwork,
+  approvalNetwork,
 }: {
   progress: TopupProgress;
   approvalRequired: boolean;
   state: "processing" | "pending" | "success" | "failure";
   transactionHash?: string;
+  transactionNetwork?: string;
+  approvalNetwork?: string;
 }) {
   const { t } = useTranslation();
   const steps = [
@@ -47,17 +51,13 @@ export function TopupProgressSteps({
       {progress.approvalHash && (
         <div className="billing-progress-hash">
           <span>{t("billing.topup.progress.approvalHash")}</span>
-          <CopyableField value={progress.approvalHash}>
-            <code>{progress.approvalHash}</code>
-          </CopyableField>
+          <BillingTransactionHash hash={progress.approvalHash} network={approvalNetwork} />
         </div>
       )}
       {transactionHash && (
         <div className="billing-progress-hash">
           <span>{t("billing.topup.progress.paymentHash")}</span>
-          <CopyableField value={transactionHash}>
-            <code>{transactionHash}</code>
-          </CopyableField>
+          <BillingTransactionHash hash={transactionHash} network={transactionNetwork} />
         </div>
       )}
     </>

@@ -1,3 +1,4 @@
+import { BillingTransactionHash } from "./BillingTransactionHash";
 import {
   fundingBalanceBlocked,
   fundingWalletKey,
@@ -132,11 +133,13 @@ export function PersonalBilling() {
     setProgress,
     approvalRequired,
     setApprovalRequired,
-    resultHash,
-    setResultHash,
+    transaction,
+    setResultTransaction,
+    approvalNetwork,
+    setApprovalNetwork,
+    resetProgress,
     waiting,
     stage,
-    pendingHash,
   } = useTopupProgress(pendingID, pending.data, recovery.data?.data, recoverable, submitting);
   const refreshBilling = () => client.invalidateQueries({ queryKey: prefix });
 
@@ -149,7 +152,7 @@ export function PersonalBilling() {
     if (!pendingID || intent?.id !== pendingID) return;
     if (!["credited", "failed", "expired"].includes(intent.state)) return;
     completed.current.add(intent.id);
-    setResultHash(intent.transaction_hash ?? undefined);
+    setResultTransaction(topupTransaction(intent));
     setPendingID(undefined);
     setError(undefined);
     setNotice(undefined);
@@ -165,7 +168,7 @@ export function PersonalBilling() {
       setError(t("billing.topup.failed"));
     }
     void client.invalidateQueries({ queryKey: ["private-account", identity, "billing"] });
-  }, [client, identity, pending.data, pendingID, setResultHash, t]);
+  }, [client, identity, pending.data, pendingID, setResultTransaction, t]);
 
   const { onPaymentChain, crossChain, walletReady } = walletFundingState(
     wallet,
@@ -247,9 +250,7 @@ export function PersonalBilling() {
     if (!atomic) return;
     const signal = lifetime();
     let executingIntentID: string | undefined;
-    setProgress({ stage: "preparing" });
-    setApprovalRequired(false);
-    setResultHash(undefined);
+    resetProgress();
     submittingRef.current = true;
     setSubmitting(true);
     try {
@@ -273,6 +274,7 @@ export function PersonalBilling() {
         const intent = await createBillingTopupIntent(atomic, csrfToken, paymentConfig.id);
         assertCurrent();
         executingIntentID = intent.id;
+        setApprovalNetwork(intent.network);
         return await payBillingTopup({
           config: paymentConfig,
           intent,
@@ -294,7 +296,7 @@ export function PersonalBilling() {
       if (completed.current.has(receipt.intent.id)) return;
       completed.current.add(receipt.intent.id);
       setPendingID(undefined);
-      setResultHash(receipt.intent.transaction_hash ?? undefined);
+      setResultTransaction(topupTransaction(receipt.intent));
       setNotice(
         t("billing.topup.credited", {
           amount: displayBillingAmount(receipt.intent.credit_amount_atomic, { credit_decimals: 6 }),
@@ -361,7 +363,9 @@ export function PersonalBilling() {
               <TopupStatus
                 state={panelState}
                 detail={notice ?? error ?? t(`billing.topup.progress.${stage}`)}
-                transactionHash={pendingHash ?? resultHash}
+                transactionHash={transaction?.hash}
+                transactionNetwork={transaction?.network}
+                approvalNetwork={approvalNetwork}
                 progress={{ ...progress, stage }}
                 approvalRequired={approvalRequired}
                 finishing={submitting}
@@ -371,9 +375,7 @@ export function PersonalBilling() {
                   setNotice(undefined);
                   setError(undefined);
                   setAmount("");
-                  setProgress({ stage: "preparing" });
-                  setApprovalRequired(false);
-                  setResultHash(undefined);
+                  resetProgress();
                   setFocusAmount(true);
                 }}
                 showHistory={() => {
@@ -503,6 +505,10 @@ function boundTopupWallet(
   };
 }
 
+function topupTransaction(intent: BillingTopupIntent) {
+  return { hash: intent.transaction_hash ?? undefined, network: intent.network };
+}
+
 function useTopupProgress(
   pendingID: string | undefined,
   pending: BillingTopupIntent | undefined,
@@ -512,7 +518,8 @@ function useTopupProgress(
 ) {
   const [progress, setProgress] = useState<TopupProgress>({ stage: "preparing" });
   const [approvalRequired, setApprovalRequired] = useState(false);
-  const [resultHash, setResultHash] = useState<string>();
+  const [resultTransaction, setResultTransaction] = useState<{ hash?: string; network: string }>();
+  const [approvalNetwork, setApprovalNetwork] = useState<string>();
   const waiting = Boolean(pendingID || recoverable);
   const observedIntent = pendingID
     ? pending?.id === pendingID
@@ -524,25 +531,41 @@ function useTopupProgress(
       ? "unknown"
       : (observedIntent?.submission_progress ??
         (waiting && !submitting ? "unknown" : progress.stage));
-  const pendingHash =
-    pending?.transaction_hash ??
-    recovery?.find((intent) => intent.id === (pendingID ?? recoverable?.id))?.transaction_hash;
+  const pendingTransaction = observedIntent?.transaction_hash
+    ? { hash: observedIntent.transaction_hash, network: observedIntent.network }
+    : undefined;
   useEffect(() => {
-    if (observedIntent?.transaction_hash) setResultHash(observedIntent.transaction_hash);
+    if (observedIntent?.transaction_hash) {
+      setResultTransaction({
+        hash: observedIntent.transaction_hash,
+        network: observedIntent.network,
+      });
+    }
     if (observedIntent?.submission_progress === "confirming") {
       setProgress((previous) => ({ ...previous, stage: "confirming" }));
     }
-  }, [observedIntent?.transaction_hash, observedIntent?.submission_progress]);
+  }, [
+    observedIntent?.transaction_hash,
+    observedIntent?.network,
+    observedIntent?.submission_progress,
+  ]);
   return {
     progress,
     setProgress,
     approvalRequired,
     setApprovalRequired,
-    resultHash,
-    setResultHash,
+    transaction: pendingTransaction ?? resultTransaction,
+    setResultTransaction,
+    approvalNetwork,
+    setApprovalNetwork,
+    resetProgress: () => {
+      setProgress({ stage: "preparing" });
+      setApprovalRequired(false);
+      setResultTransaction(undefined);
+      setApprovalNetwork(undefined);
+    },
     waiting,
     stage,
-    pendingHash,
   };
 }
 
@@ -579,6 +602,8 @@ function TopupStatus({
   state,
   detail,
   transactionHash,
+  transactionNetwork,
+  approvalNetwork,
   progress,
   approvalRequired,
   finishing,
@@ -590,6 +615,8 @@ function TopupStatus({
   state: Exclude<TopupPanelState, "form">;
   detail: string;
   transactionHash?: string;
+  transactionNetwork?: string;
+  approvalNetwork?: string;
   progress: TopupProgress;
   approvalRequired: boolean;
   finishing: boolean;
@@ -623,6 +650,8 @@ function TopupStatus({
         approvalRequired={approvalRequired}
         state={state}
         transactionHash={transactionHash}
+        transactionNetwork={transactionNetwork}
+        approvalNetwork={approvalNetwork}
       />
       {queryFailed && <BillingError title={t("billing.workspace.pendingFailed")} retry={retry} />}
       {!busy && (
@@ -1058,7 +1087,10 @@ function HistoryRecord({
           <div>
             <dt>{t("billing.fields.transactionHash")}</dt>
             <dd>
-              <code>{record.transaction_hash ?? "—"}</code>
+              <BillingTransactionHash
+                hash={record.transaction_hash ?? undefined}
+                network={record.network}
+              />
             </dd>
           </div>
         </dl>

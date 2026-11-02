@@ -514,7 +514,7 @@
 .billing-progress-hash {
   display: grid;
   gap: 0.25rem;
-  max-width: 100%;
+  width: min(100%, 32rem);
   text-align: start;
 }
 .billing-progress-hash code {
