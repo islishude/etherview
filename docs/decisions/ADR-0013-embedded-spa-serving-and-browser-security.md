@@ -132,3 +132,14 @@ reserved namespace remain protected even before a route handler exists. A
 developer-server rendering or source-tree scan alone cannot satisfy the browser
 boundary: cache, fallback, nonce, and header regressions are tested against the
 embedded Go artifact.
+
+### Payment network switching
+
+The injected-provider allowlist includes `wallet_switchEthereumChain` only
+inside WalletProvider's explicit payment scope or user-initiated SIWE login
+preparation (ADR-0020). Login targets the configured site chain; an unknown-chain
+error may trigger `wallet_addEthereumChain` using the validated public site-chain
+metadata before switching and verifying the actual chain and account. Payment targets come
+from the generated same-origin billing configuration, and restoration targets
+the already verified site chain. No browser HTTP RPC origin, dynamic RPC
+method, external script or CSP exception is added.

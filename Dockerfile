@@ -70,12 +70,14 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY cmd ./cmd
 COPY internal ./internal
 COPY compiler/vyper ./compiler/vyper
+COPY compiler/geas ./compiler/geas
 COPY web/webui.go ./web/webui.go
 COPY api/openapi.yaml ./api/openapi.yaml
 COPY --from=web-builder /src/web/dist ./web/dist
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go install -trimpath -ldflags="-s -w" ./cmd/...
+    go install -trimpath -ldflags="-s -w" ./cmd/... \
+    && go build -trimpath -ldflags="-s -w" -o /go/bin/etherview-geas-compiler ./compiler/geas
 
 FROM production-base AS production
 ARG VERSION=dev
@@ -90,6 +92,7 @@ LABEL org.opencontainers.image.title="Etherview" \
     org.opencontainers.image.created="${CREATED}"
 COPY --chown=nonroot:nonroot licenses /licenses
 COPY --from=go-builder --chown=nonroot:nonroot /go/bin/etherview /etherview
+COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/x402facilitator /x402facilitator
 COPY --from=go-builder --chown=nonroot:nonroot --chmod=0555 /go/bin/etherview-geas-compiler /usr/local/bin/etherview-geas-compiler
 COPY --from=compiler-builder --chown=nonroot:nonroot /solcjs-runtime-copy /opt/etherview
 COPY --from=compiler-builder --chown=nonroot:nonroot --chmod=0750 /var/lib/etherview/compilers /var/lib/etherview/compilers

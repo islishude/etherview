@@ -89,3 +89,52 @@ The status projection and shared execution rules are defined in
   reauthentication.
 - Adding contract-wallet authentication, cross-origin login, or federated
   identity requires a new decision.
+
+## Explicit payment-chain scope
+
+SIWE and user/API-key ownership remain bound to the configured explorer chain.
+An explicit payment-network selection, user-initiated top-up or balance query may temporarily switch
+the same injected provider and account to the payment network returned by the
+same-origin billing configuration.
+Only expected transitions between configured payment networks within the payment
+view scope and its return to the original site chain preserve authentication identity. Wallet operation revisions still
+advance, so outstanding operations cannot survive a chain ABA transition.
+Redundant observations of the same selected account or current chain do not
+create a new identity transition, including delayed restoration acknowledgements. A real chain/account ABA still
+invalidates the scope on its first unexpected transition.
+Account/provider changes, disconnects and unexpected chain events invalidate
+the payment scope and retain normal session revocation. Concurrent payment scopes
+are rejected.
+
+Balance reads, exact approvals, receipt polling and EIP-712 signing inside the
+scope bind the payment chain. SIWE and unrelated wallet work still require the
+site chain. The payment view retains the scope across balance reads and payment outcomes,
+and attempts restoration when leaving for history, prices or another route.
+Selection immediately requests wallet switching; failure retains the selected
+network/token, hides its balance and stops the operation. A later explicit
+balance refresh retries entry; payment submission remains disabled until network
+entry succeeds. Dismissing the notification, editing the amount or changing tokens
+on the same network does not clear the failure. Neither passive refresh nor initial rendering
+switches networks. Partial entry failure attempts to restore the preceding actual
+network without reverting the selection. Closing during a pending request waits
+for that request and restores without starting further payment work. Failed
+restoration disconnects the local wallet/authentication state without retrying or
+misrepresenting a possibly settled payment. Reload does not restore a scope.
+Server sessions, CSRF and ledger identities are unchanged, and balances are never
+copied between site-chain identities.
+
+## Login chain preparation
+
+An explicit login action first connects the selected provider and prepares the
+configured site chain before requesting a challenge. Only an unknown-chain
+provider error (4902) permits adding the chain from validated public configuration;
+missing or mismatched metadata fails closed. Adding a chain does not prove it
+became selected: the client reads the chain again and switches if necessary.
+
+Preparation fences the provider, account and wallet revision. Only the expected
+transition to the site chain is accepted, including a missing or delayed event;
+account changes, disconnects, unexpected chains and ABA transitions cancel the
+attempt. Actual chain and account are checked before challenge creation. Rejection
+or failure stops login and permits an explicit retry. Successful login leaves the
+wallet on the site chain. This does not preserve a previously authenticated
+identity across an unrelated chain change or modify the payment scope.

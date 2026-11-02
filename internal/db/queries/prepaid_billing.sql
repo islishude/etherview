@@ -1,7 +1,7 @@
 -- name: CreateBillingTopupIntent :one
 INSERT INTO billing_topup_intents (
     id, user_id, chain_id, network, asset, amount_atomic, recipient, payer,
-    state, expires_at, created_at, updated_at
+    payment_option, credit_amount_atomic, state, expires_at, created_at, updated_at
 )
 SELECT
     sqlc.arg('id')::uuid,
@@ -12,6 +12,8 @@ SELECT
     sqlc.arg('amount_atomic')::numeric,
     sqlc.arg('recipient'),
     users.address,
+    sqlc.arg('payment_option')::jsonb,
+    sqlc.arg('credit_amount_atomic')::numeric,
     'open',
     sqlc.arg('expires_at'),
     sqlc.arg('created_at'),
@@ -54,15 +56,15 @@ LIMIT sqlc.arg('page_limit');
 -- name: EnsureBillingAccount :one
 WITH inserted AS (
     INSERT INTO billing_accounts (
-        user_id, chain_id, network, asset, created_at, updated_at
+        user_id, chain_id, created_at, updated_at
     )
-    SELECT users.id, users.chain_id, sqlc.arg('network'), sqlc.arg('asset'),
+    SELECT users.id, users.chain_id,
            sqlc.arg('created_at'), sqlc.arg('created_at')
     FROM users
     WHERE users.id = sqlc.arg('user_id')::uuid
       AND users.chain_id = sqlc.arg('chain_id')::numeric
       AND users.status = 'active'
-    ON CONFLICT (user_id, chain_id, network, asset) DO NOTHING
+    ON CONFLICT (user_id, chain_id) DO NOTHING
     RETURNING *
 )
 SELECT * FROM inserted
@@ -70,13 +72,11 @@ UNION ALL
 SELECT * FROM billing_accounts
 WHERE user_id = sqlc.arg('user_id')::uuid
   AND chain_id = sqlc.arg('chain_id')::numeric
-  AND network = sqlc.arg('network')
-  AND asset = sqlc.arg('asset')
 LIMIT 1;
 
 -- name: ClaimBillingTopupIntent :one
 UPDATE billing_topup_intents
-SET state = 'processing', active_payment_id = sqlc.arg('payment_id')::uuid,
+SET submission_progress = 'submitting', submission_transaction_hash = NULL, state = 'processing', active_payment_id = sqlc.arg('payment_id')::uuid,
     processing_at = sqlc.arg('transitioned_at'), updated_at = sqlc.arg('transitioned_at')
 WHERE id = sqlc.arg('id')::uuid
   AND user_id = sqlc.arg('user_id')::uuid
@@ -139,7 +139,7 @@ WITH payment_update AS (
     RETURNING id, topup_intent_id
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
-    SET failure_code = 'settlement_unknown', updated_at = sqlc.arg('transitioned_at')
+    SET submission_progress = 'unknown', failure_code = 'settlement_unknown', updated_at = sqlc.arg('transitioned_at')
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
       AND intent.state = 'settling'
@@ -167,10 +167,15 @@ WITH payment_update AS (
       AND state = 'settling'
       AND failure_code IS NULL
       AND transaction_hash IS NULL
+      AND EXISTS (
+          SELECT 1 FROM billing_topup_intents AS intent
+          WHERE intent.id = sqlc.arg('intent_id')::uuid
+            AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.arg('transaction_hash'))
+      )
     RETURNING id, topup_intent_id
 ), intent_update AS (
     UPDATE billing_topup_intents AS intent
-    SET failure_code = 'settlement_pending', transaction_hash = sqlc.arg('transaction_hash'),
+    SET submission_progress = CASE WHEN submission_progress = 'confirming' THEN 'confirming' ELSE 'unknown' END, failure_code = 'settlement_pending', transaction_hash = sqlc.arg('transaction_hash'),
         updated_at = sqlc.arg('transitioned_at')
     FROM payment_update
     WHERE intent.id = payment_update.topup_intent_id
@@ -190,8 +195,8 @@ SELECT payment_id FROM intent_update;
 -- name: CreditBillingTopup :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.user_id,
-           payment.chain_id, payment.network, payment.asset,
-           payment.amount_atomic
+           payment.chain_id,
+           intent.credit_amount_atomic AS amount_atomic
     FROM billing_payments AS payment
     JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
     WHERE payment.id = sqlc.arg('payment_id')::uuid
@@ -202,6 +207,7 @@ WITH candidate AS (
       AND payment.user_id IS NOT NULL
       AND intent.state = 'settling'
       AND intent.active_payment_id = payment.id
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.arg('transaction_hash'))
       AND intent.user_id = payment.user_id
     FOR UPDATE OF payment, intent
 ), payment_update AS (
@@ -226,16 +232,14 @@ WITH candidate AS (
     FROM intent_update
     WHERE account.user_id = intent_update.user_id
       AND account.chain_id = intent_update.chain_id
-      AND account.network = intent_update.network
-      AND account.asset = intent_update.asset
     RETURNING account.*, intent_update.id AS payment_id,
               intent_update.amount_atomic AS topup_amount_atomic
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, occurred_at
     )
-    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id, network, asset,
+    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id,
            'credit', 'topup', topup_amount_atomic, payment_id, sqlc.arg('transitioned_at')
     FROM account_update
 ), event AS (
@@ -246,7 +250,7 @@ WITH candidate AS (
            sqlc.arg('transaction_hash'), sqlc.arg('transitioned_at')
     FROM account_update
 )
-SELECT user_id, chain_id, network, asset, total_credit_atomic,
+SELECT user_id, chain_id, total_credit_atomic,
        total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM account_update;
 
@@ -303,16 +307,14 @@ SELECT id FROM intent_update;
 -- name: ReconcileBillingTopupSettled :one
 WITH candidate AS (
     SELECT payment.id, payment.topup_intent_id, payment.user_id,
-           payment.chain_id, payment.network, payment.asset,
-           payment.amount_atomic, payment.failure_code,
+           payment.chain_id,
+           intent.credit_amount_atomic AS amount_atomic, payment.failure_code,
            payment.transaction_hash
     FROM billing_payments AS payment
     JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
     JOIN billing_accounts AS account
       ON account.user_id = payment.user_id
      AND account.chain_id = payment.chain_id
-     AND account.network = payment.network
-     AND account.asset = payment.asset
     WHERE payment.id = sqlc.arg('payment_id')::uuid
       AND payment.chain_id = sqlc.arg('chain_id')::numeric
       AND payment.purpose = 'account_topup'
@@ -331,6 +333,7 @@ WITH candidate AS (
            OR payment.transaction_hash = sqlc.arg('transaction_hash'))
       AND intent.state = 'settling'
       AND intent.active_payment_id = payment.id
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.arg('transaction_hash'))
       AND intent.user_id = payment.user_id
     FOR UPDATE OF payment, intent, account
 ), payment_update AS (
@@ -357,18 +360,16 @@ WITH candidate AS (
     FROM intent_update
     WHERE account.user_id = intent_update.user_id
       AND account.chain_id = intent_update.chain_id
-      AND account.network = intent_update.network
-      AND account.asset = intent_update.asset
     RETURNING account.*, intent_update.id AS payment_id,
               intent_update.amount_atomic AS topup_amount_atomic,
               intent_update.failure_code AS prior_failure_code,
               intent_update.transaction_hash AS prior_transaction_hash
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, occurred_at
     )
-    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id, network, asset,
+    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id,
            'credit', 'topup', topup_amount_atomic, payment_id,
            sqlc.arg('transitioned_at')
     FROM account_update
@@ -384,7 +385,7 @@ WITH candidate AS (
            sqlc.arg('transitioned_at')
     FROM account_update
 )
-SELECT user_id, chain_id, network, asset, total_credit_atomic,
+SELECT user_id, chain_id, total_credit_atomic,
        total_debit_atomic, reserved_atomic, created_at, updated_at
 FROM account_update;
 
@@ -403,6 +404,7 @@ WITH payment_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= sqlc.arg('transitioned_at')
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL,
         processing_at = NULL,
         failure_code = CASE WHEN intent.expires_at <= sqlc.arg('transitioned_at')
@@ -443,6 +445,7 @@ WITH payment_update AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= sqlc.arg('transitioned_at')
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL,
         processing_at = NULL,
         settling_at = NULL,
@@ -471,15 +474,13 @@ SELECT *
 FROM billing_accounts
 WHERE user_id = sqlc.arg('user_id')::uuid
   AND chain_id = sqlc.arg('chain_id')::numeric
-  AND network = sqlc.arg('network')
-  AND asset = sqlc.arg('asset');
+
+;
 
 -- name: ListAdminBillingAccounts :many
 SELECT *
 FROM billing_accounts
 WHERE chain_id = sqlc.arg('chain_id')::numeric
-  AND network = sqlc.arg('network')
-  AND asset = sqlc.arg('asset')
   AND (
       sqlc.narg('before_updated_at')::timestamptz IS NULL
       OR (updated_at, user_id) < (
@@ -494,8 +495,6 @@ LIMIT sqlc.arg('page_limit');
 SELECT *
 FROM billing_topup_intents
 WHERE chain_id = sqlc.arg('chain_id')::numeric
-  AND network = sqlc.arg('network')
-  AND asset = sqlc.arg('asset')
   AND (
       sqlc.narg('before_created_at')::timestamptz IS NULL
       OR (created_at, id) < (
@@ -513,19 +512,17 @@ SELECT count(*)::numeric AS account_count,
        COALESCE(sum(reserved_atomic), 0)::numeric AS reserved_atomic
 FROM billing_accounts
 WHERE chain_id = sqlc.arg('chain_id')::numeric
-  AND network = sqlc.arg('network')
-  AND asset = sqlc.arg('asset');
+
+;
 
 -- name: ReserveBillingUsage :one
 WITH eligible AS (
-    SELECT account.user_id, account.chain_id, account.network, account.asset
+    SELECT account.user_id, account.chain_id
     FROM billing_accounts AS account
     JOIN users ON users.id = account.user_id
     JOIN api_keys ON api_keys.prefix = sqlc.arg('api_key_prefix')
     WHERE account.user_id = sqlc.arg('user_id')::uuid
       AND account.chain_id = sqlc.arg('chain_id')::numeric
-      AND account.network = sqlc.arg('network')
-      AND account.asset = sqlc.arg('asset')
       AND users.status = 'active'
       AND api_keys.owner_user_id = account.user_id
       AND api_keys.revoked_at IS NULL
@@ -535,8 +532,8 @@ WITH eligible AS (
     FOR UPDATE OF account
 ), inserted AS (
     INSERT INTO billing_usage_charges (
-        id, reservation_owner, user_id, api_key_prefix, chain_id, network,
-        asset, method, operation, resource_digest, amount_atomic, state,
+        id, reservation_owner, user_id, api_key_prefix, chain_id,
+        method, operation, resource_digest, amount_atomic, state,
         reservation_expires_at, created_at, updated_at
     )
     SELECT
@@ -545,8 +542,6 @@ WITH eligible AS (
         eligible.user_id,
         sqlc.arg('api_key_prefix'),
         eligible.chain_id,
-        eligible.network,
-        eligible.asset,
         sqlc.arg('method'),
         sqlc.arg('operation'),
         sqlc.arg('resource_digest'),
@@ -564,8 +559,8 @@ WITH eligible AS (
     FROM inserted
     WHERE account.user_id = inserted.user_id
       AND account.chain_id = inserted.chain_id
-      AND account.network = inserted.network
-      AND account.asset = inserted.asset
+
+
 )
 SELECT * FROM inserted;
 
@@ -586,15 +581,13 @@ WITH candidate AS (
     FROM candidate
     WHERE account.user_id = candidate.user_id
       AND account.chain_id = candidate.chain_id
-      AND account.network = candidate.network
-      AND account.asset = candidate.asset
     RETURNING candidate.*
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, occurred_at
     )
-    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id, network, asset,
+    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id,
            'debit', 'usage', amount_atomic, id, sqlc.arg('committed_at')
     FROM account_update
 ), updated AS (
@@ -625,8 +618,6 @@ WITH candidate AS (
     FROM candidate
     WHERE account.user_id = candidate.user_id
       AND account.chain_id = candidate.chain_id
-      AND account.network = candidate.network
-      AND account.asset = candidate.asset
     RETURNING candidate.*
 ), updated AS (
     UPDATE billing_usage_charges AS charge
@@ -663,8 +654,6 @@ LIMIT sqlc.arg('page_limit');
 SELECT *
 FROM billing_usage_charges
 WHERE chain_id = sqlc.arg('chain_id')::numeric
-  AND network = sqlc.arg('network')
-  AND asset = sqlc.arg('asset')
   AND (
       sqlc.narg('before_created_at')::timestamptz IS NULL
       OR (created_at, id) < (
@@ -681,8 +670,6 @@ WITH locked AS (
     FROM billing_accounts
     WHERE user_id = sqlc.arg('user_id')::uuid
       AND chain_id = sqlc.arg('chain_id')::numeric
-      AND billing_accounts.network = sqlc.arg('network')
-      AND billing_accounts.asset = sqlc.arg('asset')
       AND (
           sqlc.arg('direction') = 'credit'
           OR total_credit_atomic - total_debit_atomic - reserved_atomic
@@ -701,15 +688,13 @@ WITH locked AS (
     FROM locked
     WHERE account.user_id = locked.user_id
       AND account.chain_id = locked.chain_id
-      AND account.network = locked.network
-      AND account.asset = locked.asset
     RETURNING account.*
 ), entry AS (
     INSERT INTO billing_account_entries (
-        id, user_id, chain_id, network, asset, direction, kind,
+        id, user_id, chain_id, direction, kind,
         amount_atomic, source_id, reason, occurred_at
     )
-    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id, network, asset,
+    SELECT sqlc.arg('entry_id')::uuid, user_id, chain_id,
            sqlc.arg('direction'), 'adjustment', sqlc.arg('amount_atomic')::numeric,
            sqlc.arg('source_id')::uuid, sqlc.arg('reason'), sqlc.arg('occurred_at')
     FROM updated
@@ -721,17 +706,15 @@ WITH candidates AS (
     SELECT charge.*
     FROM billing_usage_charges AS charge
     WHERE charge.chain_id = sqlc.arg('chain_id')::numeric
-      AND charge.network = sqlc.arg('network')
-      AND charge.asset = sqlc.arg('asset')
       AND charge.state = 'reserved'
       AND charge.reservation_expires_at <= sqlc.arg('observed_at')
     ORDER BY charge.reservation_expires_at, charge.id
     FOR UPDATE SKIP LOCKED
     LIMIT sqlc.arg('expire_limit')
 ), totals AS (
-    SELECT user_id, chain_id, network, asset, sum(amount_atomic) AS amount_atomic
+    SELECT user_id, chain_id, sum(amount_atomic) AS amount_atomic
     FROM candidates
-    GROUP BY user_id, chain_id, network, asset
+    GROUP BY user_id, chain_id
 ), account_update AS (
     UPDATE billing_accounts AS account
     SET reserved_atomic = account.reserved_atomic - totals.amount_atomic,
@@ -739,9 +722,7 @@ WITH candidates AS (
     FROM totals
     WHERE account.user_id = totals.user_id
       AND account.chain_id = totals.chain_id
-      AND account.network = totals.network
-      AND account.asset = totals.asset
-    RETURNING account.user_id, account.chain_id, account.network, account.asset
+    RETURNING account.user_id, account.chain_id
 ), updated AS (
     UPDATE billing_usage_charges AS charge
     SET state = 'expired', failure_code = 'usage_reservation_expired',
@@ -750,8 +731,6 @@ WITH candidates AS (
     WHERE charge.id = candidates.id
       AND account_update.user_id = candidates.user_id
       AND account_update.chain_id = candidates.chain_id
-      AND account_update.network = candidates.network
-      AND account_update.asset = candidates.asset
     RETURNING charge.id
 )
 SELECT count(*)::bigint AS expired_count FROM updated;
@@ -761,8 +740,6 @@ WITH candidates AS (
     SELECT intent.id
     FROM billing_topup_intents AS intent
     WHERE intent.chain_id = sqlc.arg('chain_id')::numeric
-      AND intent.network = sqlc.arg('network')
-      AND intent.asset = sqlc.arg('asset')
       AND intent.state = 'open'
       AND intent.expires_at <= sqlc.arg('observed_at')
     ORDER BY intent.expires_at, intent.id
@@ -803,6 +780,7 @@ WITH candidates AS (
     UPDATE billing_topup_intents AS intent
     SET state = CASE WHEN intent.expires_at <= sqlc.arg('observed_at')
                      THEN 'expired' ELSE 'open' END,
+        submission_progress = NULL, submission_transaction_hash = NULL,
         active_payment_id = NULL, processing_at = NULL, settling_at = NULL,
         failure_code = CASE WHEN intent.expires_at <= sqlc.arg('observed_at')
                             THEN 'topup_intent_expired' ELSE NULL END,
@@ -821,3 +799,26 @@ WITH candidates AS (
     FROM intent_update
 )
 SELECT count(*)::bigint AS expired_count FROM intent_update;
+
+-- name: ObserveBillingTopupProgress :one
+WITH candidate AS (
+    SELECT payment.id, intent.id AS intent_id
+    FROM billing_payments AS payment
+    JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
+    WHERE payment.id = sqlc.arg('payment_id')::uuid
+      AND payment.reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND payment.purpose = 'account_topup'
+      AND payment.state = 'settling' AND payment.failure_code IS NULL
+      AND intent.id = sqlc.arg('intent_id')::uuid
+      AND intent.active_payment_id = payment.id AND intent.state = 'settling'
+      AND intent.updated_at <= sqlc.arg('observed_at')
+      AND (intent.submission_transaction_hash IS NULL OR intent.submission_transaction_hash = sqlc.narg('transaction_hash')::bytea)
+      AND (intent.submission_progress IS DISTINCT FROM 'confirming' OR sqlc.arg('progress')::text = 'confirming')
+    FOR UPDATE OF payment, intent
+)
+UPDATE billing_topup_intents AS intent
+SET submission_progress = sqlc.arg('progress')::text,
+    submission_transaction_hash = COALESCE(intent.submission_transaction_hash, sqlc.narg('transaction_hash')::bytea),
+    updated_at = sqlc.arg('observed_at')
+FROM candidate WHERE intent.id = candidate.intent_id
+RETURNING intent.id;

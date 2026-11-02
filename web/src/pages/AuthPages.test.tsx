@@ -98,7 +98,7 @@ describe("authentication pages", () => {
         );
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Export CSV");
       } else {
-        expect(screen.queryByRole("dialog")).toBeNull();
+        await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
         expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Address");
       }
       expect(mutations).toEqual([]);
@@ -280,6 +280,10 @@ describe("authentication pages", () => {
   });
 
   it("manages scoped API keys only from the deep-linked account workspace", async () => {
+    let revoked = false;
+    let deleted = false;
+    let deleteFails = true;
+    let createFails = true;
     const token = `evk_abcdefghij_${"a".repeat(43)}`;
     const requests: Array<{ url: string; request?: RequestInit }> = [];
     vi.stubGlobal(
@@ -302,7 +306,12 @@ describe("authentication pages", () => {
           });
         }
         if (url === "/api/v1/auth/session") return envelope(authSession(userRecord()));
+        if (url.endsWith("/revoke") && request?.method === "POST") {
+          revoked = true;
+          return new Response(null, { status: 204 });
+        }
         if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "POST") {
+          if (createFails) return new Response(null, { status: 503 });
           return envelope({
             token,
             key: {
@@ -317,29 +326,36 @@ describe("authentication pages", () => {
           });
         }
         if (url.startsWith("/api/v1/users/me/api-keys") && request?.method === "DELETE") {
+          if (deleteFails) return new Response(null, { status: 503 });
+          deleted = true;
           return new Response(null, { status: 204 });
         }
         if (url.startsWith("/api/v1/users/me/api-keys")) {
-          return envelope({
-            items: [
-              {
-                prefix: "abcdefghij",
-                name: "Existing reader",
-                scopes: ["api:read"],
+          return envelope(
+            {
+              items: deleted
+                ? []
+                : [
+                    {
+                      prefix: "abcdefghij",
+                      name: "Existing reader",
+                      scopes: ["api:read"],
+                      rate_per_second: 20,
+                      burst: 40,
+                      status: revoked ? "revoked" : "active",
+                      created_at: "2026-08-09T00:00:00Z",
+                    },
+                  ],
+              policy: {
                 rate_per_second: 20,
                 burst: 40,
-                status: "active",
-                created_at: "2026-08-09T00:00:00Z",
+                maximum_active: 5,
+                active_count: 1,
+                allowed_scopes: ["api:read", "contract:verify"],
               },
-            ],
-            policy: {
-              rate_per_second: 20,
-              burst: 40,
-              maximum_active: 5,
-              active_count: 1,
-              allowed_scopes: ["api:read", "contract:verify"],
             },
-          });
+            !deleted && !url.includes("cursor=") ? { next_cursor: "next-page" } : {},
+          );
         }
         return notFound();
       }),
@@ -351,12 +367,23 @@ describe("authentication pages", () => {
     expect(window.location.pathname).not.toBe("/users");
     expect(screen.queryByRole("textbox", { name: "Key name" })).not.toBeInTheDocument();
     expect(await screen.findByText("Existing reader")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Add API key" }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await screen.findByText("Page 2");
+    await user.click(screen.getByRole("tab", { name: "Create" }));
     expect(screen.queryByText("Existing reader")).not.toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "Key name" }), "Production indexer");
     await user.click(screen.getByRole("checkbox", { name: /Contract verification/ }));
+    await user.click(screen.getByRole("tab", { name: "List" }));
+    expect(screen.queryByRole("textbox", { name: "Key name" })).not.toBeInTheDocument();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("textbox", { name: "Key name" })).toHaveValue("Production indexer");
+    expect(screen.getByRole("checkbox", { name: /Contract verification/ })).toBeChecked();
     await user.click(screen.getByRole("button", { name: "Create key" }));
 
+    await screen.findByText("The API key operation failed. Refresh and try again.");
+    expect(screen.getByRole("textbox", { name: "Key name" })).toHaveValue("Production indexer");
+    createFails = false;
+    await user.click(screen.getByRole("button", { name: "Create key" }));
     const dialog = await screen.findByRole("dialog", { name: "Save your API key now" });
     expect(dialog).toHaveFocus();
     expect(dialog).toHaveTextContent(token);
@@ -375,15 +402,32 @@ describe("authentication pages", () => {
 
     await user.click(screen.getByRole("button", { name: "I saved the token" }));
     expect(screen.queryByText(token)).not.toBeInTheDocument();
+    expect(screen.getByText("Page 1")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await screen.findByText("Page 2");
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Revoke" }));
     await waitFor(() =>
       expect(
         requests.some(
           ({ url, request }) =>
-            url === "/api/v1/users/me/api-keys/abcdefghij" && request?.method === "DELETE",
+            url === "/api/v1/users/me/api-keys/abcdefghij/revoke" && request?.method === "POST",
         ),
       ).toBe(true),
     );
+    const deleteButton = await screen.findByRole("button", { name: "Delete" });
+    await waitFor(() => expect(deleteButton).toBeEnabled());
+    vi.mocked(window.confirm).mockReturnValueOnce(false);
+    await user.click(deleteButton);
+    expect(requests.some(({ request }) => request?.method === "DELETE")).toBe(false);
+    await user.click(deleteButton);
+    await screen.findByText("The API key operation failed. Refresh and try again.");
+    expect(screen.getByText("Existing reader")).toBeVisible();
+    deleteFails = false;
+    await user.click(deleteButton);
+    await waitFor(() => expect(screen.queryByText("Existing reader")).not.toBeInTheDocument());
+    expect(screen.getByText("Page 1")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "List" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("chooses among multiple wallets inline and connects only the selected provider", async () => {

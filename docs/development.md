@@ -393,7 +393,7 @@ baseline and native pgx measurements ran serially with the same fixture and
 samples. An earlier diagnostic run overlapping an integration test is excluded.
 
 ```sh
-go run ./cmd/testintegration -root . -packages ./internal/integration -benchmark '^BenchmarkCorePersistenceAndProjection$' -benchtime 1s
+go run ./e2e/cmd/testintegration -root . -packages ./internal/integration -benchmark '^BenchmarkCorePersistenceAndProjection$' -benchtime 1s
 ```
 
 Typical fixtures contain 20 transactions and one log per transaction; large

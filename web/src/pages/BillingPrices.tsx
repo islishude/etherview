@@ -9,9 +9,7 @@ export function BillingPrices({ config }: { config: BillingConfig }) {
     <section className="panel billing-prices" aria-label={t("billing.workspace.prices")}>
       <h2>{t("billing.workspace.prices")}</h2>
       <p>{t("billing.workspace.pricePolicy")}</p>
-      <p>
-        <code>{config.asset}</code> · {config.network}
-      </p>
+      <p>{t("billing.workspace.creditUnit")}</p>
       <div
         className="table-scroll"
         tabIndex={0}
@@ -23,7 +21,7 @@ export function BillingPrices({ config }: { config: BillingConfig }) {
             <tr>
               <th>{t("billing.fields.operation")}</th>
               <th>{t("billing.workspace.weight")}</th>
-              <th>{t("billing.workspace.tokenAmount")}</th>
+              <th>{t("billing.workspace.creditUnit")}</th>
             </tr>
           </thead>
           <tbody>

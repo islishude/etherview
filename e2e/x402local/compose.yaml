@@ -13,6 +13,7 @@ x-api-environment: &api-environment
   <<: *common-environment
   ETHERVIEW_API_KEY_PEPPER: x402-local-api-key-pepper-000000000000000000000000000000000
   ETHERVIEW_SESSION_PEPPER: x402-local-session-pepper-000000000000000000000000000000000
+  ETHERVIEW_X402_FACILITATOR_HEADERS: '{"eip155:31337":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"}}'
   ETHERVIEW_X402_FINGERPRINT_PEPPER: x402-local-fingerprint-pepper-0000000000000000000000000000000
 
 x-app: &app
@@ -84,8 +85,10 @@ services:
       RPC_URL: http://anvil:8545
     command:
       - |
+        cast rpc --rpc-url "$$RPC_URL" anvil_setCode 0x000000000022D473030F116dDEE9F6B43aC78BA3 "$$(cat contracts/Permit2.hex)"
+        cast rpc --rpc-url "$$RPC_URL" anvil_setCode 0x402085c248EeA27D92E8b30b2C58ed07f9E20001 "$$(cat contracts/X402ExactPermit2Proxy.hex)"
         bytecode="$$(forge inspect LocalBillingToken bytecode)"
-        arguments="$$(cast abi-encode 'constructor(string,string,address,uint256)' 'Local USD' '1' 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 1000000000000000000)"
+        arguments="$$(cast abi-encode 'constructor(string,string,address,uint256,uint8)' 'Local USD' '1' 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 1000000000000000000 6)"
         cast send --rpc-url "$$RPC_URL" --private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --create "$${bytecode}$${arguments#0x}"
         test "$$(cast code --rpc-url "$$RPC_URL" 0x5FbDB2315678afecb367f032d93F642f64180aa3)" != "0x"
     restart: "no"
@@ -93,18 +96,20 @@ services:
   x402-facilitator:
     build:
       context: ../..
-      dockerfile: e2e/x402local/facilitator.Dockerfile
-    image: etherview-x402-local-facilitator:local
+      target: production
+    image: ${ETHERVIEW_IMAGE:-etherview:local}
+    entrypoint: ["/x402facilitator"]
     depends_on:
+      migration:
+        condition: service_completed_successfully
       x402-fixture:
         condition: service_completed_successfully
-    environment:
-      X402_LOCAL_RPC_URL: http://anvil:8545
-      X402_LOCAL_NETWORK: eip155:31337
-      X402_LOCAL_TOKEN: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-      X402_LOCAL_FACILITATOR_PRIVATE_KEY: 59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d
+    command: [--config=/etc/etherview/facilitator.yaml]
+    volumes:
+      - ./facilitator.yaml:/etc/etherview/facilitator.yaml:ro
+    secrets: [x402-db, x402-token, x402-key, x402-password]
     healthcheck:
-      test: [CMD, /x402localfacilitator, --healthcheck]
+      test: [CMD, /x402facilitator, --healthcheck=http://127.0.0.1:8081/healthz]
       interval: 2s
       timeout: 2s
       retries: 30
@@ -206,3 +211,13 @@ networks:
 
 volumes:
   postgres-data:
+
+secrets:
+  x402-db:
+    file: ./facilitator-database-url
+  x402-token:
+    file: ../../preview/facilitator/token
+  x402-password:
+    file: ../../preview/facilitator/password
+  x402-key:
+    file: ../../preview/facilitator/keystore.json

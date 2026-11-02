@@ -16,9 +16,9 @@ description = "Ignored local runtime artifacts"
 paths = ['''^\.local/''']
 
 [[allowlists]]
-description = "Public Hardhat development signing key for the isolated Preview network"
+description = "Public Hardhat development signing key for isolated Preview and facilitator tests"
 targetRules = ["generic-api-key"]
-paths = ['''^e2e/previewmetadata/network_test\.go$''']
+paths = ['''^e2e/previewmetadata/network_test\.go$''', '''^internal/facilitator/runtime_integration_test\.go$''']
 condition = "AND"
 regexes = ['''^ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$''']
 

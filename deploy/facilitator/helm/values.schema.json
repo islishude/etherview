@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "server": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "listen": {
+              "const": "0.0.0.0:8081"
+            },
+            "tls_cert_file": {
+              "const": "/etc/etherview/certs/tls.crt"
+            },
+            "tls_key_file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "allow_insecure_http": {
+              "const": false
+            }
+          },
+          "required": [
+            "listen",
+            "tls_cert_file",
+            "tls_key_file"
+          ]
+        },
+        "database": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url_file": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": []
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bearer_token_file": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": []
+        },
+        "signers": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 32,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "address": {
+                "type": "string",
+                "minLength": 1
+              },
+              "keystore_file": {
+                "type": "string",
+                "minLength": 1
+              },
+              "password_file": {
+                "type": "string",
+                "minLength": 1
+              },
+              "region": {
+                "type": "string",
+                "minLength": 1
+              },
+              "key_arn": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "type",
+              "address"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "type": {
+                    "const": "keystore"
+                  }
+                },
+                "required": [
+                  "keystore_file",
+                  "password_file"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "region"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "key_arn"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "properties": {
+                  "type": {
+                    "const": "aws_kms"
+                  }
+                },
+                "required": [
+                  "region",
+                  "key_arn"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "keystore_file"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "password_file"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "chains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "network": {
+                "type": "string",
+                "minLength": 1
+              },
+              "rpc": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "url_file": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "allow_insecure_http": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "oneOf": [
+                  {
+                    "required": [
+                      "url"
+                    ],
+                    "not": {
+                      "required": [
+                        "url_file"
+                      ]
+                    }
+                  },
+                  {
+                    "required": [
+                      "url_file"
+                    ],
+                    "not": {
+                      "required": [
+                        "url"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "signer": {
+                "type": "string",
+                "minLength": 1
+              },
+              "max_gas": {
+                "type": "integer",
+                "minimum": 21000,
+                "maximum": 30000000
+              },
+              "max_fee_per_gas": {
+                "type": "string",
+                "minLength": 1
+              },
+              "confirmations": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 256
+              },
+              "recipients": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "tokens": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "address": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "methods": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 2,
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "eip3009",
+                          "permit2"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "address",
+                    "methods"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "network",
+              "rpc",
+              "signer",
+              "max_gas",
+              "max_fee_per_gas",
+              "confirmations",
+              "recipients",
+              "tokens"
+            ]
+          }
+        }
+      },
+      "required": [
+        "server",
+        "signers",
+        "chains"
+      ]
+    },
+    "secretName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "certificateConfigMapName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "secretEnv": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "X402_DATABASE_URL": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "key"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "X402_BEARER_TOKEN": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "key"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "config",
+    "secretName",
+    "certificateConfigMapName"
+  ]
+}

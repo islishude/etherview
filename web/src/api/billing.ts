@@ -7,6 +7,8 @@ export type BillingPaymentState = schemas.BillingPaymentState;
 export type BillingSummary = schemas.BillingSummary;
 export type BillingAccount = schemas.BillingAccount;
 export type BillingConfig = schemas.BillingConfig;
+export type BillingPaymentOption = schemas.BillingPaymentOption;
+export type BillingPaymentConfig = BillingConfig & BillingPaymentOption;
 export type BillingTopupIntent = schemas.BillingTopupIntent;
 export type BillingTopupReceipt = schemas.BillingTopupReceipt;
 export type BillingTransferMethod = schemas.BillingAssetTransferMethod;
@@ -35,11 +37,12 @@ export async function getCurrentBillingAccount(): Promise<BillingAccount> {
 export async function createBillingTopupIntent(
   amountAtomic: string,
   csrfToken: string,
+  paymentOptionId: string,
 ): Promise<BillingTopupIntent> {
   return requireEnvelope(
     await sdk.createBillingTopupIntent({
       client: apiClient,
-      body: { amount_atomic: amountAtomic },
+      body: { amount_atomic: amountAtomic, payment_option_id: paymentOptionId },
       headers: { "X-CSRF-Token": csrfToken },
     }),
   ).data;

@@ -1,3 +1,5 @@
+import "@/i18n";
+import { testBillingConfig } from "@/billing/testFixtures";
 import { useState, type ReactNode } from "react";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,8 +8,10 @@ import userEvent from "@testing-library/user-event";
 import { toHex } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as billingAPI from "@/api/billing";
 import type { AuthChallenge } from "@/api/auth";
 import {
+  BillingChainError,
   assertWalletChain,
   buildAddEthereumChainParameter,
   chainsMatch,
@@ -49,7 +53,407 @@ afterEach(() => {
   }
 });
 
+describe("payment-view wallet scope", () => {
+  it.each([
+    "event",
+    "no-event",
+    "second-success",
+    "second-rejected",
+    "partial-failure",
+    "close-pending",
+    "operation-failure",
+    "restore-rejected",
+  ])("retains the payment-view scope and restores on close: %s", async (scenario) => {
+    const config = testBillingConfig({ network: "eip155:11155111" });
+    const second = testBillingConfig({ network: "eip155:2" });
+    config.payment_chains.push(...second.payment_chains);
+    vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue(config);
+    const fake = createFakeProvider();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fake.setResponse("wallet_switchEthereumChain", async ({ params }: EIP1193RequestArguments) => {
+      const chain = (params as [{ chainId: string }])[0].chainId;
+      if (chain === "0x2" && scenario === "second-rejected") throw { code: 4001 };
+      if (chain === "0x1" && scenario === "restore-rejected") throw { code: 4001 };
+      if (scenario === "close-pending" && chain === "0xaa36a7") await gate;
+      fake.setResponse("eth_chainId", chain);
+      if (scenario !== "no-event") fake.emit("chainChanged", chain);
+      if (chain === "0x2" && scenario === "partial-failure") throw { code: 4001 };
+      return null;
+    });
+    registerProvider(providerDetail(fake.provider));
+    let current!: ReturnType<typeof useWallet>;
+    function Capture() {
+      current = useWallet();
+      return null;
+    }
+    renderWallet(<Capture />);
+    await waitFor(() => expect(current.providers).toHaveLength(1));
+    await act(async () => {
+      await current.connect(providerUUID);
+    });
+    const original = current.active!;
+    const operation = vi.fn(async () => {
+      if (scenario === "operation-failure") throw new Error("payment failed");
+      return "done";
+    });
+    if (scenario === "close-pending") {
+      let pending!: Promise<unknown>;
+      await act(async () => {
+        pending = current.withBillingChain!("eip155:11155111", operation, true).catch(
+          (error) => error,
+        );
+      });
+      await waitFor(() =>
+        expect(
+          fake.request.mock.calls.some(([call]) => call.method === "wallet_switchEthereumChain"),
+        ).toBe(true),
+      );
+      await act(async () => {
+        await expect(current.withBillingChain!("eip155:2", operation, true)).rejects.toMatchObject({
+          code: "INVALID_REQUEST",
+        });
+        const closed = current.closeBillingChain!();
+        expect(current.closeBillingChain!()).toBe(closed);
+        release();
+        expect(await pending).toBeInstanceOf(WalletBoundaryError);
+        await closed;
+      });
+      expect(operation).not.toHaveBeenCalled();
+    } else {
+      await act(async () => {
+        const result = current.withBillingChain!("eip155:11155111", operation, true);
+        if (scenario === "operation-failure")
+          await expect(result).rejects.toThrow("payment failed");
+        else await expect(result).resolves.toBe("done");
+      });
+      expect(current.active?.chainID).toBe("11155111");
+      expect(current.active?.authRevision).toBe(original.authRevision);
+      expect(current.active?.authChainID).toBe("1");
+      const next = vi.fn(async () => "next");
+      await act(async () => {
+        if (scenario === "second-rejected" || scenario === "partial-failure") {
+          await expect(current.withBillingChain!("eip155:2", next, true)).rejects.toBeInstanceOf(
+            BillingChainError,
+          );
+          expect(next).not.toHaveBeenCalled();
+        } else
+          await current.withBillingChain!(
+            scenario === "second-success" ? "eip155:2" : "eip155:11155111",
+            next,
+            true,
+          );
+      });
+      expect(current.active?.chainID).toBe(scenario === "second-success" ? "2" : "11155111");
+      await act(async () => {
+        await current.closeBillingChain!();
+      });
+    }
+    if (scenario === "restore-rejected") expect(current.active).toBeUndefined();
+    else {
+      expect(current.active?.chainID).toBe("1");
+      expect(current.active?.authRevision).toBe(original.authRevision);
+    }
+    expect(
+      fake.request.mock.calls.some(([call]) => call.method === "wallet_addEthereumChain"),
+    ).toBe(false);
+  });
+});
+
 describe("EIP-6963 wallet boundary", () => {
+  it.each([
+    "same-chain",
+    "event",
+    "no-event",
+    "late-event",
+    "add",
+    "add-switches",
+    "rejected",
+    "add-rejected",
+    "wrong-chain",
+    "account-change",
+    "chain-aba",
+    "disconnect",
+    "missing-config",
+    "wrong-config",
+    "add-aba",
+  ])("prepares login on the configured chain: %s", async (scenario) => {
+    const fake = createFakeProvider({ eth_chainId: scenario === "same-chain" ? "0x1" : "0x2" });
+    let switches = 0;
+    fake.setResponse("wallet_switchEthereumChain", () => {
+      switches += 1;
+      if (scenario === "rejected") throw { code: 4001 };
+      if (
+        [
+          "add",
+          "add-switches",
+          "add-rejected",
+          "missing-config",
+          "wrong-config",
+          "add-aba",
+        ].includes(scenario) &&
+        switches === 1
+      )
+        throw { code: 4902 };
+      if (scenario === "wrong-chain") return null;
+      fake.setResponse("eth_chainId", "0x1");
+      if (!["no-event", "late-event"].includes(scenario)) fake.emit("chainChanged", "0x1");
+      if (scenario === "account-change") fake.emit("accountsChanged", [accountB]);
+      if (scenario === "chain-aba") {
+        fake.emit("chainChanged", "0x2");
+        fake.emit("chainChanged", "0x1");
+      }
+      if (scenario === "disconnect") fake.emit("disconnect", {});
+      return null;
+    });
+    fake.setResponse("wallet_addEthereumChain", () => {
+      if (scenario === "add-rejected") throw { code: 4001 };
+      if (scenario === "add-aba") fake.emit("chainChanged", "0x1");
+      if (scenario === "add-switches") {
+        fake.setResponse("eth_chainId", "0x1");
+        fake.emit("chainChanged", "0x1");
+      }
+      return null;
+    });
+    registerProvider(providerDetail(fake.provider));
+    let current!: ReturnType<typeof useWallet>;
+    function Capture() {
+      current = useWallet();
+      return null;
+    }
+    renderWallet(<Capture />, scenario);
+    await waitFor(() => expect(current.providers).toHaveLength(1));
+    await act(async () => {
+      await current.connect(providerUUID);
+    });
+    const original = current.active!;
+    const success = [
+      "same-chain",
+      "event",
+      "no-event",
+      "late-event",
+      "add",
+      "add-switches",
+    ].includes(scenario);
+    await act(async () => {
+      if (success) {
+        const prepared = await current.prepareLogin(original);
+        expect(prepared.chainID).toBe("1");
+        expect(current.isActiveWallet(prepared)).toBe(true);
+      } else {
+        await expect(current.prepareLogin(original)).rejects.toBeInstanceOf(WalletBoundaryError);
+      }
+    });
+    if (scenario === "late-event") {
+      const revision = current.active!.revision;
+      act(() => fake.emit("chainChanged", "0x1"));
+      expect(current.active!.revision).toBe(revision);
+    }
+    expect(switches).toBe(scenario === "same-chain" ? 0 : scenario === "add" ? 2 : 1);
+    const additions = fake.request.mock.calls.filter(
+      ([request]) => request.method === "wallet_addEthereumChain",
+    );
+    expect(additions).toHaveLength(
+      ["add", "add-switches", "add-rejected", "add-aba"].includes(scenario) ? 1 : 0,
+    );
+  });
+
+  it.each(["changed-account", "empty-accounts", "invalid-accounts", "disconnected"])(
+    "clears stale login identity after a silent %s response and permits reconnection",
+    async (scenario) => {
+      const fake = createFakeProvider();
+      registerProvider(providerDetail(fake.provider));
+      let current!: ReturnType<typeof useWallet>;
+      function Capture() {
+        current = useWallet();
+        return null;
+      }
+      renderWallet(<Capture />);
+      await waitFor(() => expect(current.providers).toHaveLength(1));
+      await act(async () => {
+        await current.connect(providerUUID);
+      });
+      fake.setResponse("eth_accounts", () => {
+        if (scenario === "disconnected") throw { code: 4900 };
+        if (scenario === "invalid-accounts") return null;
+        return scenario === "empty-accounts" ? [] : [accountB];
+      });
+      await act(async () => {
+        await expect(current.prepareLogin(current.active!)).rejects.toBeInstanceOf(
+          WalletBoundaryError,
+        );
+      });
+      expect(current.active).toBeUndefined();
+      fake.setResponse("eth_requestAccounts", [accountB]);
+      fake.setResponse("eth_accounts", [accountB]);
+      await act(async () => {
+        const connected = await current.connect(providerUUID);
+        const prepared = await current.prepareLogin(connected);
+        expect(prepared.account).toBe(accountB);
+        expect(current.isActiveWallet(prepared)).toBe(true);
+      });
+    },
+  );
+
+  it.each([
+    "event",
+    "no-event",
+    "same-account-event",
+    "late-chain-event",
+    "chain-aba",
+    "account-change",
+    "unexpected-chain",
+    "restore-rejected",
+    "switch-rejected",
+    "switch-noop",
+    "switch-invalid",
+    "switch-failed",
+    "switch-account",
+    "switch-disconnect",
+    "restore-pending",
+    "restore-operation-failed",
+  ])("fences payment chain transitions: %s", async (scenario) => {
+    vi.spyOn(billingAPI, "getBillingConfig").mockResolvedValue(
+      testBillingConfig({
+        x402_topups_enabled: true,
+        network: "eip155:11155111",
+      }) as billingAPI.BillingConfig,
+    );
+    const fake = createFakeProvider({ eth_signTypedData_v4: walletSignature });
+    fake.setResponse("wallet_switchEthereumChain", ({ params }: EIP1193RequestArguments) => {
+      const chain = (params as [{ chainId: string }])[0].chainId;
+      if (scenario === "switch-account") {
+        fake.emit("accountsChanged", [accountB]);
+        return null;
+      }
+      if (scenario === "switch-disconnect") {
+        fake.emit("disconnect", { code: 4900 });
+        return null;
+      }
+      if (scenario === "switch-noop") return null;
+      if (scenario === "switch-invalid") return "invalid";
+      if (scenario === "switch-failed") throw new Error("private provider URL");
+      if (scenario === "switch-rejected" || (scenario.startsWith("restore-") && chain === "0x1")) {
+        throw { code: 4001 };
+      }
+      fake.setResponse("eth_chainId", chain);
+      if (scenario !== "no-event") fake.emit("chainChanged", chain);
+      return null;
+    });
+    registerProvider(providerDetail(fake.provider));
+    let current!: ReturnType<typeof useWallet>;
+    function Capture() {
+      current = useWallet();
+      return null;
+    }
+    renderWallet(<Capture />);
+    await waitFor(() => expect(current.providers).toHaveLength(1));
+    await act(async () => {
+      await current.connect(providerUUID);
+    });
+    const original = current.active!;
+    const operation = vi.fn(async (selected) => {
+      expect(selected.chainID).toBe("11155111");
+      expect(selected.authChainID).toBe("1");
+      expect(selected.authRevision).toBe(original.authRevision);
+      expect(current.isActiveWallet(original)).toBe(false);
+      if (scenario === "same-account-event") fake.emit("accountsChanged", [accountA]);
+      if (scenario === "late-chain-event") fake.emit("chainChanged", "0xaa36a7");
+      if (scenario === "chain-aba") {
+        fake.emit("chainChanged", "0x2");
+        fake.emit("chainChanged", "0xaa36a7");
+      }
+      await new ExactEvmScheme({
+        address: selected.account,
+        signTypedData: (data) =>
+          current.signBillingTypedData!(
+            data,
+            {
+              method: "eip3009",
+              chainID: "11155111",
+              account: accountA,
+              asset: target,
+              recipient: accountB,
+              amountAtomic: "1000",
+              assetName: "USDC",
+              assetVersion: "2",
+            },
+            selected,
+          ),
+      }).createPaymentPayload(2, {
+        scheme: "exact",
+        network: "eip155:11155111",
+        asset: target,
+        amount: "1000",
+        payTo: accountB,
+        maxTimeoutSeconds: 60,
+        extra: { name: "USDC", version: "2", assetTransferMethod: "eip3009" },
+      });
+      const signed = fake.request.mock.calls.find(
+        ([request]) => request.method === "eth_signTypedData_v4",
+      );
+      expect(JSON.parse((signed![0].params as string[])[1]!).domain.chainId).toBe(11155111);
+
+      if (scenario === "account-change") fake.emit("accountsChanged", [accountB]);
+      if (scenario === "unexpected-chain") fake.emit("chainChanged", "0x2");
+      if (scenario === "restore-pending") throw new Error("payment pending");
+      if (scenario === "restore-operation-failed") throw new Error("payment failed");
+      return "settled";
+    });
+    let outcome: unknown;
+    await act(async () => {
+      try {
+        outcome = await current.withBillingChain!("eip155:11155111", operation);
+      } catch (error) {
+        outcome = error;
+      }
+    });
+    if (
+      ["event", "no-event", "same-account-event", "late-chain-event", "restore-rejected"].includes(
+        scenario,
+      )
+    ) {
+      expect(outcome).toBe("settled");
+    } else if (scenario === "restore-pending" || scenario === "restore-operation-failed") {
+      expect(outcome).toEqual(
+        new Error(scenario === "restore-pending" ? "payment pending" : "payment failed"),
+      );
+    } else expect(outcome).toBeInstanceOf(WalletBoundaryError);
+    if (scenario.startsWith("switch-")) {
+      expect(outcome).toBeInstanceOf(BillingChainError);
+      expect(outcome).toMatchObject({ stage: "entry", targetChainID: "11155111" });
+      expect(String(outcome)).not.toContain("private provider URL");
+      expect(
+        fake.request.mock.calls.some(([request]) => request.method === "eth_signTypedData_v4"),
+      ).toBe(false);
+    }
+    if (scenario.startsWith("restore-")) {
+      expect(current.active).toBeUndefined();
+      expect(await screen.findByRole("alert")).toHaveTextContent("Unable to return to network 1");
+      expect(screen.getByRole("alert")).toHaveTextContent("does not change the payment outcome");
+    }
+    if (scenario === "restore-rejected") expect(current.active).toBeUndefined();
+    if (
+      ["event", "no-event", "same-account-event", "late-chain-event", "switch-rejected"].includes(
+        scenario,
+      )
+    ) {
+      expect(current.active?.chainID).toBe("1");
+      expect(current.active?.authRevision).toBe(original.authRevision);
+      const restoredRevision = current.active?.revision;
+      await act(async () => {
+        fake.emit("chainChanged", "0x1");
+        fake.emit("accountsChanged", [accountA]);
+      });
+      expect(current.active?.authRevision).toBe(original.authRevision);
+      expect(current.active?.revision).toBe(restoredRevision);
+    }
+    expect(operation).toHaveBeenCalledTimes(scenario.startsWith("switch-") ? 0 : 1);
+    vi.restoreAllMocks();
+  });
+
   it.each(["eip3009", "permit2"] as const)(
     "sends the complete %s domain schema to the injected provider",
     async (method) => {
@@ -290,6 +694,8 @@ describe("EIP-6963 wallet boundary", () => {
         account: accountA,
         chainID: "1",
         revision: 1,
+        authRevision: 1,
+        authChainID: "1",
       }),
     );
   });
@@ -987,7 +1393,7 @@ function WalletHarness() {
   );
 }
 
-function renderWallet(children: ReactNode = <WalletHarness />) {
+function renderWallet(children: ReactNode = <WalletHarness />, scenario?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -998,12 +1404,15 @@ function renderWallet(children: ReactNode = <WalletHarness />) {
     native_decimals: 18,
     native_name: "Ether",
     native_symbol: "ETH",
-    wallet_add_chain: {
-      chain_id: "1",
-      chain_name: "Wallet Testnet",
-      native_currency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpc_urls: ["http://localhost:8545"],
-    },
+    wallet_add_chain:
+      scenario === "missing-config"
+        ? undefined
+        : {
+            chain_id: scenario === "wrong-config" ? "2" : "1",
+            chain_name: "Wallet Testnet",
+            native_currency: { name: "Ether", symbol: "ETH", decimals: 18 },
+            rpc_urls: ["http://localhost:8545"],
+          },
   });
   return render(
     <QueryClientProvider client={queryClient}>

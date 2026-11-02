@@ -3,6 +3,12 @@ import i18n from "../index";
 export const billingPriceResources = {
   en: {
     billing: {
+      result: {
+        success: "Top-up successful",
+        failure: "Top-up unsuccessful",
+        continue: "Continue topping up",
+        history: "View top-up history",
+      },
       guide: {
         steps: "Top-up progress",
         connectHint:
@@ -18,6 +24,12 @@ export const billingPriceResources = {
         walletBalance: "Available in wallet",
         refresh: "Refresh balance",
         loading: "Checking balance…",
+        switchError: {
+          message: "Unable to switch to {{network}}",
+          description:
+            "Your wallet is not ready to sign payment on this network. Confirm the switch in your wallet and retry.",
+        },
+        balanceUnavailable: "Unavailable",
         unavailable: "Unable to check wallet balance. Refresh to retry.",
         insufficient: "Wallet token balance is insufficient. Payment was not submitted.",
         shortfall: "Insufficient balance. Missing {{amount}} tokens.",
@@ -31,6 +43,9 @@ export const billingPriceResources = {
 
       workspace: {
         tokenAmount: "Token amount",
+        creditUnit: "Credits",
+        expectedCredit: "Expected credit: {{amount}} credits",
+        exchangeRate: "1 token = {{rate}} credits",
         prices: "Query prices",
         weight: "Complexity weight",
         pricePolicy:
@@ -40,6 +55,12 @@ export const billingPriceResources = {
   },
   zh: {
     billing: {
+      result: {
+        success: "充值成功",
+        failure: "充值未完成",
+        continue: "继续充值",
+        history: "查看充值历史",
+      },
       guide: {
         steps: "充值进度",
         connectHint: "请先连接当前登录账户的钱包，以查看余额并充值。",
@@ -54,6 +75,11 @@ export const billingPriceResources = {
         walletBalance: "钱包可用",
         refresh: "刷新余额",
         loading: "正在检查余额…",
+        switchError: {
+          message: "无法切换到 {{network}}",
+          description: "钱包尚未准备好在此网络签署付款。请在钱包中确认切换网络后重试。",
+        },
+        balanceUnavailable: "不可用",
         unavailable: "无法检查钱包余额，请刷新重试。",
         insufficient: "钱包代币余额不足，付款未提交。",
         shortfall: "余额不足，还差 {{amount}} 个代币。",
@@ -66,6 +92,9 @@ export const billingPriceResources = {
 
       workspace: {
         tokenAmount: "代币数量",
+        creditUnit: "额度",
+        expectedCredit: "预计到账：{{amount}} 额度",
+        exchangeRate: "1 代币 = {{rate}} 额度",
         prices: "查询价格",
         weight: "复杂度权重",
         pricePolicy: "每次成功查询按固定复杂度权重 × 基价扣费，请求速率限制独立计算。",

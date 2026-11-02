@@ -1,0 +1,26 @@
+server:
+  listen: 0.0.0.0:8081
+  allow_insecure_http: true
+database:
+  url_file: /run/secrets/x402-db
+auth:
+  bearer_token_file: /run/secrets/x402-token
+signers:
+  preview:
+    type: keystore
+    address: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+    keystore_file: /run/secrets/x402-key
+    password_file: /run/secrets/x402-password
+chains:
+  - network: eip155:31337
+    rpc:
+      url: http://anvil:8545
+      allow_insecure_http: true
+    signer: preview
+    max_gas: 500000
+    max_fee_per_gas: "100000000000"
+    confirmations: 1
+    recipients: ["0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"]
+    tokens:
+      - address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+        methods: [eip3009, permit2]

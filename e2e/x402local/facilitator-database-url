@@ -1,0 +1,1 @@
+postgres://etherview:etherview-x402-local@postgres:5432/etherview?sslmode=disable

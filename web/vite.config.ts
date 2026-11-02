@@ -55,9 +55,9 @@ export default defineConfig({
           includeDependenciesRecursively: true,
           groups: [
             {
-              // Keep ENS normalization and its shared tables in a separate compression unit.
+              // Keep the Viem/Ox normalization wrappers and tables behind ENS search.
               name: "ens-normalize",
-              test: /node_modules[\\/](?:@adraffy[\\/]ens-normalize|viem[\\/]_esm[\\/]utils[\\/]ens[\\/]normalize\.js)/,
+              test: /node_modules[\\/](?:@adraffy[\\/]ens-normalize|viem[\\/]_esm[\\/]utils[\\/]ens[\\/]normalize\.js|ox[\\/]_esm[\\/]core[\\/]Ens\.js)/,
               priority: 60,
               includeDependenciesRecursively: false,
             },

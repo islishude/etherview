@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"errors"
-	"math/big"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -67,17 +66,19 @@ func (h *Handler) createBillingTopupIntent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	amount := string(request.AmountAtomic)
-	if !topupAmountInRange(
-		amount,
-		h.cfg.Billing.MinimumTopupAmountAtomic,
-		h.cfg.Billing.MaximumTopupAmountAtomic,
-	) {
-		writeError(w, r, http.StatusBadRequest, "topup_amount_invalid", "top-up amount is outside the configured bounds", nil)
+	option, ok := h.cfg.Billing.PaymentOption(request.PaymentOptionId)
+	if !ok {
+		writeError(w, r, http.StatusBadRequest, "topup_payment_option_invalid", "payment option is unavailable", nil)
 		return
 	}
+	if _, err := option.Credit(amount); err != nil {
+		writeError(w, r, http.StatusBadRequest, "topup_amount_invalid", "top-up amount cannot be converted exactly", nil)
+		return
+	}
+
 	payer := common.HexToAddress(string(authentication.Session.User.Address))
 	intent, err := h.prepaidBilling.CreateTopupIntent(r.Context(), billing.CreateTopupIntentInput{
-		UserID: authentication.Session.User.ID, Payer: payer,
+		UserID: authentication.Session.User.ID, Payer: payer, PaymentOption: option,
 		AmountAtomic: amount, ObservedAt: h.now().UTC(),
 	})
 	if err != nil {
@@ -520,8 +521,7 @@ func billingAccountModel(account billing.Account) (gen.BillingAccount, error) {
 		return gen.BillingAccount{}, billing.ErrIntegrity
 	}
 	return gen.BillingAccount{
-		UserId: userID, Network: account.Network,
-		Asset:             billingAddressModel(account.Asset),
+		UserId:            userID,
 		TotalCreditAtomic: account.TotalCreditAtomic,
 		TotalDebitAtomic:  account.TotalDebitAtomic,
 		ReservedAtomic:    account.ReservedAtomic,
@@ -540,7 +540,12 @@ func billingTopupIntentModel(
 		userID.Version() != 4 || !intent.State.Valid() {
 		return gen.BillingTopupIntent{}, billing.ErrIntegrity
 	}
+	option, optionErr := billingOptionModel(intent.PaymentOption)
+	if optionErr != nil {
+		return gen.BillingTopupIntent{}, optionErr
+	}
 	model := gen.BillingTopupIntent{
+		PaymentOption: option, CreditAmountAtomic: gen.Quantity(intent.CreditAmountAtomic),
 		Id: identifier, UserId: userID,
 		AmountAtomic: gen.Quantity(intent.AmountAtomic),
 		Network:      intent.Network, Asset: billingAddressModel(intent.Asset),
@@ -548,6 +553,10 @@ func billingTopupIntentModel(
 		State: gen.BillingTopupIntentState(intent.State), ExpiresAt: intent.ExpiresAt.UTC(),
 		CreatedAt: intent.CreatedAt.UTC(), UpdatedAt: intent.UpdatedAt.UTC(),
 		FailureCode: intent.FailureCode, CreditedAt: intent.CreditedAt,
+	}
+	if intent.SubmissionProgress != "" {
+		progress := gen.BillingTopupIntentSubmissionProgress(intent.SubmissionProgress)
+		model.SubmissionProgress = &progress
 	}
 	if intent.ActivePaymentID != nil {
 		paymentID, paymentErr := uuid.Parse(*intent.ActivePaymentID)
@@ -588,17 +597,6 @@ func billingIntentID(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	return identifier.String(), true
-}
-
-func topupAmountInRange(value, minimum, maximum string) bool {
-	if !canonicalPositiveUint256(value) || !canonicalPositiveUint256(minimum) ||
-		!canonicalPositiveUint256(maximum) {
-		return false
-	}
-	amount, _ := new(big.Int).SetString(value, 10)
-	minAmount, _ := new(big.Int).SetString(minimum, 10)
-	maxAmount, _ := new(big.Int).SetString(maximum, 10)
-	return amount.Cmp(minAmount) >= 0 && amount.Cmp(maxAmount) <= 0
 }
 
 func (h *Handler) handlePrepaidBillingError(w http.ResponseWriter, r *http.Request, err error) {

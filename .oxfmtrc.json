@@ -30,6 +30,7 @@
     "**/*_generated.*",
     "licenses/**",
     "internal/**/testdata/**",
-    "deploy/helm/etherview/templates/**"
+    "deploy/helm/etherview/templates/**",
+    "deploy/facilitator/helm/templates/**"
   ]
 }

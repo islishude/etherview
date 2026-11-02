@@ -590,3 +590,52 @@ func TestMemoryLimiterRefills(t *testing.T) {
 		t.Fatal("refilled request denied")
 	}
 }
+
+func TestUserAPIKeyDeletionRequiresRevocationAndRetainsRecord(t *testing.T) {
+	manager, repository := testManager(t)
+	service, err := NewUserService(manager, UserKeyPolicy{Rate: 10, Burst: 20, MaximumActive: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	issued, err := service.Create(ctx, "owner", "reader", []Scope{ScopeRead})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := issued.Record.Prefix
+	at := time.Now().UTC()
+	if err := service.Delete(ctx, "owner", prefix, at); !errors.Is(err, ErrAPIKeyNotRevoked) {
+		t.Fatalf("active delete: %v", err)
+	}
+	if err := service.Delete(ctx, "other", prefix, at); !errors.Is(err, ErrAPIKeyNotFound) {
+		t.Fatalf("cross-owner delete: %v", err)
+	}
+	if err := service.Revoke(ctx, "owner", prefix, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Revoke(ctx, "owner", prefix, at.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	for _, timestamp := range []time.Time{at, at.Add(time.Hour)} {
+		if err := service.Delete(ctx, "owner", prefix, timestamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := repository.ByPrefix(ctx, prefix)
+	if err != nil || stored.DeletedAt == nil || !stored.DeletedAt.Equal(at) || !stored.RevokedAt.Equal(at) {
+		t.Fatalf("retained record: %+v, %v", stored, err)
+	}
+	page, err := service.List(ctx, "owner", nil, 25)
+	if err != nil || len(page.Items) != 0 || page.ActiveCount != 0 {
+		t.Fatalf("deleted list: %+v, %v", page, err)
+	}
+	if _, err := service.Rotate(ctx, "owner", prefix); !errors.Is(err, ErrAPIKeyNotFound) {
+		t.Fatalf("deleted rotate: %v", err)
+	}
+	if err := service.Revoke(ctx, "owner", prefix, at); !errors.Is(err, ErrAPIKeyNotFound) {
+		t.Fatalf("deleted revoke: %v", err)
+	}
+	if _, err := manager.Authenticate(ctx, issued.Token); !errors.Is(err, ErrRevokedAPIKey) {
+		t.Fatalf("deleted auth: %v", err)
+	}
+}

@@ -347,6 +347,14 @@ test("Preview groups short checks and isolates heavy suites without losing failu
   const smoke = jobs.get("preview-smoke");
   assert.equal(smoke.split("uses: ./.github/actions/setup-preview").length - 1, 1);
   assert.match(smoke, /id: setup/);
+  for (const binary of ["anvil", "cast"]) {
+    assert.ok(
+      smoke.includes(
+        `docker cp "$container:/usr/local/bin/${binary}" "$RUNNER_TEMP/preview-tools/${binary}"`,
+      ),
+    );
+    assert.ok(smoke.includes(`${binary.toUpperCase()}="$RUNNER_TEMP/preview-tools/${binary}"`));
+  }
   assert.doesNotMatch(
     smoke,
     /browser:|PLAYWRIGHT_USE_BUNDLED|tools-e2e-full|PREVIEW_TOOLS_FULL|continue-on-error/,

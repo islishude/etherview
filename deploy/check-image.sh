@@ -45,6 +45,10 @@ fi
     --security-opt no-new-privileges \
     "$image" version >/dev/null
 
+"$docker_command" run --rm --network none \
+    --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --entrypoint /x402facilitator "$image" --help >/dev/null 2>&1
+
 sea_self_test=$("$docker_command" run --rm \
     --read-only \
     --cap-drop ALL \

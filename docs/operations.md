@@ -214,14 +214,14 @@ See [IPFS gateway](../preview/docs/operations.md#ipfs-gateway).
 
 ### IPFS file tool
 
-The independent `cmd/ipfs` command uses the local Kubo management API. This
+The independent `preview/cmd/ipfs` command uses the local Kubo management API. This
 API is published only on `127.0.0.1:5001`; the HTTPS proxy serves `/ipfs/` reads
 and does not expose management operations. No host IPFS CLI is needed.
 
 ```sh
-go run ./cmd/ipfs upload --api http://127.0.0.1:5001 ./file.json
-go run ./cmd/ipfs upload --wrap --api http://127.0.0.1:5001 ./metadata.json
-go run ./cmd/ipfs download --api http://127.0.0.1:5001 --output ./download.json CID/metadata.json
+go run ./preview/cmd/ipfs upload --api http://127.0.0.1:5001 ./file.json
+go run ./preview/cmd/ipfs upload --wrap --api http://127.0.0.1:5001 ./metadata.json
+go run ./preview/cmd/ipfs download --api http://127.0.0.1:5001 --output ./download.json CID/metadata.json
 ```
 
 Upload accepts one regular file and pins its CIDv1 SHA-256/raw-leaf content.
@@ -241,7 +241,7 @@ Both commands default to `--api http://127.0.0.1:5001` and `--timeout 5m`.
 HTTPS endpoints use system certificate trust. RPC redirects and environment
 proxies are disabled. Diagnostics go to stderr; exit codes are 0 for success,
 2 for argument errors, and 1 for operation failures. Build an independent
-binary with `go build -o /tmp/etherview-ipfs ./cmd/ipfs`.
+binary with `go build -o /tmp/etherview-ipfs ./preview/cmd/ipfs`.
 
 For Helm, create or provision a TLS Secret independently, then enable
 `apiTLS.enabled` and set `apiTLS.existingSecret`. `ingress.tls` controls the
@@ -1261,13 +1261,13 @@ It uses Anvil, PostgreSQL 18, the production Etherview image, and separate
 test-only contract/facilitator images. Its deterministic development keys and
 fixtures must never be used outside that environment.
 
-### Base Sepolia prepaid release gate
+### Ethereum Sepolia prepaid release gate
 
 The release gate is a one-shot pair of real EIP-3009 and Permit2 reports. Each
 must cover SIWE, top-up settlement, account credit, user-owned API-key debit,
 and writer/chain reconciliation. It remains blocked without operator funds,
-file-only payer credentials, a staging facilitator, writer access, an
-independent RPC, and the deployed image digest. Local Anvil evidence cannot
+MetaMask-held payer credentials, a compatible facilitator, writer access, an
+independent RPC, and the deployed image digest. Local-only Anvil payments cannot
 close it, and failed or unknown real-payment attempts must never be retried
 automatically.
 
@@ -1888,3 +1888,172 @@ when the global switch is enabled. The expanded details provide a download
 icon that saves the cached complete blob without another request or fee.
 The browser saves previously fetched content locally without another charge
 or token validation. Account/session changes and navigation discard that buffer.
+
+## Multiple x402 payment options
+
+Configure `billing.payment_chains` with `name`, `network`, `facilitator_url` and `tokens`.
+The required `name` is a nonblank display label of 1–128 characters; for example,
+`Base Sepolia` for `eip155:84532`. Network identity and authorization use `network`,
+never the display name.
+Each token requires `id`, `name`, `asset`, `asset_decimals`, `recipient`,
+`asset_transfer_methods`, `minimum_topup_amount_atomic`,
+`maximum_topup_amount_atomic`, `credit_rate_numerator` and
+`credit_rate_denominator`; EIP-3009 also requires `asset_eip712_name` and
+`asset_eip712_version`. See the four concrete options in
+[Preview configuration](../preview/config.yaml). Ratios convert atomic token
+units to atomic credits: an 18-decimal token worth two credits uses numerator
+`2` and denominator `1000000000000`. All account, price and adjustment amounts
+are six-decimal credits. Chain credentials use the secret-only
+`ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE)` JSON map, for example
+`{"eip155:11155111":{"Authorization":"Bearer ..."}}`; each map key must identify
+a configured payment chain. Legacy flat payment YAML and environment keys are
+rejected. Use a fresh database; there is no old-balance conversion.
+
+Policy edits affect new intents only. Keep the option ID and chain facilitator
+available while old intents expire or settle; never reuse an ID for a different
+chain. Unknown settlements permit status recovery or explicit reconciliation,
+not automatic repayment. Disabling a payment chain does not disable existing
+credit consumption or explorer reads.
+
+## Standalone multi-chain facilitator
+
+The production `x402facilitator` process is separate from all explorer roles.
+Build the shared production image with `make docker-build IMAGE=etherview:local`.
+Compose uses `ETHERVIEW_IMAGE` (default `etherview:local`) and overrides the
+entrypoint to `/x402facilitator`; the standalone Helm chart uses its `image` value
+and the same executable as its container command. The image retains `/etherview`
+as its default entrypoint. Pass `--config=/etc/etherview/facilitator.yaml` to the
+facilitator process, with configuration and signer secrets mounted separately.
+Use `deploy/facilitator/config.example.yaml`, the standalone Compose definition,
+or the chart under `deploy/facilitator/helm`. Run the ordinary fresh-database
+migrations before starting it. Its database login needs access only to
+`facilitator_settlements` (SELECT, INSERT, UPDATE), schema USAGE and the advisory
+lock function; do not grant user-account credit writes. It shares the migrated
+PostgreSQL database, not API credentials. Each network/account must be reserved
+exclusively for this transaction sender.
+
+Use the `server`, `database`, `auth`, `signers` and `chains` sections shown in
+the example. Supply the database URL and bearer token through environment or file
+injection as described below. Mount the TLS private key and optional encrypted
+keystore/password as read-only secrets. Mount the public
+TLS certificate separately as ordinary configuration. Standalone Compose expects
+`./certs/tls.crt`; Helm requires `certificateConfigMapName` naming a ConfigMap
+with `tls.crt`. Its listener is fixed to `0.0.0.0:8081` to match the Service and probes.
+
+The facilitator supports these fixed credential environment pairs:
+
+| Direct value        | File source              | YAML fallback            |
+| ------------------- | ------------------------ | ------------------------ |
+| `X402_DATABASE_URL` | `X402_DATABASE_URL_FILE` | `database.url_file`      |
+| `X402_BEARER_TOKEN` | `X402_BEARER_TOKEN_FILE` | `auth.bearer_token_file` |
+
+Set at most one member of each pair: setting both, even to empty strings, fails.
+A nonblank environment value overrides the YAML file without reading it. Blank
+direct values or readable empty/whitespace environment files fall back to YAML; an
+unreadable environment file or oversized value fails without fallback. A valid
+source is mandatory. Limits apply before trimming: 8 KiB for the database URL,
+4 KiB for the bearer token, which must retain at least 32 bytes after trimming.
+The `database` and `auth` sections may be omitted when environment injection supplies
+them. RPC, signer and TLS configuration have no new environment overrides.
+
+Standalone Compose forwards these four variables only when present; do not export
+both forms. Preview and E2E Compose do not inherit them from the host. Helm accepts
+only Secret selectors through `secretEnv`, for example:
+
+```yaml
+secretEnv:
+  X402_DATABASE_URL:
+    name: facilitator-credentials
+    key: database-url
+  X402_BEARER_TOKEN:
+    name: facilitator-credentials
+    key: bearer-token
+```
+
+Do not put plaintext credentials in Helm values or the ConfigMap. The selectors
+attach only to the facilitator container; TLS and signer file mounts retain their
+existing scope. `--check-config` uses the same environment as startup, still without
+external calls or signing. Diagnostics never include environment values or paths.
+
+Set ordinary RPC destinations directly in `chains[].rpc.url`. Use `rpc.url_file`
+instead when the complete URL contains credentials, including API keys embedded
+in paths; automatic credential detection is not reliable. Exactly one source is
+required. Fixed Preview Geth/Anvil URLs require neither extra files nor secrets.
+Production server TLS is mandatory; `server.allow_insecure_http` is a local-only
+exception. Each `rpc.allow_insecure_http` is an independent local-only exception,
+false by default. Enabling either one never enables the other.
+
+Replace old configuration files completely: top-level `listen`, `database_url_file`,
+`bearer_token_file`, `unsafe_local_http` and chain `rpc_url_file` are rejected.
+No configuration aliases, general environment overrides or YAML interpolation are supported.
+Database schema and payment protocols do not change. Stop the old singleton,
+replace configuration and mounts together, validate, then start the new process.
+
+Run `/x402facilitator --config=/etc/etherview/facilitator.yaml --check-config`
+with the deployment mounts before startup. This checks strict YAML and bounded
+local files, including the TLS key/certificate pair, without connecting to
+PostgreSQL/RPC/KMS or decrypting a signing key. It does not establish readiness.
+Errors contain stable codes and schema field positions; signer positions are
+zero-based in sorted signer-ID order. Inspect that field and its mounted file
+locally; never paste credentials into logs. Startup still validates database
+ownership, signing identity, chain IDs and required contracts.
+
+Bind the signer to its expected address. For AWS KMS use a fixed key ARN, region,
+`ECC_SECG_P256K1` and `SIGN_VERIFY`; give the facilitator workload only
+`kms:GetPublicKey` and `kms:Sign` for that key. Use workload identity, not static
+AWS keys in configuration. Only the facilitator receives this identity.
+
+Set each `billing.payment_chains[].facilitator_url` to this HTTPS origin and
+inject its bearer credential through the existing network-keyed
+`ETHERVIEW_X402_FACILITATOR_HEADERS_FILE` on API/all. Scope facilitator ingress to
+those callers, and egress to the configured PostgreSQL, RPC and KMS destinations.
+The Helm chart uses one replica and Recreate updates. Its Service publishes
+unready endpoints intentionally: a failed chain makes `/readyz` degraded while
+healthy chains remain available; `/healthz` remains the liveness probe.
+
+The service checks chain IDs and required code at startup, bounds gas and fees,
+and serializes each chain independently. Authenticated `/metrics` exposes per-chain
+health, pending journal count, success/failure counters and low native balance.
+Low balance compares available funds with the configured maximum transaction
+cost. No sensitive RPC or KMS errors are logged or returned.
+
+A signed transaction is committed before broadcast. A pending payment retains
+its exact hash and blocks new transactions on that chain until reconciled.
+Restart polls existing hashes; it never signs or broadcasts them again. A crash
+before signed bytes were committed is terminally rejected during recovery.
+Do not submit another authorization to resolve an uncertain existing payment.
+Inspect the journal and chain receipt. If the exact transaction needs manual
+rebroadcast, stop the normal process and run:
+
+```sh
+x402facilitator --config=/etc/etherview/facilitator.yaml --rebroadcast='AUTHORIZATION_ID'
+```
+
+This command acquires the same singleton lock and sends only the saved raw bytes;
+it cannot change nonce, fee, destination or calldata. Restart the normal service
+afterward. Account credit reconciliation remains the existing API-side operator
+procedure. Rotation of signer/network configuration requires resolving pending
+transactions first; never delete journal rows to bypass a pending payment.
+
+P60-T26 local acceptance is complete. P60-T27 uses a dedicated local facility
+using pinned Rustack KMS and two independent Anvil networks, without Geth or real
+AWS/public-testnet prerequisites. This does not replace the existing Preview
+topology. Use local test credentials and test-scoped emulator endpoints; never
+apply emulator endpoint overrides to production facilitator processes.
+
+Run `make test-rustack-x402` for an isolated, disposable run in both role layouts.
+It builds Rustack from commit `ffc10378c64280a78bf6b73fff51612bbba0eb66`; the
+published 0.10.0 image lacks the required secp256k1 key support. Use
+`make test-rustack-x402-prebuilt` only after both the production image and
+`etherview-rustack:ffc10378c64280a78bf6b73fff51612bbba0eb66` are loaded. The test
+creates its own Compose project, two Anvil state volumes and KMS key, then removes
+them on teardown. It publishes ephemeral loopback service ports and temporarily
+uses a host RPC fault proxy reachable from Docker for lost-broadcast-response
+coverage. KMS outage coverage pauses/resumes the emulator to retain its signing
+identity; it makes no KMS restart-persistence claim.
+
+Its [acceptance requirements](testing.md#standalone-facilitator-acceptance) require
+actual AWS SDK HTTP signing, both payment methods on both networks in all/split
+layouts, recovery checks and independent chain/writer reconciliation. Local
+simulation does not establish real AWS IAM enforcement, production key isolation
+or public-network production readiness; P70 release gates remain separate.

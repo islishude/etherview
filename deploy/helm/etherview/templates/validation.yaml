@@ -169,11 +169,13 @@
 {{- fail "networkPolicy.runtimeHTTPSCIDRs must not repeat a facilitator CIDR; facilitator TCP/443 egress is API/all-only" }}
 {{- end }}
 {{- end }}
-{{- $facilitatorURL := .Values.config.billing.facilitator_url | trim }}
+{{- range .Values.config.billing.payment_chains }}
+{{- $facilitatorURL := .facilitator_url | trim }}
 {{- $facilitatorOrigin := regexMatch "^https://([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9.-]*[A-Za-z0-9]|\\[[0-9A-Fa-f:]+\\])(:[1-9][0-9]{0,4})?/?$" $facilitatorURL }}
 {{- $facilitatorPort := regexFind ":[1-9][0-9]{0,4}/?$" $facilitatorURL | trimSuffix "/" | trimPrefix ":" }}
 {{- if or (not $facilitatorOrigin) (and (not (empty $facilitatorPort)) (ne $facilitatorPort "443")) }}
-{{- fail "config.billing.facilitator_url must be a root HTTPS origin using the default port or explicit :443 when Helm x402 top-ups are enabled" }}
+{{- fail "config.billing.payment_chains facilitator_url must be a root HTTPS origin using the default port or explicit :443 when Helm x402 top-ups are enabled" }}
+{{- end }}
 {{- end }}
 {{- if and .Values.externalSecret.enabled (empty (.Values.externalSecret.x402FingerprintPepperRemoteKey | trim)) }}
 {{- fail "externalSecret.x402FingerprintPepperRemoteKey is required when ExternalSecret-managed x402 top-ups are enabled" }}

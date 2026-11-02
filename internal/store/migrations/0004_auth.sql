@@ -29,9 +29,11 @@ CREATE TABLE api_keys (
     burst integer NOT NULL,
     created_at timestamp with time zone NOT NULL,
     revoked_at timestamp with time zone,
+    deleted_at timestamp with time zone,
     owner_user_id uuid,
     scopes text[] NOT NULL,
     CONSTRAINT api_keys_check CHECK ((burst >= rate_per_second)),
+    CONSTRAINT api_keys_deleted_requires_revocation CHECK (deleted_at IS NULL OR revoked_at IS NOT NULL),
     CONSTRAINT api_keys_digest_check CHECK ((octet_length(digest) = 32)),
     CONSTRAINT api_keys_prefix_check CHECK ((length(prefix) = 10)),
     CONSTRAINT api_keys_rate_per_second_check CHECK ((rate_per_second > 0)),
@@ -84,7 +86,7 @@ CREATE TABLE user_sessions (
 
 CREATE INDEX api_keys_owner_active_idx ON api_keys USING btree (owner_user_id, prefix) WHERE ((owner_user_id IS NOT NULL) AND (revoked_at IS NULL));
 
-CREATE INDEX api_keys_owner_page_idx ON api_keys USING btree (owner_user_id, created_at DESC, prefix DESC) WHERE (owner_user_id IS NOT NULL);
+CREATE INDEX api_keys_owner_page_idx ON api_keys USING btree (owner_user_id, created_at DESC, prefix DESC) WHERE (owner_user_id IS NOT NULL AND deleted_at IS NULL);
 
 CREATE INDEX auth_challenges_active_idx ON auth_challenges USING btree (chain_id, address, expires_at, id) WHERE (consumed_at IS NULL);
 

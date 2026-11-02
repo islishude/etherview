@@ -1,9 +1,8 @@
 import { lazyRouteComponent } from "@/lazyRouteComponent";
 import { AppNavigation } from "./AppNavigation";
-import { type SubmitEvent, Suspense, useState } from "react";
+import { type SubmitEvent, Suspense, useEffect, useRef, useState } from "react";
 import { Link, Outlet, useNavigate, useLocation } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { normalize as normalizeENSName } from "viem/ens";
 
 import { usePublicConfig } from "@/api/publicConfig";
 import { brand } from "virtual:etherview-branding";
@@ -25,15 +24,26 @@ export function AppShell() {
   const [query, setQuery] = useState("");
   const [searchError, setSearchError] = useState("");
   const publicConfig = usePublicConfig();
+  const searchRevision = useRef(0);
+  useEffect(
+    () => () => {
+      searchRevision.current += 1;
+    },
+    [location.href],
+  );
 
-  const submitSearch = (event: SubmitEvent<HTMLFormElement>) => {
+  const submitSearch = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const revision = ++searchRevision.current;
     let normalized = query.trim();
     if (!normalized) return;
     if (normalized.includes(".")) {
       try {
-        normalized = normalizeENSName(normalized);
+        const { normalize } = await import("@/ens/normalizeName");
+        if (revision !== searchRevision.current) return;
+        normalized = normalize(normalized);
       } catch {
+        if (revision !== searchRevision.current) return;
         setSearchError(t("actions.invalidENSName"));
         return;
       }
@@ -73,6 +83,7 @@ export function AppShell() {
                 aria-describedby={searchError ? "global-search-error" : undefined}
                 aria-invalid={Boolean(searchError)}
                 onChange={(event) => {
+                  searchRevision.current += 1;
                   setQuery(event.target.value);
                   setSearchError("");
                 }}

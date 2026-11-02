@@ -61,11 +61,25 @@ func (q *Queries) CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyPara
 	return err
 }
 
+const deleteUserAPIKey = `-- name: DeleteUserAPIKey :exec
+UPDATE api_keys
+SET deleted_at = COALESCE(deleted_at, $1)
+WHERE prefix = $2
+  AND owner_user_id = $3::uuid
+  AND revoked_at IS NOT NULL
+`
+
+func (q *Queries) DeleteUserAPIKey(ctx context.Context, deletedAt pgtype.Timestamptz, prefix string, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUserAPIKey, deletedAt, prefix, userID)
+	return err
+}
+
 const listUserAPIKeysPage = `-- name: ListUserAPIKeysPage :many
 SELECT prefix, name, rate_per_second, burst, created_at, revoked_at,
        owner_user_id, scopes
 FROM api_keys
 WHERE owner_user_id = $1::uuid
+  AND deleted_at IS NULL
   AND (
       $2::timestamptz IS NULL
       OR (created_at, prefix) < (
@@ -145,11 +159,12 @@ func (q *Queries) LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUI
 }
 
 const lockUserAPIKey = `-- name: LockUserAPIKey :one
-SELECT prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
+SELECT prefix, digest, name, rate_per_second, burst, created_at, revoked_at, deleted_at,
        owner_user_id, scopes
 FROM api_keys
 WHERE prefix = $1
   AND owner_user_id = $2::uuid
+  AND deleted_at IS NULL
 FOR UPDATE
 `
 
@@ -164,9 +179,30 @@ func (q *Queries) LockUserAPIKey(ctx context.Context, prefix string, userID pgty
 		&i.Burst,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.DeletedAt,
 		&i.OwnerUserID,
 		&i.Scopes,
 	)
+	return i, err
+}
+
+const lockUserAPIKeyForDeletion = `-- name: LockUserAPIKeyForDeletion :one
+SELECT revoked_at, deleted_at
+FROM api_keys
+WHERE prefix = $1
+  AND owner_user_id = $2::uuid
+FOR UPDATE
+`
+
+type LockUserAPIKeyForDeletionRow struct {
+	RevokedAt pgtype.Timestamptz `db:"revoked_at" json:"revoked_at"`
+	DeletedAt pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
+func (q *Queries) LockUserAPIKeyForDeletion(ctx context.Context, prefix string, userID pgtype.UUID) (LockUserAPIKeyForDeletionRow, error) {
+	row := q.db.QueryRow(ctx, lockUserAPIKeyForDeletion, prefix, userID)
+	var i LockUserAPIKeyForDeletionRow
+	err := row.Scan(&i.RevokedAt, &i.DeletedAt)
 	return i, err
 }
 
@@ -187,7 +223,8 @@ UPDATE api_keys
 SET revoked_at = COALESCE(revoked_at, $1)
 WHERE prefix = $2
   AND owner_user_id = $3::uuid
-RETURNING prefix, digest, name, rate_per_second, burst, created_at, revoked_at,
+  AND deleted_at IS NULL
+RETURNING prefix, digest, name, rate_per_second, burst, created_at, revoked_at, deleted_at,
           owner_user_id, scopes
 `
 
@@ -202,6 +239,7 @@ func (q *Queries) RevokeUserAPIKey(ctx context.Context, revokedAt pgtype.Timesta
 		&i.Burst,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.DeletedAt,
 		&i.OwnerUserID,
 		&i.Scopes,
 	)

@@ -2,6 +2,7 @@ package billing
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -21,26 +22,20 @@ type PrepaidLedger struct {
 	db           dbaccess.Database
 	chainID      uint64
 	chainNumeric pgtype.Numeric
-	network      string
-	asset        common.Address
-	recipient    common.Address
-	topupTTL     time.Duration
-	usageTTL     time.Duration
+
+	topupTTL time.Duration
+	usageTTL time.Duration
 }
 
 type PrepaidOptions struct {
-	ChainID   uint64
-	Network   string
-	Asset     common.Address
-	Recipient common.Address
-	TopupTTL  time.Duration
-	UsageTTL  time.Duration
+	ChainID uint64
+
+	TopupTTL time.Duration
+	UsageTTL time.Duration
 }
 
 func NewPrepaidLedger(db dbaccess.Database, options PrepaidOptions) (*PrepaidLedger, error) {
-	if db == nil || options.ChainID == 0 ||
-		!billingNetworkPattern.MatchString(options.Network) ||
-		options.Asset == (common.Address{}) {
+	if db == nil || options.ChainID == 0 {
 		return nil, fmt.Errorf("%w: prepaid ledger configuration", ErrInvalidInput)
 	}
 	if options.TopupTTL < time.Minute || options.TopupTTL > time.Hour ||
@@ -50,7 +45,7 @@ func NewPrepaidLedger(db dbaccess.Database, options PrepaidOptions) (*PrepaidLed
 	return &PrepaidLedger{
 		db: db, chainID: options.ChainID,
 		chainNumeric: pgtype.Numeric{Int: new(big.Int).SetUint64(options.ChainID), Valid: true},
-		network:      options.Network, asset: options.Asset, recipient: options.Recipient,
+
 		topupTTL: options.TopupTTL, usageTTL: options.UsageTTL,
 	}, nil
 }
@@ -67,11 +62,7 @@ func (ledger *PrepaidLedger) EnsureAccount(
 	var row dbgen.EnsureBillingAccountRow
 	err = dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
-		row, queryErr = queries.EnsureBillingAccount(ctx, dbgen.EnsureBillingAccountParams{
-			Network: ledger.network, Asset: ledger.asset[:],
-			CreatedAt: postgresTime(observedAt), UserID: identifier,
-			ChainID: ledger.chainNumeric,
-		})
+		row, queryErr = queries.EnsureBillingAccount(ctx, postgresTime(observedAt), identifier, ledger.chainNumeric)
 		return queryErr
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -81,7 +72,7 @@ func (ledger *PrepaidLedger) EnsureAccount(
 		return Account{}, fmt.Errorf("ensure billing account: %w", err)
 	}
 	return accountFromValues(
-		row.UserID, row.ChainID, row.Network, row.Asset,
+		row.UserID, row.ChainID,
 		row.TotalCreditAtomic, row.TotalDebitAtomic, row.ReservedAtomic,
 		row.CreatedAt, row.UpdatedAt,
 	)
@@ -98,10 +89,7 @@ func (ledger *PrepaidLedger) Account(
 	var row dbgen.BillingAccount
 	err = dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
-		row, queryErr = queries.GetBillingAccount(ctx, dbgen.GetBillingAccountParams{
-			UserID: identifier, ChainID: ledger.chainNumeric,
-			Network: ledger.network, Asset: ledger.asset[:],
-		})
+		row, queryErr = queries.GetBillingAccount(ctx, identifier, ledger.chainNumeric)
 		return queryErr
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -111,7 +99,7 @@ func (ledger *PrepaidLedger) Account(
 		return Account{}, fmt.Errorf("read billing account: %w", err)
 	}
 	return accountFromValues(
-		row.UserID, row.ChainID, row.Network, row.Asset,
+		row.UserID, row.ChainID,
 		row.TotalCreditAtomic, row.TotalDebitAtomic, row.ReservedAtomic,
 		row.CreatedAt, row.UpdatedAt,
 	)
@@ -124,9 +112,18 @@ func (ledger *PrepaidLedger) CreateTopupIntent(
 	userID, err := parseUUID(input.UserID)
 	amount, ok := canonicalPositiveNumeric(input.AmountAtomic)
 	if err != nil || !ok || input.Payer == (common.Address{}) ||
-		ledger.recipient == (common.Address{}) || input.ObservedAt.IsZero() {
+		input.ObservedAt.IsZero() {
 		return TopupIntent{}, ErrInvalidInput
 	}
+	credit, creditErr := input.PaymentOption.Credit(input.AmountAtomic)
+	if creditErr != nil {
+		return TopupIntent{}, ErrInvalidInput
+	}
+	policy, policyErr := json.Marshal(input.PaymentOption)
+	if policyErr != nil {
+		return TopupIntent{}, ErrInvalidInput
+	}
+	creditValue, _ := canonicalPositiveNumeric(credit)
 	if _, err := ledger.EnsureAccount(ctx, input.UserID, input.ObservedAt); err != nil {
 		return TopupIntent{}, err
 	}
@@ -138,9 +135,10 @@ func (ledger *PrepaidLedger) CreateTopupIntent(
 	err = dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		row, queryErr = queries.CreateBillingTopupIntent(ctx, dbgen.CreateBillingTopupIntentParams{
-			ID: uuidValue(identifier), Network: ledger.network, Asset: ledger.asset[:],
-			AmountAtomic: pgtype.Numeric{Int: amount, Valid: true},
-			Recipient:    ledger.recipient[:], ExpiresAt: postgresTime(input.ObservedAt.Add(ledger.topupTTL)),
+			ID: uuidValue(identifier), Network: input.PaymentOption.Network, Asset: common.HexToAddress(input.PaymentOption.Asset).Bytes(),
+			AmountAtomic:  pgtype.Numeric{Int: amount, Valid: true},
+			PaymentOption: policy, CreditAmountAtomic: pgtype.Numeric{Int: creditValue, Valid: true},
+			Recipient: common.HexToAddress(input.PaymentOption.Recipient).Bytes(), ExpiresAt: postgresTime(input.ObservedAt.Add(ledger.topupTTL)),
 			CreatedAt: postgresTime(input.ObservedAt), UserID: userID,
 			ChainID: ledger.chainNumeric, Payer: input.Payer[:],
 		})
@@ -225,8 +223,8 @@ func (ledger *PrepaidLedger) ListAdminAccounts(
 		return nil, ErrInvalidInput
 	}
 	params := dbgen.ListAdminBillingAccountsParams{
-		ChainID: ledger.chainNumeric, Network: ledger.network,
-		Asset: ledger.asset[:], PageLimit: int32(limit),
+		ChainID:   ledger.chainNumeric,
+		PageLimit: int32(limit),
 	}
 	if after != nil {
 		userID, err := parseUUID(after.UserID)
@@ -247,7 +245,7 @@ func (ledger *PrepaidLedger) ListAdminAccounts(
 	result := make([]Account, len(rows))
 	for index, row := range rows {
 		result[index], err = accountFromValues(
-			row.UserID, row.ChainID, row.Network, row.Asset,
+			row.UserID, row.ChainID,
 			row.TotalCreditAtomic, row.TotalDebitAtomic, row.ReservedAtomic,
 			row.CreatedAt, row.UpdatedAt,
 		)
@@ -263,7 +261,7 @@ func (ledger *PrepaidLedger) AccountSummary(ctx context.Context) (AccountSummary
 	err := dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		row, queryErr = queries.SummarizeBillingAccounts(
-			ctx, ledger.chainNumeric, ledger.network, ledger.asset[:],
+			ctx, ledger.chainNumeric,
 		)
 		return queryErr
 	})
@@ -310,8 +308,8 @@ func (ledger *PrepaidLedger) ListAdminTopupIntents(
 		return nil, ErrInvalidInput
 	}
 	params := dbgen.ListAdminBillingTopupIntentsParams{
-		ChainID: ledger.chainNumeric, Network: ledger.network,
-		Asset: ledger.asset[:], PageLimit: int32(limit),
+		ChainID:   ledger.chainNumeric,
+		PageLimit: int32(limit),
 	}
 	if after != nil {
 		beforeID, err := parseUUID(after.ID)
@@ -427,7 +425,7 @@ func (ledger *PrepaidLedger) CreditTopup(
 		return Account{}, fmt.Errorf("credit billing top-up: %w", err)
 	}
 	return accountFromValues(
-		row.UserID, row.ChainID, row.Network, row.Asset,
+		row.UserID, row.ChainID,
 		row.TotalCreditAtomic, row.TotalDebitAtomic, row.ReservedAtomic,
 		row.CreatedAt, row.UpdatedAt,
 	)
@@ -471,7 +469,7 @@ func (ledger *PrepaidLedger) ReconcileTopupSettled(
 		return Account{}, fmt.Errorf("reconcile billing top-up: %w", err)
 	}
 	return accountFromValues(
-		row.UserID, row.ChainID, row.Network, row.Asset,
+		row.UserID, row.ChainID,
 		row.TotalCreditAtomic, row.TotalDebitAtomic, row.ReservedAtomic,
 		row.CreatedAt, row.UpdatedAt,
 	)
@@ -573,7 +571,7 @@ func (ledger *PrepaidLedger) ReserveUsage(
 		var queryErr error
 		row, queryErr = queries.ReserveBillingUsage(ctx, dbgen.ReserveBillingUsageParams{
 			ApiKeyPrefix: input.APIKeyPrefix, UserID: userID,
-			ChainID: ledger.chainNumeric, Network: ledger.network, Asset: ledger.asset[:],
+			ChainID:      ledger.chainNumeric,
 			AmountAtomic: pgtype.Numeric{Int: amount, Valid: true},
 			ID:           uuidValue(id), ReservationOwner: uuidValue(owner),
 			Method: input.Method, Operation: input.Operation,
@@ -704,8 +702,8 @@ func (ledger *PrepaidLedger) ListAdminUsage(
 		return nil, ErrInvalidInput
 	}
 	params := dbgen.ListAdminBillingUsageParams{
-		ChainID: ledger.chainNumeric, Network: ledger.network,
-		Asset: ledger.asset[:], PageLimit: int32(limit),
+		ChainID:   ledger.chainNumeric,
+		PageLimit: int32(limit),
 	}
 	if after != nil {
 		beforeID, err := parseUUID(after.ID)
@@ -757,8 +755,8 @@ func (ledger *PrepaidLedger) Adjust(
 	err = dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		row, queryErr = queries.AdjustBillingAccount(ctx, dbgen.AdjustBillingAccountParams{
-			UserID: userID, ChainID: ledger.chainNumeric, Network: ledger.network,
-			Asset: ledger.asset[:], Direction: input.Direction,
+			UserID: userID, ChainID: ledger.chainNumeric,
+			Direction:    input.Direction,
 			AmountAtomic: pgtype.Numeric{Int: amount, Valid: true},
 			OccurredAt:   postgresTime(input.ObservedAt), EntryID: uuidValue(entryID),
 			SourceID: uuidValue(sourceID), Reason: &reason,
@@ -772,7 +770,7 @@ func (ledger *PrepaidLedger) Adjust(
 		return Account{}, fmt.Errorf("adjust billing account: %w", err)
 	}
 	return accountFromValues(
-		row.UserID, row.ChainID, row.Network, row.Asset,
+		row.UserID, row.ChainID,
 		row.TotalCreditAtomic, row.TotalDebitAtomic, row.ReservedAtomic,
 		row.CreatedAt, row.UpdatedAt,
 	)
@@ -786,13 +784,10 @@ func (ledger *PrepaidLedger) Expire(
 	if observedAt.IsZero() || limit < 1 || limit > 1_000 {
 		return ExpiryResult{}, ErrInvalidInput
 	}
-	params := dbgen.ExpireBillingUsageReservationsParams{
-		ChainID: ledger.chainNumeric, Network: ledger.network, Asset: ledger.asset[:],
-		ObservedAt: postgresTime(observedAt), ExpireLimit: int32(limit),
-	}
+
 	var result ExpiryResult
 	err := dbaccess.WithQueries(ctx, ledger.db, func(queries *dbgen.Queries) error {
-		count, queryErr := queries.ExpireBillingUsageReservations(ctx, params)
+		count, queryErr := queries.ExpireBillingUsageReservations(ctx, ledger.chainNumeric, postgresTime(observedAt), int32(limit))
 		if queryErr != nil {
 			return queryErr
 		}
@@ -804,13 +799,7 @@ func (ledger *PrepaidLedger) Expire(
 			return queryErr
 		}
 		result.TopupPayments = uint64(count)
-		count, queryErr = queries.ExpireOpenBillingTopupIntents(
-			ctx,
-			dbgen.ExpireOpenBillingTopupIntentsParams{
-				ChainID: ledger.chainNumeric, Network: ledger.network, Asset: ledger.asset[:],
-				ObservedAt: postgresTime(observedAt), ExpireLimit: int32(limit),
-			},
-		)
+		count, queryErr = queries.ExpireOpenBillingTopupIntents(ctx, ledger.chainNumeric, postgresTime(observedAt), int32(limit))
 		if queryErr != nil {
 			return queryErr
 		}
@@ -859,8 +848,6 @@ func validUsageOperation(value string) bool {
 func accountFromValues(
 	userID pgtype.UUID,
 	chainID pgtype.Numeric,
-	network string,
-	asset []byte,
 	credit pgtype.Numeric,
 	debit pgtype.Numeric,
 	reserved pgtype.Numeric,
@@ -872,10 +859,6 @@ func accountFromValues(
 		return Account{}, ErrIntegrity
 	}
 	chain, err := uint64Numeric(chainID)
-	if err != nil || !billingNetworkPattern.MatchString(network) {
-		return Account{}, ErrIntegrity
-	}
-	address, err := addressFromBytes(asset)
 	if err != nil {
 		return Account{}, ErrIntegrity
 	}
@@ -908,7 +891,7 @@ func accountFromValues(
 		return Account{}, ErrIntegrity
 	}
 	return Account{
-		UserID: user, ChainID: chain, Network: network, Asset: address,
+		UserID: user, ChainID: chain,
 		TotalCreditAtomic: creditText, TotalDebitAtomic: debitText,
 		ReservedAtomic: reservedText, AvailableAtomic: available.String(),
 		CreatedAt: createdAt, UpdatedAt: updatedAt,
@@ -966,6 +949,21 @@ func topupIntentFromRow(row dbgen.BillingTopupIntent) (TopupIntent, error) {
 		State: state, FailureCode: cloneString(row.FailureCode), ExpiresAt: expiresAt,
 		CreatedAt: createdAt, UpdatedAt: updatedAt,
 	}
+	if json.Unmarshal(row.PaymentOption, &result.PaymentOption) != nil {
+		return TopupIntent{}, ErrIntegrity
+	}
+	credit, creditErr := integerNumericString(row.CreditAmountAtomic)
+	expected, policyErr := result.PaymentOption.Credit(amount)
+	if creditErr != nil || policyErr != nil || expected != credit || result.PaymentOption.Network != row.Network || common.HexToAddress(result.PaymentOption.Asset) != asset || common.HexToAddress(result.PaymentOption.Recipient) != recipient {
+		return TopupIntent{}, ErrIntegrity
+	}
+	result.CreditAmountAtomic = credit
+	if row.SubmissionProgress != nil {
+		result.SubmissionProgress = *row.SubmissionProgress
+	}
+	if len(row.TransactionHash) == 0 {
+		row.TransactionHash = row.SubmissionTransactionHash
+	}
 	if len(row.TransactionHash) != 0 {
 		value, valueErr := transactionHashFromBytes(row.TransactionHash)
 		if valueErr != nil || zeroTransactionHash(value) {
@@ -1018,7 +1016,7 @@ func topupIntentsFromRows(rows []dbgen.BillingTopupIntent) ([]TopupIntent, error
 func usageFromReserveRow(row dbgen.ReserveBillingUsageRow) (UsageCharge, error) {
 	return usageFromValues(
 		row.ID, row.ReservationOwner, row.UserID, row.ApiKeyPrefix,
-		row.ChainID, row.Network, row.Asset, row.Method, row.Operation,
+		row.ChainID, row.Method, row.Operation,
 		row.ResourceDigest, row.AmountAtomic, row.State, row.FailureCode,
 		row.ResponseDigest, row.ResponseBytes, row.ReservationExpiresAt,
 		row.CommittedAt, row.ReleasedAt, row.ExpiredAt, row.CreatedAt, row.UpdatedAt,
@@ -1028,7 +1026,7 @@ func usageFromReserveRow(row dbgen.ReserveBillingUsageRow) (UsageCharge, error) 
 func usageFromCommitRow(row dbgen.CommitBillingUsageRow) (UsageCharge, error) {
 	return usageFromValues(
 		row.ID, row.ReservationOwner, row.UserID, row.ApiKeyPrefix,
-		row.ChainID, row.Network, row.Asset, row.Method, row.Operation,
+		row.ChainID, row.Method, row.Operation,
 		row.ResourceDigest, row.AmountAtomic, row.State, row.FailureCode,
 		row.ResponseDigest, row.ResponseBytes, row.ReservationExpiresAt,
 		row.CommittedAt, row.ReleasedAt, row.ExpiredAt, row.CreatedAt, row.UpdatedAt,
@@ -1038,7 +1036,7 @@ func usageFromCommitRow(row dbgen.CommitBillingUsageRow) (UsageCharge, error) {
 func usageFromReleaseRow(row dbgen.ReleaseBillingUsageRow) (UsageCharge, error) {
 	return usageFromValues(
 		row.ID, row.ReservationOwner, row.UserID, row.ApiKeyPrefix,
-		row.ChainID, row.Network, row.Asset, row.Method, row.Operation,
+		row.ChainID, row.Method, row.Operation,
 		row.ResourceDigest, row.AmountAtomic, row.State, row.FailureCode,
 		row.ResponseDigest, row.ResponseBytes, row.ReservationExpiresAt,
 		row.CommittedAt, row.ReleasedAt, row.ExpiredAt, row.CreatedAt, row.UpdatedAt,
@@ -1048,7 +1046,7 @@ func usageFromReleaseRow(row dbgen.ReleaseBillingUsageRow) (UsageCharge, error) 
 func usageFromModel(row dbgen.BillingUsageCharge) (UsageCharge, error) {
 	return usageFromValues(
 		row.ID, row.ReservationOwner, row.UserID, row.ApiKeyPrefix,
-		row.ChainID, row.Network, row.Asset, row.Method, row.Operation,
+		row.ChainID, row.Method, row.Operation,
 		row.ResourceDigest, row.AmountAtomic, row.State, row.FailureCode,
 		row.ResponseDigest, row.ResponseBytes, row.ReservationExpiresAt,
 		row.CommittedAt, row.ReleasedAt, row.ExpiredAt, row.CreatedAt, row.UpdatedAt,
@@ -1059,8 +1057,6 @@ func usageFromValues(
 	idValue, ownerValue, userValue pgtype.UUID,
 	apiKey string,
 	chainValue pgtype.Numeric,
-	network string,
-	assetBytes []byte,
 	method, operation string,
 	resourceBytes []byte,
 	amountValue pgtype.Numeric,
@@ -1084,12 +1080,8 @@ func usageFromValues(
 		return UsageCharge{}, ErrIntegrity
 	}
 	chainID, err := uint64Numeric(chainValue)
-	if err != nil || !billingNetworkPattern.MatchString(network) || !validAPIKeyPrefix(apiKey) ||
+	if err != nil || !validAPIKeyPrefix(apiKey) ||
 		(method != http.MethodGet && method != http.MethodPost) || !validUsageOperation(operation) {
-		return UsageCharge{}, ErrIntegrity
-	}
-	asset, err := addressFromBytes(assetBytes)
-	if err != nil {
 		return UsageCharge{}, ErrIntegrity
 	}
 	resource, err := digestFromBytes(resourceBytes)
@@ -1118,7 +1110,7 @@ func usageFromValues(
 	}
 	result := UsageCharge{
 		ID: id, Owner: owner, UserID: userID, APIKeyPrefix: apiKey,
-		ChainID: chainID, Network: network, Asset: asset, Method: method,
+		ChainID: chainID, Method: method,
 		Operation: operation, ResourceDigest: resource, AmountAtomic: amount,
 		State: state, FailureCode: cloneString(failure), ResponseBytes: responseLength,
 		ReservationExpiresAt: expiresAt, CreatedAt: createdAt, UpdatedAt: updatedAt,

@@ -87,29 +87,36 @@ user_auth:
   max_active_api_keys: 5
 
 billing:
-  facilitator_url: http://x402-facilitator:8081
   facilitator_allowed_cidrs: [172.30.73.0/24, "fd00:402:73::/64"]
   facilitator_timeout: 10s
   facilitator_max_response_bytes: 1048576
   facilitator_unsafe_allow_http: true
-  network: eip155:31337
-  asset: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
-  asset_decimals: 6
-  asset_eip712_name: Local USD
-  asset_eip712_version: "1"
-  recipient: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
   requirement_max_timeout: 60s
   reservation_ttl: 2m
   topup_intent_ttl: 10m
   usage_reservation_ttl: 30s
-  minimum_topup_amount_atomic: "1"
-  maximum_topup_amount_atomic: "1000000000000"
-  asset_transfer_methods: [eip3009, permit2]
   max_payment_header_bytes: 16384
   max_buffered_response_bytes: 8388608
   max_captured_header_bytes: 65536
   base_price_atomic: "1"
 
+  payment_chains:
+    - network: eip155:31337
+      name: Anvil
+      facilitator_url: http://x402-facilitator:8081
+      tokens:
+        - id: default
+          name: Local USD
+          credit_rate_numerator: "1"
+          credit_rate_denominator: "1"
+          asset: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+          asset_decimals: 6
+          asset_eip712_name: Local USD
+          asset_eip712_version: "1"
+          recipient: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+          minimum_topup_amount_atomic: "1"
+          maximum_topup_amount_atomic: "1000000000000"
+          asset_transfer_methods: [eip3009, permit2]
 observability:
   environment: x402-local
   log_level: info

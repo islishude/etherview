@@ -270,11 +270,6 @@
           "count": 1
         },
         {
-          "path": "e2e/x402local/facilitator.Dockerfile",
-          "template": "FROM golang:{{version}} AS build",
-          "count": 1
-        },
-        {
           "path": ".github/scripts/toolchain-check.sh",
           "template": "MINIMUM_GO=\"go{{version}}\"",
           "count": 1
@@ -362,6 +357,16 @@
           "path": "docs/operations.md",
           "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
           "count": 1
+        },
+        {
+          "path": "preview/anvil/generate.mjs",
+          "template": "if (!execFileSync(binary, [\"--version\"], { encoding: \"utf8\" }).includes(\"{{version}}\"))",
+          "count": 1
+        },
+        {
+          "path": "preview/compose/x402.yaml",
+          "template": "    image: ghcr.io/foundry-rs/foundry:v{{version}}",
+          "count": 1
         }
       ],
       "commands": [],
@@ -399,7 +404,7 @@
         },
         {
           "path": ".github/scripts/make-targets.test.mjs",
-          "template": "          \"caddy:{{version}}-alpine\",",
+          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\", \"etherview-preview-bundler:local\"]",
           "count": 1
         },
         {

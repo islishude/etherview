@@ -17,6 +17,7 @@ import (
 type PaymentFacilitator interface {
 	VerifyPayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.VerifyResponse, error)
 	SettlePayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.SettleResponse, error)
+	PaymentProgress(context.Context, x402wire.Payment, x402wire.Requirement) (*x402wire.SettlementProgress, error)
 	OriginDigest() [32]byte
 }
 
@@ -53,6 +54,7 @@ type TopupPaymentLedger interface {
 }
 
 type TopupAccountLedger interface {
+	ObserveTopupProgress(context.Context, string, string, string, x402wire.SettlementProgress, time.Time) error
 	BeginTopupSettlement(context.Context, string, string, string, time.Time) error
 	MarkTopupSettlementUnknown(context.Context, string, string, string, time.Time) error
 	MarkTopupSettlementPending(context.Context, string, string, string, common.Hash, time.Time) error
@@ -65,6 +67,7 @@ type TopupAccountLedger interface {
 type TopupSuccessWriter func(http.ResponseWriter, Account, TopupIntent, Payment)
 
 type TopupDispatcherOptions struct {
+	Network           string
 	Payments          TopupPaymentLedger
 	Accounts          TopupAccountLedger
 	Facilitator       PaymentFacilitator
@@ -81,6 +84,8 @@ type TopupDispatcherOptions struct {
 }
 
 type TopupDispatcher struct {
+	network           string
+	routes            map[string]*TopupDispatcher
 	payments          TopupPaymentLedger
 	accounts          TopupAccountLedger
 	facilitator       PaymentFacilitator
@@ -125,7 +130,7 @@ func NewTopupDispatcher(options TopupDispatcherOptions) (*TopupDispatcher, error
 		logger = slog.Default()
 	}
 	return &TopupDispatcher{
-		payments: options.Payments, accounts: options.Accounts,
+		network: options.Network, payments: options.Payments, accounts: options.Accounts,
 		facilitator: options.Facilitator, codec: options.Codec,
 		fingerprintPepper: append([]byte(nil), options.FingerprintPepper...),
 		publicOrigin:      strings.TrimSuffix(options.PublicOrigin, "/"),
@@ -142,6 +147,18 @@ func (dispatcher *TopupDispatcher) Serve(
 	success TopupSuccessWriter,
 	writeError UsageErrorWriter,
 ) {
+	if dispatcher != nil && dispatcher.routes != nil {
+		if writeError == nil {
+			writeError = writeUsageError
+		}
+		route := dispatcher.routes[intent.PaymentOption.ID]
+		if route == nil || route.network != intent.Network {
+			writeError(writer, http.StatusServiceUnavailable, "topup_payment_unavailable", "payment option is unavailable")
+			return
+		}
+		route.Serve(writer, request, intent, success, writeError)
+		return
+	}
 	observedMethod, outcome := "other", "invalid"
 	defer func() {
 		if dispatcher != nil && dispatcher.observer != nil {
@@ -253,12 +270,18 @@ func (dispatcher *TopupDispatcher) Serve(
 		writeError(writer, http.StatusServiceUnavailable, "topup_ledger_unavailable", "payment settlement cannot begin")
 		return
 	}
+	stopProgress := dispatcher.observeProgress(request.Context(), payment, requirement, paymentID, owner, intent.ID)
+	defer stopProgress()
 	settled, settleErr := dispatcher.facilitator.SettlePayment(request.Context(), payment, requirement)
+	stopProgress()
+	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(request.Context()), 2*time.Second)
+	defer finishCancel()
+
 	if settleErr != nil || settled == nil || !settled.Success {
 		if x402wire.IsFailure(settleErr, x402wire.FailureSettlementPending) && settled != nil {
 			hash, valid := transactionHashFromHex(settled.Transaction)
 			if valid && dispatcher.accounts.MarkTopupSettlementPending(
-				request.Context(), paymentID, owner, intent.ID, hash, dispatcher.now().UTC(),
+				finishCtx, paymentID, owner, intent.ID, hash, dispatcher.now().UTC(),
 			) == nil {
 				outcome = "settlement_pending"
 				if header, encodeErr := dispatcher.codec.EncodePaymentResponse(*settled); encodeErr == nil {
@@ -270,7 +293,7 @@ func (dispatcher *TopupDispatcher) Serve(
 		}
 		if x402wire.IsFailure(settleErr, x402wire.FailureRejected) {
 			if dispatcher.accounts.FailTopupSettlement(
-				request.Context(), paymentID, owner, intent.ID,
+				finishCtx, paymentID, owner, intent.ID,
 				x402wire.CodeFacilitatorRejected, dispatcher.now().UTC(),
 			) == nil {
 				outcome = "settle_rejected"
@@ -279,7 +302,7 @@ func (dispatcher *TopupDispatcher) Serve(
 			}
 		}
 		_ = dispatcher.accounts.MarkTopupSettlementUnknown(
-			request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC(),
+			finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC(),
 		)
 		outcome = "settlement_unknown"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
@@ -288,33 +311,33 @@ func (dispatcher *TopupDispatcher) Serve(
 	transactionHash, ok := transactionHashFromHex(settled.Transaction)
 	if !ok || !strings.EqualFold(settled.Payer, intent.Payer.Hex()) ||
 		string(settled.Network) != intent.Network {
-		_ = dispatcher.accounts.MarkTopupSettlementUnknown(request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC())
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "settlement_unknown"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
 		return
 	}
 	responseHeader, err := dispatcher.codec.EncodePaymentResponse(*settled)
 	if err != nil {
-		_ = dispatcher.accounts.MarkTopupSettlementUnknown(request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC())
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "settlement_unknown"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
 		return
 	}
 	account, err := dispatcher.accounts.CreditTopup(
-		request.Context(), paymentID, owner, transactionHash, dispatcher.now().UTC(),
+		finishCtx, paymentID, owner, transactionHash, dispatcher.now().UTC(),
 	)
 	if err != nil {
-		_ = dispatcher.accounts.MarkTopupSettlementUnknown(request.Context(), paymentID, owner, intent.ID, dispatcher.now().UTC())
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "ledger_unavailable"
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "top-up credit outcome requires inspection")
 		return
 	}
-	updatedIntent, err := dispatcher.accounts.TopupIntent(request.Context(), intent.UserID, intent.ID)
+	updatedIntent, err := dispatcher.accounts.TopupIntent(finishCtx, intent.UserID, intent.ID)
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "topup_receipt_unavailable", "top-up was credited but its receipt is unavailable")
 		return
 	}
-	updatedPayment, err := dispatcher.payments.Get(request.Context(), paymentID)
+	updatedPayment, err := dispatcher.payments.Get(finishCtx, paymentID)
 	if err != nil {
 		writeError(writer, http.StatusServiceUnavailable, "topup_receipt_unavailable", "top-up was credited but its receipt is unavailable")
 		return
@@ -329,8 +352,8 @@ func (dispatcher *TopupDispatcher) requirements(intent TopupIntent) ([]x402wire.
 		URL:      dispatcher.publicOrigin + "/api/v1/billing/topup-intents/" + intent.ID + "/pay",
 		MimeType: "application/json", ServiceName: "Etherview",
 	}
-	result := make([]x402wire.Requirement, len(dispatcher.methods))
-	for index, method := range dispatcher.methods {
+	result := make([]x402wire.Requirement, len(intent.PaymentOption.AssetTransferMethods))
+	for index, method := range intent.PaymentOption.AssetTransferMethods {
 		options := x402wire.RequirementOptions{
 			Network: intent.Network, Asset: intent.Asset.Hex(), Amount: intent.AmountAtomic,
 			PayTo: intent.Recipient.Hex(), MaxTimeoutSeconds: dispatcher.maxTimeoutSeconds,
@@ -338,8 +361,8 @@ func (dispatcher *TopupDispatcher) requirements(intent TopupIntent) ([]x402wire.
 			Resource: resource,
 		}
 		if method == x402wire.TransferMethodEIP3009 {
-			options.AssetEIP712Name = dispatcher.assetName
-			options.AssetEIP712Version = dispatcher.assetVersion
+			options.AssetEIP712Name = intent.PaymentOption.AssetEIP712Name
+			options.AssetEIP712Version = intent.PaymentOption.AssetEIP712Version
 		}
 		var err error
 		result[index], err = x402wire.NewRequirement(options)
@@ -380,4 +403,18 @@ func requirementForMethod(
 		}
 	}
 	return x402wire.Requirement{}, false
+}
+
+func NewMultiTopupDispatcher(routes map[string]*TopupDispatcher) (*TopupDispatcher, error) {
+	if len(routes) == 0 || len(routes) > 1024 {
+		return nil, ErrInvalidInput
+	}
+	result := &TopupDispatcher{routes: make(map[string]*TopupDispatcher, len(routes))}
+	for id, route := range routes {
+		if id == "" || route == nil || route.routes != nil {
+			return nil, ErrInvalidInput
+		}
+		result.routes[id] = route
+	}
+	return result, nil
 }

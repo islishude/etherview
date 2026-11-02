@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/islishude/etherview/internal/billing/paymentoption"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -111,6 +112,7 @@ func (fake *topupAccountLedgerFake) TopupIntent(
 }
 
 type topupFacilitatorFake struct {
+	progressFn  func(context.Context) (*x402wire.SettlementProgress, error)
 	verifyCalls int
 	settleCalls int
 	verify      *x402.VerifyResponse
@@ -255,6 +257,8 @@ func testTopupDispatcher(
 		Payer: topupTestAddress(0x33), State: TopupIntentOpen,
 		ExpiresAt: now.Add(10 * time.Minute), CreatedAt: now, UpdatedAt: now,
 	}
+	intent.PaymentOption = testPaymentOption(intent.Network, intent.Asset, intent.Recipient)
+	intent.CreditAmountAtomic = intent.AmountAtomic
 	payments := &topupPaymentLedgerFake{}
 	accounts := &topupAccountLedgerFake{intent: intent}
 	facilitator := &topupFacilitatorFake{}
@@ -304,4 +308,71 @@ func topupPaymentHeader(
 		t.Fatal(err)
 	}
 	return base64.StdEncoding.EncodeToString(encoded)
+}
+
+func testPaymentOption(network string, asset, recipient common.Address) paymentoption.Option {
+	decimals := uint8(6)
+	return paymentoption.Option{ID: "default", Name: "Local USD", Network: network, Asset: asset.Hex(), Recipient: recipient.Hex(), AssetDecimals: &decimals, AssetEIP712Name: "Local USD", AssetEIP712Version: "1", AssetTransferMethods: []string{"eip3009", "permit2"}, MinimumTopupAmountAtomic: "1", MaximumTopupAmountAtomic: "115792089237316195423570985008687907853269984665640564039457584007913129639935", CreditRateNumerator: "1", CreditRateDenominator: "1"}
+}
+
+func TestMultiTopupRouteRejectsChangedChain(t *testing.T) {
+	route, _, _, _, _, intent := testTopupDispatcher(t)
+	route.network = intent.Network
+	dispatcher, err := NewMultiTopupDispatcher(map[string]*TopupDispatcher{intent.PaymentOption.ID: route})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, network := range []string{intent.Network, "eip155:1"} {
+		candidate := intent
+		candidate.Network = network
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "http://localhost:8080/topup", nil)
+		dispatcher.Serve(recorder, request, candidate, func(http.ResponseWriter, Account, TopupIntent, Payment) {}, nil)
+		want := http.StatusPaymentRequired
+		if network != intent.Network {
+			want = http.StatusServiceUnavailable
+		}
+		if recorder.Code != want {
+			t.Fatalf("network %s: %d", network, recorder.Code)
+		}
+	}
+}
+
+func (fake *topupFacilitatorFake) PaymentProgress(ctx context.Context, _ x402wire.Payment, _ x402wire.Requirement) (*x402wire.SettlementProgress, error) {
+	if fake.progressFn != nil {
+		return fake.progressFn(ctx)
+	}
+	return &x402wire.SettlementProgress{Stage: "submitting"}, nil
+}
+
+func (*topupAccountLedgerFake) ObserveTopupProgress(context.Context, string, string, string, x402wire.SettlementProgress, time.Time) error {
+	return nil
+}
+
+func TestTopupProgressObserverCancelsWithoutResubmitting(t *testing.T) {
+	dispatcher, payments, accounts, facilitator, _, intent := testTopupDispatcher(t)
+	entered := make(chan struct{})
+	exited := make(chan struct{})
+	facilitator.progressFn = func(ctx context.Context) (*x402wire.SettlementProgress, error) {
+		close(entered)
+		<-ctx.Done()
+		close(exited)
+		return nil, ctx.Err()
+	}
+	stop := dispatcher.observeProgress(t.Context(), x402wire.Payment{}, x402wire.Requirement{}, "payment", "owner", intent.ID)
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		stop()
+		t.Fatal("observer did not query")
+	}
+	stop()
+	select {
+	case <-exited:
+	default:
+		t.Fatal("observer was not joined")
+	}
+	if facilitator.settleCalls != 0 || payments.reserveCalls != 0 || accounts.creditCalls != 0 {
+		t.Fatal("progress mutated settlement")
+	}
 }

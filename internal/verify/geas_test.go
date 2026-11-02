@@ -112,7 +112,7 @@ func buildTestGeasHelper(t *testing.T) string {
 		t.Fatal(err)
 	}
 	helper := filepath.Join(t.TempDir(), "etherview-geas-compiler")
-	command := exec.Command("go", "build", "-trimpath", "-o", helper, "./cmd/etherview-geas-compiler")
+	command := exec.Command("go", "build", "-trimpath", "-o", helper, "./compiler/geas")
 	command.Dir = root
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build Geas helper: %v: %s", err, output)

@@ -73,7 +73,7 @@ debit; every logical or transport failure releases it. The committed debit is
 durable before response bytes are released, so a crash can charge a request
 whose response was not received. No automatic refund guesses delivery.
 
-Account balances are permanent and asset-specific. PostgreSQL atomically
+Account balances are permanent, six-decimal credits keyed by user and explorer chain. PostgreSQL atomically
 maintains cumulative credits, debits, and active reservations alongside an
 append-only entry ledger. Credit is never inferred from historical accountless
 request payments. Administrative corrections are explicit, reason-bound credit or
@@ -100,8 +100,9 @@ poll the intent after an uncertain response but never resubmit automatically.
   existing balance.
 - User-owned keys for one user share the same account and concurrency fence;
   operator keys never consume user balances.
-- Price changes affect only new reservations. Asset rotation requires blocking
-  new V2 traffic and draining active top-up/usage work; balances are never converted.
+- Price changes affect only new reservations. Payment policy changes affect only
+  new intents; existing intents retain their monetary and signing snapshots.
+  Removing an option disables its new settlement route without altering existing credit.
 - Local/offline Anvil evidence does not replace the explicit live testnet
   top-up, writer, usage, and chain reconciliation gate.
 
@@ -118,8 +119,8 @@ funds and is not a core readiness dependency. Restart preserves spent
 authorizations and balances without reminting.
 The API/all role alone receives the fingerprint pepper. Docker bridge CIDRs and
 plain HTTP are explicit Preview-only transport exceptions; production defaults
-remain strict. Permit2 uses the fixture token's local witness settlement path,
-not a deployed production Permit2/proxy pair. These results do not close P60-T17.
+remain strict. ADR-0059 replaces the fixture token's custom witness path with standard
+Permit2/proxy contracts. Local results do not replace public-network acceptance.
 
 ## Complexity price policy and amount presentation
 
@@ -134,8 +135,85 @@ existing credit bypass. Billing-disabled deployments remain non-billing.
 
 The public price schedule includes the base atomic price, each operation's weight
 and derived atomic price. Personal billing accepts and displays whole-token decimal
-amounts using the configured precision. String/BigInt conversion is exact and rejects
+amounts using the selected token precision. String/BigInt conversion is exact and rejects
 excess fractional digits, zero, negative values and uint256 overflow without rounding.
-Wire, ledger and wallet authorization values remain atomic integer strings. Historical
-records with a different asset/network or unavailable precision are explicitly shown
-in atomic units rather than converted with unrelated asset metadata.
+Wire, ledger and wallet authorization values remain atomic integer strings. Historical top-ups and their payment records use the immutable intent precision;
+legacy payment records without a snapshot remain in atomic units. Account balances,
+prices, usage and adjustments always use six-decimal credit units.
+
+## Separate explorer and payment chains
+
+The payment network may differ from the indexed explorer chain. Browser top-ups
+use the explicit wallet payment-chain scope in ADR-0020; only the generated
+same-origin billing configuration selects that network. Typed-data domains,
+allowances and transaction receipts bind the payment chain, while SIWE, API keys
+and account ownership remain bound to the explorer chain. Existing payment-only
+accounts are not transferred into a new indexed deployment. Live acceptance for
+the new identity includes new operator-driven payments and real successful priced
+queries; Anvil facts must be produced and indexed normally, never inserted as
+synthetic database records.
+
+## Multiple payment assets and unified credit (P60-T25)
+
+The contract replaces asset-specific prepaid balances with one six-decimal
+credit balance per user and explorer-chain identity. Operators configure up to
+32 EVM payment chains and 32 tokens per chain. Each token has an explicit 0–255
+precision and a positive rational conversion from token atomic units to credit
+atomic units; fractional credit, zero credit and overflow are rejected. Intents
+snapshot the selected payment option and its conversion, while payment records
+retain actual network, token and transferred amount. Settlement and unique
+credit remain one fenced writer transaction. No bridge, market-rate oracle,
+legacy balance conversion or startup backfill is introduced. P60-T25 tracks
+local acceptance; this decision alone is not completion evidence.
+P60-T25 does not require a new live testnet gate. P60-T25 evidence used the former local Permit2 fixture;
+P60-T26 migrates it to standard contracts and P60-T27 owns Rustack KMS and
+dual-Anvil local acceptance.
+
+Preview additionally runs a payment-only Anvil network (31337), leaving indexing
+and SIWE on 48815. Both networks predeploy six- and eighteen-decimal local tokens.
+Anvil is reachable through the existing loopback TLS gateway at
+`anvil.etherview.localhost`, with the same local-wallet HTTP/WSS policy as Geth.
+Its facilitator stays internal. The deterministic seed is used only for a new
+volume; graceful restarts preserve state, and a seed mismatch or missing state
+fails closed. Periodic checkpoints are not a guarantee against abrupt host loss:
+uncertain payments still require reconciliation before any new attempt.
+
+## Production facilitator
+
+[ADR-0059](ADR-0059-production-x402-facilitator.md) defines the standalone
+multi-chain signing and durable transaction boundary. P60-T26 replaces the local
+custom Permit2 settlement fixture with the standard contract path. P60-T27 uses
+separate local acceptance using Rustack KMS and two independent Anvil networks,
+without Geth or real AWS/public-testnet prerequisites. This dedicated test topology
+does not replace Preview. Simulation does not establish real AWS IAM enforcement,
+production key isolation or public-network production readiness; P70 release gates
+remain separate.
+
+## Payment network display names
+
+Each configured payment chain requires a nonblank `name` of 1–128 characters.
+The billing configuration API exposes this name alongside its CAIP-2 `network`
+and token options. Names are presentation metadata only: wallet transitions,
+authorizations and immutable payment identities continue to use `network`.
+The UI displays token addresses beside selection and retains payer/recipient
+details in history. Loading and durable payment outcomes stay in the top-up
+card until the user chooses another top-up or views history.
+
+## Top-up progress observations
+
+A nullable submission progress observation (`submitting`, `confirming`, or
+`unknown`) and immutable observed transaction hash belong to the top-up intent,
+separately from the financial state. The API polls the authenticated facilitator
+progress endpoint at most once per second only while its original settlement
+request runs. Each query is bounded to one second. Writer updates lock the
+payment and intent, require the current reservation owner and active settling
+payment, reject older observations and hash changes, and cannot replace a terminal
+result. The observer is cancelled and joined before settlement publication.
+A final bounded writer operation records outcomes even if the browser disconnects.
+
+The browser starts three-second intent polling when the signed payment is sent.
+Wallet signing and optional exact Permit2 approval steps are local observations;
+reload recovers only durable server observations. A hash alone does not prove
+broadcast. Unknown transport outcomes retain the original intent and never
+automatically resubmit payment. Only the existing atomic credit publication
+completes the top-up. Progress observation never credits or reconciles an account.
