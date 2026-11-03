@@ -156,9 +156,9 @@ fs.writeFileSync(
   JSON.stringify({ ...base, timestamp: "0x6553f100" }),
 );
 if (
-  !execFileSync(process.env.ANVIL || "anvil", ["--version"], { encoding: "utf8" }).includes("1.8.7")
+  !execFileSync(process.env.ANVIL || "anvil", ["--version"], { encoding: "utf8" }).includes("1.9.0")
 )
-  throw new Error("Artifact generation requires Anvil 1.8.7");
+  throw new Error("Artifact generation requires Anvil 1.9.0");
 const child = spawn(
   process.env.ANVIL || "anvil",
   [
@@ -408,7 +408,7 @@ try {
     coinType: "2147532463",
     tld: "test",
     compiler: solc.version(),
-    anvil: "1.8.7",
+    anvil: "1.9.0",
     customCompilation: {
       settings: input.settings,
       controllerSourceSha256: sha(controllerSource),

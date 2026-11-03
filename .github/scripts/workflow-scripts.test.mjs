@@ -332,6 +332,7 @@ test("docs checker accepts aligned action tables and still rejects missing or un
     "preview/docs/testing.md",
     "preview/docs/setup.md",
     "preview/docs/README.md",
+    "preview/Caddyfile",
     "Makefile",
     "Dockerfile",
     "deploy/compose.yaml",

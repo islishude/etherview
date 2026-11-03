@@ -7,7 +7,7 @@ services:
     depends_on:
       geth:
         condition: service_started
-      anvil:
+      reth:
         condition: service_healthy
       migration:
         condition: service_completed_successfully
@@ -19,18 +19,14 @@ services:
     restart: unless-stopped
     stop_grace_period: 35s
 
-  anvil:
-    image: ghcr.io/foundry-rs/foundry:v1.8.7
+  reth:
+    image: ghcr.io/paradigmxyz/reth:v2.9.0
     user: "0:0"
-    entrypoint: [sh, /usr/local/bin/anvil-entrypoint.sh]
+    entrypoint: [sh, /usr/local/bin/reth-entrypoint.sh]
     healthcheck:
-      test:
-        [
-          CMD-SHELL,
-          'test -f /data/ready && test "$(cast chain-id --rpc-url http://127.0.0.1:8545)" = 31337',
-        ]
+      test: [CMD, bash, /usr/local/bin/reth-healthcheck.sh]
       interval: 2s
-      timeout: 2s
+      timeout: 5s
       retries: 30
     stop_signal: SIGINT
     stop_grace_period: 30s

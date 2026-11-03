@@ -182,10 +182,10 @@ billing:
           maximum_topup_amount_atomic: "1000000000000000000000000"
           asset_transfer_methods: [eip3009, permit2]
     - network: eip155:31337
-      name: Anvil
+      name: Reth
       facilitator_url: http://x402-facilitator:8081
       tokens:
-        - id: anvil-usd6
+        - id: reth-usd6
           name: Local USD
           credit_rate_numerator: "3"
           credit_rate_denominator: "1"
@@ -197,7 +197,7 @@ billing:
           minimum_topup_amount_atomic: "1"
           maximum_topup_amount_atomic: "1000000000000"
           asset_transfer_methods: [eip3009, permit2]
-        - id: anvil-usd18
+        - id: reth-usd18
           name: Local USD 18
           credit_rate_numerator: "4"
           credit_rate_denominator: "1000000000000"

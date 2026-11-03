@@ -280,8 +280,8 @@
       "id": "foundry",
       "source": "github",
       "package": "foundry-rs/foundry",
-      "policy": "auto",
-      "reason": "",
+      "policy": "report",
+      "reason": "Foundry upgrades require matching release commit assertions, pinned tool binaries and regenerated contract artifacts before runtime acceptance.",
       "pins": [
         {
           "path": "e2e/foundry/Dockerfile",
@@ -339,18 +339,90 @@
           "count": 1
         },
         {
-          "path": "preview/anvil/generate.mjs",
-          "template": "if (!execFileSync(binary, [\"--version\"], { encoding: \"utf8\" }).includes(\"{{version}}\"))",
+          "path": ".github/workflows/ci-runtime.yml",
+          "template": "          container=$(docker create ghcr.io/foundry-rs/foundry:v{{version}})",
           "count": 1
         },
         {
-          "path": "preview/compose/x402.yaml",
+          "path": "e2e/x402local/rustack.compose.yaml",
           "template": "    image: ghcr.io/foundry-rs/foundry:v{{version}}",
+          "count": 1
+        },
+        {
+          "path": "preview/contracts/generate.mjs",
+          "template": "  !execFileSync(process.env.ANVIL || \"anvil\", [\"--version\"], { encoding: \"utf8\" }).includes(\"{{version}}\")",
+          "count": 1
+        },
+        {
+          "path": "preview/contracts/generate.mjs",
+          "template": "  throw new Error(\"Artifact generation requires Anvil {{version}}\");",
+          "count": 1
+        },
+        {
+          "path": "preview/contracts/generate.mjs",
+          "template": "    anvil: \"{{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "preview/contracts/regenerate-x402.mjs",
+          "template": "  if (!run(\"forge\", [\"--version\"]).toString().includes(\"{{version}}\"))",
+          "count": 1
+        },
+        {
+          "path": "preview/contracts/regenerate-x402.mjs",
+          "template": "    throw Error(\"forge {{version}} required\");",
+          "count": 1
+        },
+        {
+          "path": "preview/docs/testing.md",
+          "template": "`make preview-contracts-check` uses pinned Anvil {{version}} to reproduce the genesis",
+          "count": 1
+        },
+        {
+          "path": "preview/docs/testing.md",
+          "template": "Forge {{version}} and upstream compiler settings. It also exports complete inline",
+          "count": 1
+        },
+        {
+          "path": "preview/docs/contracts.md",
+          "template": "Use Anvil {{version}} and the locked pnpm workspace. Do not copy runtime bytecode to a",
           "count": 1
         }
       ],
-      "commands": [],
-      "generated": [],
+      "commands": [
+        [
+          "node",
+          "preview/contracts/regenerate-x402.mjs"
+        ],
+        [
+          "make",
+          "preview-contracts-generate"
+        ],
+        [
+          "node",
+          "preview/contracts/x402-standard.mjs",
+          "--write-fixture"
+        ],
+        [
+          "node",
+          "preview/verification/generate.mjs"
+        ],
+        [
+          "make",
+          "preview-contracts-check"
+        ]
+      ],
+      "generated": [
+        "preview/contracts/manifest.json",
+        "preview/contracts/allocation.json",
+        "preview/genesis.json",
+        "preview/reth/genesis.json",
+        "preview/contracts/upstream/x402-standard.json",
+        "preview/verification/Permit2.json",
+        "preview/verification/x402ExactPermit2Proxy.json",
+        "e2e/x402local/contracts/Permit2.hex",
+        "e2e/x402local/contracts/X402ExactPermit2Proxy.hex"
+      ],
       "ignores": {
         "docker": [
           "ghcr.io/foundry-rs/foundry"
@@ -904,6 +976,42 @@
       "commands": [],
       "generated": [],
       "ignores": {}
+    },
+    {
+      "id": "reth",
+      "source": "github",
+      "package": "paradigmxyz/reth",
+      "policy": "report",
+      "reason": "Preview Amsterdam chain changes require persistence and payment acceptance.",
+      "pins": [
+        {
+          "path": "preview/compose/x402.yaml",
+          "template": "    image: ghcr.io/paradigmxyz/reth:v{{version}}",
+          "count": 1
+        },
+        {
+          "path": "preview/reth/test.mjs",
+          "template": "const rethImage = \"ghcr.io/paradigmxyz/reth:v{{version}}\";",
+          "count": 1
+        }
+      ],
+      "commands": [],
+      "generated": [],
+      "ignores": {
+        "docker-compose": [
+          "ghcr.io/paradigmxyz/reth"
+        ]
+      },
+      "reviewFiles": [
+        "preview/reth/entrypoint.sh",
+        "preview/reth/healthcheck.sh",
+        "preview/reth/generate.mjs",
+        "preview/docs/architecture.md",
+        "preview/docs/operations.md",
+        "docs/architecture/overview.md",
+        "docs/decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md",
+        ".github/scripts/docs-check.mjs"
+      ]
     }
   ],
   "delegated": [

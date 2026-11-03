@@ -54,7 +54,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := nats bundler x402-facilitator anvil geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := nats bundler x402-facilitator reth geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -542,7 +542,7 @@ preview-genesis-verify-image:
 preview-images-prebuilt:
 	@$(call require-image,$(IMAGE),preview-images-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	@$(MAKE) --no-print-directory preview-env preview-genesis-verify-image
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull bundler geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull bundler geth lighthouse validator object-storage archive-init ipfs preview-gateway reth nats
 	$(DOCKER) pull node:26.13.0-trixie-slim
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
@@ -610,13 +610,13 @@ preview-contracts-generate: pnpm-install
 	$(NODE) preview/contracts/ens-upstream.mjs
 	$(NODE) preview/contracts/upstream.mjs
 	$(NODE) preview/contracts/generate.mjs
-	$(NODE) preview/anvil/generate.mjs
+	$(NODE) preview/reth/generate.mjs
 
 preview-contracts-check: pnpm-install
 	$(NODE) preview/contracts/generate.mjs --check
-	$(NODE) preview/anvil/generate.mjs --check
+	$(NODE) preview/reth/generate.mjs --check
 	$(NODE) preview/verification/generate.mjs --check
-	$(NODE) --test preview/contracts/test.mjs preview/anvil/test.mjs
+	DOCKER="$(DOCKER)" $(NODE) --test preview/contracts/test.mjs preview/reth/test.mjs
 
 test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt

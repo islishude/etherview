@@ -1125,12 +1125,15 @@ existing credit remains spendable during its outage. The API/all role owns the f
 billing components. Standard Permit2/proxy contracts are predeployed; the private-network HTTP
 exception remains a development-only boundary under ADR-0044 and ADR-0059.
 
-A separate persistent Anvil payment fixture (31337) exposes wallet HTTP/WSS
-through `anvil.etherview.localhost` on the same loopback gateway. Both networks
-predeploy six- and eighteen-decimal tokens; Anvil loads a reviewed native snapshot
-only on an empty volume and rejects seed mismatches. The shared internal facilitator
-accepts a bounded per-network token whitelist. The indexed chain and SIWE identity remain 48815. P60-T25 tracks multi-option billing and unified-credit acceptance;
-the additional fixture alone does not enable it in the account API.
+A separate persistent Reth dev payment fixture (31337) exposes wallet HTTP/WSS
+through `reth.etherview.localhost` on the same loopback gateway. Reth v2.9.0
+mines every three seconds with Amsterdam active from genesis. Both networks
+predeploy six- and eighteen-decimal tokens and the required system contracts.
+Reth initializes only an empty volume and persists its native database; genesis
+mismatches, missing database or missing identity fail closed. The shared internal
+facilitator accepts a bounded per-network token whitelist. The indexed chain and
+SIWE identity remain 48815. Old Anvil state is not migrated; the Preview runbook
+requires reconciliation and a fresh billing database at the switch.
 
 ## Operator Recovery Boundary
 

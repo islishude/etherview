@@ -102,14 +102,15 @@ services:
       - ./preview/read.json:/policies/read.json:ro
       - ./preview/write.json:/policies/write.json:ro
 
-  anvil:
+  reth:
     extends:
       file: preview/compose/x402.yaml
-      service: anvil
+      service: reth
     volumes:
-      - anvil-data:/data
-      - ./preview/anvil/entrypoint.sh:/usr/local/bin/anvil-entrypoint.sh:ro
-      - ./preview/anvil/state.json:/config/anvil-state.json:ro
+      - reth-data:/data
+      - ./preview/reth/entrypoint.sh:/usr/local/bin/reth-entrypoint.sh:ro
+      - ./preview/reth/healthcheck.sh:/usr/local/bin/reth-healthcheck.sh:ro
+      - ./preview/reth/genesis.json:/config/reth-genesis.json:ro
 
   x402-facilitator:
     extends:
@@ -191,7 +192,7 @@ volumes:
   ipfs-data:
   postgres-data:
   geth-data:
-  anvil-data:
+  reth-data:
   lighthouse-data:
   validator-data:
   blob-data:

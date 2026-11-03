@@ -71,7 +71,7 @@ func TestPreviewX402(t *testing.T) {
 		cleanup, stop := context.WithTimeout(context.Background(), 90*time.Second)
 		defer stop()
 		if t.Failed() {
-			output, _ := project.Run(cleanup, "logs", "--no-color", "api", "migration", "geth", "x402-facilitator")
+			output, _ := project.Run(cleanup, "logs", "--no-color", "api", "migration", "geth", "reth", "x402-facilitator")
 			t.Log(string(output))
 		}
 		if err := project.Down(cleanup); err != nil {
@@ -154,14 +154,14 @@ func TestPreviewX402(t *testing.T) {
 		return (&net.Dialer{}).DialContext(c, network, gateway)
 	}}
 	defer transport.CloseIdleConnections()
-	anvilRPC, err := rpc.DialOptions(ctx, "https://anvil.etherview.localhost", rpc.WithHTTPClient(&http.Client{Transport: transport, Timeout: 20 * time.Second}))
+	rethRPC, err := rpc.DialOptions(ctx, "https://reth.etherview.localhost", rpc.WithHTTPClient(&http.Client{Transport: transport, Timeout: 20 * time.Second}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	anvil := ethclient.NewClient(anvilRPC)
-	defer anvil.Close()
-	if id, err := anvil.ChainID(ctx); err != nil || id.Int64() != 31337 {
-		t.Fatalf("gateway Anvil chain: %v %v", id, err)
+	reth := ethclient.NewClient(rethRPC)
+	defer reth.Close()
+	if id, err := reth.ChainID(ctx); err != nil || id.Int64() != 31337 {
+		t.Fatalf("gateway Reth chain: %v %v", id, err)
 	}
 	csrf := signIn(t, client, origin, ownerKey, owner)
 	key := createUserAPIKey(t, client, origin, csrf, "preview")
@@ -208,8 +208,8 @@ func TestPreviewX402(t *testing.T) {
 			amount, credit string
 		}{
 			{"preview-usd18", rpcClient, common.HexToAddress("0x71c95911e9a5d330f4d621842ec243ee1343292e"), "1000000000000", "2"},
-			{"anvil-usd6", anvil, token, "100", "300"},
-			{"anvil-usd18", anvil, common.HexToAddress("0x71c95911e9a5d330f4d621842ec243ee1343292e"), "1000000000000", "4"},
+			{"reth-usd6", reth, token, "100", "300"},
+			{"reth-usd18", reth, common.HexToAddress("0x71c95911e9a5d330f4d621842ec243ee1343292e"), "1000000000000", "4"},
 		} {
 			beforeToken := tokenUintAt(t, option.client, option.asset, "balanceOf", common.HexToAddress(recipientAddress))
 			beforeAccount := billingAccount(t, client, origin)
@@ -232,15 +232,15 @@ func TestPreviewX402(t *testing.T) {
 				t.Fatalf("%s replay=%d", option.id, replay.StatusCode)
 			}
 		}
-		anvilBefore := tokenUintAt(t, anvil, token, "balanceOf", owner)
-		run("up", "-d", "--no-build", "--no-deps", "--force-recreate", "--wait", "anvil")
-		if anvilBefore.Cmp(tokenUintAt(t, anvil, token, "balanceOf", owner)) != 0 {
-			t.Fatal("Anvil recreation lost balances")
+		rethBefore := tokenUintAt(t, reth, token, "balanceOf", owner)
+		run("up", "-d", "--no-build", "--no-deps", "--force-recreate", "--wait", "reth")
+		if rethBefore.Cmp(tokenUintAt(t, reth, token, "balanceOf", owner)) != 0 {
+			t.Fatal("Reth recreation lost balances")
 		}
-		run("stop", "anvil")
-		// Anvil failure must not interrupt settlement on the independent Geth chain.
+		run("stop", "reth")
+		// Reth failure must not interrupt settlement on the independent Geth chain.
 		topup(t, client, rpcClient, codec, origin, csrf, owner, "eip3009")
-		run("up", "-d", "--no-build", "--no-deps", "--wait", "anvil")
+		run("up", "-d", "--no-build", "--no-deps", "--wait", "reth")
 		before := tokenUintAt(t, rpcClient, token, "balanceOf", owner)
 		nonce, err := rpcClient.NonceAt(ctx, common.HexToAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8"), nil)
 		if err != nil {
@@ -263,7 +263,7 @@ func TestPreviewX402(t *testing.T) {
 			t.Fatalf("%s chain/ledger mismatch: %+v recipient=%s", mode, account, recipient)
 		}
 		t.Logf("%s: credit=%s debit=%s available=%s recipient=%s; replay, exact allowance, recreation and outage passed", mode, credit, debit, account.AvailableAtomic, recipient)
-		run("up", "-d", "--no-build", "--no-deps", "--wait", "anvil", "x402-facilitator")
+		run("up", "-d", "--no-build", "--no-deps", "--wait", "reth", "x402-facilitator")
 	}
 	// A broadcast on a paused PoS chain is uncertain, not rejected. Preserve
 	// its immutable hash and reconcile after mining resumes without resending.

@@ -558,7 +558,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   checksum-validates the official catalog artifact through the application;
   only the independent client's fixture compilation is offline.
 - `make test-foundry-offline-compile`: run the version-pinned Foundry
-  v1.8.7 client image with no network and force a Solidity 0.8.30 rebuild. The
+  v1.9.0 client image with no network and force a Solidity 0.8.30 rebuild. The
   image build already compiles once online and once offline, while this target
   independently proves the loaded client contains the complete compiler cache.
   Foundry's disposable project build cache is disabled: each Compose command
@@ -672,7 +672,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-seven-application-role layouts. Each layout gets a
-  deterministic Prague chain from the default Foundry `v1.8.7` image and a
+  deterministic Prague chain from the default Foundry `v1.9.0` image and a
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
   type-4 transactions with go-ethereum, and deploys two delegate contracts; it
@@ -1409,7 +1409,7 @@ uniqueness/credential routing checks, and PostgreSQL four-option funding into on
 account with immutable snapshots and replay rejection. Browser regressions cover
 chain/token selection and draft reset. `make test-preview-x402` compares token
 and credit increments for all four Preview options in both role layouts through
-the Anvil HTTPS gateway, then checks recreation and isolated payment-chain outage.
+the Reth HTTPS gateway, then checks recreation and isolated payment-chain outage.
 P60-T25 uses local acceptance only; local Permit2 fixture evidence makes no
 production-contract compatibility claim.
 
@@ -1439,7 +1439,7 @@ protocol routing, authentication and keystore/KMS signature regressions. Run
 reservation, nonce uniqueness, immutable transaction bytes and singleton-lock
 recovery. The existing `make test-runtime-e2e` and `make test-preview-x402` exercise
 the production facilitator and standard EIP-3009/Permit2 contract paths in
-all/split topologies. `node --test preview/anvil/test.mjs` verifies persisted
+all/split topologies. `node --test preview/reth/test.mjs` verifies persisted
 standard Permit2 nonce bitmaps and exact approval consumption across restart.
 Run generation, lint, schema, deployment, docs and plan gates for this change.
 P60-T27 uses a separate local acceptance facility using a pinned

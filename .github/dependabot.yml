@@ -110,10 +110,11 @@ updates:
       time: "04:00"
       timezone: Asia/Shanghai
     open-pull-requests-limit: 10
-    # These images are built locally rather than published in a registry.
+    # Coordinated/reviewed pins and locally built images.
     ignore:
       - dependency-name: "caddy"
       - dependency-name: "ghcr.io/foundry-rs/foundry"
+      - dependency-name: "ghcr.io/paradigmxyz/reth"
       - dependency-name: "etherview"
       - dependency-name: "etherview-*"
     groups:

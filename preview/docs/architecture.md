@@ -36,22 +36,25 @@ Preview Bundler release identity and safe-validation boundaries are owned by
 
 ### Second payment network
 
-The Preview Compose stack also runs Anvil with chain ID 31337. It is a payment
+The Preview Compose stack also runs Reth with chain ID 31337. It is a payment
 fixture only: the explorer and SIWE identity continue using Geth chain 48815.
-`preview/anvil/generate.mjs` derives a deterministic payment genesis from the
+`preview/reth/generate.mjs` derives a deterministic payment genesis from the
 reviewed token allocations, including both six- and eighteen-decimal tokens and
 public development accounts. No contracts are deployed during startup.
 
-The Anvil volume records its seed digest and state. Restarts load saved state
-without funding accounts again, and changed seeds fail closed until an explicit
-volume reset. A one-second checkpoint interval limits but does not eliminate
-state loss after an abrupt host failure; normal shutdown dumps state before exit.
-One internal production facilitator serves both Geth and Anvil, with independent
+Reth v2.9.0 runs in dev mode with a three-second block interval and Amsterdam
+active from genesis, including the reviewed system allocations shared with Geth.
+The Reth volume records its genesis digest and full database. Restarts reuse the
+database without funding accounts again. Changed genesis, missing database or
+missing identity fails closed until an explicit reset. Native snapshots are not
+used. Health checks require the expected chain, recent Amsterdam headers and a
+non-genesis head; halted mining becomes unhealthy when the head grows stale.
+One internal production facilitator serves both Geth and Reth, with independent
 chain queues and a shared PostgreSQL journal. Each chain enforces token and
 recipient whitelists; standard Permit2 and x402 proxy contracts are predeployed.
 
 The existing Caddy gateway exposes HTTP JSON-RPC and WebSocket RPC on
-`anvil.etherview.localhost`. Anvil has no host port. Gateway policy matches the
+`reth.etherview.localhost`. Reth has no host port. Gateway policy matches the
 local Geth wallet endpoint, including wildcard local-development CORS, bounded
 requests, scrubbed errors and no retries. Neither payment network is a core
 readiness dependency. Multi-option account funding is tracked by P60-T25.
