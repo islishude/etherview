@@ -145,6 +145,15 @@ test("deployment overlays keep repository-root build contexts and mounts", () =>
   );
   assertApplicationPaths(config.services.api, "deploy/config.example.yaml");
   assert.ok(config.services["runtime-fixture"]);
+  const connectionSetting = config.services.postgres.command.find((arg) =>
+    arg.startsWith("max_connections="),
+  );
+  const maxConnections = Number(connectionSetting?.split("=")[1]);
+  const applicationConfig = fs.readFileSync(path.join(root, "deploy/config.example.yaml"), "utf8");
+  const writerConnections = Number(applicationConfig.match(/^  max_connections: (\d+)$/m)?.[1]);
+  // Six doubled roles plus trace, with room for the test pool and probes.
+  assert.ok(writerConnections > 0);
+  assert.ok(maxConnections >= 13 * writerConnections + 40, "runtime replica connection budget");
 });
 
 for (const mode of ["monolith", "distributed"]) {

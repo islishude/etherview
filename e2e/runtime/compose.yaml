@@ -48,6 +48,9 @@ x-runtime-fixture-dependency: &runtime-fixture-dependency
 
 services:
   postgres:
+    # Distributed acceptance starts 13 application processes with 20 writer
+    # connections each. Reserve additional slots for the harness and probes.
+    command: ["postgres", "-c", "max_connections=400"]
     ports:
       - target: 5432
         published: "0"
