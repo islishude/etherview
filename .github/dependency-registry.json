@@ -649,7 +649,7 @@
         },
         {
           "path": "preview/bundler.Dockerfile",
-          "template": "FROM node:{{version}}",
+          "template": "FROM node:{{version}}-trixie-slim",
           "count": 1
         }
       ],

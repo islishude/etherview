@@ -493,7 +493,7 @@ helm-check:
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
 	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
-start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
+start-preview recreate-preview stop-preview preview-images preview-images-prebuilt preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
@@ -530,7 +530,13 @@ preview-network-runtime: preview-env
 
 preview-x402-images: docker-build
 
-preview-images: preview-env preview-x402-images preview-bundler-image
+.PHONY: preview-images-prebuilt
+preview-images: docker-build
+	@$(MAKE) --no-print-directory preview-images-prebuilt
+
+preview-images-prebuilt:
+	@$(call require-image,$(IMAGE),preview-images-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
+	@$(MAKE) --no-print-directory preview-env preview-bundler-image
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 

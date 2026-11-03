@@ -187,11 +187,11 @@ check fails; failures still fail the job. Cancellation or setup failure skips
 the remaining checks. Retrying the grouped job reruns its short checks.
 
 All three jobs share a local setup action that installs dependencies, loads the
-exact AMD64 production image, prepares ephemeral certificates, builds Rundler
-and Facilitator helpers, and pulls Caddy and external images per runner.
-GitHub-hosted Linux Preview runners first remove their unused preinstalled
-Android and .NET SDKs to reserve disk space for those builds and image imports;
-local and self-hosted environments are untouched. Only
+exact AMD64 production image, prepares ephemeral certificates, builds the
+Rundler helper on the pinned Node Debian slim runtime, and pulls Caddy and
+external images per runner. `make preview-images-prebuilt` requires the loaded
+production image and never rebuilds it; setup verifies its image ID again after
+preparation. Runner SDKs remain untouched. Only
 metadata and contracts install bundled Chromium. CLI smoke runs one split-role
 transactions scenario; the full catalog, dual-layout and browser suite is opt-in
 via `make test-preview-tools-e2e-full` (or its `-prebuilt` variant), outside
@@ -201,7 +201,11 @@ its existing log and cleanup behavior. Consensus uses a separate temporary
 subdirectory so its uploaded evidence does not include CLI reports.
 All image consumers use the common load action with an exact producer artifact
 ID and validate source revision, architecture and image ID; none rebuilds a
-missing image.
+missing image. Successful loading removes only `production-image.tar` to release
+transport disk space, retaining `identity.json` for the later `verify` check.
+Load failures or load-time identity mismatches retain the archive for diagnosis. Makefile regressions
+exercise the real dependency graph; image handoff regressions cover replacement,
+missing images, post-load verification without the archive, and failure cleanup.
 
 Checks appear under `Checks / ...`. Runtime checks use `Runtime acceptance / ...`:
 `Production schema and runtime E2E`,
@@ -817,7 +821,9 @@ make test-foundry-e2e
 `make test-preview-metadata-prebuilt` and `make test-preview-consensus-prebuilt`
 require the loaded production/gateway images and readable Preview certificates.
 They check these prerequisites without building images or creating certificates.
-Prepare external Preview images once with `make preview-images`. The ordinary
+After loading the production image, prepare external Preview images once with
+`make preview-images-prebuilt`; it fails before preparation if that image is
+missing. `make preview-images` builds the production image first. The ordinary
 schema and Preview targets continue to build/prepare before invoking the same
 prebuilt test recipes. Preview network generation and archive initialization
 remain owned by each isolated test harness.

@@ -11,14 +11,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Reclaim unused hosted-runner SDK space
-      if: ${{ runner.environment == 'github-hosted' && runner.os == 'Linux' }}
-      shell: bash
-      # Preview pulls several chain images and builds Bundler. These preinstalled
-      # SDKs are unused by the Go/Node toolchain and can exhaust the runner disk.
-      run: |
-        sudo rm -rf /usr/local/lib/android /usr/share/dotnet
-        df -h /
     - uses: ./.github/actions/setup-toolchain
     - name: Install Preview dependencies
       shell: bash
@@ -48,4 +40,8 @@ runs:
       run: make preview-cert
     - name: Prepare Preview gateway and external images
       shell: bash
-      run: make preview-images
+      run: |
+        df -h /
+        make preview-images-prebuilt
+        node .github/scripts/production-image-bundle.mjs verify ".local/production-image" amd64
+        df -h /

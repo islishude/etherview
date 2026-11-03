@@ -78,6 +78,35 @@ if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAI
   };
 }
 
+test("Preview image preparation preserves a prebuilt application and fails before side effects when missing", (t) => {
+  const f = fixture(t);
+  const prepared = f.run("preview-images-prebuilt");
+  assert.equal(prepared.status, 0, prepared.stdout + prepared.stderr);
+  assert.deepEqual(prepared.commands[0].args, ["image", "inspect", "etherview:local"]);
+  const builds = prepared.commands.filter((command) => command.command === "buildx");
+  assert.equal(builds.length, 1);
+  assert.ok(builds[0].args.includes("preview/bundler.Dockerfile"));
+  assert.ok(!builds[0].args.includes("production"));
+  assert.ok(!builds[0].args.includes("etherview:local"));
+  const ordinary = f.run("preview-images");
+  assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
+  assert.ok(ordinary.commands[0].args.includes("production"));
+  assert.deepEqual(ordinary.commands.slice(1), prepared.commands);
+
+  const missingFixture = fixture(t);
+  const missing = missingFixture.run("preview-images-prebuilt", {
+    MISSING_IMAGE: "etherview:local",
+  });
+  assert.notEqual(missing.status, 0);
+  assert.deepEqual(missing.commands, [prepared.commands[0]]);
+  assert.ok(!existsSync(join(missingFixture.dir, ".local/preview.env")));
+  for (const command of ["buildx", "compose"]) {
+    const failed = f.run("preview-images-prebuilt", { FAIL_COMMAND: command });
+    assert.notEqual(failed.status, 0);
+    assert.equal(failed.commands.at(-1).command, command);
+  }
+});
+
 for (const suite of [
   "schema-e2e",
   "runtime-e2e",

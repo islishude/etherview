@@ -18,7 +18,9 @@ ADR-0024 and ADR-0039; no ABI or source is published directly by the helper.
 
 The independent Preview Rundler process simulates and bundles signed operations
 against internal Geth. Its public HTTPS RPC exposes only standard ERC-4337
-methods. It is not an Etherview runtime component or an indexing data source;
+methods. Its launcher uses the pinned Node Debian Trixie slim image with system
+CA certificates; image construction checks Rundler startup as the non-root user.
+It is not an Etherview runtime component or an indexing data source;
 PostgreSQL-stored canonical calldata and receipts remain the sole userop stage
 inputs. Failure of the Bundler does not gate core/API readiness.
 

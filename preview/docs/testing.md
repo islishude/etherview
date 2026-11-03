@@ -133,7 +133,8 @@ confined to this contract test; it does not establish PoS or Bundler acceptance.
 
 `make test-preview-contracts` builds the production image and pinned Rundler helper,
 then runs the Go-owned real Geth/Lighthouse Preview gate. The prebuilt equivalent
-is `make test-preview-contracts-prebuilt` after `make docker-build preview-images`.
+is `make test-preview-contracts-prebuilt` after loading the production image and
+running `make preview-images-prebuilt`.
 It checks block-zero code/storage/nonces/balances and authenticated genesis import,
 standard Bundler RPC and rejected debug methods, signed successful/reverted
 UserOperations, bad signatures, insufficient prefund at submission (Rundler can
@@ -190,7 +191,8 @@ cloud acceptance milestones.
 `make test-preview-x402` builds the production image and local helper images,
 then exercises the same Preview Geth/Lighthouse deployment in a disposable
 project with isolated ports, network material and volumes. The prebuilt form
-is `make test-preview-x402-prebuilt` after `make docker-build preview-images`.
+is `make test-preview-x402-prebuilt` after loading the production image and
+running `make preview-images-prebuilt`.
 It checks both EIP-3009 and Permit2, exact allowance consumption, replay,
 chain/credit equality, genesis predeployment, Facilitator recreation, API restart and spending during
 Facilitator outage in split and all-role modes. It also pauses the validator,
