@@ -20,7 +20,7 @@ RETURNING id::text, kind, language, compiler_version, compiler_platform,
 -- name: VerifyV2FindActiveJobByDigest :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
-       execution_policy, executor_digest, request_payload, request_digest,
+       execution_policy, executor_digest, COALESCE((SELECT input.payload FROM verification_import_inputs input WHERE input.job_id = verification_jobs.id), request_payload)::bytea AS request_payload, request_digest,
        status, outcome_kind, outcome, error_code, attempt_count,
        max_attempts, created_at, updated_at
 FROM verification_jobs
@@ -38,7 +38,7 @@ WITH exhausted AS (
     WHERE id = (
         SELECT id FROM verification_jobs
         WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-          AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
+          AND ((kind = 'sourcify_import' AND language IS NULL) OR kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
                OR (sqlc.arg('solidity_enabled')::boolean AND language IN ('solidity', 'yul'))
                OR (sqlc.arg('geas_enabled')::boolean AND language = 'geas')
                OR (sqlc.arg('vyper_enabled')::boolean AND language = 'vyper')
@@ -50,7 +50,7 @@ WITH exhausted AS (
 ), candidate AS (
     SELECT id FROM verification_jobs
     WHERE (status = 'queued' OR (status = 'running' AND lease_expires_at <= clock_timestamp()))
-      AND (kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
+      AND ((kind = 'sourcify_import' AND language IS NULL) OR kind IN ('proxy', 'sourcify', 'sourcify_from_etherscan')
            OR (sqlc.arg('solidity_enabled')::boolean AND language IN ('solidity', 'yul'))
            OR (sqlc.arg('geas_enabled')::boolean AND language = 'geas')
                OR (sqlc.arg('vyper_enabled')::boolean AND language = 'vyper')
@@ -71,14 +71,14 @@ WHERE job.id = candidate.id
 RETURNING job.id::text AS id, job.kind, job.language, job.compiler_version,
           job.compiler_platform, job.catalog_generation_id,
           job.compiler_digest, job.executor_kind, job.execution_policy,
-          job.executor_digest, job.request_payload, job.request_digest,
+          job.executor_digest, COALESCE((SELECT input.payload FROM verification_import_inputs input WHERE input.job_id = job.id), job.request_payload)::bytea AS request_payload, job.request_digest,
           job.status, job.outcome_kind, job.outcome, job.error_code,
           job.attempt_count, job.max_attempts, job.created_at, job.updated_at;
 
 -- name: VerifyV2LockRunningJob :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
-       execution_policy, executor_digest, request_payload, request_digest,
+       execution_policy, executor_digest, COALESCE((SELECT input.payload FROM verification_import_inputs input WHERE input.job_id = verification_jobs.id), request_payload)::bytea AS request_payload, request_digest,
        status, outcome_kind, outcome, error_code, attempt_count,
        max_attempts, created_at, updated_at
 FROM verification_jobs
@@ -91,7 +91,7 @@ FOR UPDATE;
 -- name: VerifyV2GetJob :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
-       execution_policy, executor_digest, request_payload, request_digest,
+       execution_policy, executor_digest, COALESCE((SELECT input.payload FROM verification_import_inputs input WHERE input.job_id = verification_jobs.id), request_payload)::bytea AS request_payload, request_digest,
        status, outcome_kind, outcome, error_code, attempt_count,
        max_attempts, created_at, updated_at
 FROM verification_jobs

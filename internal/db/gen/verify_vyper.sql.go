@@ -33,6 +33,40 @@ func (q *Queries) VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyper
 	return err
 }
 
+const verifyVyperPublicVersions = `-- name: VerifyVyperPublicVersions :many
+SELECT DISTINCT version, artifact_url, artifact_sha256
+FROM compiler_catalog_entries
+WHERE language = 'vyper' AND platform = 'python-wheel'
+  AND artifact_url = ANY($1::text[])
+  AND vyper_runtimes IS NOT NULL
+`
+
+type VerifyVyperPublicVersionsRow struct {
+	Version        string `db:"version" json:"version"`
+	ArtifactUrl    string `db:"artifact_url" json:"artifact_url"`
+	ArtifactSha256 []byte `db:"artifact_sha256" json:"artifact_sha256"`
+}
+
+func (q *Queries) VerifyVyperPublicVersions(ctx context.Context, artifactUrls []string) ([]VerifyVyperPublicVersionsRow, error) {
+	rows, err := q.db.Query(ctx, verifyVyperPublicVersions, artifactUrls)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []VerifyVyperPublicVersionsRow{}
+	for rows.Next() {
+		var i VerifyVyperPublicVersionsRow
+		if err := rows.Scan(&i.Version, &i.ArtifactUrl, &i.ArtifactSha256); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const verifyVyperRuntime = `-- name: VerifyVyperRuntime :one
 SELECT generation_id, version, artifact_sha256, vyper_runtimes
 FROM compiler_catalog_entries WHERE generation_id = $1 AND version = $2 AND language = 'vyper'

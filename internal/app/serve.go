@@ -23,7 +23,6 @@ import (
 	"github.com/islishude/etherview/internal/stagecontract"
 	"github.com/islishude/etherview/internal/store"
 	"github.com/islishude/etherview/internal/syncer"
-	"github.com/islishude/etherview/internal/verify"
 )
 
 func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []string) (result error) {
@@ -248,48 +247,15 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		}
 		coreRPCSource = &syncer.RPCSource{Pool: rpcBuild.Pool, Fetcher: fetcher}
 	}
-	var verificationRepository *verify.PostgresRepository
-	var verificationService *verify.Service
-	var compilerCatalog *verify.CompilerCatalog
-	if cfg.Features.Verification && roleSet[components.RoleAPI] {
-		sources := map[verify.Language]string{verify.LanguageSolidity: cfg.Verification.CatalogURLs["solidity"]}
-		compilerCatalog, err = verify.NewCompilerCatalog(db, verify.CompilerCatalogOptions{
-			Sources:        sources,
-			Platform:       verify.CompilerPlatformEmscriptenWASM32,
-			AllowedOrigins: cfg.Verification.AllowedDownloadOrigins,
-			Timeout:        cfg.Verification.Timeout, Freshness: cfg.Verification.CatalogMaxStaleness,
-			UnsafeAllowPrivateNetworks: cfg.Verification.UnsafeAllowPrivateDownloadNetworks,
-		})
-		if err != nil {
-			return err
-		}
-		verificationRepository, err = verify.NewPostgresRepository(db, verify.RepositoryOptions{
-			MaxRequestBytes: cfg.Verification.MaxInputBytes,
-			MaxResultBytes:  cfg.Verification.MaxOutputBytes,
-		})
-		if err != nil {
-			return err
-		}
-		credentials, credentialErr := sourcifyCredentials(cfg)
-		if credentialErr != nil {
-			return credentialErr
-		}
-		verificationService, err = verify.NewService(
-			verificationRepository,
-			cfg.Verification.MaxInputBytes,
-			verify.ServiceOptions{SourcifyCredentials: credentials},
-		)
-		if err != nil {
-			return err
-		}
-	}
-	publicVerification := publicVerificationService(cfg, verificationService)
-	verificationReader, verificationSubmitter, compatibilityVerification :=
-		verificationCapabilityInterfaces(verificationService, publicVerification)
-	sourcify, err := sourcifyClient(cfg)
+	dependencies, err := buildVerificationDependencies(cfg, roleSet, db, natsWake)
 	if err != nil {
 		return err
 	}
+	verificationRepository, verificationService, compilerCatalog := dependencies.repository, dependencies.service, dependencies.catalog
+	sourcify := dependencies.sourcify
+	publicVerification := publicVerificationService(cfg, verificationService)
+	verificationReader, verificationSubmitter, compatibilityVerification :=
+		verificationCapabilityInterfaces(verificationService, publicVerification)
 	componentRegistry := components.NewRegistry()
 	var databaseHealth databasePinger = db
 	if readDB != db {

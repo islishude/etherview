@@ -360,6 +360,9 @@ func (w *BytecodeDBWorker) tryCandidate(ctx context.Context, task dbgen.Bytecode
 	attempt, err := dbgen.New(w.repository.db).BytecodeDBAttempt(ctx, params)
 	if err == nil {
 		if attempt.Status == "queued" || attempt.Status == "running" {
+			if w.repository.options.SignalJobs != nil {
+				w.repository.options.SignalJobs()
+			}
 			return "verification_pending", nil
 		}
 		if attempt.OutcomeKind != nil && *attempt.OutcomeKind == "verification_success" {
@@ -400,6 +403,9 @@ func (w *BytecodeDBWorker) tryCandidate(ctx context.Context, task dbgen.Bytecode
 	if err = tx.Commit(ctx); err != nil {
 		return "", err
 	}
+	if w.repository.options.SignalJobs != nil {
+		w.repository.options.SignalJobs()
+	}
 	return "verification_pending", nil
 }
 
@@ -429,6 +435,9 @@ func (w *BytecodeDBWorker) retryUnavailable(ctx context.Context, task dbgen.Byte
 		return "", err
 	}
 	if count == 1 {
+		if w.repository.options.SignalJobs != nil {
+			w.repository.options.SignalJobs()
+		}
 		return "verification_pending", nil
 	}
 	return "verification_failed", nil

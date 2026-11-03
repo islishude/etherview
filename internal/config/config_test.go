@@ -34,7 +34,7 @@ func TestNormalizeRoles(t *testing.T) {
 		t.Fatal("expected unknown role error")
 	}
 	if _, err := NormalizeRoles([]string{"verify"}); err == nil ||
-		!strings.Contains(err.Error(), "use the api role") {
+		!strings.Contains(err.Error(), "use the verification role") {
 		t.Fatalf("removed verify role error = %v", err)
 	}
 }
@@ -163,7 +163,10 @@ func TestVerificationWorkerRequiresExplicitAbsoluteCleanRuntimePaths(t *testing.
 			cfg.Features.Verification = true
 			cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
 			test.configure(&cfg.Verification)
-			if err := cfg.ValidateForRoles([]string{"api"}); err == nil ||
+			if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
+				t.Fatalf("API depends on compiler runtime: %v", err)
+			}
+			if err := cfg.ValidateForRoles([]string{"verification"}); err == nil ||
 				!strings.Contains(err.Error(), test.field) {
 				t.Fatalf("unexpected runtime path validation error: %v", err)
 			}
@@ -321,7 +324,7 @@ func TestRemovedCompilerEnvironmentIsRejected(t *testing.T) {
 	}
 }
 
-func TestPreviewCompilerDownloadNetworkExceptionIsExplicitAndAPIScoped(t *testing.T) {
+func TestPreviewCompilerDownloadNetworkExceptionRequiresVerification(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	err := applyEnvironment(&cfg, func(key string) (string, bool) {
@@ -342,10 +345,11 @@ func TestPreviewCompilerDownloadNetworkExceptionIsExplicitAndAPIScoped(t *testin
 	if err := cfg.ValidateForRoles([]string{"api"}); err != nil {
 		t.Fatalf("API-scoped compiler download exception failed validation: %v", err)
 	}
-	if err := cfg.ValidateForRoles([]string{"sync"}); err == nil ||
-		!strings.Contains(err.Error(), "requires an api verification worker") {
-		t.Fatalf("non-API compiler download exception error = %v", err)
+	cfg.Features.Verification = false
+	if err := cfg.ValidateForRoles([]string{"api"}); err == nil || !strings.Contains(err.Error(), "requires a verification worker") {
+		t.Fatalf("disabled exception: %v", err)
 	}
+
 }
 
 func TestLoadEnvironmentAndSecretFile(t *testing.T) {
@@ -1547,7 +1551,7 @@ func TestVerificationWorkerRequiresAbsoluteCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg.Security.APIKeyPepper = strings.Repeat("p", 32)
-	if err := cfg.ValidateForRoles([]string{"api"}); err == nil || !strings.Contains(err.Error(), "absolute clean path") {
+	if err := cfg.ValidateForRoles([]string{"verification"}); err == nil || !strings.Contains(err.Error(), "absolute clean path") {
 		t.Fatalf("unexpected cache path error: %v", err)
 	}
 }

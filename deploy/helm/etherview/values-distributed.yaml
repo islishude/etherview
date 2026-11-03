@@ -5,6 +5,8 @@ mode: distributed
 roles:
   api:
     enabled: true
+  verification:
+    enabled: true
   sync:
     enabled: true
   enrich:

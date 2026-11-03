@@ -3,6 +3,7 @@ package verify
 import "encoding/json"
 
 type SubmissionV2 struct {
+	SourceChainID        uint64                   `json:"source_chain_id,string,omitempty"`
 	BytecodeDB           *BytecodeDBProvenance    `json:"bytecode_db,omitempty"`
 	VyperLockDigest      string                   `json:"vyper_lock_digest,omitempty"`
 	TargetFile           string                   `json:"target_file,omitempty"`

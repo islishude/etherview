@@ -35,7 +35,7 @@ cache lock. No transaction, snapshot or writer lock spans network requests.
 A complete warm cache works offline; missing upstream content never falls back
 to another version, host Python or unapproved bytes.
 
-After local runtime self-tests, API/all registers an immutable application
+After local runtime self-tests, verification/all registers an immutable application
 snapshot in the existing PostgreSQL provenance tables. These internal generation
 IDs are historical identities, not an independently refreshed distribution
 service. The process uses its own registered generation, never another replica's

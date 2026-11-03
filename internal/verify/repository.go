@@ -41,6 +41,7 @@ type JobKind string
 
 const (
 	JobAddress                   JobKind = "address"
+	JobSourcifyImport            JobKind = "sourcify_import"
 	JobSolidityMultipart         JobKind = "solidity_multipart"
 	JobSolidityStandardJSON      JobKind = "solidity_standard_json"
 	JobVyperStandardJSON         JobKind = "vyper_standard_json"
@@ -56,10 +57,14 @@ const (
 type ErrorCode string
 
 const (
-	ErrorCompileFailed    ErrorCode = "compile_failed"
-	ErrorCompilerOutput   ErrorCode = "compiler_output_invalid"
-	ErrorCompilerTooLarge ErrorCode = "compiler_output_too_large"
-	ErrorMatchFailed      ErrorCode = "match_failed"
+	ErrorSourcifyNotFound    ErrorCode = "sourcify_not_found"
+	ErrorSourcifyMismatch    ErrorCode = "sourcify_target_mismatch"
+	ErrorSourcifyInvalid     ErrorCode = "sourcify_invalid_source"
+	ErrorSourcifyUnavailable ErrorCode = "sourcify_unavailable"
+	ErrorCompileFailed       ErrorCode = "compile_failed"
+	ErrorCompilerOutput      ErrorCode = "compiler_output_invalid"
+	ErrorCompilerTooLarge    ErrorCode = "compiler_output_too_large"
+	ErrorMatchFailed         ErrorCode = "match_failed"
 	// ErrorSandboxRequired remains readable only for immutable pre-0031 jobs.
 	ErrorSandboxRequired             ErrorCode = "sandbox_required"
 	ErrorCompilerProvenanceMismatch  ErrorCode = "compiler_provenance_mismatch"
@@ -77,7 +82,7 @@ const (
 
 func (code ErrorCode) valid() bool {
 	switch code {
-	case ErrorCompileFailed, ErrorCompilerOutput, ErrorCompilerTooLarge, ErrorMatchFailed,
+	case ErrorSourcifyNotFound, ErrorSourcifyMismatch, ErrorSourcifyInvalid, ErrorSourcifyUnavailable, ErrorCompileFailed, ErrorCompilerOutput, ErrorCompilerTooLarge, ErrorMatchFailed,
 		ErrorSandboxRequired, ErrorCompilerProvenanceMismatch, ErrorCompilerUnavailable,
 		ErrorCompilerDownloadUnavailable, ErrorCompilerDownloadTimeout, ErrorCompilerDownloadRateLimited,
 		ErrorCompilerDownloadRejected, ErrorCompilerChecksum, ErrorCompilerArtifactTooLarge,
@@ -206,6 +211,7 @@ type Repository interface {
 }
 
 type RepositoryOptions struct {
+	SignalJobs      func()
 	MaxRequestBytes int
 	MaxResultBytes  int
 	MaxAttempts     int

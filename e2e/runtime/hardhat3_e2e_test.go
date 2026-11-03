@@ -389,7 +389,7 @@ func runHardhat3Mode(
 	cacheAfterRecreate := inspectHardhatCompilerCache(t, ctx, h)
 	if cacheAfterRecreate != cacheBefore {
 		t.Fatalf("compiler cache changed across %s replacement: before=%#v after=%#v",
-			h.apiService, cacheBefore, cacheAfterRecreate)
+			h.verificationService(), cacheBefore, cacheAfterRecreate)
 	}
 	verifyHardhatAddress(t, ctx, h, apiKey, "implementation-v1",
 		"contracts/Implementation.sol:Implementation", deployment.Implementation, nil)
@@ -638,7 +638,7 @@ func recreateHardhatCompilerOwner(
 	t.Helper()
 	if _, err := h.project.Run(
 		ctx,
-		"up", "-d", "--no-deps", "--force-recreate", h.apiService,
+		"up", "-d", "--no-deps", "--force-recreate", "--scale", h.verificationService()+"="+map[string]string{"monolith": "1", "distributed": "2"}[h.mode], h.verificationService(),
 	); err != nil {
 		t.Fatal(err)
 	}

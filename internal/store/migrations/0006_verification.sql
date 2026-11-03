@@ -2,6 +2,27 @@
 
 -- Functions
 
+CREATE FUNCTION verification_effective_request(job_id uuid, original_request jsonb) RETURNS jsonb
+LANGUAGE plpgsql STABLE AS $$
+DECLARE prepared jsonb;
+BEGIN
+    SELECT input.request INTO prepared FROM verification_import_inputs AS input WHERE input.job_id = verification_effective_request.job_id;
+    RETURN COALESCE(prepared, original_request);
+END $$;
+
+
+CREATE FUNCTION enforce_verification_import_input() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM verification_jobs job
+        WHERE job.id = NEW.job_id AND job.kind = 'sourcify_import'
+          AND job.status = 'running' AND job.lease_expires_at > clock_timestamp()
+          AND job.request->'target' = NEW.request->'target'
+    ) THEN RAISE EXCEPTION 'source import lacks a leased exact target'; END IF;
+    RETURN NEW;
+END $$;
+
 CREATE FUNCTION check_vyper_runtime_binding() RETURNS trigger
     LANGUAGE plpgsql
     AS $$
@@ -15,7 +36,7 @@ BEGIN
       AND executor.value = encode(NEW.executor_digest, 'hex')
       AND r->>'platform' = 'emscripten-wasm32'
       AND r->>'protocol' = 'etherview-vyper-wasm-package-v1'
-      AND r->>'recipe_sha256' = NEW.request->>'vyper_lock_digest'
+      AND r->>'recipe_sha256' = verification_effective_request(NEW.id, NEW.request)->>'vyper_lock_digest'
       AND e.artifact_url = 'embedded:vyper/' || (r->>'recipe_sha256')
  ) THEN RAISE EXCEPTION 'Vyper executor does not match application lock binding'; END IF;
  RETURN NEW;
@@ -148,7 +169,7 @@ BEGIN
           AND result.proxy_runtime_immutable_address IS NOT DISTINCT FROM
               NEW.runtime_immutable_address
           AND result.proxy_source_manifest_sha256 = NEW.source_manifest_sha256
-          AND job.kind IN ('address', 'derived')
+          AND job.kind IN ('address', 'derived', 'sourcify_import')
           AND job.status = 'succeeded'
           AND job.chain_id = NEW.chain_id
           AND job.address = NEW.address
@@ -184,7 +205,7 @@ BEGIN
         WHERE result.job_id = NEW.verification_job_id
           AND result.request_digest = NEW.request_digest
           AND result.outcome_kind = 'verification_success'
-          AND job.kind IN ('address', 'derived')
+          AND job.kind IN ('address', 'derived', 'sourcify_import')
           AND job.chain_id = NEW.chain_id
           AND job.address = NEW.address
           AND job.code_hash = NEW.code_hash
@@ -236,11 +257,11 @@ BEGIN
                 result.outcome_kind = 'verification_success' AND
                 (
                     (result.language = 'vyper' AND (
-                        result.file_name IS DISTINCT FROM job.request->>'target_file' OR
+                        result.file_name IS DISTINCT FROM verification_effective_request(job.id, job.request)->>'target_file' OR
                         result.sources IS DISTINCT FROM (
-                            (job.request #> '{standard_json,sources}') ||
-                            COALESCE(job.request #> '{standard_json,interfaces}', '{}'::jsonb)) OR
-                        result.settings IS DISTINCT FROM job.request #> '{standard_json,settings}'
+                            (verification_effective_request(job.id, job.request) #> '{standard_json,sources}') ||
+                            COALESCE(verification_effective_request(job.id, job.request) #> '{standard_json,interfaces}', '{}'::jsonb)) OR
+                        result.settings IS DISTINCT FROM verification_effective_request(job.id, job.request) #> '{standard_json,settings}'
                     )) OR
                     job.language IS DISTINCT FROM result.language OR
                     job.compiler_version IS DISTINCT FROM result.compiler_version OR
@@ -250,22 +271,22 @@ BEGIN
                             job.kind <> 'address' OR
                             jsonb_typeof(job.request->'geas') IS DISTINCT FROM 'object' OR
                             result.file_name IS DISTINCT FROM
-                                job.request #>> '{geas,runtime_entrypoint}' OR
+                                verification_effective_request(job.id, job.request) #>> '{geas,runtime_entrypoint}' OR
                             result.contract_name IS DISTINCT FROM
-                                job.request->>'contract_name_hint' OR
+                                verification_effective_request(job.id, job.request)->>'contract_name_hint' OR
                             result.settings->>'runtime_entrypoint' IS DISTINCT FROM
-                                job.request #>> '{geas,runtime_entrypoint}' OR
+                                verification_effective_request(job.id, job.request) #>> '{geas,runtime_entrypoint}' OR
                             result.settings->>'creation_entrypoint' IS DISTINCT FROM
-                                job.request #>> '{geas,creation_entrypoint}' OR
-                            NOT (result.sources ? (job.request #>> '{geas,runtime_entrypoint}')) OR
+                                verification_effective_request(job.id, job.request) #>> '{geas,creation_entrypoint}' OR
+                            NOT (result.sources ? (verification_effective_request(job.id, job.request) #>> '{geas,runtime_entrypoint}')) OR
                             (
-                                job.request #>> '{geas,creation_entrypoint}' IS NOT NULL AND
-                                NOT (result.sources ? (job.request #>> '{geas,creation_entrypoint}'))
+                                verification_effective_request(job.id, job.request) #>> '{geas,creation_entrypoint}' IS NOT NULL AND
+                                NOT (result.sources ? (verification_effective_request(job.id, job.request) #>> '{geas,creation_entrypoint}'))
                             ) OR
                             EXISTS (
                                 SELECT 1
                                 FROM jsonb_each(result.sources) AS source(name, value)
-                                WHERE job.request #>> ARRAY[
+                                WHERE verification_effective_request(job.id, job.request) #>> ARRAY[
                                     'geas', 'sources', source.name
                                 ] IS DISTINCT FROM source.value->>'content'
                             )
@@ -418,20 +439,39 @@ CREATE TABLE verification_jobs (
     execution_policy text,
     CONSTRAINT verification_jobs_attempt_check CHECK (((attempt_count >= 0) AND ((max_attempts >= 1) AND (max_attempts <= 100)) AND (attempt_count <= max_attempts))),
     CONSTRAINT verification_jobs_catalog_language_check CHECK (((catalog_language IS NULL) OR (catalog_language = ANY (ARRAY['solidity'::text, 'vyper'::text])))),
-    CONSTRAINT verification_jobs_compiler_check CHECK ((((kind = ANY (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language IS NULL) AND (compiler_version IS NULL) AND (compiler_platform IS NULL) AND (catalog_language IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL)) OR ((kind <> ALL (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (catalog_language = 'solidity'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = ANY (ARRAY['bin'::text, 'emscripten-asmjs'::text, 'emscripten-wasm32'::text, 'linux-amd64'::text, 'linux-arm64'::text, 'macosx-amd64'::text, 'wasm'::text, 'windows-amd64'::text])) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND (((executor_kind = 'node_solcjs_v1'::text) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32) AND (compiler_platform = 'emscripten-wasm32'::text)) OR ((executor_kind = 'legacy_runner'::text) AND (execution_policy = 'legacy_hard_isolation'::text) AND (octet_length(executor_digest) = 32)) OR ((executor_kind = 'legacy_process'::text) AND (execution_policy = 'legacy_trusted_process'::text) AND (executor_digest IS NULL)))))) OR ((((kind = 'address'::text) AND (language = 'geas'::text) AND (compiler_version = '0.3.3'::text)) OR ((kind = ANY (ARRAY['address'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (compiler_version = '0.4.3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (catalog_language IS NULL) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((((language = 'geas'::text) AND (compiler_platform = 'go-module'::text) AND (executor_kind = 'etherview_geas_v1'::text)) OR ((language = 'vyper'::text) AND (compiler_platform = 'python-wheel'::text) AND (executor_kind = 'etherview_vyper_v1'::text) AND (compiler_digest = decode('3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'::text, 'hex'::text)))) AND (catalog_generation_id IS NULL) AND (octet_length(compiler_digest) = 32) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) OR (((kind = ANY (ARRAY['address'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (catalog_language = 'vyper'::text) AND (compiler_version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = 'python-wheel'::text) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND ((executor_kind = 'node_vyper_wasm_v1'::text) OR ((executor_kind = 'etherview_vyper_v3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) IS TRUE))),
-    CONSTRAINT verification_jobs_kind_check CHECK ((kind = ANY (ARRAY['address'::text, 'derived'::text, 'proxy'::text, 'sourcify'::text, 'sourcify_from_etherscan'::text, 'solidity_multipart'::text, 'solidity_standard_json'::text, 'solidity_batch_multipart'::text, 'solidity_batch_standard_json'::text, 'vyper_multipart'::text, 'vyper_standard_json'::text]))),
+    CONSTRAINT verification_jobs_compiler_check CHECK (((kind = 'sourcify_import' AND language IS NULL AND compiler_version IS NULL AND compiler_platform IS NULL AND catalog_language IS NULL AND catalog_generation_id IS NULL AND compiler_digest IS NULL AND executor_kind IS NULL AND execution_policy IS NULL AND executor_digest IS NULL AND status <> 'succeeded') OR ((kind = ANY (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language IS NULL) AND (compiler_version IS NULL) AND (compiler_platform IS NULL) AND (catalog_language IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL)) OR ((kind <> ALL (ARRAY['sourcify'::text, 'sourcify_from_etherscan'::text, 'proxy'::text])) AND (language = ANY (ARRAY['solidity'::text, 'yul'::text])) AND ((length(compiler_version) >= 1) AND (length(compiler_version) <= 128)) AND (catalog_language = 'solidity'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = ANY (ARRAY['bin'::text, 'emscripten-asmjs'::text, 'emscripten-wasm32'::text, 'linux-amd64'::text, 'linux-arm64'::text, 'macosx-amd64'::text, 'wasm'::text, 'windows-amd64'::text])) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND (((executor_kind = 'node_solcjs_v1'::text) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32) AND (compiler_platform = 'emscripten-wasm32'::text)) OR ((executor_kind = 'legacy_runner'::text) AND (execution_policy = 'legacy_hard_isolation'::text) AND (octet_length(executor_digest) = 32)) OR ((executor_kind = 'legacy_process'::text) AND (execution_policy = 'legacy_trusted_process'::text) AND (executor_digest IS NULL)))))) OR ((((kind = 'address'::text) AND (language = 'geas'::text) AND (compiler_version = '0.3.3'::text)) OR ((kind = ANY (ARRAY['address'::text, 'sourcify_import'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (compiler_version = '0.4.3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (catalog_language IS NULL) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((((language = 'geas'::text) AND (compiler_platform = 'go-module'::text) AND (executor_kind = 'etherview_geas_v1'::text)) OR ((language = 'vyper'::text) AND (compiler_platform = 'python-wheel'::text) AND (executor_kind = 'etherview_vyper_v1'::text) AND (compiler_digest = decode('3b9671727c888363740dc678e60336759871487d0e4e9fdd973048fa9635c4fd'::text, 'hex'::text)))) AND (catalog_generation_id IS NULL) AND (octet_length(compiler_digest) = 32) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) OR (((kind = ANY (ARRAY['address'::text, 'sourcify_import'::text, 'vyper_standard_json'::text, 'vyper_multipart'::text])) AND (language = 'vyper'::text) AND (catalog_language = 'vyper'::text) AND (compiler_version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'::text) AND (((compiler_platform IS NULL) AND (catalog_generation_id IS NULL) AND (compiler_digest IS NULL) AND (executor_kind IS NULL) AND (execution_policy IS NULL) AND (executor_digest IS NULL) AND (status <> 'succeeded'::text)) OR ((compiler_platform = 'python-wheel'::text) AND (catalog_generation_id IS NOT NULL) AND (octet_length(compiler_digest) = 32) AND ((executor_kind = 'node_vyper_wasm_v1'::text) OR ((executor_kind = 'etherview_vyper_v3'::text) AND (status = ANY (ARRAY['succeeded'::text, 'failed'::text, 'cancelled'::text])))) AND (execution_policy = 'trusted_subprocess'::text) AND (octet_length(executor_digest) = 32)))) IS TRUE))),
+    CONSTRAINT verification_jobs_kind_check CHECK ((kind = ANY (ARRAY['address'::text, 'sourcify_import'::text, 'derived'::text, 'proxy'::text, 'sourcify'::text, 'sourcify_from_etherscan'::text, 'solidity_multipart'::text, 'solidity_standard_json'::text, 'solidity_batch_multipart'::text, 'solidity_batch_standard_json'::text, 'vyper_multipart'::text, 'vyper_standard_json'::text]))),
     CONSTRAINT verification_jobs_language_check CHECK (((language IS NULL) OR (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])))),
     CONSTRAINT verification_jobs_lease_check CHECK ((((leased_by IS NULL) = (lease_token IS NULL)) AND ((leased_by IS NULL) = (lease_expires_at IS NULL)) AND ((status = 'running'::text) = (leased_by IS NOT NULL)))),
     CONSTRAINT verification_jobs_request_check CHECK (((jsonb_typeof(request) = 'object'::text) AND ((octet_length(request_payload) >= 2) AND (octet_length(request_payload) <= 67108864)) AND (request = (convert_from(request_payload, 'UTF8'::name))::jsonb) AND (octet_length(request_digest) = 32))),
     CONSTRAINT verification_jobs_result_size_check CHECK (((outcome IS NULL) OR (octet_length((outcome)::text) <= 268435456))),
     CONSTRAINT verification_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))),
-    CONSTRAINT verification_jobs_target_check CHECK ((((kind = ANY (ARRAY['address'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NOT NULL) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(block_hash) = 32)) OR ((kind <> ALL (ARRAY['address'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NULL) AND (address IS NULL) AND (code_hash IS NULL) AND (block_hash IS NULL)))),
+    CONSTRAINT verification_jobs_target_check CHECK ((((kind = ANY (ARRAY['address'::text, 'sourcify_import'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NOT NULL) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(block_hash) = 32)) OR ((kind <> ALL (ARRAY['address'::text, 'sourcify_import'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NULL) AND (address IS NULL) AND (code_hash IS NULL) AND (block_hash IS NULL)))),
     CONSTRAINT verification_jobs_terminal_check CHECK ((((status = ANY (ARRAY['queued'::text, 'running'::text, 'cancelled'::text])) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND (error_code IS NULL)) OR ((status = 'succeeded'::text) AND (outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (error_code IS NULL)) OR ((status = 'failed'::text) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND ((length(error_code) >= 1) AND (length(error_code) <= 64))))),
-    CONSTRAINT verification_jobs_vyper_request_check CHECK ((((kind <> ALL (ARRAY['vyper_standard_json'::text, 'vyper_multipart'::text])) OR (language = 'vyper'::text)) AND ((language IS DISTINCT FROM 'vyper'::text) OR ((((request ->> 'target_file'::text) IS NOT NULL) AND ((request #>> '{standard_json,language}'::text[]) = 'Vyper'::text) AND (jsonb_typeof((request #> '{standard_json,sources}'::text[])) = 'object'::text) AND ((request #> '{standard_json,sources}'::text[]) ? (request ->> 'target_file'::text))) IS TRUE)))),
+    CONSTRAINT verification_jobs_vyper_request_check CHECK ((((kind <> ALL (ARRAY['vyper_standard_json'::text, 'vyper_multipart'::text])) OR (language = 'vyper'::text)) AND ((kind = 'sourcify_import') OR (language IS DISTINCT FROM 'vyper'::text) OR ((((request ->> 'target_file'::text) IS NOT NULL) AND ((request #>> '{standard_json,language}'::text[]) = 'Vyper'::text) AND (jsonb_typeof((request #> '{standard_json,sources}'::text[])) = 'object'::text) AND ((request #> '{standard_json,sources}'::text[]) ? (request ->> 'target_file'::text))) IS TRUE)))),
     CONSTRAINT verification_jobs_pkey PRIMARY KEY (id),
     CONSTRAINT verification_jobs_catalog_fk FOREIGN KEY (catalog_generation_id, catalog_language, compiler_version, compiler_platform, compiler_digest) REFERENCES compiler_catalog_entries(generation_id, language, version, platform, artifact_sha256) ON DELETE RESTRICT,
     CONSTRAINT verification_jobs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
 );
+
+CREATE TABLE verification_import_inputs (
+    job_id uuid PRIMARY KEY REFERENCES verification_jobs(id) ON DELETE RESTRICT,
+    request jsonb NOT NULL,
+    payload bytea NOT NULL,
+    digest bytea NOT NULL,
+    CONSTRAINT verification_import_inputs_bounds CHECK (
+        jsonb_typeof(request) = 'object' AND request->>'kind' = 'address' AND
+        octet_length(payload) BETWEEN 2 AND 67108864 AND
+        request = convert_from(payload, 'UTF8')::jsonb AND
+        octet_length(digest) = 32 AND sha256(payload) = digest
+    )
+);
+
+CREATE TRIGGER verification_import_inputs_target BEFORE INSERT ON verification_import_inputs
+FOR EACH ROW EXECUTE FUNCTION enforce_verification_import_input();
+
+CREATE TRIGGER verification_import_inputs_immutable BEFORE DELETE OR UPDATE ON verification_import_inputs
+FOR EACH ROW EXECUTE FUNCTION reject_verification_compilation_mutation();
 
 CREATE TABLE verification_results (
     job_id uuid NOT NULL,

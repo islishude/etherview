@@ -122,3 +122,10 @@ func createVerificationAPIKey(t *testing.T, ctx context.Context, h *harness) str
 	}
 	return response.Token
 }
+
+func (h *harness) verificationService() string {
+	if h.apiService == "etherview" {
+		return "etherview"
+	}
+	return "verification"
+}

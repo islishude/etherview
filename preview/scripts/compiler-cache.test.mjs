@@ -106,7 +106,7 @@ for (const failure of ["", "init", "verify"]) {
     const log = path.join(parent, "calls.jsonl");
     fs.writeFileSync(
       compose,
-      `console.log(${JSON.stringify(JSON.stringify({ services: { api: { volumes: [{ type: "bind", source: root, target: "/var/lib/etherview/compilers" }] } } }))});`,
+      `console.log(${JSON.stringify(JSON.stringify({ services: { verification: { volumes: [{ type: "bind", source: root, target: "/var/lib/etherview/compilers" }] } } }))});`,
     );
     fs.writeFileSync(
       docker,

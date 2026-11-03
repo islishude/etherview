@@ -471,7 +471,7 @@ Geth endpoints. It does not deploy contracts or change chain state.
 Run `make verify-preview-genesis` to retry this step on a running Preview.
 The host wrapper creates an API key scoped to `api:read` and `contract:verify`,
 passes it only over stdin, and revokes it in cleanup. Source verification uses
-the ordinary API queue and API-role compiler workers. It requires the normal
+the ordinary API queue and verification-role compiler workers. It requires the normal
 compiler catalog and checksum-verified compiler downloads; first startup can
 therefore take longer or fail if compiler hosts are unavailable.
 

@@ -15,12 +15,13 @@ import (
 type Role string
 
 const (
-	RoleAPI         Role = "api"
-	RoleSync        Role = "sync"
-	RoleEnrich      Role = "enrich"
-	RoleTrace       Role = "trace"
-	RoleMetadata    Role = "metadata"
-	RoleMaintenance Role = "maintenance"
+	RoleAPI          Role = "api"
+	RoleVerification Role = "verification"
+	RoleSync         Role = "sync"
+	RoleEnrich       Role = "enrich"
+	RoleTrace        Role = "trace"
+	RoleMetadata     Role = "metadata"
+	RoleMaintenance  Role = "maintenance"
 )
 
 // Service is a long-lived component. Run must return after ctx is canceled.

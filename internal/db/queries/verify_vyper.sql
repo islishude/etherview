@@ -5,3 +5,10 @@ WHERE generation_id = sqlc.arg('generation_id') AND version = sqlc.arg('version'
 -- name: VerifyVyperRuntime :one
 SELECT generation_id, version, artifact_sha256, vyper_runtimes
 FROM compiler_catalog_entries WHERE generation_id = $1 AND version = $2 AND language = 'vyper';
+
+-- name: VerifyVyperPublicVersions :many
+SELECT DISTINCT version, artifact_url, artifact_sha256
+FROM compiler_catalog_entries
+WHERE language = 'vyper' AND platform = 'python-wheel'
+  AND artifact_url = ANY(sqlc.arg('artifact_urls')::text[])
+  AND vyper_runtimes IS NOT NULL;

@@ -32,6 +32,9 @@ const resources = {
         "The compiler output exceeded the service limit. Reduce the submission size or contact the deployment operator.",
       compilerUnavailable:
         "The required compiler could not run safely. Try again later or contact the deployment operator.",
+      importNotFound: "No verified contract was found on Sourcify for this chain and address.",
+      importMismatch: "Sourcify runtime bytecode does not match the local contract.",
+      importInvalid: "Sourcify sources or compiler settings cannot be imported.",
       upstreamUnavailable: "Sourcify could not complete this request. Try again later.",
       failedSummary:
         "Verification could not complete. Review the error code in technical details before submitting again.",
@@ -188,6 +191,9 @@ const resources = {
       targetChanged: "目标合约已不在规范链上，请确认合约地址后重新提交。",
       resourceLimit: "编译输出超出服务限制，请缩小提交内容或联系部署管理员。",
       compilerUnavailable: "所需编译器无法安全运行，请稍后重试或联系部署管理员。",
+      importNotFound: "Sourcify 上没有找到此链和地址的已验证合约。",
+      importMismatch: "Sourcify 运行时字节码与本地合约不匹配。",
+      importInvalid: "无法导入 Sourcify 源码或编译器设置。",
       upstreamUnavailable: "Sourcify 未能完成本次请求，请稍后重试。",
       failedSummary: "校验未能完成，请查看技术详情中的错误码后再尝试提交。",
       cancelledSummary: "此校验任务已取消。",

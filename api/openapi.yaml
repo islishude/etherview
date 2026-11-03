@@ -1768,6 +1768,8 @@ paths:
       description: >-
         Browser submission requires an active user session, exact same-origin
         Origin and session-bound CSRF. API keys do not authorize this operation.
+        Acceptance precedes remote retrieval. Authentication, input and exact local
+        target errors are synchronous; remote source errors appear on the same job.
       security:
         - UserSession: []
       parameters:
@@ -1781,7 +1783,7 @@ paths:
               $ref: "#/components/schemas/BrowserSourcifySourceImportRequest"
       responses:
         "202":
-          description: Verification accepted for asynchronous execution.
+          description: Source import accepted for asynchronous retrieval and local verification.
           content:
             application/json:
               schema:
@@ -1910,11 +1912,14 @@ paths:
       operationId: importSourcifyContract
       tags: [contracts, verification]
       description: >-
-        Fetch already-verified sources from the configured Sourcify service for
+        Asynchronously fetch already-verified sources from the configured Sourcify service for
         the requested source chain and enqueue ordinary local address verification
         on this deployment's chain for the same address.
         No sources are uploaded to Sourcify. External results are not trusted as
         local evidence; compiler and canonical publication checks remain required.
+        Authentication, input and local target errors are synchronous. Remote
+        absence, invalid sources or mismatched sources fail the accepted job;
+        temporary remote failures retry within a bounded attempt budget.
       security:
         - APIKey: []
       parameters:
@@ -1927,7 +1932,7 @@ paths:
               $ref: "#/components/schemas/SourcifySourceImportRequest"
       responses:
         "202":
-          description: Sources retrieved and local verification queued.
+          description: Source import accepted for asynchronous retrieval and local verification.
           content:
             application/json:
               schema:
@@ -6515,6 +6520,7 @@ components:
             - vyper_multipart
             - solidity_batch_multipart
             - solidity_batch_standard_json
+            - sourcify_import
             - sourcify
             - sourcify_from_etherscan
         status:
@@ -6524,6 +6530,12 @@ components:
           $ref: "#/components/schemas/VerificationOutcome"
         error_code:
           type: string
+          description: >-
+            Stable terminal failure code. Source import can report sourcify_not_found,
+            sourcify_target_mismatch, sourcify_invalid_source or sourcify_unavailable
+            after bounded retries. Local compiler, match and canonicality failures
+            retain their existing verification codes; upstream error details and
+            credentials are never returned.
         created_at:
           type: string
           format: date-time
@@ -8243,6 +8255,7 @@ components:
             - vyper_multipart
             - solidity_batch_multipart
             - solidity_batch_standard_json
+            - sourcify_import
             - sourcify
             - sourcify_from_etherscan
         status:
@@ -8252,6 +8265,12 @@ components:
           $ref: "#/components/schemas/BrowserVerificationOutcome"
         error_code:
           type: string
+          description: >-
+            Stable terminal failure code. Source import can report sourcify_not_found,
+            sourcify_target_mismatch, sourcify_invalid_source or sourcify_unavailable
+            after bounded retries. Local compiler, match and canonicality failures
+            retain their existing verification codes; upstream error details and
+            credentials are never returned.
         created_at:
           type: string
           format: date-time

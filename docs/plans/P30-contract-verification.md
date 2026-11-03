@@ -96,6 +96,7 @@ availability does not gate core readiness.
 | P30-T150 | done   | P20-T27, P40-T27, P50-T81                                     | ENS under enrich with current-chain configuration and shared deployment/lifecycle; real-contract production-image local acceptance                                                                                      | Fresh schema, credential isolation, autonomous discovery/publication, reorg/restart/outage and all/split browser gates                                                  |
 | P30-T151 | done   | P30-T150                                                      | Representative Mainnet core-to-publication acceptance and independent reconciliation                                                                                                                                    | Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons                                                                      |
 | P30-T152 | done   | P30-T144, P30-T150                                            | Preview manual scenarios, resumable transaction journal, reports, proxy families and EIP-7702 lifecycle controls                                                                                                        | Tool regressions, isolated split/all Preview CLI and browser acceptance                                                                                                 |
+| P30-T153 | done   | P30-T10, P30-T141                                             | Independent verification role, optional NATS wake and PostgreSQL claims, fully asynchronous Sourcify import                                                                                                             | Multi-instance lease/recovery, immutable import input, all/split parity and production deployment gates                                                                 |
 
 ## Acceptance
 
@@ -147,6 +148,15 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P70 release gates remain independent.
 
 ## Evidence
+
+P30-T153 local acceptance passed: independent API admission, eight concurrent
+PostgreSQL claimers, immutable input races/restart, canonical and stale-lease
+fences, and production topologies with two API and two verification instances.
+Real NATS delivery/reconnect, outage polling and killed-worker takeover passed.
+`make check`, generation/lint/docs/plan/deployment gates, PostgreSQL integration
+race, schema and runtime E2E, 234 browser cases, Hardhat/Vyper and affected
+Preview contract/metadata/x402 suites passed. These local production-image
+results do not establish native release, capacity or security closure in P70.
 
 P30-T10/P30-T14/P30-T15/P30-T20 passed matching, compiler/Genesis
 provenance, ABI/proxy/trace decoding and canonical publication unit/fuzz/race and PostgreSQL regressions at delivery.

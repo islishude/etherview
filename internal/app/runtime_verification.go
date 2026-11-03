@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/derivedverify"
 	"github.com/islishude/etherview/internal/verify"
@@ -20,7 +21,7 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 	compilerCatalog := assembly.compilerCatalog
 	sourcify := assembly.sourcify
 	componentRegistry := assembly.componentRegistry
-	if roleSet[components.RoleAPI] && cfg.Features.Verification {
+	if roleSet[components.RoleVerification] && cfg.Features.Verification {
 		compilerCacheLocker, err := verify.NewPostgresCompilerCacheInstallLocker(db)
 		if err != nil {
 			return err
@@ -43,7 +44,7 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 			return err
 		}
 		if err := componentRegistry.Register(
-			components.RoleAPI,
+			components.RoleVerification,
 			"35-compiler-catalog-refresher",
 			func() (components.Service, error) { return catalogRefresher, nil },
 		); err != nil {
@@ -51,16 +52,24 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 		}
 		if err := registerWorkerPool(
 			componentRegistry,
-			components.RoleAPI,
+			components.RoleVerification,
 			"40-contract-verification",
 			"contract-verification-worker",
 			cfg.Verification.WorkerCount,
 			func(index int, serviceName string) (components.Service, error) {
+				var wake <-chan struct{}
+				if assembly.natsWake != nil {
+					var err error
+					wake, err = assembly.natsWake.Subscribe(accelerator.WakeJobs)
+					if err != nil {
+						return nil, err
+					}
+				}
 				return verify.NewWorker(verificationRepository, compiler, verify.WorkerOptions{
 					ServiceName: serviceName, WorkerID: verificationWorkerID(index),
 					LeaseDuration: cfg.Runtime.LeaseDuration,
 					PollInterval:  cfg.Runtime.PollInterval, MaxOutputBytes: cfg.Verification.MaxOutputBytes,
-					Observer: businessObserver, Sourcify: sourcify,
+					Observer: businessObserver, Sourcify: sourcify, Importer: sourcify, Wake: wake,
 				})
 			},
 		); err != nil {
@@ -75,7 +84,7 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 			if err != nil {
 				return err
 			}
-			if err = registerWorkerPool(componentRegistry, components.RoleAPI, "43-bytecode-db", "bytecode-db-worker", cfg.BytecodeDB.MaxConcurrency, func(_ int, name string) (components.Service, error) {
+			if err = registerWorkerPool(componentRegistry, components.RoleVerification, "43-bytecode-db", "bytecode-db-worker", cfg.BytecodeDB.MaxConcurrency, func(_ int, name string) (components.Service, error) {
 				return verify.NewBytecodeDBWorker(verificationRepository, client, compiler, verify.BytecodeDBWorkerOptions{Name: name, ChainID: cfg.Chain.ID, MaxConcurrency: cfg.BytecodeDB.MaxConcurrency, RequestInterval: cfg.BytecodeDB.RequestInterval, Cooldown: cfg.BytecodeDB.Cooldown, MaxInputBytes: cfg.Verification.MaxInputBytes, Observer: assembly.registry, Logger: logger})
 			}); err != nil {
 				return err
@@ -84,13 +93,13 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 		if cfg.Verification.DerivedEnabled {
 			if err := registerWorkerPool(
 				componentRegistry,
-				components.RoleAPI,
+				components.RoleVerification,
 				"41-factory-derived-verification",
 				"factory-derived-verification-worker",
 				cfg.Verification.DerivedWorkerCount,
 				func(_ int, serviceName string) (components.Service, error) {
 					return derivedverify.NewWorker(db, verificationRepository, derivedverify.Options{
-						WorkerID: serviceName, LeaseDuration: cfg.Runtime.LeaseDuration,
+						WorkerID: runtimeWorkerID(serviceName), LeaseDuration: cfg.Runtime.LeaseDuration,
 						PollInterval:   cfg.Runtime.PollInterval,
 						MaxTraces:      cfg.Verification.DerivedMaxTracesPerScan,
 						PublishMatches: cfg.Verification.DerivedBackfillEnabled,
@@ -104,13 +113,13 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 		if cfg.Verification.DerivedForwardEnabled {
 			if err := registerWorkerPool(
 				componentRegistry,
-				components.RoleAPI,
+				components.RoleVerification,
 				"42-factory-derived-forward",
 				"factory-derived-forward-worker",
 				cfg.Verification.DerivedWorkerCount,
 				func(_ int, serviceName string) (components.Service, error) {
 					return derivedverify.NewForwardWorker(db, derivedverify.ForwardOptions{
-						WorkerID: serviceName, LeaseDuration: cfg.Runtime.LeaseDuration,
+						WorkerID: runtimeWorkerID(serviceName), LeaseDuration: cfg.Runtime.LeaseDuration,
 						PollInterval: cfg.Runtime.PollInterval, Observer: businessObserver,
 					})
 				},

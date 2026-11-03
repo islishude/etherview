@@ -68,7 +68,7 @@ func (h *Handler) writeVerificationJob(w http.ResponseWriter, r *http.Request, s
 	// which may contain unpublished sources or encrypted upstream credentials.
 	if request := job.RequestV2; request != nil {
 		var address, chain string
-		if job.Kind == verify.JobAddress && request.Target != nil {
+		if (job.Kind == verify.JobAddress || job.Kind == verify.JobSourcifyImport) && request.Target != nil {
 			address, chain = request.Target.Address, strconv.FormatUint(request.Target.ChainID, 10)
 		} else if job.Kind == verify.JobSourcify || job.Kind == verify.JobSourcifyFromEtherscan {
 			var target struct {
@@ -109,7 +109,7 @@ func (h *Handler) submitBrowserAddressVerification(w http.ResponseWriter, r *htt
 }
 
 func (h *Handler) importBrowserSourcifyContract(w http.ResponseWriter, r *http.Request) {
-	if h.verificationSubmitter == nil || h.verificationTargets == nil || h.sourcifyImporter == nil || !h.cfg.Features.Sourcify {
+	if h.verificationSubmitter == nil || h.verificationTargets == nil || !h.cfg.Features.Sourcify {
 		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "Sourcify import is unavailable", nil)
 		return
 	}

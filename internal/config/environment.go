@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var allowedRoles = []string{"api", "sync", "enrich", "trace", "metadata", "maintenance"}
+var allowedRoles = []string{"api", "sync", "enrich", "trace", "metadata", "maintenance", "verification"}
 
 // NormalizeRoles validates roles, expands all, removes duplicates, and returns
 // roles in stable architectural order.
@@ -36,7 +36,7 @@ func NormalizeRoles(input []string) ([]string, error) {
 				continue
 			}
 			if role == "verify" {
-				return nil, errors.New(`runtime role "verify" was removed; use the api role with its solc-js executor`)
+				return nil, errors.New(`runtime role "verify" was removed; use the verification role`)
 			}
 			known := slices.Contains(allowedRoles, role)
 			if !known {

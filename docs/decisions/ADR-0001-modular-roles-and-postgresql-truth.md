@@ -50,6 +50,15 @@ and encoded bytes and preserve foreign-key order. They are a transport
 optimization only: PostgreSQL constraints, conflict checks, coverage,
 checkpoints, and outbox publication still commit or roll back together.
 
+The `verification` role owns all verification execution: compiler catalog
+refresh, source discovery, Sourcify workflows, compilation and derived
+verification. API roles only admit and query durable jobs. `roles=all` includes
+both roles. API expansion does not increase compilation capacity; each
+verification instance owns its configured worker pool. Optional NATS `jobs`
+notifications follow committed submissions and wake PostgreSQL claimers, with
+periodic polling retained under ADR-0015. No broker acknowledgement grants a
+lease or authorizes publication.
+
 ## Consequences
 
 - Monolith and split-role behavior can share the same test fixtures.

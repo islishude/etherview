@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-The API-owned compiler already downloads an official `emscripten-wasm32`
+The verification-role-owned compiler already downloads an official `emscripten-wasm32`
 soljson artifact into a private directory, verifies its catalog-bound SHA-256,
 installs it atomically under a digest-derived name, and gives the resulting
 read-only path to the permission-restricted Node wrapper. The application
@@ -54,7 +54,7 @@ inodes and spuriously rejects the installation.
   repository. Daily Preview and its E2E suites share one explicit bind-cache
   lifecycle: the host creates an empty parent, and a one-shot management
   container sets that directory and its `cache` child to UID/GID 65532 and
-  mode 0750 before the API starts. Existing nonempty caches must already have
+  mode 0750 before the verification process starts. Existing nonempty caches must already have
   that ownership as seen by the application user and that mode; initialization
   never recursively repairs their permissions. After root initialization or
   structural validation, a second helper runs as UID/GID 65532 with all
@@ -71,7 +71,7 @@ inodes and spuriously rejects the installation.
   root with only CHOWN, FOWNER and DAC_OVERRIDE capabilities; the verification
   helper has the same isolated mounts and no extra capabilities. Application
   containers retain UID/GID 65532 and gain no capabilities. Among application
-  roles, only `all` or `api` receives the cache. Ordinary restart,
+  roles, only `all` or `verification` receives the cache. Ordinary restart,
   forced recreation, and image replacement retain it; an explicit Compose
   teardown with volume removal deletes the Base Compose volume but retains
   the Preview host directory. `make clean-preview-compiler-cache` is a separate
@@ -82,7 +82,7 @@ inodes and spuriously rejects the installation.
   their projects before this same cleanup, and treat cleanup failure as a test
   failure. They never use the daily cache or world-writable parents.
 - Helm keeps its memory-backed `emptyDir` default. Operators may instead set
-  one existing PersistentVolumeClaim shared by every `all` or `api` replica;
+  one existing PersistentVolumeClaim shared by every `all` or `verification` replica;
   the chart neither creates nor deletes that claim. Multi-node replicas require
   storage supporting their concurrent read/write access, atomic same-directory
   rename, consistent reads, Unix ownership and modes, and the configured

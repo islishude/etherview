@@ -107,6 +107,16 @@ func (service *Service) prepareV2(_ context.Context, request *SubmissionV2) erro
 		}
 	}
 	switch request.Kind {
+	case JobSourcifyImport:
+		if request.SourceChainID == 0 || request.Target == nil {
+			return ErrVerificationTargetInvalid
+		}
+		candidate := SubmissionV2{Kind: JobAddress, Target: request.Target, Bytecodes: []BytecodePair{{Creation: request.Target.CreationBytecode, Runtime: request.Target.RuntimeBytecode}}}
+		if !validAddressVerificationSubmission(&candidate) {
+			return ErrVerificationTargetInvalid
+		}
+		*request = SubmissionV2{Kind: JobSourcifyImport, SourceChainID: request.SourceChainID, Target: request.Target}
+		return nil
 	case JobSourcify, JobSourcifyFromEtherscan:
 		return ValidateSourcifyV2Request(request.Kind, request.SourcifyRequest, service.maxInputBytes)
 	case JobProxy:

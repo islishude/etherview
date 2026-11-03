@@ -8,8 +8,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,10 +28,46 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 	defer cancel()
 	root := repositoryRoot(t)
 	runVerificationTopologies(t, ctx, func(t *testing.T, mode string) string {
+		var importCalls *atomic.Int32
 		h := startVerificationTopology(t, ctx, root, mode, "browser-verification", "", func(h *harness) {
+			if mode == "distributed" {
+				importCalls = h.configureImportRecoverySource()
+				override := filepath.Join(h.artifacts, "verification-nats.yaml")
+				listener, err := net.Listen("tcp", "127.0.0.1:0")
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, natsPort, err := net.SplitHostPort(listener.Addr().String())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := listener.Close(); err != nil {
+					t.Fatal(err)
+				}
+				data := []byte(strings.ReplaceAll(`services:
+  nats:
+    profiles: [distributed]
+    ports: ["127.0.0.1:NATS_HOST_PORT:4222"]
+  api:
+    environment:
+      ETHERVIEW_NATS_URL: nats://nats:4222
+  verification:
+    environment:
+      ETHERVIEW_NATS_URL: nats://nats:4222
+`, "NATS_HOST_PORT", natsPort))
+				if err := os.WriteFile(override, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+				h.project.Files = append(h.project.Files, override)
+			}
 			h.project.Env["ETHERVIEW_RUNTIME_WATCHLIST"] = "true"
 			h.project.Env["ETHERVIEW_RUNTIME_SESSION_PEPPER"] = strings.Repeat("b", 64)
 		})
+		var assertWake func()
+		if mode == "distributed" {
+			assertWake = h.natsWakeProbe(ctx)
+			assertWake()
+		}
 		// A deterministic key is sufficient for a real SIWE identity; this user does
 		// not need funds or ownership of the contract being verified.
 		key := deterministicRuntimeKey(t, "browser-verification-user")
@@ -53,6 +93,11 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 		var nativeTarget, nativeKey string
 		var nativeInput []byte
 		for _, runtimeOnly := range []bool{false, true} {
+			if mode == "distributed" && runtimeOnly {
+				h.compose(ctx, "stop", "nats")
+				// Broker outage must leave API readiness and PostgreSQL polling intact.
+				h.waitReady(ctx)
+			}
 			t.Logf("verify Geas runtime-only=%t", runtimeOnly)
 			hash := h.sendTransaction(ctx, map[string]any{"from": h.fixture.accounts[0], "data": "0x60028060095f395ff36001", "gas": "0x100000"})
 			h.mine(ctx, uint64(time.Now().Unix())+1)
@@ -82,6 +127,19 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 			if err := json.Unmarshal(data, &submitted); err != nil {
 				t.Fatal(err)
 			}
+			if mode == "distributed" {
+				// Read the task/session through the other API process.
+				binding, err := h.project.Run(ctx, "port", "--index", "2", "api", "8080")
+				if err != nil {
+					t.Fatal(err)
+				}
+				address := strings.TrimSpace(string(binding))
+				_, port, err := net.SplitHostPort(address)
+				if err != nil {
+					t.Fatal(err)
+				}
+				h.baseURL = "http://127.0.0.1:" + port
+			}
 			var result gen.BrowserVerificationJobResponse
 			waitFor(t, ctx, "browser verification terminal result", func() (bool, string, error) {
 				data, _ = h.watchRequest(ctx, session, "GET", "/verification-jobs/"+submitted.Data.Id.String(), nil)
@@ -101,6 +159,9 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 			}
 			if runtimeOnly && bytes.Contains(data, []byte(`"creation_match"`)) {
 				t.Fatalf("runtime-only result claims creation evidence: %s", data)
+			}
+			if mode == "distributed" && !runtimeOnly {
+				h.assertImportWorkerRecovery(ctx, session, target, importCalls)
 			}
 			// The Cookie cannot replace a programmatic API key. The original key-based
 			// submission still succeeds against the very same durable service.
@@ -133,6 +194,11 @@ func TestBrowserVerificationRuntimeE2E(t *testing.T) {
 			}
 			nativeTarget, nativeKey, nativeInput = target, apiKey, encoded
 			statuses = append(statuses, string(result.Data.Status))
+		}
+		if mode == "distributed" {
+			h.compose(ctx, "start", "nats")
+			assertWake()
+			h.waitReady(ctx)
 		}
 		h.assertTurnstileProtection(ctx, session, nativeTarget, nativeKey, nativeInput)
 		return strings.Join(statuses, ",")

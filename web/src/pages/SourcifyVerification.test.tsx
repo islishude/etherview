@@ -208,17 +208,15 @@ describe("Sourcify verification", () => {
     const original = fetcher.getMockImplementation()!;
     fetcher.mockImplementation(async (url, init) =>
       String(url).endsWith("/verification-jobs/sourcify-import")
-        ? Response.json(
-            {
-              error: {
-                code: "sourcify_not_found",
-                request_id: "import-test",
-                message: "No verified contract was found on Sourcify",
-              },
-            },
-            { status: 404 },
-          )
-        : original(url, init),
+        ? envelope({ id: jobID, kind: "sourcify_import", status: "queued" })
+        : String(url).endsWith(`/verification-jobs/${jobID}`)
+          ? envelope({
+              id: jobID,
+              kind: "sourcify_import",
+              status: "failed",
+              error_code: "sourcify_not_found",
+            })
+          : original(url, init),
     );
     await userEvent
       .setup()
@@ -226,12 +224,8 @@ describe("Sourcify verification", () => {
     await userEvent
       .setup()
       .click(screen.getByRole("button", { name: "Import from Sourcify into Etherview" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("No verified contract was found");
+    expect(await screen.findByText(/No verified contract was found/)).toBeVisible();
     expect(fetcher.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Import into Etherview" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
   });
 
   it("imports the submitted address after publication, retaining separate local and external results", async () => {

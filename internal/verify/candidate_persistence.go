@@ -106,7 +106,7 @@ func validateAuthenticatedCompilation(
 	unit AuthenticatedCompilation,
 	maxBytes int,
 ) (AuthenticatedCompilation, error) {
-	if job.Kind != JobAddress || job.RequestV2 == nil ||
+	if !localAddressJob(job.Kind) || job.RequestV2 == nil ||
 		job.RequestV2.Language != LanguageSolidity || job.Compiler == nil ||
 		!jsonObject(unit.StandardJSON) || len(unit.StandardJSON) > maxBytes ||
 		len(unit.Candidates) == 0 || len(unit.Candidates) > maxStandardJSONSelectorEntries {

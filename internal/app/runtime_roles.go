@@ -29,7 +29,7 @@ func needsRPCForServe(roles map[components.Role]bool, cfg config.Config) bool {
 }
 
 func roleUsesNATSWake(role components.Role, cfg config.Config) bool {
-	return role == components.RoleAPI || role == components.RoleSync || role == components.RoleEnrich ||
+	return role == components.RoleVerification && cfg.Features.Verification || role == components.RoleAPI || role == components.RoleSync || role == components.RoleEnrich ||
 		role == components.RoleTrace && cfg.Features.Trace
 }
 

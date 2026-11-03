@@ -777,6 +777,9 @@ type Querier interface {
 	ValidateSearchCursor(ctx context.Context, arg ValidateSearchCursorParams) (*bool, error)
 	VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) (int64, error)
 	VerifiedSelectorWritePersistStatement2(ctx context.Context, arg VerifiedSelectorWritePersistStatement2Params) error
+	VerifyImportAwaitCompiler(ctx context.Context, iD pgtype.UUID, token *string) (int64, error)
+	VerifyImportBindInput(ctx context.Context, iD pgtype.UUID, token *string) (int64, error)
+	VerifyImportSaveInput(ctx context.Context, arg VerifyImportSaveInputParams) (int64, error)
 	VerifyInlineBindCompilerStatement1(ctx context.Context, arg VerifyInlineBindCompilerStatement1Params) (int64, error)
 	VerifyInlineBindCompilerStatement2(ctx context.Context, iD pgtype.UUID, leaseToken *string) (bool, error)
 	VerifyInlineCompleteProxyV2Statement1(ctx context.Context, chainID pgtype.Numeric) error
@@ -813,6 +816,7 @@ type Querier interface {
 	VerifyV2LockRunningJob(ctx context.Context, iD pgtype.UUID, leaseToken *string) (VerifyV2LockRunningJobRow, error)
 	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) (VerifyV2SubmitJobRow, error)
 	VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error
+	VerifyVyperPublicVersions(ctx context.Context, artifactUrls []string) ([]VerifyVyperPublicVersionsRow, error)
 	VerifyVyperRuntime(ctx context.Context, generationID int64, version string) (VerifyVyperRuntimeRow, error)
 	WatchCount(ctx context.Context, userID pgtype.UUID) (int64, error)
 	WatchCreate(ctx context.Context, arg WatchCreateParams) (AddressWatch, error)

@@ -205,11 +205,11 @@ function main() {
 }
 
 function assertCompiler(config, topology) {
-  const compilerOwner = topology === "monolith" ? "etherview" : "api";
+  const compilerOwner = topology === "monolith" ? "etherview" : "verification";
   const applicationServices =
     topology === "monolith"
       ? ["etherview"]
-      : ["api", "sync", "enrich", "trace", "metadata", "maintenance"];
+      : ["api", "sync", "enrich", "trace", "metadata", "maintenance", "verification"];
   const cachePath = "/var/lib/etherview/compilers";
   const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
   const unsafeMetadataEnvironment = "ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS";
@@ -296,8 +296,17 @@ function assertCompiler(config, topology) {
 }
 
 function assertVerification(config, topology, suite, image) {
-  const compilerOwner = topology === "monolith" ? "etherview" : "api";
-  const appServices = ["etherview", "api", "sync", "enrich", "trace", "metadata", "maintenance"];
+  const compilerOwner = topology === "monolith" ? "etherview" : "verification";
+  const appServices = [
+    "etherview",
+    "api",
+    "sync",
+    "enrich",
+    "trace",
+    "metadata",
+    "maintenance",
+    "verification",
+  ];
   const cachePath = "/var/lib/etherview/compilers";
   const unsafeDownloadEnvironment = "ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS";
   const derivedEnvironment = [
@@ -409,7 +418,7 @@ function assertVerification(config, topology, suite, image) {
     );
     assert.equal(
       foundry.environment?.ETHERVIEW_FOUNDRY_VERIFIER_URL,
-      `http://${compilerOwner}:8080/v2/api?chainid=1`,
+      `http://${topology === "monolith" ? "etherview" : "api"}:8080/v2/api?chainid=1`,
       "Foundry verifier URL",
     );
     assert.equal(foundry.environment?.FOUNDRY_OFFLINE, "true", "Foundry runtime compiler mode");

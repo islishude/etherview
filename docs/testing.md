@@ -449,7 +449,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   raw transaction recovery, gas pricing, numeric bounds, and key-error redaction.
 - `make test-hardhat3-e2e`: rebuild the host-native production application and
   independent Hardhat client images, then run the real Hardhat CLI against independent
-  Anvil/PostgreSQL datasets in monolith and complete six-application-role
+  Anvil/PostgreSQL datasets in monolith and complete seven-application-role
   layouts. It compiles and deploys an implementation plus EIP-1967 proxy,
   verifies both sources through the public compatibility API and official
   compiler catalog, polls durable proxy verification, upgrades and rebinds the
@@ -551,7 +551,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make test-foundry-e2e`: rebuild the host-native production application and
   independent Foundry client images, run the offline compiler preflight, and
   exercise source verification against fresh Anvil/PostgreSQL datasets in the
-  monolith and complete six-application-role layouts. These are two separate,
+  monolith and complete seven-application-role layouts. These are two separate,
   mutually exclusive Compose-profile runs, not two API services in one run:
   `monolith` starts `etherview` with `roles=all`, while `distributed` starts
   `api` plus the split worker services. The Foundry Compose override therefore
@@ -584,7 +584,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   EIP-7002 creation bytecode, submits its four-file Geas bundle through the
   native address-verification endpoint, and requires exact runtime/creation
   matches, no catalog generation, `go-module`, `etherview_geas_v1`, empty ABI,
-  and monolith/six-role publication parity.
+  and monolith/seven-role publication parity.
   Both Hardhat and Foundry verification overlays explicitly disable ENS on
   every application role and construct no ENS workers. Their isolated Anvil
   fixture is verification input, not an ENS source; ENS behavior remains owned
@@ -655,7 +655,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   recreated; historical upgrade paths are not part of acceptance.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
-  monolith and all-six-application-role layouts. Each layout gets a
+  monolith and all-seven-application-role layouts. Each layout gets a
   deterministic Prague chain from the default Foundry `v1.8.7` image and a
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
@@ -700,7 +700,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   adapter normalizes only the explicit clearing post-state gap; it deliberately
   does not add authority or delegate code to transaction prestate. The runtime
   therefore exercises `abi@5` recovery from the exact root Trace and prior
-  canonical code observations. Both monolith and the six-role topology assert that the
+  canonical code observations. Both monolith and the seven-role topology assert that the
   adapter observed `debug_traceBlockByHash` and no `debug_traceTransaction`
   calls. Complete provider observations pass through unchanged, so production
   receipt and trace validation remain strict. The runtime gate does not require
@@ -891,7 +891,7 @@ payment before authorizing any new attempt.
 `make test-runtime-e2e` does not spend testnet funds. In addition to the
 general runtime suite, it builds the test-only x402 contract and production Facilitator
 images and runs the same fixture against production Etherview images in
-monolith and six-role distributed topologies. It verifies real Anvil SIWE,
+monolith and seven-role distributed topologies. It verifies real Anvil SIWE,
 EIP-3009 and Permit2 settlement, exact Permit2 approval, replay rejection,
 shared user balance, concurrent debit, logical-failure release, operator
 bypass, and final recipient/account equality. The general runtime and x402
@@ -1469,3 +1469,14 @@ visible, then mines and verifies the existing exactly-once credit and all/split
 parity. These are local-chain and browser-fixture checks, not live-funded evidence.
 Schema changes also require `make test-schema-e2e`; run generation, Go lint,
 documentation and plan checks for the public/persistent contract changes.
+
+## Independent verification acceptance
+
+P30-T153 requires API-only admission without an installed executor, verification
+component ownership and all/split parity. Run worker wake/polling tests, real
+PostgreSQL `TestSourcifyImport` concurrency and immutable-input restart tests,
+and NATS accelerator outage/coalescing tests. Production coverage uses at least
+two API and two verification instances, tests lookup failures through task
+polling, and checks crash takeover and stale-publication rejection. Run common,
+generation, lint, deployment, schema, integration race, browser and runtime E2E
+and affected Hardhat/Vyper suites. Local results do not close P70 release gates.

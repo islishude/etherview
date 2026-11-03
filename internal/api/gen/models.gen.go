@@ -666,6 +666,7 @@ const (
 	BrowserVerificationJobKindSolidityStandardJson      BrowserVerificationJobKind = "solidity_standard_json"
 	BrowserVerificationJobKindSourcify                  BrowserVerificationJobKind = "sourcify"
 	BrowserVerificationJobKindSourcifyFromEtherscan     BrowserVerificationJobKind = "sourcify_from_etherscan"
+	BrowserVerificationJobKindSourcifyImport            BrowserVerificationJobKind = "sourcify_import"
 	BrowserVerificationJobKindVyperMultipart            BrowserVerificationJobKind = "vyper_multipart"
 	BrowserVerificationJobKindVyperStandardJson         BrowserVerificationJobKind = "vyper_standard_json"
 )
@@ -686,6 +687,8 @@ func (e BrowserVerificationJobKind) Valid() bool {
 	case BrowserVerificationJobKindSourcify:
 		return true
 	case BrowserVerificationJobKindSourcifyFromEtherscan:
+		return true
+	case BrowserVerificationJobKindSourcifyImport:
 		return true
 	case BrowserVerificationJobKindVyperMultipart:
 		return true
@@ -3654,6 +3657,7 @@ const (
 	VerificationJobKindSolidityStandardJson      VerificationJobKind = "solidity_standard_json"
 	VerificationJobKindSourcify                  VerificationJobKind = "sourcify"
 	VerificationJobKindSourcifyFromEtherscan     VerificationJobKind = "sourcify_from_etherscan"
+	VerificationJobKindSourcifyImport            VerificationJobKind = "sourcify_import"
 	VerificationJobKindVyperMultipart            VerificationJobKind = "vyper_multipart"
 	VerificationJobKindVyperStandardJson         VerificationJobKind = "vyper_standard_json"
 )
@@ -3674,6 +3678,8 @@ func (e VerificationJobKind) Valid() bool {
 	case VerificationJobKindSourcify:
 		return true
 	case VerificationJobKindSourcifyFromEtherscan:
+		return true
+	case VerificationJobKindSourcifyImport:
 		return true
 	case VerificationJobKindVyperMultipart:
 		return true
@@ -4992,8 +4998,10 @@ type BrowserVerificationJob struct {
 	Address *Address `json:"address,omitempty"`
 
 	// ChainId Durable target chain ID; absent for standalone bytecode jobs.
-	ChainId   *string                    `json:"chain_id,omitempty"`
-	CreatedAt time.Time                  `json:"created_at"`
+	ChainId   *string   `json:"chain_id,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// ErrorCode Stable terminal failure code. Source import can report sourcify_not_found, sourcify_target_mismatch, sourcify_invalid_source or sourcify_unavailable after bounded retries. Local compiler, match and canonicality failures retain their existing verification codes; upstream error details and credentials are never returned.
 	ErrorCode *string                    `json:"error_code,omitempty"`
 	Id        openapi_types.UUID         `json:"id"`
 	Kind      BrowserVerificationJobKind `json:"kind"`
@@ -7931,7 +7939,9 @@ type VerificationFailureOutcomeKind string
 
 // VerificationJob defines model for VerificationJob.
 type VerificationJob struct {
-	CreatedAt time.Time             `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// ErrorCode Stable terminal failure code. Source import can report sourcify_not_found, sourcify_target_mismatch, sourcify_invalid_source or sourcify_unavailable after bounded retries. Local compiler, match and canonicality failures retain their existing verification codes; upstream error details and credentials are never returned.
 	ErrorCode *string               `json:"error_code,omitempty"`
 	Id        openapi_types.UUID    `json:"id"`
 	Kind      VerificationJobKind   `json:"kind"`

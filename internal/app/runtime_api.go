@@ -20,6 +20,7 @@ import (
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/state"
 	"github.com/islishude/etherview/internal/userauth"
+	"github.com/islishude/etherview/internal/verify"
 	"github.com/islishude/etherview/internal/watchlist"
 	webui "github.com/islishude/etherview/web"
 )
@@ -305,9 +306,8 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			Etherscan:       compatibility, Events: broker, HomeSnapshots: homeFeed,
 			Mempool:            pendingRepository,
 			VerificationReader: verificationReader, VerificationSubmitter: verificationSubmitter,
-			CompilerCatalog:     compilerCatalog,
+			CompilerCatalog:     verify.PublicCompilerCatalog{Catalog: compilerCatalog},
 			VerificationTargets: verificationTargets,
-			SourcifyImporter:    assembly.sourcify,
 			NFTMetadataReader:   metadataReader,
 			NFTMediaSource:      mediaSource, NFTMediaProxy: mediaProxy,
 			UserAuth: userAuthenticator, UserAdministration: userAdministration,

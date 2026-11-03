@@ -158,7 +158,7 @@ installation, and final validation. Every process sharing this directory must us
 the same writer database lock domain.
 `make stop-preview` removes the deployment and all project volumes, but retains
 this host directory, so Solidity and Vyper artifacts survive even `down --volumes`.
-For manual cache reclamation, stop every `all`/`api` process mounting the directory
+For manual cache reclamation, stop every `all`/`verification` process mounting the directory
 before running `make clean-preview-compiler-cache`; the next compiler job
 downloads the authenticated artifact again. Do not share this directory between
 concurrent Preview projects using different writer databases. Override

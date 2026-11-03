@@ -113,7 +113,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		t.Fatal(err)
 	}
 	if _, err := project.Run(ctx, "up", "-d", "--no-build", "--wait", "--wait-timeout", "180", "--remove-orphans"); err != nil {
-		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "etherview", "metadata", "maintenance", "api", "x402-facilitator")
+		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "migration", "etherview", "metadata", "maintenance", "api", "x402-facilitator")
 		t.Fatalf("%v\n%s", err, diagnostics)
 	}
 	t.Cleanup(func() {

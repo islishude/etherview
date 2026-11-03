@@ -494,7 +494,7 @@ export const submitBrowserAddressVerification = <ThrowOnError extends boolean = 
 });
 
 /**
- * Browser submission requires an active user session, exact same-origin Origin and session-bound CSRF. API keys do not authorize this operation.
+ * Browser submission requires an active user session, exact same-origin Origin and session-bound CSRF. API keys do not authorize this operation. Acceptance precedes remote retrieval. Authentication, input and exact local target errors are synchronous; remote source errors appear on the same job.
  */
 export const importBrowserSourcifyContract = <ThrowOnError extends boolean = false>(options: Options<ImportBrowserSourcifyContractData, ThrowOnError>): RequestResult<ImportBrowserSourcifyContractResponses, ImportBrowserSourcifyContractErrors, ThrowOnError> => options.client.post<ImportBrowserSourcifyContractResponses, ImportBrowserSourcifyContractErrors, ThrowOnError>({
     security: [{
@@ -570,7 +570,7 @@ export const submitAddressVerification = <ThrowOnError extends boolean = false>(
 });
 
 /**
- * Fetch already-verified sources from the configured Sourcify service for the requested source chain and enqueue ordinary local address verification on this deployment's chain for the same address. No sources are uploaded to Sourcify. External results are not trusted as local evidence; compiler and canonical publication checks remain required.
+ * Asynchronously fetch already-verified sources from the configured Sourcify service for the requested source chain and enqueue ordinary local address verification on this deployment's chain for the same address. No sources are uploaded to Sourcify. External results are not trusted as local evidence; compiler and canonical publication checks remain required. Authentication, input and local target errors are synchronous. Remote absence, invalid sources or mismatched sources fail the accepted job; temporary remote failures retry within a bounded attempt budget.
  */
 export const importSourcifyContract = <ThrowOnError extends boolean = false>(options: Options<ImportSourcifyContractData, ThrowOnError>): RequestResult<ImportSourcifyContractResponses, ImportSourcifyContractErrors, ThrowOnError> => options.client.post<ImportSourcifyContractResponses, ImportSourcifyContractErrors, ThrowOnError>({
     security: [{ name: 'X-API-Key', type: 'apiKey' }],

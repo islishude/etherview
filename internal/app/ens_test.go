@@ -43,7 +43,7 @@ func TestENSComponentManifestMatchesAllAndSplit(t *testing.T) {
 	cfg := config.Default()
 	cfg.Features.ENS = true
 	cfg.ENS.MaxConcurrency = 2
-	all := productionComponentKeys(cfg, []components.Role{components.RoleAPI, components.RoleSync, components.RoleEnrich, components.RoleTrace, components.RoleMetadata, components.RoleMaintenance}, false)
+	all := productionComponentKeys(cfg, []components.Role{components.RoleAPI, components.RoleSync, components.RoleEnrich, components.RoleTrace, components.RoleMetadata, components.RoleMaintenance, components.RoleVerification}, false)
 	split := productionComponentKeys(cfg, []components.Role{components.RoleEnrich}, false)
 	for _, key := range []string{"38-ens-collection", "39-ens-resolution-01", "39-ens-resolution-02"} {
 		if !slices.Contains(all, key) || !slices.Contains(split, key) {

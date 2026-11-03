@@ -87,7 +87,7 @@ fail-closed cleanup requirements remain mandatory.
   Entries require canonical versions, an allowed HTTPS origin, a non-zero
   SHA-256 digest, and an artifact no larger than 200 MiB.
 - Solidity artifacts are checksum-addressed solc-js from the approved
-  emscripten-wasm32 catalog or an equivalent mirror. The API/all-owned restricted
+  emscripten-wasm32 catalog or an equivalent mirror. The verification/all-owned restricted
   SEA reauthenticates runtime and artifact identities; provenance binds compiler,
   executor and catalog generation once under the lease. ADR-0031/ADR-0037/ADR-0040
   own downloader, cache, process permissions, I/O/time/memory limits and fail-closed
@@ -103,14 +103,15 @@ fail-closed cleanup requirements remain mandatory.
   chain on Sourcify. This positive uint64 may differ from the deployment's chain:
   only source lookup uses it. The local target remains the same address on the
   deployment's chain. The API resolves the exact canonical target, closes its
-  database snapshot, and performs a bounded HTTPS GET for existing sources.
-  It checks remote identity against the requested source chain/address and requires
-  identical remote/local runtime bytes. It rejects mismatches and unsupported or
-  non-inline compiler inputs, then queues an ordinary `address` job containing
-  the retrieved input and the original local target. Source retrieval is not
-  local verification: pinned dual compilation and lease/canonical publication
-  fences still determine local source and ABI publication. Retries use durable
-  input, never refetch it inside a worker transaction. Solidity/Yul and supported
+  snapshot and durably enqueues a `sourcify_import` job before returning 202.
+  Verification workers perform the bounded GET with lease heartbeats, validate
+  source identity, exact runtime equality and bounded inline inputs, and bind
+  the first accepted input in immutable `verification_import_inputs`. Original
+  request and deduplication identity remain unchanged. The same job ID proceeds
+  through local compilation and lease/canonical publication. Failed source
+  lookup, mismatch and invalid sources are task errors; temporary outages use
+  bounded attempts and lease-expiry recovery. A restart reuses bound input.
+  No database transaction spans a remote call. Solidity/Yul and supported
   Vyper inputs retain their ordinary compiler policies, including authenticated
   Genesis runtime-only publication. Import performs no external source upload.
   The Web defaults to direct import and offers a separate import action after
@@ -135,7 +136,7 @@ fail-closed cleanup requirements remain mandatory.
   fingerprint; randomized ciphertext is excluded from request identity. Raw
   credentials never enter database parameters, logs, outcomes or job responses.
   Workers decrypt only for the outbound request; missing keys or failed
-  authentication fail closed. All API/all-role replicas share the same secret.
+  authentication fail closed. All API, verification and all-role replicas share the same secret.
   Drain pending imports before rotating the pepper and retain the matching
   secret separately from backups needed to restore encrypted jobs.
 - Sourcify requests use HTTPS with public-network address checks by default.

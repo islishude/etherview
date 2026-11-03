@@ -253,7 +253,7 @@ for (const language of ["en", "zh"] as const) {
       posts.push("local import");
       return route.fulfill({
         status: 202,
-        json: envelope({ id: jobID, kind: "address", status: "queued" }),
+        json: envelope({ id: jobID, kind: "sourcify_import", status: "queued" }),
       });
     });
     await page.route(`**/api/v1/verification-jobs/${jobID}`, (route) =>
@@ -262,7 +262,7 @@ for (const language of ["en", "zh"] as const) {
           address,
           chain_id: "1",
           id: jobID,
-          kind: "address",
+          kind: "sourcify_import",
           status: "succeeded",
           outcome: { kind: "verification_success", runtime_match: { match_type: "full" } },
         }),

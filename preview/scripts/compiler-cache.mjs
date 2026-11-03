@@ -37,7 +37,7 @@ async function managePreviewCache(action, composeArgs = ["-f", "compose.yaml"]) 
   const { runCompose } = await import("../../.github/scripts/compose.mjs");
   if (!["init", "clean"].includes(action)) throw new Error("Expected init or clean");
   const config = JSON.parse(runCompose([...composeArgs, "config", "--format", "json"]));
-  const mount = config.services.api.volumes.find(
+  const mount = config.services.verification.volumes.find(
     (volume) => volume.target === "/var/lib/etherview/compilers",
   );
   if (mount?.type !== "bind") throw new Error("Preview compiler cache requires a bind mount");

@@ -104,7 +104,7 @@ Execution RPC -> sync/canonicalizer -> PostgreSQL writer -> durable jobs
                     |                         -> runtime status/events -> API replica relays
                     -> expiring pending snapshots
 PostgreSQL reader (optional; otherwise writer) -> projection query API -> embedded React SPA
-API verification workers -> approved solc-js catalogs/artifacts -> restricted Node SEA
+verification workers -> approved solc-js catalogs/artifacts -> restricted Node SEA
 outbox -> optional NATS wake-up
 API -> optional Redis cache/rate limit
 API normalized traces -> optional disposable S3 trace cache
@@ -836,7 +836,7 @@ a manual-refresh notice without withdrawing current profile fields.
   the durable verification-job UUID as the compatibility GUID. Source submit
   uses POST and source status permits GET or POST. Proxy submission uses POST
   and proxy status uses GET. Proxy jobs pin the exact canonical proxy mapping
-  and require source publications for both code identities; an API-owned worker
+  and require source publications for both code identities; a verification worker
   performs no compilation for them and atomically publishes an immutable
   binding only after rechecking canonicality and both sources.
 - Native and compatibility verification both resolve the current canonical
@@ -847,7 +847,7 @@ a manual-refresh notice without withdrawing current profile fields.
   differs from its Keccak-256 digest. A durable submission
   digest covers the exact request payload and the server-derived public sandbox
   requirement; only the same active or successful digest is idempotent. A
-  leased API worker resolves and binds the job to one exact catalog generation,
+  leased verification worker resolves and binds the job to one exact catalog generation,
   `emscripten-wasm32` artifact identity, compiler digest, and runtime executor
   digest before execution, and expired leases
   stop at their persisted attempt budget. Successful worker output is
@@ -886,7 +886,7 @@ a manual-refresh notice without withdrawing current profile fields.
   Public creation provenance is exact-address and additive: submitted source
   origin remains submitted, children are scoped to the source compilation/code
   epoch, and code-hash artifact reuse never claims target-address creation.
-- The `all` or `api` process owns official catalog discovery, checksum-addressed
+- The `all` or `verification` process owns official catalog discovery, checksum-addressed
   artifact caching, and execution. Only the published
   `emscripten-wasm32/list.json` catalog is accepted; this is an
   architecture-independent compiler artifact format, not a Docker or CPU
@@ -965,9 +965,9 @@ a manual-refresh notice without withdrawing current profile fields.
   consent and the optional upstream Etherscan key remain separate.
   The Web verification page uses service cards and defaults the Sourcify workspace
   to importing existing sources into Etherview. The API resolves a canonical
-  local target, closes its snapshot, fetches bounded sources by the selected
-  source chain and same address,
-  and enqueues ordinary local address verification. Remote source/runtime
+  local target, closes its snapshot and enqueues a `sourcify_import` job. The
+  verification worker retrieves bounded sources by the selected source chain
+  and same address, persists its input and performs local address verification. Remote source/runtime
   inconsistencies fail closed; local source and ABI publication still require
   compiler matching and canonical/lease fencing. External source publication is
   a separate action with source/metadata and Etherscan modes, both requiring
@@ -1243,7 +1243,7 @@ fields, and loads its bilingual resources with the feature page.
 
 The optional eth-bytecode-db adapter is search-only and disabled by default
 outside Preview. Preview enables it together with local verification.
-API/all workers repeatedly scan canonical contract addresses using durable
+Verification/all workers repeatedly scan canonical contract addresses using durable
 per-chain cursors, fetch bounded candidates through an HTTPS client with
 public-network checks by default,
 and enqueue low-priority local verification. PostgreSQL owns provider/bytecode
@@ -1364,3 +1364,16 @@ publishes fenced observations on the intent. Browser intent polling begins at
 signed submission, preserves terminal results and known hashes, and restores
 durable observations on reload. Neither progress nor a transaction hash credits
 an account; ADR-0044 and ADR-0059 retain the settlement and publication boundaries.
+
+## Verification task execution
+
+`verification` owns compiler refresh, source discovery, Sourcify calls, local
+compilation and factory-derived workers; `api` admits and reads tasks. Each
+instance uses its own worker count. PostgreSQL atomically claims jobs with
+leases and fences publication. Optional NATS `jobs` hints wake claimers after
+commit; periodic polling remains active and is the sole path without NATS.
+Sourcify import returns 202 before source lookup and retains one job ID through
+retrieval and local verification. First accepted inputs are immutable and
+reused after restart; failed lookups are durable task outcomes. Public Vyper
+versions read worker-published PostgreSQL entries matching the application's
+recipe lock without installing an API compiler runtime.
