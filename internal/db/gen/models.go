@@ -130,6 +130,71 @@ type AddressActivity struct {
 	Details         []byte         `db:"details" json:"details"`
 }
 
+type AddressEventBlock struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+	LogCount    int64          `db:"log_count" json:"log_count"`
+}
+
+type AddressEventBlocksDefault struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+	LogCount    int64          `db:"log_count" json:"log_count"`
+}
+
+type AddressEventBlocksP01000000 struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+	LogCount    int64          `db:"log_count" json:"log_count"`
+}
+
+type AddressEventDirectory struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+	Name        string         `db:"name" json:"name"`
+	LogCount    int64          `db:"log_count" json:"log_count"`
+}
+
+type AddressEventLog struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex    int64          `db:"log_index" json:"log_index"`
+	TxIndex     int64          `db:"tx_index" json:"tx_index"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+}
+
+type AddressEventLogsDefault struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex    int64          `db:"log_index" json:"log_index"`
+	TxIndex     int64          `db:"tx_index" json:"tx_index"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+}
+
+type AddressEventLogsP01000000 struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	LogIndex    int64          `db:"log_index" json:"log_index"`
+	TxIndex     int64          `db:"tx_index" json:"tx_index"`
+	Address     []byte         `db:"address" json:"address"`
+	SignatureID int64          `db:"signature_id" json:"signature_id"`
+}
+
 type AddressExportAdmission struct {
 	Token     pgtype.UUID        `db:"token" json:"token"`
 	UserID    pgtype.UUID        `db:"user_id" json:"user_id"`
@@ -1556,6 +1621,13 @@ type EtherviewSchemaMigration struct {
 	AppliedAt pgtype.Timestamptz `db:"applied_at" json:"applied_at"`
 }
 
+type EventSignature struct {
+	ID        int64   `db:"id" json:"id"`
+	Signature string  `db:"signature" json:"signature"`
+	Digest    []byte  `db:"digest" json:"digest"`
+	Name      *string `db:"name" json:"name"`
+}
+
 type ExecutionRequest struct {
 	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
@@ -1692,6 +1764,9 @@ type Log struct {
 	TxHash      []byte         `db:"tx_hash" json:"tx_hash"`
 	Address     []byte         `db:"address" json:"address"`
 	Topic0      []byte         `db:"topic0" json:"topic0"`
+	Topic1      []byte         `db:"topic1" json:"topic1"`
+	Topic2      []byte         `db:"topic2" json:"topic2"`
+	Topic3      []byte         `db:"topic3" json:"topic3"`
 	Raw         []byte         `db:"raw" json:"raw"`
 }
 
@@ -1704,6 +1779,9 @@ type LogsDefault struct {
 	TxHash      []byte         `db:"tx_hash" json:"tx_hash"`
 	Address     []byte         `db:"address" json:"address"`
 	Topic0      []byte         `db:"topic0" json:"topic0"`
+	Topic1      []byte         `db:"topic1" json:"topic1"`
+	Topic2      []byte         `db:"topic2" json:"topic2"`
+	Topic3      []byte         `db:"topic3" json:"topic3"`
 	Raw         []byte         `db:"raw" json:"raw"`
 }
 
@@ -1716,6 +1794,9 @@ type LogsP01000000 struct {
 	TxHash      []byte         `db:"tx_hash" json:"tx_hash"`
 	Address     []byte         `db:"address" json:"address"`
 	Topic0      []byte         `db:"topic0" json:"topic0"`
+	Topic1      []byte         `db:"topic1" json:"topic1"`
+	Topic2      []byte         `db:"topic2" json:"topic2"`
+	Topic3      []byte         `db:"topic3" json:"topic3"`
 	Raw         []byte         `db:"raw" json:"raw"`
 }
 

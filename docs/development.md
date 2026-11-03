@@ -124,7 +124,9 @@ other discovered updates receive separate review.
 Dependabot retains monthly ownership of ordinary Go/npm/Actions/container
 updates, including nested E2E Dockerfiles and deployment Compose. Registry
 exclusions prevent it from independently changing coordinated pins. Node SEA,
-Pyodide, the solc wrapper and exact license-review bindings are report-only.
+Pyodide, Foundry, Reth, the solc wrapper and exact license-review bindings are report-only.
+Foundry upgrades also update the release commit assertions and regenerate contract
+artifacts; Reth upgrades require the Preview payment-chain acceptance.
 The uv entry tracks the supported minimum: setup-uv already resolves a version
 inside the configured range, so raising that compatibility floor is a reviewed
 policy change. Existing Vyper discovery owns new compiler additions. Historical

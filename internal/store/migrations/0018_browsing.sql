@@ -24,6 +24,49 @@ CREATE TABLE browsing_coverage (
     PRIMARY KEY (chain_id, stage, stage_version, configuration_digest)
 );
 
+-- Called only when the authoritative ABI publication identity changes. The
+-- browsing ABI advisory lock serializes directory deltas across block writers.
+CREATE FUNCTION refresh_address_event_block(target_chain numeric, target_number numeric) RETURNS void
+LANGUAGE plpgsql AS $$
+DECLARE contribution record;
+BEGIN
+    FOR contribution IN DELETE FROM address_event_blocks
+        WHERE chain_id=target_chain AND block_number=target_number RETURNING * LOOP
+        UPDATE address_event_directory SET log_count=log_count-contribution.log_count
+        WHERE chain_id=target_chain AND address=contribution.address AND signature_id=contribution.signature_id;
+    END LOOP;
+    DELETE FROM address_event_logs WHERE chain_id=target_chain AND block_number=target_number;
+    INSERT INTO event_signatures(signature,digest)
+    SELECT DISTINCT d.signature,sha256(convert_to(d.signature,'UTF8')) FROM abi_decodings d
+    JOIN canonical_blocks c ON c.chain_id=d.chain_id AND c.number=d.block_number AND c.block_hash=d.block_hash
+    JOIN published_block_stage_results p ON p.chain_id=d.chain_id AND p.block_number=d.block_number
+        AND p.block_hash=d.block_hash AND p.stage='abi' AND p.stage_version=5 AND p.state='complete'
+    WHERE d.chain_id=target_chain AND d.block_number=target_number AND d.object_kind='log'
+        AND d.status='decoded' AND d.canonical AND d.signature IS NOT NULL
+    ON CONFLICT (digest) DO NOTHING;
+    INSERT INTO address_event_logs(chain_id,block_number,block_hash,log_index,tx_index,address,signature_id)
+    SELECT l.chain_id,l.block_number,l.block_hash,l.log_index,l.tx_index,l.address,s.id
+    FROM logs l JOIN canonical_blocks c ON c.chain_id=l.chain_id AND c.number=l.block_number AND c.block_hash=l.block_hash
+    JOIN published_block_stage_results p ON p.chain_id=l.chain_id AND p.block_number=l.block_number
+        AND p.block_hash=l.block_hash AND p.stage='abi' AND p.stage_version=5 AND p.state='complete'
+    JOIN abi_decodings d ON d.chain_id=l.chain_id AND d.block_number=l.block_number AND d.block_hash=l.block_hash
+        AND d.transaction_hash=l.tx_hash AND d.object_kind='log' AND d.object_index=l.log_index::text AND d.canonical AND d.status='decoded'
+    JOIN event_signatures s ON s.digest=sha256(convert_to(d.signature,'UTF8')) AND s.signature=d.signature
+    WHERE l.chain_id=target_chain AND l.block_number=target_number;
+    FOR contribution IN
+        INSERT INTO address_event_blocks(chain_id,block_number,block_hash,address,signature_id,log_count)
+        SELECT chain_id,block_number,block_hash,address,signature_id,count(*) FROM address_event_logs
+        WHERE chain_id=target_chain AND block_number=target_number
+        GROUP BY chain_id,block_number,block_hash,address,signature_id RETURNING * LOOP
+        INSERT INTO address_event_directory(chain_id,address,signature_id,name,log_count)
+        SELECT target_chain,contribution.address,contribution.signature_id,name,contribution.log_count
+        FROM event_signatures WHERE id=contribution.signature_id
+        ON CONFLICT (chain_id,address,signature_id) DO UPDATE
+        SET log_count=address_event_directory.log_count+EXCLUDED.log_count;
+    END LOOP;
+END
+$$;
+
 CREATE FUNCTION refresh_browsing_block(target_chain numeric, target_number numeric) RETURNS void
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -39,7 +82,7 @@ BEGIN
     IF target_chain IS NULL OR target_number IS NULL THEN RETURN; END IF;
     singleton := nummultirange(numrange(target_number, target_number + 1, '[)'));
     -- A stable order is shared by every trigger and role.
-    FOR target IN SELECT * FROM (VALUES ('native_transfer', 1), ('token', 2), ('trace', 4), ('userop', 1)) AS stages(name, version) ORDER BY name LOOP
+    FOR target IN SELECT * FROM (VALUES ('core', 1), ('abi', 5), ('native_transfer', 1), ('token', 2), ('trace', 4), ('userop', 1)) AS stages(name, version) ORDER BY name LOOP
         PERFORM pg_advisory_xact_lock(hashtextextended('browsing:' || target_chain::text || ':' || target.name, 0));
         SELECT block_hash INTO canonical_hash FROM canonical_blocks
         WHERE chain_id = target_chain AND number = target_number;
@@ -47,16 +90,26 @@ BEGIN
         FROM published_block_stage_results
         WHERE chain_id = target_chain AND block_number = target_number
           AND block_hash = canonical_hash AND stage = target.name AND stage_version = target.version;
+        IF target.name = 'core' THEN
+            -- Canonical Core bundles and receipts commit atomically; Core has no enrichment job.
+            publication.state := CASE WHEN canonical_hash IS NOT NULL THEN 'complete' ELSE 'pending' END;
+        END IF;
         is_complete := COALESCE(publication.state = 'complete', false);
         new_digest := COALESCE(publication.details->>'configuration_digest', '');
         new_identity := COALESCE(encode(canonical_hash, 'hex'), '') || ':' ||
             COALESCE(publication.state, 'pending') || ':' ||
             COALESCE(publication.durable_job_id::text, '') || ':' ||
             COALESCE(publication.job_generation::text, '') || ':' || new_digest;
+        IF target.name = 'core' THEN
+            new_identity := new_identity || ':' || COALESCE((SELECT max(id)::text FROM transactional_outbox
+                WHERE chain_id=target_chain AND topic='core.block.canonical'
+                  AND message_key='0x' || encode(canonical_hash,'hex')), '0');
+        END IF;
         SELECT * INTO previous FROM browsing_blocks
         WHERE chain_id = target_chain AND stage = target.name
           AND stage_version = target.version AND block_number = target_number;
         IF FOUND AND previous.identity = new_identity THEN CONTINUE; END IF;
+        IF target.name = 'abi' THEN PERFORM refresh_address_event_block(target_chain, target_number); END IF;
         IF previous.complete THEN
             UPDATE browsing_coverage SET covered = covered - singleton
             WHERE chain_id = target_chain AND stage = target.name

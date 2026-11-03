@@ -39,9 +39,13 @@ for (const file of maintained) {
   forbid(file, "--profile verification");
   forbid(file, "x402testnet");
   forbid(file, "roles=verify");
-  forbid(file, "Reth");
 }
 
+// Reth is now the payment-only Preview chain; Geth remains the indexed chain.
+contains("preview/docs/architecture.md", "Reth v2.9.0");
+contains("preview/docs/architecture.md", "Geth chain 48815");
+contains("preview/docs/operations.md", "--dev --dev.block-time 3s");
+forbid("preview/Caddyfile", "anvil.etherview.localhost");
 const makefile = read("Makefile");
 const deployment = read("deploy/README.md");
 check(

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { saveState, stringify } from "../client.mjs";
 import { catalog } from "./catalog.mjs";
+import { eventTopics } from "./events.mjs";
 
 export function safeID(id) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id)) throw Error("Invalid run ID");
@@ -143,6 +144,53 @@ export function links(state, s) {
       add(label + " source", "/address/" + entity + "#code");
   }
   if (s.entities.name) add("ENS", "/name/" + encodeURIComponent(s.entities.name));
+  if (s.name === "events") {
+    const block = s.steps["verified-events"]?.receipt?.blockNumber;
+    if (block)
+      add(
+        "single-block events",
+        "/address/" +
+          s.entities.verified +
+          "?" +
+          new URLSearchParams({ tab: "logs", from_block: block, to_block: block }),
+      );
+    const upgrade = Object.entries(s.steps).find(([id]) => id.endsWith("upgrade-events"))?.[1]
+      ?.receipt?.blockNumber;
+    if (upgrade)
+      add(
+        "post-upgrade events",
+        "/address/" +
+          s.entities.proxy +
+          "?" +
+          new URLSearchParams({ tab: "logs", from_block: upgrade, to_block: upgrade }),
+      );
+    for (const target of ["verified", "unverified", "proxy"])
+      if (s.entities[target])
+        add(target + " event logs", "/address/" + s.entities[target] + "?tab=logs");
+    if (s.entities.verified) {
+      for (const signature of ["Changed(uint256)", "Changed(bytes32)", "Hidden(bytes)"])
+        add(
+          signature,
+          "/address/" +
+            s.entities.verified +
+            "?" +
+            new URLSearchParams({ tab: "logs", log_mode: "name", event_signature: signature }),
+        );
+      for (let i = 0; i < 4; i++)
+        add(
+          "topic" + i,
+          "/address/" +
+            s.entities.verified +
+            "?" +
+            new URLSearchParams({
+              tab: "logs",
+              log_mode: "topic",
+              topic_index: i,
+              topic: eventTopics[i],
+            }),
+        );
+    }
+  }
   for (const [step, t] of Object.entries(s.steps)) {
     if (t.hash && t.status !== "rejected")
       add(step, (t.kind === "userop" ? "/user-op/" : "/tx/") + t.hash);

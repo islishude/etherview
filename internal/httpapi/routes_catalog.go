@@ -10,6 +10,8 @@ func (h *Handler) registerCatalogRoutes() {
 	h.handleBillable("listTransactionInternalTransactions", h.transactionInternalTransactions)
 	h.handleBillable("listTransactionTokenTransfers", h.transactionTokenTransfers)
 	h.handleBillable("listTransactionLogs", h.transactionLogs)
+	h.handleBillable("listAddressLogs", h.addressLogs)
+	h.handleBillable("listAddressLogEvents", h.addressLogEvents)
 	h.handleBillable("listTransactionStateChanges", h.transactionStateChanges)
 	h.handleBillable("listTransactionAuthorizations", h.transactionAuthorizations)
 	h.handleBillable("listAddressDelegations", h.addressDelegations)

@@ -10,28 +10,15 @@ contract MyAccountFactory {
     address public immutable implementation;
     address public account;
 
-    event AccountCreated(
-        address indexed account,
-        address indexed owner,
-        uint256 number
-    );
+    event AccountCreated(address indexed account, address indexed owner, uint256 number);
 
     constructor() {
         implementation = address(new MyAccount());
     }
 
-    function create(
-        address owner,
-        uint256 number,
-        bytes calldata data
-    ) external returns (address instance) {
+    function create(address owner, uint256 number, bytes calldata data) external returns (address instance) {
         if (data.length > type(uint16).max) revert DataTooLarge();
-        bytes memory immutableArgs = abi.encodePacked(
-            owner,
-            number,
-            uint16(data.length),
-            data
-        );
+        bytes memory immutableArgs = abi.encodePacked(owner, number, uint16(data.length), data);
         instance = LibCWIA.clone(implementation, immutableArgs);
         account = instance;
         emit AccountCreated(instance, owner, number);

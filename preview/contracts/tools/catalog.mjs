@@ -1,5 +1,16 @@
 const scenario = (title, requires, actions, checks) => ({ title, requires, actions, checks });
 export const catalog = {
+  events: scenario(
+    "合约事件日志 / Contract event logs",
+    ["verification"],
+    ["emit", "upgrade"],
+    [
+      "已验证和未验证合约的事件日志；同名签名、匿名事件、topic0–3 精确搜索",
+      "25 条分页、URL 恢复、互斥筛选、原始参数与来源；切换中英文和手机布局",
+      "代理升级后仍可按旧签名浏览历史事件；emitter 与实现地址分离",
+      "执行 emit 后手动刷新；普通 EOA 不显示事件日志标签",
+    ],
+  ),
   transactions: scenario(
     "普通交易 / Native transactions",
     [],
@@ -129,6 +140,7 @@ export const catalog = {
   ),
 };
 export const lifecycle = {
+  events: ["emit", "upgrade"],
   transactions: ["activity"],
   aa: ["execute", "revert", "bad-signature", "insufficient-prefund"],
   tokens: ["approve", "transfer", "burn", "metadata-update", "metadata-invalid"],

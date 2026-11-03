@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TransactionLog } from "@/api/types";
 import { formatInteger } from "@/components/format";
@@ -23,7 +23,17 @@ import {
   yesNo,
 } from "./pages";
 
-export function TransactionLogCard({ log, locale }: { log: TransactionLog; locale: string }) {
+export function TransactionLogCard({
+  log,
+  locale,
+  compact = false,
+  context,
+}: {
+  log: TransactionLog;
+  locale: string;
+  compact?: boolean;
+  context?: ReactNode;
+}) {
   const { t } = useTranslation();
   const [topicModes, setTopicModes] = useState<Record<string, TopicDisplayMode>>({});
   const signature =
@@ -40,14 +50,28 @@ export function TransactionLogCard({ log, locale }: { log: TransactionLog; local
     setTopicModes((current) => ({ ...current, [String(index)]: mode }));
   };
 
+  const [expanded, setExpanded] = useState(false);
   return (
-    <article className="transaction-log">
+    <article className={`transaction-log${compact ? " transaction-log-compact" : ""}`}>
       <header className="transaction-log-header">
         <div className="transaction-log-heading">
-          <strong>
-            {log.decoding.protocol === "eip7708" ? t("detail.protocolETHTransfer") : signature}
-          </strong>
-          {!decoded && (
+          {compact ? (
+            <button
+              type="button"
+              className="event-log-toggle"
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              <UIIcon icon={ChevronRight} size={16} />
+              <strong>{signature}</strong>
+              <span className="event-status">{t(logDecodingKey(log.decoding.status))}</span>
+            </button>
+          ) : (
+            <strong>
+              {log.decoding.protocol === "eip7708" ? t("detail.protocolETHTransfer") : signature}
+            </strong>
+          )}
+          {!compact && !decoded && (
             <small className="transaction-log-status">
               {t(logDecodingKey(log.decoding.status))}
             </small>
@@ -61,38 +85,43 @@ export function TransactionLogCard({ log, locale }: { log: TransactionLog; local
         </span>
       </header>
 
-      <div className="transaction-log-address">
-        <span className="transaction-log-label">{t("detail.address")}</span>
-        <CopyableField value={log.address}>
-          <AddressIdentity nameOnly address={log.address} compact={false} />
-        </CopyableField>
-      </div>
+      {context}
+      {(!compact || expanded) && (
+        <>
+          <div className="transaction-log-address">
+            <span className="transaction-log-label">{t("detail.address")}</span>
+            <CopyableField value={log.address}>
+              <AddressIdentity nameOnly address={log.address} compact={false} />
+            </CopyableField>
+          </div>
 
-      {log.decoding.arguments.length > 0 && (
-        <TransactionLogArgumentsTable arguments={log.decoding.arguments} />
+          {log.decoding.arguments.length > 0 && (
+            <TransactionLogArgumentsTable arguments={log.decoding.arguments} />
+          )}
+
+          {log.decoding.warning && (
+            <p className="quiet transaction-log-warning">{log.decoding.warning}</p>
+          )}
+
+          <details className="transaction-more-details transaction-log-details">
+            <summary>
+              <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+              {t("detail.moreDetails")}
+            </summary>
+            <div className="transaction-log-details-content">
+              <TransactionLogProvenance log={log} />
+              <TransactionLogTopicsAndData
+                allowTopicZeroConversion={anonymous}
+                data={log.data}
+                logIndex={log.log_index}
+                onTopicModeChange={setTopicMode}
+                topicModes={topicModes}
+                topics={log.topics}
+              />
+            </div>
+          </details>
+        </>
       )}
-
-      {log.decoding.warning && (
-        <p className="quiet transaction-log-warning">{log.decoding.warning}</p>
-      )}
-
-      <details className="transaction-more-details transaction-log-details">
-        <summary>
-          <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
-          {t("detail.moreDetails")}
-        </summary>
-        <div className="transaction-log-details-content">
-          <TransactionLogProvenance log={log} />
-          <TransactionLogTopicsAndData
-            allowTopicZeroConversion={anonymous}
-            data={log.data}
-            logIndex={log.log_index}
-            onTopicModeChange={setTopicMode}
-            topicModes={topicModes}
-            topics={log.topics}
-          />
-        </div>
-      </details>
     </article>
   );
 }

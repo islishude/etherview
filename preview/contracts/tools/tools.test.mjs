@@ -16,6 +16,7 @@ import {
   request,
   checkScenario,
 } from "./engine.mjs";
+import { assertEventPages, eventTopics, registerEventRanges } from "./events.mjs";
 import { createRun, openRun, acquireLock, publicReport, writeReport } from "./state.mjs";
 const endpoints = {
   rpc: "http://127.0.0.1:8545",
@@ -367,6 +368,9 @@ test("locked fixtures compile, preserving official Safe bytes and exact verifica
   assert.equal(a.Safe.upstream, "@safe-global/safe-contracts@1.4.1");
   for (const name of [
     "ToolCalls",
+    "ToolEvents",
+    "ToolEventsV2",
+    "ToolRawEvents",
     "ToolERC20",
     "ToolERC721",
     "ToolERC1155",
@@ -381,6 +385,69 @@ test("locked fixtures compile, preserving official Safe bytes and exact verifica
     assert.equal(a[name].compiler, "0.8.30+commit.73712a01");
     assert.ok(a[name].input.sources[a[name].file]);
   }
+});
+
+test("event pages reject overlap, wrong emitters and ascending boundaries", () => {
+  const address = "0x" + "ab".repeat(20);
+  const row = (n) => ({
+    block_hash: "0x1234",
+    block_number: "9007199254740993",
+    transaction_index: "1",
+    log: { address, log_index: String(n) },
+  });
+  const first = {
+    data: Array.from({ length: 25 }, (_, i) => row(32 - i)),
+    meta: { next_cursor: "cursor" },
+  };
+  const second = { data: [row(7), row(6)], meta: {} };
+  assertEventPages(first, second, address);
+  assert.throws(() => assertEventPages(first, { data: [row(8)] }, address), /duplicate/);
+  assert.throws(() => assertEventPages(first, { data: [row(33)] }, address), /descending/);
+  assert.throws(() => assertEventPages(first, second, "0x" + "cd".repeat(20)));
+});
+
+test("event report links preserve complete signatures and positioned topics", (t) => {
+  const { run } = fixture(t);
+  const s = run.state.scenarios.transactions;
+  s.name = "events";
+  s.entities = {
+    verified: "0x" + "ab".repeat(20),
+    unverified: "0x" + "cd".repeat(20),
+    proxy: "0x" + "ef".repeat(20),
+  };
+  s.steps = {
+    verified: { receipt: { blockNumber: "9007199254740992" } },
+    "verified-events": { receipt: { blockNumber: "9007199254740993" } },
+    "action-1-upgrade-events": { receipt: { blockNumber: "9007199254740995" } },
+  };
+  s.checks = [{ label: "overloaded names" }];
+  const engine = new Engine(run, {}, {});
+  registerEventRanges(engine, s);
+  registerEventRanges(engine, s);
+  assert.equal(s.checks.length, 11, "range checks must not duplicate on repeated checks");
+  const query = new URL(
+    s.checks.find((c) => c.label === "single-block topic3").route,
+    endpoints.app,
+  );
+  assert.equal(query.searchParams.get("from_block"), "9007199254740993");
+  assert.equal(query.searchParams.get("to_block"), "9007199254740993");
+  assert.equal(query.searchParams.get("topic_index"), "3");
+  const report = publicReport(run.state).scenarios[0];
+  const ranged = new URL(report.links.find((l) => l.label === "post-upgrade events").url);
+  assert.equal(ranged.searchParams.get("from_block"), "9007199254740995");
+  assert.equal(ranged.searchParams.get("to_block"), "9007199254740995");
+  for (let i = 0; i < 4; i++) {
+    const url = new URL(report.links.find((l) => l.label === "topic" + i).url);
+    assert.equal(url.searchParams.get("topic_index"), String(i));
+    assert.equal(url.searchParams.get("topic"), eventTopics[i]);
+    assert.equal(url.searchParams.get("log_mode"), "topic");
+    assert.equal(url.searchParams.has("event_signature"), false);
+  }
+  const anonymous = new URL(report.links.find((l) => l.label === "Hidden(bytes)").url);
+  assert.equal(anonymous.searchParams.get("event_signature"), "Hidden(bytes)");
+  assert.equal(anonymous.searchParams.get("tab"), "logs");
+  assert.equal(report.manualStatus, undefined);
+  assert.deepEqual(lifecycle.events, ["emit", "upgrade"]);
 });
 
 test("public transaction checks use the included envelope and failed API status", async (t) => {

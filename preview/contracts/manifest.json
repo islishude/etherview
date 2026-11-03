@@ -4,7 +4,7 @@
   "coinType": "2147532463",
   "tld": "test",
   "compiler": "0.8.30+commit.73712a01.Emscripten.clang",
-  "anvil": "1.8.7",
+  "anvil": "1.9.0",
   "customCompilation": {
     "settings": {
       "optimizer": {
@@ -23,9 +23,9 @@
     },
     "controllerSourceSha256": "b1c99edcb0ecfb7c46fe0263ecf1b133192774900bc2fb0b3b89d815b337a4f9",
     "priceOracleSourceSha256": "f79df80b515465dec44cc6c42757134690cd7a427695743f56c275c5ca0dadc3",
-    "billingSourceSha256": "409d37111aa6d1d5ce77441896571f9f376cc32638db17af2c4feb47fad1b0fa"
+    "billingSourceSha256": "3e7371701f8aa1dc9e12f77cf8c6e6c4171e68b67347279e352f75ca828fee3a"
   },
-  "allocationSha256": "57986ff823605dd558fb50953772ff0fe536a62efeac1840b569f0d6b887ee9d",
+  "allocationSha256": "cf7a367d56cabdf8b4cd89438c736f41cdd5649591e77fd4c5975b897a9886d9",
   "sources": {
     "accountAbstraction": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410",
     "ens": "9b034936a42f462fc04bc0a929a419ede5e18d59"
@@ -6162,7 +6162,7 @@
     },
     "LocalBillingToken": {
       "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
-      "codeHash": "0x06a10073f241787684f20d00c546e465ebebbf317a7f29bb8081bcc7c588a247",
+      "codeHash": "0xfa295b66d79ebb40ad21c6056706ff341481beec0caca0eaddfc6bf643793ebb",
       "abi": [
         {
           "inputs": [
@@ -6537,7 +6537,7 @@
     },
     "LocalBillingToken18": {
       "address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
-      "codeHash": "0x06a10073f241787684f20d00c546e465ebebbf317a7f29bb8081bcc7c588a247",
+      "codeHash": "0xfa295b66d79ebb40ad21c6056706ff341481beec0caca0eaddfc6bf643793ebb",
       "abi": [
         {
           "inputs": [

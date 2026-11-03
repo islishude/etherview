@@ -169,14 +169,19 @@ P60-T25 does not require a new live testnet gate. P60-T25 evidence used the form
 P60-T26 migrates it to standard contracts and P60-T27 owns Rustack KMS and
 dual-Anvil local acceptance.
 
-Preview additionally runs a payment-only Anvil network (31337), leaving indexing
+Preview additionally runs a payment-only Reth dev network (31337), leaving indexing
 and SIWE on 48815. Both networks predeploy six- and eighteen-decimal local tokens.
-Anvil is reachable through the existing loopback TLS gateway at
-`anvil.etherview.localhost`, with the same local-wallet HTTP/WSS policy as Geth.
-Its facilitator stays internal. The deterministic seed is used only for a new
-volume; graceful restarts preserve state, and a seed mismatch or missing state
-fails closed. Periodic checkpoints are not a guarantee against abrupt host loss:
-uncertain payments still require reconciliation before any new attempt.
+Reth v2.9.0 uses three-second blocks and activates Amsterdam with its prerequisite
+forks and system contracts at genesis. It is reachable at
+`reth.etherview.localhost`, with the same local-wallet HTTP/WSS policy as Geth.
+Its facilitator stays internal. Genesis initializes only a new volume; restarts
+preserve the full database, and a genesis mismatch, missing database or missing
+identity fails closed. No startup deployments or account refunds are permitted.
+The former Anvil state is not imported. Because chain ID 31337 is retained,
+operators must reconcile old pending payments and reset the Preview billing
+database with the chain before funding the replacement. Old authorization and
+settlement records must not be reused against the new genesis. Uncertain payments
+still require reconciliation after storage loss or recovery.
 
 ## Production facilitator
 

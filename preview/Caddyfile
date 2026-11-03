@@ -129,7 +129,7 @@ https://geth.etherview.localhost {
 	}
 }
 
-https://anvil.etherview.localhost {
+https://reth.etherview.localhost {
 	import tls_boundary
 	route {
 		import geth_origin
@@ -139,7 +139,7 @@ https://anvil.etherview.localhost {
 			header_regexp Upgrade "(?i)^websocket$"
 			path /
 		}
-		reverse_proxy @websocket {$PREVIEW_ANVIL_WS_UPSTREAM:anvil:8545} {
+		reverse_proxy @websocket {$PREVIEW_RETH_WS_UPSTREAM:reth:8546} {
 			import transport
 			import node_response
 		}
@@ -147,7 +147,7 @@ https://anvil.etherview.localhost {
 			method POST
 			path /
 		}
-		reverse_proxy @rpc {$PREVIEW_ANVIL_UPSTREAM:anvil:8545} {
+		reverse_proxy @rpc {$PREVIEW_RETH_UPSTREAM:reth:8545} {
 			import transport
 			import node_response
 		}

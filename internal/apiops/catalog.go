@@ -229,6 +229,10 @@ var catalog = []Spec{
 	spec("listAddressNFTTransfers", "GET", "/addresses/{address}/nft-transfers", true,
 		pathParameter("address", ParameterAddress),
 		cursorParameter(), limitParameter("25")),
+	spec("listAddressLogs", "GET", "/addresses/{address}/logs", true,
+		pathParameter("address", ParameterAddress), cursorParameter(), boundedTextParameter("event_signature", false, 0, 4096, false), queryParameter("from_block", ParameterUint256), limitParameter("25"), queryParameter("to_block", ParameterUint256), queryParameter("topic", ParameterHash), topicIndexParameter()),
+	spec("listAddressLogEvents", "GET", "/addresses/{address}/log-events", true,
+		pathParameter("address", ParameterAddress), cursorParameter(), queryParameter("from_block", ParameterUint256), limitParameter("25"), boundedTextParameter("name", false, 0, 128, false), queryParameter("to_block", ParameterUint256)),
 	spec("listAddressNFTBalances", "GET", "/addresses/{address}/nfts", true,
 		pathParameter("address", ParameterAddress),
 		cursorParameter(), limitParameter("25")),
@@ -449,3 +453,12 @@ func nameParameter() ParameterSpec {
 }
 
 func requiredHistorySnapshot() ParameterSpec { p := snapshotParameter(); p.Required = true; return p }
+
+func topicIndexParameter() ParameterSpec {
+	p := queryParameter("topic_index", ParameterInteger)
+	p.HasMinimum = true
+	p.Minimum = 0
+	p.HasMaximum = true
+	p.Maximum = 3
+	return p
+}

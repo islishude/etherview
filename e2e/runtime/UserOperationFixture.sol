@@ -28,10 +28,7 @@ contract UserOperationFixture {
     );
 
     event UserOperationRevertReason(
-        bytes32 indexed userOpHash,
-        address indexed sender,
-        uint256 nonce,
-        bytes revertReason
+        bytes32 indexed userOpHash, address indexed sender, uint256 nonce, bytes revertReason
     );
 
     function handleOps(PackedUserOperation[] calldata operations, address payable) external {
@@ -44,15 +41,7 @@ contract UserOperationFixture {
                 operation.nonce,
                 abi.encodeWithSignature("Error(string)", "runtime fixture revert")
             );
-            emit UserOperationEvent(
-                userOpHash,
-                operation.sender,
-                address(0),
-                operation.nonce,
-                false,
-                1000,
-                25000
-            );
+            emit UserOperationEvent(userOpHash, operation.sender, address(0), operation.nonce, false, 1000, 25000);
         }
     }
 }

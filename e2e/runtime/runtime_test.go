@@ -139,6 +139,8 @@ type durableSnapshot struct {
 }
 
 type apiSnapshot struct {
+	AddressEventLogs          []string
+	AddressEventSignatures    []string
 	ChainID                   string
 	IndexedBlock              string
 	LatestBlock               string
@@ -690,7 +692,7 @@ func (h *harness) assertOperationalLogs(ctx context.Context) {
 func runtimeEnvironment(root string, baseTimestamp uint64, userOperations bool) map[string]string {
 	return map[string]string{
 		"ETHERVIEW_IMAGE":                 valueOrDefault("IMAGE", "etherview:local"),
-		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.8.7"),
+		"ETHERVIEW_RUNTIME_FIXTURE_IMAGE": valueOrDefault("ETHERVIEW_RUNTIME_FIXTURE_IMAGE", "ghcr.io/foundry-rs/foundry:v1.9.0"),
 		"ANVIL_ARGS": valueOrDefault(
 			"ANVIL_ARGS",
 			fmt.Sprintf(
@@ -1444,6 +1446,64 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.accounts[0], &from)
 	var contract gen.AddressResponse
 	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.contractAddress, &contract)
+	var addressLogs gen.AddressLogListResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?limit=25", &addressLogs)
+	var eventNames gen.AddressLogEventListResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/log-events?limit=25", &eventNames)
+	if len(addressLogs.Data) == 0 {
+		h.t.Fatal("EntryPoint address log list is empty")
+	}
+	var ranged gen.AddressLogListResponse
+	height := addressLogs.Data[0].BlockNumber
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?from_block="+height+"&to_block="+height, &ranged)
+	if len(ranged.Data) == 0 {
+		h.t.Fatal("single-block event range lost logs")
+	}
+	for _, entry := range ranged.Data {
+		if entry.BlockNumber != height {
+			h.t.Fatal("range leaked a different block")
+		}
+	}
+	var rangedNames gen.AddressLogEventListResponse
+	h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/log-events?from_block="+height+"&to_block="+height, &rangedNames)
+	for _, event := range rangedNames.Data {
+		var named gen.AddressLogListResponse
+		h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?from_block="+height+"&to_block="+height+"&event_signature="+url.QueryEscape(event.Signature), &named)
+		if len(named.Data) == 0 {
+			h.t.Fatal("range directory has no contributing logs")
+		}
+	}
+	eventLogIDs := make([]string, 0, len(addressLogs.Data))
+	for _, item := range addressLogs.Data {
+		eventLogIDs = append(eventLogIDs, item.BlockHash+":"+item.Log.LogIndex)
+	}
+	eventSignatures := make([]string, 0, len(eventNames.Data))
+	for _, item := range eventNames.Data {
+		eventSignatures = append(eventSignatures, item.Signature)
+	}
+	sort.Strings(eventLogIDs)
+	sort.Strings(eventSignatures)
+	for _, item := range addressLogs.Data {
+		if !strings.EqualFold(item.Log.Address, h.fixture.entryPoint) {
+			h.t.Fatalf("address log emitter mismatch: %+v", item)
+		}
+		if len(item.Log.Topics) > 0 {
+			var filtered gen.AddressLogListResponse
+			h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?topic_index=0&topic="+item.Log.Topics[0], &filtered)
+			if len(filtered.Data) == 0 {
+				h.t.Fatal("positioned topic filter lost its source log")
+			}
+			break
+		}
+	}
+	for _, event := range eventNames.Data {
+		var filtered gen.AddressLogListResponse
+		h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?event_signature="+url.QueryEscape(event.Signature), &filtered)
+		if len(filtered.Data) == 0 {
+			h.t.Fatalf("event directory has no contributing logs: %s", event.Signature)
+		}
+	}
+
 	var ensNames gen.AddressNamePageResponse
 	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &ensNames)
 	ensName := ""
@@ -1545,6 +1605,7 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		creationAddress = string(*creationTransaction.ContractAddress)
 	}
 	return apiSnapshot{
+		AddressEventLogs: eventLogIDs, AddressEventSignatures: eventSignatures,
 		ChainID: config.Data.ChainId, IndexedBlock: status.Data.IndexedBlock,
 		LatestBlock: status.Data.LatestBlock, CoreReady: status.Data.CoreReady,
 		BackfillComplete: status.Data.BackfillComplete, Features: config.Data.Features,

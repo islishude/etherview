@@ -25,6 +25,7 @@ type Stage string
 
 const (
 	StageCore      Stage = "core"
+	StageABI       Stage = "abi"
 	StageToken     Stage = "token"
 	StageStats     Stage = "stats"
 	StageTrace     Stage = "trace"
@@ -34,6 +35,8 @@ const (
 
 func (stage Stage) Version() int {
 	switch stage {
+	case StageABI:
+		return int(stagecontract.ABI.Version)
 	case StageStats:
 		return int(stagecontract.Stats.Version)
 	case StageTrace:
@@ -672,5 +675,7 @@ type Reader interface {
 	TransactionInternalTransactions(context.Context, TransactionResourceRequest) (TransactionInternalTransactionPage, error)
 	TransactionTokenEvents(context.Context, TransactionResourceRequest) (TransactionTokenEventPage, error)
 	TransactionLogs(context.Context, TransactionResourceRequest) (TransactionLogPage, error)
+	AddressLogs(context.Context, AddressLogRequest) (AddressLogPage, error)
+	AddressLogEvents(context.Context, AddressLogRequest) (AddressLogEventPage, error)
 	TransactionStateChanges(context.Context, TransactionResourceRequest) (TransactionStateChangePage, error)
 }

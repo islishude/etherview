@@ -2,6 +2,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  defaultParseSearch,
   redirect,
   type RouterHistory,
 } from "@tanstack/react-router";
@@ -155,8 +156,50 @@ const addressRoute = createRoute({
   path: "/address/$address",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: string; asset?: "tokens" | "nfts" } => {
+  ): {
+    tab?: string;
+    asset?: "tokens" | "nfts";
+    log_mode?: "name" | "topic";
+    event_signature?: string;
+    topic?: string;
+    topic_index?: number;
+    from_block?: string;
+    to_block?: string;
+  } => {
     const tab = typeof search.tab === "string" ? search.tab : "transactions";
+    if (tab === "logs") {
+      const log_mode = search.log_mode === "topic" ? "topic" : "name";
+      return {
+        tab,
+        log_mode,
+        from_block:
+          typeof search.from_block === "string"
+            ? search.from_block.slice(0, 79)
+            : search.from_block === undefined
+              ? undefined
+              : String(search.from_block),
+        to_block:
+          typeof search.to_block === "string"
+            ? search.to_block.slice(0, 79)
+            : search.to_block === undefined
+              ? undefined
+              : String(search.to_block),
+        ...(log_mode === "name"
+          ? {
+              event_signature:
+                typeof search.event_signature === "string"
+                  ? search.event_signature.slice(0, 4096)
+                  : undefined,
+            }
+          : {
+              // Retain one excess character so invalid URLs cannot become a different valid hash.
+              topic: typeof search.topic === "string" ? search.topic.slice(0, 67) : undefined,
+              topic_index: [0, 1, 2, 3].includes(Number(search.topic_index))
+                ? Number(search.topic_index)
+                : 0,
+            }),
+      };
+    }
     if (tab === "transactions") return {};
     if (tab === "assets") {
       return { tab, asset: search.asset === "nfts" ? "nfts" : "tokens" };
@@ -406,6 +449,16 @@ export function makeRouter(history?: RouterHistory) {
   return createRouter({
     routeTree,
     history,
+    parseSearch: (search) => {
+      const parsed = defaultParseSearch(search) as Record<string, unknown>;
+      const params = new URLSearchParams(search);
+      // Unquoted decimal query values must not pass through JSON's Number parser.
+      for (const bound of ["from_block", "to_block"]) {
+        if (params.has(bound) && typeof parsed[bound] !== "string")
+          parsed[bound] = params.get(bound);
+      }
+      return parsed;
+    },
     defaultPreload: "intent",
     scrollRestoration: true,
   });

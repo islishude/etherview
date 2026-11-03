@@ -36,7 +36,9 @@ type pendingPartition struct {
 var blockPartitionSpecs = []blockPartitionSpec{
 	{Parent: "transaction_inclusions", Default: "transaction_inclusions_default", NameCode: "txi"},
 	{Parent: "receipts", Default: "receipts_default", NameCode: "rcp", Dependencies: []string{"transaction_inclusions"}},
+	{Parent: "address_event_blocks", Default: "address_event_blocks_default", NameCode: "aeb"},
 	{Parent: "logs", Default: "logs_default", NameCode: "log", Dependencies: []string{"receipts"}},
+	{Parent: "address_event_logs", Default: "address_event_logs_default", NameCode: "ael", Dependencies: []string{"logs"}},
 	{Parent: "withdrawals", Default: "withdrawals_default", NameCode: "wdr"},
 	{Parent: "abi_decodings", Default: "abi_decodings_default", NameCode: "abi"},
 	{Parent: "token_events", Default: "token_events_default", NameCode: "tev", Dependencies: []string{"logs"}},
@@ -98,6 +100,8 @@ var blockPartitionSpecs = []blockPartitionSpec{
 // Rows must leave child tables before their referenced parents. This ordering
 // is the reverse dependency order of blockPartitionSpecs.
 var blockPartitionDeleteOrder = []string{
+	"address_event_logs",
+	"address_event_blocks",
 	"native_transfers",
 	"erc20_holder_balances",
 	"erc20_holder_snapshots",
@@ -337,14 +341,19 @@ func ensurePartitionRangeTx(ctx context.Context, tx pgx.Tx, lower, upper uint64)
 		child := qualifiedIdentifier(schema, partition.name)
 		defaultTable := qualifiedIdentifier(schema, partition.spec.Default)
 		if _, err := tx.Exec(ctx, fmt.Sprintf(
-			"CREATE TABLE %s (LIKE %s INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING STORAGE)",
+			"CREATE TABLE %s (LIKE %s INCLUDING DEFAULTS INCLUDING GENERATED INCLUDING CONSTRAINTS INCLUDING STORAGE)",
 			child, parent,
 		)); err != nil {
 			return fmt.Errorf("create staging partition %s: %w", partition.name, err)
 		}
+		var columns string
+		if err := tx.QueryRow(ctx, `SELECT string_agg(quote_ident(attname), ', ' ORDER BY attnum)
+            FROM pg_attribute WHERE attrelid=$1::regclass AND attnum>0 AND NOT attisdropped AND attgenerated=''`, parent).Scan(&columns); err != nil {
+			return fmt.Errorf("read writable partition columns: %w", err)
+		}
 		if _, err := tx.Exec(ctx, fmt.Sprintf(
-			"INSERT INTO %s SELECT * FROM %s WHERE block_number >= $1::numeric AND block_number < $2::numeric",
-			child, defaultTable,
+			"INSERT INTO %s (%s) SELECT %s FROM %s WHERE block_number >= $1::numeric AND block_number < $2::numeric",
+			child, columns, columns, defaultTable,
 		), decimal(lower), decimal(upper)); err != nil {
 			return fmt.Errorf("copy DEFAULT rows for %s range [%d,%d): %w", partition.spec.Parent, lower, upper, err)
 		}

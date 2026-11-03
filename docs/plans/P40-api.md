@@ -71,6 +71,8 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T24 | done   | P20-T21                            | Exact-block execution request API with typed fields and publication-bound pagination                                                                                                   | generated contracts, HTTP validation, PostgreSQL snapshots/cursors and runtime parity                                    |
 | P40-T25 | done   | P40-T08, P40-T20                   | Published partial browsing across native explorer pages with publication-fenced cursors and explicit completeness                                                                      | PostgreSQL publication/replay/reorg, API, bilingual browser and all/split regression gates                               |
 | P40-T27 | done   | P20-T27                            | Database-only ENS publications, name details/search and transaction-grouped history with independent profile/resolution validity and bounded event cursors                             | Read-only HTTP/query, unknown/expired names, publication/canonical/association snapshots, generation and PostgreSQL race |
+| P40-T33 | done   | P40-T07, P40-T25                   | Indexed address event logs, historical event directory, topic0–3 search and publication-fenced pagination                                                                              | Publication/replay/reorg, partition, indexed-query, generation and production all/split checks                           |
+| P40-T34 | done   | P40-T33                            | Inclusive address-log block ranges and range-scoped event directory, coverage and cursors                                                                                              | Inclusive ranges, revision/cursor isolation, indexed plans, integration race and all/split runtime                       |
 
 ## Acceptance
 
@@ -104,6 +106,10 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
       safe links, and preserves explicit stale-content identity. Media proxy
       authorization and SSRF validation remain independent.
 - [x] Monolith/split API components, writer fences and public results agree.
+
+- [x] Contract event logs retain raw Core coverage, exact topic0–3/keyset filters,
+      historical published signature membership and independent ABI coverage;
+      replay/reorg/reattach update the compact event directory atomically.
 
 ## Current Blockers
 
@@ -148,3 +154,21 @@ commands, revision/image and limits are recorded once in
 [P20 archive acceptance](P20-enrichment.md#blob-access-and-archive-update).
 P30-T35/P30-T138 own other shared runtime evidence. Feature results do not close
 P70's final release gates.
+
+P40-T33 passed API/filter/cursor regressions, full managed PostgreSQL integration
+race, generated contracts and Go lint, schema and production all/split tests.
+Final query refinements additionally passed the address-log and partition race
+regressions, including generated topic constraints, DEFAULT evacuation, duplicate
+publication, withdrawal, proxy emitters and same-hash reattach/replay.
+Local EXPLAIN ANALYZE/BUFFERS used 30,003 logs across partitions: address and
+sparse topic3 pages used ordered index ranges (0.298/0.330 ms), with 30,851,072
+bytes of log indexes and 689–723 ms per 10,000 indexed inserts. A 508-log repeated
+event fixture read 26 signature candidates through the projection index
+(0.524 ms); directory reads avoided raw logs/decodings (0.218 ms). These are
+local fixture measurements, not P70 capacity or live-chain coverage evidence.
+
+P40-T34 passed inclusive/open/future/uint256 range, four-topic and directory
+regressions, interval-scoped revision/cursor checks, full PostgreSQL race and
+production schema/all/split gates. Cross-partition plans retained bounded index
+reads and partition pruning; directory reads used published block contributions.
+No new schema or startup backfill was added. Measurements remain local fixtures.

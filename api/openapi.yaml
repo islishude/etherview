@@ -1263,6 +1263,98 @@ paths:
                 $ref: "#/components/schemas/AddressTokenTransferListResponse"
         default:
           $ref: "#/components/responses/Error"
+  /addresses/{address}/logs:
+    get:
+      operationId: listAddressLogs
+      tags: [addresses]
+      description: Canonical snapshot-bound historical contract events. Incomplete coverage does not prove absence.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+            minimum: 1
+            maximum: 100
+        - name: event_signature
+          in: query
+          description: Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+          schema:
+            type: string
+            maxLength: 4096
+        - name: topic_index
+          in: query
+          description: Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 3
+        - name: topic
+          in: query
+          description: Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: from_block
+          in: query
+          description: Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
+          schema:
+            $ref: "#/components/schemas/Quantity"
+        - name: to_block
+          in: query
+          description: Inclusive upper block bound, capped at the frozen snapshot height; omitted means the snapshot height. Event names use the same range.
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Published canonical results, newest logs first; event names ordered alphabetically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressLogListResponse"
+        default:
+          $ref: "#/components/responses/Error"
+  /addresses/{address}/log-events:
+    get:
+      operationId: listAddressLogEvents
+      tags: [addresses]
+      description: Canonical snapshot-bound historical contract events. Incomplete coverage does not prove absence.
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+            minimum: 1
+            maximum: 100
+        - name: name
+          in: query
+          description: Case-insensitive event-name prefix.
+          schema:
+            type: string
+            maxLength: 128
+        - name: from_block
+          in: query
+          description: Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
+          schema:
+            $ref: "#/components/schemas/Quantity"
+        - name: to_block
+          in: query
+          description: Inclusive upper block bound, capped at the frozen snapshot height; omitted means the snapshot height. Event names use the same range.
+          schema:
+            $ref: "#/components/schemas/Quantity"
+      responses:
+        "200":
+          description: Published canonical results, newest logs first; event names ordered alphabetically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AddressLogEventListResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /addresses/{address}/nfts:
     get:
       operationId: listAddressNFTBalances
@@ -5595,6 +5687,56 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/TokenEvent"
+    AddressLog:
+      type: object
+      required:
+        [log, block_number, block_hash, block_timestamp, transaction_hash, transaction_index]
+      properties:
+        log:
+          $ref: "#/components/schemas/TransactionLog"
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        block_timestamp:
+          type: string
+          format: date-time
+        transaction_hash:
+          $ref: "#/components/schemas/Hash"
+        transaction_index:
+          $ref: "#/components/schemas/Quantity"
+    AddressLogEvent:
+      type: object
+      required: [name, signature]
+      properties:
+        name:
+          type: string
+          maxLength: 4096
+        signature:
+          type: string
+          maxLength: 4096
+    AddressLogListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AddressLog"
+        meta:
+          $ref: "#/components/schemas/Meta"
+    AddressLogEventListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AddressLogEvent"
+        meta:
+          $ref: "#/components/schemas/Meta"
     TransactionLog:
       type: object
       required:

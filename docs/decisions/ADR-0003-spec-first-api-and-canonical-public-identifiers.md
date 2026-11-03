@@ -276,3 +276,29 @@ publication coverage and revisions transactionally from the same relations as
 `published_block_stage_results`. They are read accelerators, not independent
 publication authority. The SPA renders a compact status and refresh action and
 never substitutes zero or unverified rows for missing facts.
+
+### Address event log browsing
+
+`GET /addresses/{address}/logs` exposes canonical emitter logs through the
+native generated client. A complete historical event signature and a positioned
+32-byte topic filter are mutually exclusive. Positions 0–3 are exact matches;
+there is no substring, multi-topic, or implicit address-padding search.
+`GET /addresses/{address}/log-events` pages a case-insensitive name-prefix
+search over published historical event signatures, including anonymous events.
+Neither resource makes RPC calls or writes during reads.
+
+Both resources use bounded keyset pagination (25 by default, at most 100),
+canonical snapshot hashes and publication revisions. The cursor binds the
+normalized emitter and filter digest. Core changes invalidate log traversal;
+name traversal also binds ABI publication. Changes strictly above a frozen
+snapshot do not invalidate it. Coverage metadata distinguishes incomplete
+history from absence. The directory is complete only for published identified
+events, not for every possible declaration in a current ABI.
+
+Both address-log resources accept optional inclusive `from_block` and `to_block`
+canonical uint256 decimal strings. Omitted lower bounds mean zero; upper bounds
+are capped at the frozen snapshot. Explicit inverted ranges are invalid. A range
+entirely beyond that snapshot is empty with pending coverage, not complete history.
+The cursor binds the requested bounds; coverage and publication revisions use the
+actual interval. New heads and publications outside the interval do not expand
+frozen results. The canonical snapshot anchor must still remain valid.

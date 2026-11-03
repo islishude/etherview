@@ -511,6 +511,18 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 
 	assertSignatureGuessCannotBeVerified(t, ctx, db, reference, direct, directCode)
 	publishABIStage(t, ctx, db, processor, reference)
+	eventRequest := catalog.AddressLogRequest{ChainID: "1", Address: proxy.Hex(), Limit: 25}
+	directory, directoryErr := catalogReader.AddressLogEvents(ctx, eventRequest)
+	if directoryErr != nil || len(directory.Items) != 1 || directory.Items[0].Signature != "Transfer(address,address,uint256)" {
+		t.Fatalf("published event directory=%+v err=%v", directory, directoryErr)
+	}
+	eventRequest.EventSignature = directory.Items[0].Signature
+	addressLogs, logErr := catalogReader.AddressLogs(ctx, eventRequest)
+	if logErr != nil || len(addressLogs.Items) != 1 || addressLogs.Items[0].Log.Address != proxy.Hex() || addressLogs.Items[0].Log.Decoding.Confidence != "high" {
+		t.Fatalf("proxy emitter logs=%+v err=%v", addressLogs, logErr)
+	}
+	execFixture(t, ctx, db, `UPDATE block_stage_results SET completed_at=completed_at WHERE chain_id=1 AND block_hash=$1`, reference.Hash.Bytes())
+	assertRowCount(t, ctx, db, `SELECT log_count FROM address_event_directory WHERE chain_id=1 AND address=$1`, 1, proxy.Bytes())
 	transactions, _, err := transactionReader.Transactions(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("list transactions with published ABI method: %v", err)
@@ -529,6 +541,11 @@ func TestABIStageBindsPriorityRangeAndForkIdentity(t *testing.T) {
 		Checkpoint: store.NewCoreCheckpoint(replacementRef), Reason: "ABI fork isolation fixture",
 	}); err != nil {
 		t.Fatalf("apply ABI fixture reorg: %v", err)
+	}
+	eventRequest.EventSignature = ""
+	directory, directoryErr = catalogReader.AddressLogEvents(ctx, eventRequest)
+	if directoryErr != nil || len(directory.Items) != 0 {
+		t.Fatalf("orphan event directory=%+v err=%v", directory, directoryErr)
 	}
 	for _, table := range []string{
 		"contract_abis", "abi_decodings", "transaction_effective_execution_identities",

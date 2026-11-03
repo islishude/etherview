@@ -35,13 +35,15 @@ try {
     for (const scenario of report.scenarios) {
       assert.equal(scenario.status, "api_published", scenario.name);
       const preferred =
-        scenario.name === "blob"
-          ? scenario.links.find((l) => l.label.endsWith(" blobs"))
-          : scenario.name === "aa"
-            ? scenario.links.find((l) => l.url.includes("/user-op/"))
-            : scenario.name === "contracts"
-              ? scenario.links.find((l) => l.label === "verified source")
-              : undefined;
+        scenario.name === "events"
+          ? scenario.links.find((l) => l.label === "verified event logs")
+          : scenario.name === "blob"
+            ? scenario.links.find((l) => l.label.endsWith(" blobs"))
+            : scenario.name === "aa"
+              ? scenario.links.find((l) => l.url.includes("/user-op/"))
+              : scenario.name === "contracts"
+                ? scenario.links.find((l) => l.label === "verified source")
+                : undefined;
       const link =
         preferred ??
         scenario.links.find(
@@ -81,6 +83,16 @@ try {
           ).toBeVisible({ timeout: 2000 });
         if (scenario.name === "ens")
           await expect(page.locator("h1")).toContainText(scenario.entities.name);
+        if (scenario.name === "events") {
+          await expect(page.locator(".address-log-entry")).toHaveCount(25);
+          await expect(page.locator(".event-log-toggle[aria-expanded='false']")).toHaveCount(25);
+          await page
+            .getByRole("button", { name: mobile ? /^事件签名:/ : /^Event signature:/ })
+            .click();
+          for (const signature of ["Changed(uint256)", "Changed(bytes32)", "Hidden(bytes)"])
+            await expect(page.getByRole("option").filter({ hasText: signature })).toHaveCount(1);
+          await page.keyboard.press("Escape");
+        }
         if (scenario.name === "aa")
           await expect(
             page.locator('a[href^="/address/' + scenario.entities.smartAccount + '" i]').first(),
@@ -117,6 +129,7 @@ try {
         false,
         "horizontal page overflow: " + scenario.name,
       );
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path:
           artifacts +
@@ -129,6 +142,68 @@ try {
           ".png",
         fullPage: true,
       });
+      if (scenario.name === "events") {
+        await page
+          .getByRole("button", { name: mobile ? /^事件签名:/ : /^Event signature:/ })
+          .click();
+        await expect(
+          page.getByRole("combobox", { name: mobile ? "搜索事件名称" : "Search event names" }),
+        ).toBeFocused();
+        await page.locator(".event-name-popup").screenshot({
+          path: `${artifacts}/tools-${phase}-events-dropdown-${mobile ? "mobile" : "desktop"}.png`,
+        });
+        await page.keyboard.press("Escape");
+        await page.locator(".event-log-toggle").first().click();
+        await expect(page.locator(".event-log-toggle[aria-expanded='true']")).toHaveCount(1);
+        await page
+          .getByRole("button", { name: mobile ? "切换颜色主题" : "Switch color theme" })
+          .click();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: `${artifacts}/tools-${phase}-events-dark-${mobile ? "mobile" : "desktop"}.png`,
+          fullPage: true,
+        });
+        await page
+          .getByRole("button", { name: mobile ? "切换颜色主题" : "Switch color theme" })
+          .click();
+        for (const [label, count, signature] of [
+          ["single-block events", 25, "Changed(uint256)"],
+          ["post-upgrade events", 1, "AfterUpgrade(address,uint256)"],
+        ]) {
+          const ranged = scenario.links.find((item) => item.label === label);
+          if (!ranged) continue;
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          const rangeURL = new URL(ranged.url);
+          rangeURL.port = "";
+          await page.goto(rangeURL.href);
+          await expect(async () => {
+            if (await refresh.count()) {
+              await new Promise((resolve) => setTimeout(resolve, 4000));
+              await refresh.first().click();
+            }
+            await expect(
+              page.getByLabel(mobile ? "起始区块" : "From block", { exact: true }),
+            ).toHaveValue(rangeURL.searchParams.get("from_block"));
+            await expect(page.locator(".address-log-entry")).toHaveCount(count);
+          }).toPass({ timeout: 60000, intervals: [4000] });
+          await expect(page.locator(".address-log-context").first()).toContainText(
+            rangeURL.searchParams.get("from_block"),
+          );
+          await page
+            .getByRole("button", { name: mobile ? /^事件签名:/ : /^Event signature:/ })
+            .click();
+          await expect(page.getByRole("option").filter({ hasText: signature })).toHaveCount(1);
+          if (label === "post-upgrade events")
+            await expect(page.getByRole("option").filter({ hasText: "Changed(" })).toHaveCount(0);
+          await page.keyboard.press("Escape");
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({
+            path: `${artifacts}/tools-${phase}-${label.replaceAll(" ", "-")}-${mobile ? "mobile" : "desktop"}.png`,
+            fullPage: true,
+          });
+        }
+      }
     }
     assert.deepEqual(errors, []);
     await context.close();

@@ -12,25 +12,29 @@ import (
 // The custom Preview genesis must include the system contracts installed by
 // the pinned Geth developer genesis; enabling forks alone cannot deploy them.
 func TestPreviewGenesisSystemContracts(t *testing.T) {
-	data, err := os.ReadFile("../../preview/genesis.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var genesis core.Genesis
-	if err := json.Unmarshal(data, &genesis); err != nil {
-		t.Fatal(err)
-	}
-	if genesis.Config.AmsterdamTime == nil || *genesis.Config.AmsterdamTime != 0 {
-		t.Fatal("Preview must activate Amsterdam at genesis")
-	}
-	for address, want := range core.SystemContractAllocs() {
-		got, ok := genesis.Alloc[address]
-		if !ok {
-			t.Errorf("missing system contract %s", address)
-			continue
-		}
-		if !bytes.Equal(got.Code, want.Code) || got.Nonce != want.Nonce || got.Balance == nil || got.Balance.Cmp(want.Balance) != 0 {
-			t.Errorf("system contract %s differs from pinned Geth developer allocation", address)
-		}
+	for _, file := range []string{"../../preview/genesis.json", "../../preview/reth/genesis.json"} {
+		t.Run(file, func(t *testing.T) {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var genesis core.Genesis
+			if err := json.Unmarshal(data, &genesis); err != nil {
+				t.Fatal(err)
+			}
+			if genesis.Config.AmsterdamTime == nil || *genesis.Config.AmsterdamTime != 0 {
+				t.Fatal("Preview must activate Amsterdam at genesis")
+			}
+			for address, want := range core.SystemContractAllocs() {
+				got, ok := genesis.Alloc[address]
+				if !ok {
+					t.Errorf("missing system contract %s", address)
+					continue
+				}
+				if !bytes.Equal(got.Code, want.Code) || got.Nonce != want.Nonce || got.Balance == nil || got.Balance.Cmp(want.Balance) != 0 {
+					t.Errorf("system contract %s differs from pinned Geth developer allocation", address)
+				}
+			}
+		})
 	}
 }

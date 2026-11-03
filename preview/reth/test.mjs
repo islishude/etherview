@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -14,6 +14,7 @@ const { mnemonicToAccount } = require("viem/accounts");
 const manifest = JSON.parse(
   fs.readFileSync(new URL("../contracts/manifest.json", import.meta.url)),
 );
+const rethImage = "ghcr.io/paradigmxyz/reth:v2.9.0";
 const chain = defineChain({
   id: 31337,
   name: "Preview payment",
@@ -22,36 +23,63 @@ const chain = defineChain({
 });
 
 test(
-  "Anvil persists both token balances and spent authorization across restart and rejects changed seeds",
-  { timeout: 45000 },
+  "Reth persists both token balances and spent authorization across restart and rejects changed seeds",
+  { timeout: 120000 },
   async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-anvil-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-reth-"));
     const seed = path.join(dir, "seed.json");
-    fs.copyFileSync(new URL("state.json", import.meta.url), seed);
+    fs.copyFileSync(new URL("genesis.json", import.meta.url), seed);
     const listener = net.createServer();
     await new Promise((resolve) => listener.listen(0, "127.0.0.1", resolve));
     const port = listener.address().port;
     await new Promise((resolve) => listener.close(resolve));
+    await new Promise((resolve) => listener.listen(0, "127.0.0.1", resolve));
+    const wsPort = listener.address().port;
+    await new Promise((resolve) => listener.close(resolve));
     const transport = http(`http://127.0.0.1:${port}`, { retryCount: 0, timeout: 1000 });
-    const client = createPublicClient({ chain, transport });
+    const client = createPublicClient({ chain, transport, pollingInterval: 200 });
     const payer = mnemonicToAccount("test test test test test test test test test test test junk");
     const recipient = mnemonicToAccount(
       "test test test test test test test test test test test junk",
       { addressIndex: 2 },
     ).address;
     const wallet = createWalletClient({ chain, transport, account: payer });
+    const docker = globalThis.process.env.DOCKER || "docker";
+    const container = `etherview-reth-${globalThis.process.pid}-${port}`;
     let process;
     let diagnostics = "";
     const start = () => {
       diagnostics = "";
-      process = spawn("sh", [fileURLToPath(new URL("entrypoint.sh", import.meta.url))], {
-        env: {
-          ...globalThis.process.env,
-          ANVIL_SEED_FILE: seed,
-          ANVIL_STATE_DIR: dir,
-          ANVIL_PORT: String(port),
-        },
-        stdio: ["ignore", "ignore", "pipe"],
+      process = spawn(
+        docker,
+        [
+          "run",
+          "--rm",
+          "--name",
+          container,
+          "--user",
+          `${globalThis.process.getuid()}:${globalThis.process.getgid()}`,
+          "-e",
+          "HOME=/data",
+          "-p",
+          `127.0.0.1:${port}:8545`,
+          "-p",
+          `127.0.0.1:${wsPort}:8546`,
+          "-v",
+          `${dir}:/data`,
+          "-v",
+          `${fileURLToPath(new URL("./", import.meta.url))}:/fixture:ro`,
+          "-e",
+          "RETH_SEED_FILE=/data/seed.json",
+          "--entrypoint",
+          "sh",
+          rethImage,
+          "/fixture/entrypoint.sh",
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
+      process.stdout.on("data", (chunk) => {
+        diagnostics = (diagnostics + chunk.toString()).slice(-8192);
       });
       process.stderr.on("data", (chunk) => {
         diagnostics = (diagnostics + chunk.toString()).slice(-8192);
@@ -59,8 +87,8 @@ test(
       return process;
     };
     const ready = async () => {
-      for (let attempt = 0; attempt < 100; attempt++) {
-        if (process.exitCode !== null) throw Error(`Anvil exited before ready: ${diagnostics}`);
+      for (let attempt = 0; attempt < 400; attempt++) {
+        if (process.exitCode !== null) throw Error(`Reth exited before ready: ${diagnostics}`);
         try {
           if (
             (await client.getChainId()) === 31337 &&
@@ -70,18 +98,46 @@ test(
         } catch {}
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      throw Error("Anvil not ready");
+      throw Error("Reth not ready");
     };
     const stop = async () => {
       if (process && process.exitCode === null && !process.signalCode) {
         const done = once(process, "exit");
-        process.kill("SIGINT");
+        execFileSync(docker, ["stop", "--time", "15", container], { stdio: "ignore" });
         await done;
       }
     };
     try {
       start();
       await ready();
+      const socket = new WebSocket(`ws://127.0.0.1:${wsPort}`);
+      try {
+        await once(socket, "open", { signal: AbortSignal.timeout(5000) });
+        const message = once(socket, "message", { signal: AbortSignal.timeout(5000) });
+        socket.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }));
+        assert.equal(JSON.parse((await message)[0].data).result, "0x7a69");
+      } finally {
+        socket.close();
+      }
+      const first = await client.request({
+        method: "eth_getBlockByNumber",
+        params: ["latest", false],
+      });
+      assert.match(first.blockAccessListHash, /^0x[0-9a-f]{64}$/);
+      assert.match(first.slotNumber, /^0x[0-9a-f]+$/);
+      const genesis = JSON.parse(fs.readFileSync(seed));
+      for (const [address, account] of Object.entries(genesis.alloc)) {
+        if (!address.startsWith("0000")) continue;
+        assert.equal(
+          (await client.getCode({ address: `0x${address}` })).toLowerCase(),
+          account.code.toLowerCase(),
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 6500));
+      const next = await client.getBlock();
+      assert.ok(next.number > BigInt(first.number), "three-second timer must mine empty blocks");
+      assert.ok(next.timestamp > BigInt(first.timestamp));
+      execFileSync(docker, ["exec", container, "bash", "/fixture/healthcheck.sh"]);
       const nonce = "0x" + "01".repeat(32);
       const authorizationTypes = {
         TransferWithAuthorization: [
@@ -203,10 +259,18 @@ test(
         );
       }
       const nativeBalance = await client.getBalance({ address: payer.address });
+      const savedHead = await client.getBlock();
       await stop();
       start();
       await ready();
       assert.equal(await client.getBalance({ address: payer.address }), nativeBalance);
+      assert.equal((await client.getBlock({ blockNumber: savedHead.number })).hash, savedHead.hash);
+      await new Promise((resolve) => setTimeout(resolve, 6500));
+      assert.ok(
+        (await client.getBlock()).number > savedHead.number,
+        "mining must resume after restart",
+      );
+      execFileSync(docker, ["exec", container, "bash", "/fixture/healthcheck.sh"]);
       for (const [name, decimals] of [
         ["LocalBillingToken", 6],
         ["LocalBillingToken18", 18],
@@ -236,10 +300,22 @@ test(
         (1n << 6n) | (1n << 18n),
       );
       await stop();
+      const originalSeed = fs.readFileSync(seed);
       fs.appendFileSync(seed, "\n");
       const failed = start();
       const [code] = await once(failed, "exit");
       assert.equal(code, 1);
+      assert.match(diagnostics, /reth_genesis_mismatch/);
+      fs.writeFileSync(seed, originalSeed);
+      fs.renameSync(path.join(dir, "chain"), path.join(dir, "saved-chain"));
+      const missing = start();
+      assert.equal((await once(missing, "exit"))[0], 1);
+      assert.match(diagnostics, /reth_state_missing/);
+      fs.renameSync(path.join(dir, "saved-chain"), path.join(dir, "chain"));
+      fs.unlinkSync(path.join(dir, "genesis.sha256"));
+      const orphan = start();
+      assert.equal((await once(orphan, "exit"))[0], 1);
+      assert.match(diagnostics, /reth_identity_missing/);
     } finally {
       await stop();
       fs.rmSync(dir, { recursive: true, force: true });

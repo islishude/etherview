@@ -11,6 +11,7 @@ BUILDX ?= .github/scripts/buildx.sh
 COMPOSE ?= .github/scripts/compose.sh
 HELM ?= helm
 MKCERT ?= mkcert
+FORGE ?= forge
 
 GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
@@ -34,6 +35,7 @@ GO_LICENSES_VERSION ?= v2.0.1
 GOLANGCI_LINT_VERSION ?= v2.15.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 MKCERT_VERSION ?= v1.4.4
+FOUNDRY_VERSION ?= 1.9.0
 
 GENERATED_PATHS := internal/facilitator/contract.gen.go \
 	internal/verify/vyper_runtime_policy_generated.go \
@@ -54,7 +56,7 @@ PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
-PREVIEW_RUNTIME_SERVICES := nats bundler x402-facilitator anvil geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
+PREVIEW_RUNTIME_SERVICES := nats bundler x402-facilitator reth geth lighthouse validator object-storage ipfs preview-gateway migration $(PREVIEW_APP_SERVICES)
 PREVIEW_ENV_FILE ?= .local/preview.env
 PREVIEW_TLS_DIR := .local/preview-tls
 PREVIEW_TLS_CA := $(PREVIEW_TLS_DIR)/rootCA.pem
@@ -165,11 +167,15 @@ openapi-check: pnpm-install
 source-check:
 	$(GO) test -count=1 ./internal/sourcecheck
 
-format: pnpm-install
+format: solidity-format pnpm-install
 	$(PNPM) run format
 
-format-check: pnpm-install
+format-check: solidity-format-check pnpm-install
 	$(PNPM) run format:check
+
+.PHONY: solidity-format solidity-format-check
+solidity-format solidity-format-check:
+	FORGE="$(FORGE)" FOUNDRY_VERSION="$(FOUNDRY_VERSION)" $(NODE) .github/scripts/solidity-format.mjs $(if $(filter solidity-format-check,$@),--check)
 
 repo-format-check: pnpm-install
 	$(PNPM) run format:repo:check
@@ -177,7 +183,7 @@ repo-format-check: pnpm-install
 web-format-check: web-install
 	$(PNPM) --dir web run format:check
 
-lint: lint-go pnpm-install
+lint: solidity-format-check lint-go pnpm-install
 	$(PNPM) run lint
 
 lint-go: lint-tool-check source-check web-build
@@ -542,7 +548,7 @@ preview-genesis-verify-image:
 preview-images-prebuilt:
 	@$(call require-image,$(IMAGE),preview-images-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	@$(MAKE) --no-print-directory preview-env preview-genesis-verify-image
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull bundler geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull bundler geth lighthouse validator object-storage archive-init ipfs preview-gateway reth nats
 	$(DOCKER) pull node:26.13.0-trixie-slim
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
@@ -610,13 +616,13 @@ preview-contracts-generate: pnpm-install
 	$(NODE) preview/contracts/ens-upstream.mjs
 	$(NODE) preview/contracts/upstream.mjs
 	$(NODE) preview/contracts/generate.mjs
-	$(NODE) preview/anvil/generate.mjs
+	$(NODE) preview/reth/generate.mjs
 
 preview-contracts-check: pnpm-install
 	$(NODE) preview/contracts/generate.mjs --check
-	$(NODE) preview/anvil/generate.mjs --check
+	$(NODE) preview/reth/generate.mjs --check
 	$(NODE) preview/verification/generate.mjs --check
-	$(NODE) --test preview/contracts/test.mjs preview/anvil/test.mjs
+	DOCKER="$(DOCKER)" $(NODE) --test preview/contracts/test.mjs preview/reth/test.mjs
 
 test-preview-contracts: pnpm-install preview-cert-check docker-build preview-images
 	@$(MAKE) --no-print-directory test-preview-contracts-prebuilt

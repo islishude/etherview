@@ -26,8 +26,8 @@ const sources = [
   },
 ];
 try {
-  if (!run("forge", ["--version"]).toString().includes("1.8.7"))
-    throw Error("forge 1.8.7 required");
+  if (!run("forge", ["--version"]).toString().includes("1.9.0"))
+    throw Error("forge 1.9.0 required");
   const result = {};
   for (const source of sources) {
     const checkout = path.join(dir, source.name);

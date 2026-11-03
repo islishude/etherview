@@ -126,7 +126,7 @@ Run the metadata, consensus, contracts and x402 Preview gates, `make check`, `ma
 
 ## Preview application contracts acceptance
 
-`make preview-contracts-check` uses pinned Anvil 1.8.7 to reproduce the genesis
+`make preview-contracts-check` uses pinned Anvil 1.9.0 to reproduce the genesis
 allocations and exercise registration, commitment age/expiry, pricing, renewal,
 transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
 confined to this contract test; it does not establish PoS or Bundler acceptance.
@@ -242,10 +242,22 @@ demand for the complete catalog, lifecycle and initial/final split/all browser
 checks. Both targets have `-prebuilt` variants. Reports retain manual wallet and
 provider-dependent checks as unverified.
 
-### Anvil payment fixture regressions
+For address event logs, run `make preview-tool ARGS='run events'` on the running
+Preview, inspect the initial report, then run `emit` and `upgrade` with its run
+ID. The CLI checks published overloads/anonymous events, exact positioned topics,
+raw unverified emitters, proxy history and descending keyset pages. Follow with
+read-only `check`; its transaction identities must remain unchanged. The full
+browser harness also opens the event tab in English desktop and Chinese mobile
+layouts and retains screenshots. Unit coverage rejects overlapping, ascending
+and cross-emitter pages and verifies encoded filter links in public reports.
 
-`make preview-contracts-check` also verifies the deterministic Anvil seed and
-runs `preview/anvil/test.mjs` using the pinned local Foundry binaries. The test
+### Reth payment fixture regressions
+
+`make preview-contracts-check` also verifies the deterministic Reth seed and
+runs `preview/reth/test.mjs` using the pinned official Reth Docker image.
+The genesis activates Amsterdam and its prerequisite forks at time zero.
+The test verifies system bytecode, Amsterdam header fields, timer-driven empty
+blocks, health checks and rejection of missing database or identity files. The test
 settles EIP-3009 and standard Permit2 transfers of both six- and eighteen-decimal
 tokens with exact allowance consumption, restarts the
 node and checks recipient balances, spent authorizations and unchanged native
@@ -253,13 +265,13 @@ funds. It also rejects a changed seed. This fixture evidence does not establish
 multi-option account funding or unified credit; those are covered separately by
 `make test-preview-x402`. Local evidence does not replace real-network or AWS KMS acceptance.
 
-The gateway suite covers the Anvil host's HTTP routes, local-wallet CORS and WSS,
+The gateway suite covers the Reth host's HTTP routes, local-wallet CORS and WSS,
 request limits, scrubbed upstream failures and absence of write retries.
 
 Standard payment artifacts are rebuilt explicitly with
 `node preview/contracts/regenerate-x402.mjs`, using the pinned upstream commits,
-Forge 1.8.7 and upstream compiler settings. It also exports complete inline
-verification sources. Then run the contracts, Anvil and verification generators,
+Forge 1.9.0 and upstream compiler settings. It also exports complete inline
+verification sources. Then run the contracts, Reth and verification generators,
 and `node preview/contracts/x402-standard.mjs --write-fixture`. Constructor
 immutables are initialized to each chain ID and canonical address. Both standard
 contracts are included in the genesis verification inventory.

@@ -60,6 +60,8 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T78 | done   | P50-T03, P60-T03, P60-T05          | Session-authenticated browser verification with two-step submission/results and recoverable result links; API-key protocol isolation                                                                   | authentication matrix, frontend/browser, PostgreSQL, production all/split and common gates                          |
 | P50-T79 | done   | P50-T74, P50-T78                   | Optional runtime Turnstile guards for browser verification and CSV; compact address actions                                                                                                            | transport/auth/CSP, bilingual browser, deployment and all/split regressions                                         |
 | P50-T81 | done   | P40-T27                            | Bilingual name search/detail/links and expandable ENS history; atomic explicit reads, expiry hiding and incomplete-directory notices                                                                   | Keyboard/mobile/theme, inert values, pagination, local expiry, single SSE and production topology regressions       |
+| P50-T86 | done   | P40-T33, P50-T10                   | Bilingual contract event log tab with mutually exclusive historical-name and positioned-topic filters                                                                                                  | Generated client, bilingual URL/filter/page, keyboard/mobile and production runtime checks                          |
+| P50-T87 | done   | P40-T34, P50-T86                   | Compact event browsing with searchable dropdown, draft range filters and expandable logs                                                                                                               | 992 frontend tests, 235 browser tests, keyboard/IME and real Preview range checks                                   |
 
 ## Acceptance
 
@@ -85,6 +87,10 @@ protect browser verification and CSV downloads; address actions use a compact to
       CSV uses bounded generated-client downloads and releases object URLs.
 - [x] Optional Turnstile protects verification/CSV with server validation,
       session-fenced widgets and narrow CSP; native key clients are unchanged.
+
+- [x] Contract-only event logs retain mutually exclusive signature/topic filters,
+      URL restoration, explicit refresh, bounded pagination and visible coverage;
+      shared log cards preserve raw data and decoding provenance.
 
 ## Current Blockers
 
@@ -129,3 +135,18 @@ and discards bytes. Bilingual desktop/mobile checks passed in the recorded
 [P20 archive acceptance](P20-enrichment.md#blob-access-and-archive-update).
 All counts describe historical revisions, not tests rerun by documentation
 cleanup. Local browser fixtures do not establish live-chain or release acceptance.
+
+P50-T86 passed the generated-client and frontend lint gates, all 983 frontend
+tests and 235 embedded Chromium scenarios, including bilingual mobile/keyboard
+controls, URL restoration, filter switching, page reset, validation and EOA
+exclusion. Production all/split checks compare nonempty raw logs, positioned
+topic results and published signature results. Shared database/query acceptance
+is recorded under P40-T33; local browser fixtures do not extend live coverage
+or close P70 release gates.
+
+P50-T87 passed compact expandable logs, draft/submit/reset ranges, searchable
+paged dropdown, keyboard/IME/focus recovery, stale responses and precise URL
+restoration. Frontend (992), full browser (235), focused final browser and
+production all/split gates passed. Real Preview checked 36 event APIs and
+English desktop/Chinese 390px light/dark range views; reports and screenshots
+remain in the Preview-tool run.

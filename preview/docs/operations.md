@@ -491,37 +491,45 @@ Sources are not discovered from public services during startup. Refreshing
 sources is an explicit reviewed development operation; see
 [verification source maintenance](testing.md#genesis-verification-inputs).
 
-### Anvil payment-chain fixture
+### Reth payment-chain fixture
 
-Anvil uses chain ID `31337`; wallets connect through
-`https://anvil.etherview.localhost` (WebSocket: `wss://anvil.etherview.localhost`).
+Reth uses chain ID `31337`; wallets connect through
+`https://reth.etherview.localhost` (WebSocket: `wss://reth.etherview.localhost`).
 The explorer and SIWE login still use Preview Geth chain `48815`. The existing
 wildcard gateway certificate covers the new name. The node and its facilitator
 have no direct host ports. Use only the public local development accounts.
 
-The `anvil-data` volume owns spent authorizations and balances. Stop/recreate
-through the normal Preview Compose lifecycle to allow its final state dump.
-A changed genesis digest, missing saved state or orphan state file rejects
-startup; do not delete only the digest to bypass this protection. An intentional
-full Preview reset removes its volumes and billing database together. Restoring
-an older chain snapshot against a newer billing database requires reconciliation
-of uncertain payments before new funding. Periodic snapshots cannot guarantee
-preservation after abrupt host or storage loss.
+Reth v2.9.0 uses `--dev --dev.block-time 3s`, with Amsterdam and its prerequisites
+active from genesis. HTTP and WebSocket use internal ports 8545 and 8546.
+The `reth-data` volume stores the full database and genesis digest. Normal
+recreation preserves balances and spent authorizations without funding again.
+A changed digest, missing database or missing identity rejects startup; do not
+delete only the digest to bypass this protection.
+
+The former Anvil volume is not imported or automatically deleted. Before switching,
+stop new funding and reconcile pending payments on the old chain. The new Reth
+chain reuses chain ID 31337 but has a different genesis and fresh state: old
+receipts and authorizations are not evidence of new-chain settlement. For the
+initial switch, perform an intentional full Preview reset of the billing database
+and active chain volumes together; remove the retained old Anvil volume separately
+only after reconciliation. Clear the wallet's cached transactions for this local
+chain. Do not resume old settlement journals against the fresh Reth chain.
+Restoring an older database or chain backup also requires payment reconciliation.
 
 After changing token constructors, regenerate the reviewed allocations with
 `make preview-contracts-generate` and verification inputs with
 `node preview/verification/generate.mjs`. The generation target also updates the
-Anvil seed. These materials are never regenerated during ordinary startup.
+Reth seed. These materials are never regenerated during ordinary startup.
 
 ### Four payment options
 
 The Preview billing configuration exposes `default` (Geth 6 decimals, rate 1),
-`preview-usd18` (Geth 18 decimals, two credits per token), `anvil-usd6`
-(Anvil 6 decimals, three credits per token) and `anvil-usd18` (Anvil 18 decimals,
+`preview-usd18` (Geth 18 decimals, two credits per token), `reth-usd6`
+(Reth 6 decimals, three credits per token) and `reth-usd18` (Reth 18 decimals,
 four credits per token). All fund the same SIWE/explorer-chain account on 48815.
 The chain and token selectors clear the draft amount when changed; history uses
-the policy captured when the intent was created. Anvil's RPC is available at
-`https://anvil.etherview.localhost` through preview-gateway.
+the policy captured when the intent was created. Reth's RPC is available at
+`https://reth.etherview.localhost` through preview-gateway.
 
 The single `x402-facilitator` now serves both payment chains and persists its
 journal in PostgreSQL. Checked-in keystore/password/bearer files under

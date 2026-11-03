@@ -331,8 +331,18 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   responses, nullable fields and string quantities. Runtime client tests cover
   URL confinement, credentials, errors, 204, raw binary responses and cancellation;
   the embedded browser gate retains native EventSource recovery acceptance.
+- `make solidity-format` / `make solidity-format-check`: format / check every
+  Git-tracked `.sol` file with Forge's default style, including Hardhat, runtime
+  and Preview fixtures outside Foundry projects. Install Foundry 1.9.0 first;
+  `FORGE` can select its executable. Missing or mismatched versions fail clearly.
+  Checks never rewrite sources. `make format`, `make format-check`, and
+  `make lint` include the corresponding Solidity target, so `make check` also
+  checks Solidity. The CI lint job installs the pinned version through
+  `foundry-rs/foundry-toolchain`. After formatting source-owned Preview contracts,
+  regenerate affected artifacts through their maintained generators and run
+  `make preview-contracts-check` to verify source and artifact consistency.
 - `make format` / `make format-check`: write formatting / check without writing,
-  using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
+  using Forge for Solidity and locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
   and script directories. The existing frontend scope runs separately, using
   its own configuration. Root `pnpm run format` and `pnpm run format:check`
@@ -558,7 +568,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   checksum-validates the official catalog artifact through the application;
   only the independent client's fixture compilation is offline.
 - `make test-foundry-offline-compile`: run the version-pinned Foundry
-  v1.8.7 client image with no network and force a Solidity 0.8.30 rebuild. The
+  v1.9.0 client image with no network and force a Solidity 0.8.30 rebuild. The
   image build already compiles once online and once offline, while this target
   independently proves the loaded client contains the complete compiler cache.
   Foundry's disposable project build cache is disabled: each Compose command
@@ -672,7 +682,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
   monolith and all-seven-application-role layouts. Each layout gets a
-  deterministic Prague chain from the default Foundry `v1.8.7` image and a
+  deterministic Prague chain from the default Foundry `v1.9.0` image and a
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
   type-4 transactions with go-ethereum, and deploys two delegate contracts; it
@@ -1409,7 +1419,7 @@ uniqueness/credential routing checks, and PostgreSQL four-option funding into on
 account with immutable snapshots and replay rejection. Browser regressions cover
 chain/token selection and draft reset. `make test-preview-x402` compares token
 and credit increments for all four Preview options in both role layouts through
-the Anvil HTTPS gateway, then checks recreation and isolated payment-chain outage.
+the Reth HTTPS gateway, then checks recreation and isolated payment-chain outage.
 P60-T25 uses local acceptance only; local Permit2 fixture evidence makes no
 production-contract compatibility claim.
 
@@ -1439,7 +1449,7 @@ protocol routing, authentication and keystore/KMS signature regressions. Run
 reservation, nonce uniqueness, immutable transaction bytes and singleton-lock
 recovery. The existing `make test-runtime-e2e` and `make test-preview-x402` exercise
 the production facilitator and standard EIP-3009/Permit2 contract paths in
-all/split topologies. `node --test preview/anvil/test.mjs` verifies persisted
+all/split topologies. `node --test preview/reth/test.mjs` verifies persisted
 standard Permit2 nonce bitmaps and exact approval consumption across restart.
 Run generation, lint, schema, deployment, docs and plan gates for this change.
 P60-T27 uses a separate local acceptance facility using a pinned
@@ -1520,3 +1530,28 @@ generation, Go lint, documentation/plan, full integration race and production
 runtime E2E gates. Preview metadata covers source discovery, URI changes and
 restart persistence; Hardhat covers catalogs and verification in both role
 layouts. These checks do not close P70 capacity or external release gates.
+
+## Address event logs
+
+P40-T33 and P50-T86 require positioned topic and historical-signature API,
+frontend and browser regressions. Run `TestAddressLogs`,
+`TestABIStageBindsPriorityRangeAndForkIdentity`, and
+`TestPostgresPartitionLifecycle` with the managed PostgreSQL integration runner
+and `-race`. The address-log query-plan case uses 30,003 logs across partitions,
+selective topic3 values and actual `EXPLAIN (ANALYZE, BUFFERS)` output without
+forcing the planner. The published-directory fixture adds 508 logs with repeated,
+overloaded and anonymous signatures, verifies ordered projection-index reads,
+and checks that directory reads do not scan raw logs or historical decodings.
+Partition fixtures cover both derived tables and generated topics; same-hash
+reattachment must keep names withdrawn until replay publishes a new generation.
+Record index footprint and indexed insert time separately from production capacity.
+Run generation, Go/frontend lint, documentation/plan, browser, schema and
+production all/split runtime gates before closing the milestones.
+
+P40-T34/P50-T87 extend those checks with inclusive/one-sided/future block ranges,
+range-scoped name directories and cursor revisions. Range tests cover every
+positioned topic and ABI replay outside the selected interval. Query-plan fixtures
+retain cross-partition ranges and exact identity materialization. Frontend tests
+cover draft-only edits, URL restoration, in-popup search/loading/pagination,
+keyboard focus, late responses and expandable summaries. Production all/split
+checks compare exact-block logs and directory contribution membership.
