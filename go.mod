@@ -29,7 +29,7 @@ require (
 	github.com/pk910/dynamic-ssz v1.4.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/signinwithethereum/siwe-go v1.0.0
-	github.com/x402-foundation/x402/go/v2 v2.27.0
+	github.com/x402-foundation/x402/go/v2 v2.29.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
 	go.opentelemetry.io/otel/sdk v1.47.0
@@ -42,7 +42,7 @@ require (
 
 require (
 	cel.dev/expr v0.25.2 // indirect
-	filippo.io/edwards25519 v1.1.1 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/OffchainLabs/go-bitfield v0.0.0-20251031151322-f427d04d8506 // indirect
 	github.com/ProjectZKM/Ziren/crates/go-runtime/zkvm_runtime v0.0.0-20251001021608-1fe7b43fc4d6 // indirect
