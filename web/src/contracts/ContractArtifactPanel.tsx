@@ -567,6 +567,9 @@ function SourceWorkspace({
 
   useEffect(() => {
     setExpanded(collectDirectoryIDs(tree));
+  }, [tree]);
+
+  useEffect(() => {
     setFocusedID(`file:${selected.name}`);
   }, [selected.name, tree]);
 

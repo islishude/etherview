@@ -526,6 +526,63 @@ describe("ContractArtifactPanel", () => {
     );
   });
 
+  it.each(["mouse", "keyboard"])(
+    "preserves collapsed folders when selecting files by %s",
+    async (input) => {
+      const user = userEvent.setup();
+      const artifact = fixtureArtifact({
+        sources: {
+          "src/Example.sol": { content: "contract Example {}" },
+          "src/Other.sol": { content: "contract Other {}" },
+          "src/lib/Library.sol": { content: "library Library {}" },
+          "vendor/Vendor.sol": { content: "contract Vendor {}" },
+        },
+      });
+      const { rerender } = render(<ContractArtifactPanel artifact={artifact} />);
+      const tree = within(screen.getByRole("tree", { name: "Source files" }));
+      const nestedFolder = tree.getByRole("treeitem", { name: "Collapse folder: lib" });
+      const vendorFolder = tree.getByRole("treeitem", { name: "Collapse folder: vendor" });
+      await user.click(nestedFolder);
+      await user.click(vendorFolder);
+
+      for (const name of ["Other", "Example", "Other"]) {
+        const file = tree.getByRole("treeitem", { name: `${name}.sol` });
+        if (input === "mouse") await user.click(file);
+        else {
+          await user.keyboard("{Home}");
+          for (let step = 0; document.activeElement !== file && step < 10; step += 1) {
+            await user.keyboard("{ArrowDown}");
+          }
+          expect(file).toHaveFocus();
+          await user.keyboard("{Enter}");
+        }
+        expect(file).toHaveAttribute("aria-selected", "true");
+        expect(
+          screen.getByRole("textbox", { name: `Read-only source editor for src/${name}.sol` }),
+        ).toHaveTextContent(`contract ${name}`);
+        expect(nestedFolder).toHaveAttribute("aria-expanded", "false");
+        expect(vendorFolder).toHaveAttribute("aria-expanded", "false");
+        expect(tree.queryByRole("treeitem", { name: "Library.sol" })).toBeNull();
+        expect(tree.queryByRole("treeitem", { name: "Vendor.sol" })).toBeNull();
+      }
+
+      await user.click(nestedFolder);
+      expect(tree.getByRole("treeitem", { name: "Library.sol" })).toBeVisible();
+      expect(vendorFolder).toHaveAttribute("aria-expanded", "false");
+
+      rerender(
+        <ContractArtifactPanel
+          artifact={{
+            ...artifact,
+            sources: { ...artifact.sources, "Added.sol": { content: "contract Added {}" } },
+          }}
+        />,
+      );
+      expect(tree.getByRole("treeitem", { name: "Vendor.sol" })).toBeVisible();
+      expect(tree.getByRole("treeitem", { name: "Added.sol" })).toBeVisible();
+    },
+  );
+
   it("fails closed for malformed sources while retaining raw diagnostics", async () => {
     const user = userEvent.setup();
     render(
