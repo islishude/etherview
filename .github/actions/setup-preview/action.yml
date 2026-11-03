@@ -40,4 +40,6 @@ runs:
       run: make preview-cert
     - name: Prepare Preview gateway and external images
       shell: bash
-      run: make preview-images
+      run: |
+        make preview-images-prebuilt
+        node .github/scripts/production-image-bundle.mjs verify ".local/production-image" amd64

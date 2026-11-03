@@ -334,7 +334,7 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" etherview-preview-bundler:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" node:26.13.0-trixie-slim etherview-preview-genesis-verify:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -493,7 +493,7 @@ helm-check:
 .PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
 	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
-start-preview recreate-preview stop-preview preview-images preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
+start-preview recreate-preview stop-preview preview-images preview-images-prebuilt preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
 	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
@@ -520,7 +520,8 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/bundler-start.test.mjs preview/verification/verify.test.mjs
+	$(GO) test ./tools/genesis-verify
+	$(NODE) --test preview/scripts/compiler-cache.test.mjs preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/verify.test.mjs
 
 preview-env:
 	$(NODE) preview/scripts/env.mjs "$(PREVIEW_ENV_FILE)"
@@ -530,8 +531,19 @@ preview-network-runtime: preview-env
 
 preview-x402-images: docker-build
 
-preview-images: preview-env preview-x402-images preview-bundler-image
-	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
+.PHONY: preview-images-prebuilt
+preview-images: docker-build
+	@$(MAKE) --no-print-directory preview-images-prebuilt
+
+.PHONY: preview-genesis-verify-image
+preview-genesis-verify-image:
+	DOCKER="$(DOCKER)" $(BUILDX) build --load -t etherview-preview-genesis-verify:local -f tools/genesis-verify/Dockerfile .
+
+preview-images-prebuilt:
+	@$(call require-image,$(IMAGE),preview-images-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
+	@$(MAKE) --no-print-directory preview-env preview-genesis-verify-image
+	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull bundler geth lighthouse validator object-storage archive-init ipfs preview-gateway anvil nats
+	$(DOCKER) pull node:26.13.0-trixie-slim
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-check docker-build preview-images
@@ -548,7 +560,7 @@ stop-preview:
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml --profile archive-init down --volumes --remove-orphans
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs clean
 
-recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images preview-bundler-image
+recreate-preview: preview-env preview-cert-check preview-network-runtime docker-build preview-x402-images
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs init
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
 		rm -fs $(PREVIEW_RUNTIME_SERVICES)
@@ -558,7 +570,7 @@ recreate-preview: preview-env preview-cert-check preview-network-runtime docker-
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
 
 .PHONY: clean-preview-compiler-cache
-clean-preview-compiler-cache: preview-bundler-image
+clean-preview-compiler-cache:
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs clean
 
 
@@ -593,10 +605,7 @@ test-dependency-updates:
 install-preview-tools:
 	$(GO) install filippo.io/mkcert@$(MKCERT_VERSION)
 
-.PHONY: preview-bundler-image preview-contracts-generate preview-contracts-check test-preview-contracts test-preview-contracts-prebuilt
-preview-bundler-image:
-	DOCKER="$(DOCKER)" $(BUILDX) build --load -t etherview-preview-bundler:local -f preview/bundler.Dockerfile .
-
+.PHONY: preview-contracts-generate preview-contracts-check test-preview-contracts test-preview-contracts-prebuilt
 preview-contracts-generate: pnpm-install
 	$(NODE) preview/contracts/ens-upstream.mjs
 	$(NODE) preview/contracts/upstream.mjs
@@ -616,12 +625,13 @@ test-preview-contracts-prebuilt: preview-e2e-check
 	IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewContracts$$' ./e2e/previewmetadata
 
 .PHONY: verify-preview-genesis preview-verification-check
-verify-preview-genesis: preview-env
+verify-preview-genesis: preview-env preview-genesis-verify-image
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/verify.mjs
 
 preview-verification-check: pnpm-install
+	$(GO) test ./tools/genesis-verify
 	$(NODE) preview/verification/generate.mjs --check
-	$(NODE) --test preview/verification/verify.test.mjs
+	$(NODE) --test preview/scripts/verify.test.mjs
 
 # Explicit manual scenarios; never start or reset the daily Preview implicitly.
 .PHONY: preview-tool test-preview-tools test-preview-tools-e2e test-preview-tools-e2e-prebuilt test-preview-tools-e2e-full test-preview-tools-e2e-full-prebuilt

@@ -167,14 +167,12 @@ func TestBrowserVerificationSourcifyFlowsAndLimits(t *testing.T) {
 		path, body string
 		kind       verify.JobKind
 	}{
-		{"sourcify-import", `{"address":"` + testAddress + `","chain_id":"9007199254740993"}`, verify.JobAddress},
+		{"sourcify-import", `{"address":"` + testAddress + `","chain_id":"9007199254740993"}`, verify.JobSourcifyImport},
 		{"sourcify", `{"address":"` + testAddress + `","chain_id":"1","files":{"A.sol":"private-source"}}`, verify.JobSourcify},
 		{"sourcify-from-etherscan", `{"address":"` + testAddress + `","chain_id":"1","etherscan_api_key":"upstream-secret"}`, verify.JobSourcifyFromEtherscan},
 	} {
 		t.Run(test.path, func(t *testing.T) {
 			handler, _, service := browserVerificationHandler(t)
-			importer := &sourcifyImporterStub{}
-			handler.sourcifyImporter = importer
 			send := func(body string) *httptest.ResponseRecorder {
 				request := httptest.NewRequest("POST", "/api/v1/verification-jobs/"+test.path, strings.NewReader(body))
 				request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
@@ -188,7 +186,7 @@ func TestBrowserVerificationSourcifyFlowsAndLimits(t *testing.T) {
 			if response.Code != 202 || service.calls != 1 || service.submission.Kind != test.kind {
 				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
-			if test.path == "sourcify-import" && (importer.calls != 1 || importer.sourceChain != 9007199254740993) {
+			if test.path == "sourcify-import" && (service.submission.SourceChainID != 9007199254740993) {
 				t.Fatal("source-chain identity lost")
 			}
 			if !strings.Contains(response.Body.String(), `"address":`) || strings.Contains(response.Body.String(), "private-source") || strings.Contains(response.Body.String(), "upstream-secret") {

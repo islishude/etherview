@@ -33,7 +33,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
-P00–P60 are complete. Their child plans summarize delivered capabilities and
+Delivered P00–P60 capabilities include P30-T153 independent verification
+execution, PostgreSQL task claims with optional NATS wake and asynchronous
+Sourcify import, plus P30-T154 session-fenced multi-instance polling, maintenance
+and publication with safe shared compiler-cache startup. Their child plans summarize delivered capabilities and
 historical acceptance, with independent evidence limits for Mainnet ENS, live
 payments, browser-provider delivery and local compiler/runtime fixtures.
 Routine maintenance does not reopen these milestones.

@@ -141,16 +141,18 @@ func TestPreviewContracts(t *testing.T) {
 }
 
 func (h *harness) contractsAllRoles(ctx context.Context) {
-	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "maintenance"); err != nil {
+	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "maintenance", "verification"); err != nil {
 		h.t.Fatal(err)
 	}
 	override := filepath.Join(h.artifacts, "contracts-all.yaml")
 	config := `services:
   api:
     volumes:
+      - ${PREVIEW_COMPILER_CACHE_DIR}:/var/lib/etherview/compilers
       - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
+      ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       ETHERVIEW_ROLES: all
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only

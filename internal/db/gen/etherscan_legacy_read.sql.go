@@ -666,7 +666,7 @@ WITH canonical_tip AS (
      AND verified.request_digest = artifact.request_digest
     JOIN verification_jobs AS artifact_job
       ON artifact_job.id = artifact.verification_job_id
-     AND artifact_job.kind = 'address'
+     AND artifact_job.kind IN ('address', 'sourcify_import')
      AND artifact_job.chain_id = artifact.chain_id
      AND artifact_job.address = artifact.address
      AND artifact_job.code_hash = artifact.code_hash
@@ -1466,7 +1466,7 @@ WITH canonical_tip AS (
      AND verified.request_digest = artifact.request_digest
     JOIN verification_jobs AS artifact_job
       ON artifact_job.id = artifact.verification_job_id
-     AND artifact_job.kind = 'address'
+     AND artifact_job.kind IN ('address', 'sourcify_import')
      AND artifact_job.chain_id = artifact.chain_id
      AND artifact_job.address = artifact.address
      AND artifact_job.code_hash = artifact.code_hash

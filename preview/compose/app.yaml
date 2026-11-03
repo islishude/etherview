@@ -40,6 +40,9 @@ x-etherview-api-env: &etherview-api-env
   ETHERVIEW_X402_FACILITATOR_HEADERS: '{"eip155:48815":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"},"eip155:31337":{"Authorization":"Bearer preview-only-facilitator-token-0000000000000000"}}'
   ETHERVIEW_X402_FACILITATOR_ALLOWED_CIDRS:
   ETHERVIEW_SESSION_PEPPER: "NOT_A_SECRET_PEPPER_250e1b7feee4"
+
+x-etherview-verification-env: &etherview-verification-env
+  <<: *etherview-app-env
   ETHERVIEW_VERIFICATION_WORKER_COUNT:
   ETHERVIEW_VERIFICATION_EXECUTOR_PATH:
   ETHERVIEW_VERIFICATION_GEAS_PATH:
@@ -90,6 +93,18 @@ services:
     healthcheck: *etherview-healthcheck
     ports:
       - "127.0.0.1:${ETHERVIEW_METRICS_PORT:-9090}:9090"
+    restart: unless-stopped
+
+  verification:
+    <<: *etherview-service
+    command: ["serve", "--roles=verification", "--config=/etc/etherview/config.yaml"]
+    environment:
+      <<: *etherview-verification-env
+      ETHERVIEW_ROLES: verification
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    depends_on: *etherview-runtime-depends-on
+    healthcheck: *etherview-healthcheck
     restart: unless-stopped
 
   sync:

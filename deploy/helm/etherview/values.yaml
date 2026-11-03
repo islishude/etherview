@@ -79,6 +79,14 @@ roles:
       minReplicas: 2
       maxReplicas: 10
       targetCPUUtilizationPercentage: 70
+  verification:
+    enabled: true
+    replicas: 1
+    autoscaling:
+      enabled: false
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
   sync:
     enabled: true
     replicas: 1

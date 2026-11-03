@@ -4,7 +4,7 @@ Status: accepted
 
 ## Context
 
-ADR-0031 established the API-owned, architecture-neutral solc-js executor and
+ADR-0031 established the verification-role-owned, architecture-neutral solc-js executor and
 ADR-0037 made its checksum-addressed compiler-artifact cache persistent. The
 production image currently carries a general Node executable, a separate
 wrapper and npm dependency tree, and a build-time list of three copied shared
@@ -56,7 +56,7 @@ an exact, generated ELF dependency closure.
 - New work continues to use `executor_kind=node_solcjs_v1` and
   `execution_policy=trusted_subprocess`. Existing terminal records need no
   migration. Operators drain executor-bound work before rolling out a new
-  manifest digest to homogeneous API-capable replicas.
+  manifest digest to homogeneous verification replicas.
 - The production image contains no general `node`, npm tooling, wrapper source,
   package metadata, or `node_modules`. Build-stage and production-image tests
   execute the SEA self-test, and the build stage also performs a real compiler

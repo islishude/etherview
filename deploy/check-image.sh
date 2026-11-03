@@ -195,19 +195,23 @@ if awk '$1 ~ /^-/ && $NF ~ /^opt\/etherview\/solcjs\/lib\// && ($1 ~ /w/ || $1 ~
     exit 1
 fi
 
-for cache_path in var/lib/etherview/compilers var/lib/etherview/compilers/cache
-do
-    cache_line=$(awk -v path="$cache_path" '$NF == path || $NF == path "/" { print; exit }' \
-        "$temporary_directory/rootfs-verbose.txt")
-    if [ -z "$cache_line" ] || ! printf '%s\n' "$cache_line" | grep -Eq '^drwxr-x---'; then
-        echo "docker-image-check: unsafe compiler cache mode for /$cache_path" >&2
-        exit 1
-    fi
-    if ! printf '%s\n' "$cache_line" | grep -Eq '(^|[[:space:]])65532[/[:space:]]+65532([[:space:]]|$)'; then
-        echo "docker-image-check: unsafe compiler cache owner for /$cache_path" >&2
-        exit 1
-    fi
-done
+# Docker copies this mount point into fresh named volumes before startup.
+# Only seed its owned empty parent; concurrent copy-up of children can fail.
+cache_path=var/lib/etherview/compilers
+cache_line=$(awk -v path="$cache_path" '$NF == path || $NF == path "/" { print; exit }' \
+    "$temporary_directory/rootfs-verbose.txt")
+if [ -z "$cache_line" ] || ! printf '%s\n' "$cache_line" | grep -Eq '^drwxr-x---[[:space:]]'; then
+    echo "docker-image-check: unsafe compiler cache mode for /$cache_path" >&2
+    exit 1
+fi
+if ! printf '%s\n' "$cache_line" | grep -Eq '(^|[[:space:]])65532[/[:space:]]+65532([[:space:]]|$)'; then
+    echo "docker-image-check: unsafe compiler cache owner for /$cache_path" >&2
+    exit 1
+fi
+if grep -Eq '^var/lib/etherview/compilers/.+' "$temporary_directory/rootfs.txt"; then
+    echo "docker-image-check: compiler cache mount point must be empty before startup" >&2
+    exit 1
+fi
 
 
 if grep -Ei '(^|/)(python([0-9]+([.][0-9]+)*)?|pip([0-9]+([.][0-9]+)*)?|uv|vyper-json)$' \

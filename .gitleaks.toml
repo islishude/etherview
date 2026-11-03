@@ -58,10 +58,10 @@ regexes = [
 ]
 
 [[allowlists]]
-description = "Exact public mnemonic index 9 key in the Preview-only Rundler launcher"
+description = "Exact public mnemonic index 9 key in Preview Rundler Compose and historical launcher"
 condition = "AND"
 targetRules = ["generic-api-key"]
-paths = ['''^preview/bundler-start\.mjs$''']
+paths = ['''^preview/bundler-start\.mjs$''', '''^preview/compose/chain\.yaml$''']
 regexes = ['''^2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6$''']
 
 [[allowlists]]

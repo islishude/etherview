@@ -11,9 +11,8 @@ const root = path.resolve(import.meta.dirname, "../..");
 const inputs = [
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
-  "preview/bundler.Dockerfile",
+  "preview/compose/chain.yaml",
   "preview/rundler.toml",
-  "preview/bundler-start.mjs",
   "preview/genesis.json",
   "preview/generate.sh",
   "preview/cmd/previewensmanifest/main.go",

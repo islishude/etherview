@@ -168,7 +168,7 @@ request-body logging at reverse proxies.
 The API encrypts Etherscan credentials before PostgreSQL enqueue using
 purpose-separated keys derived from `security.api_key_pepper`; database rows
 and backups contain ciphertext only, and job reads never return it. Use the
-same pepper on every API/all-role replica. Before rotating it, stop accepting
+same pepper on every API, verification and all-role replica. Before rotating it, stop accepting
 new imports and drain pending/running Sourcify imports that carry credentials.
 Restoring those jobs requires the original pepper from a separately secured
 secret backup. A missing or mismatched pepper fails decryption; it never falls
@@ -184,7 +184,7 @@ It may differ from the local chain, but the same address must have identical
 runtime bytecode on both chains. The local target chain always comes from the
 deployment; the address needs canonical local runtime and creation facts (or
 authenticated Genesis provenance).
-The API fetches Sourcify's existing sources and returns a local address job to
+The API queues a Sourcify import task before remote retrieval; use its ID to
 poll at `/api/v1/verifier/jobs/{id}`. Only `verification_success` establishes
 local verification and publishes the source/ABI. `sourcify_success` belongs to
 the separate external publication workflow. No Etherscan key, file upload or
@@ -700,14 +700,14 @@ steady application connections = P * W + A * R
 ```
 
 Omit `A * R` when the reader is disabled. The reference distributed Helm
-profile has `P = 18`, `A = 8`, and `W = 12`: it therefore permits 216 writer
+profile has `P = 20`, `A = 8`, and `W = 12`: it therefore permits 240 writer
 connections. Enabling a same-sized reader gives `R = 12` and adds 96 reader
-connections, for 312 steady-state application connections.
+connections, for 336 steady-state application connections.
 
 Kubernetes may start a replacement while a deleted Pod is still terminating, and
 terminating replicas are not included in `maxSurge`. A fully concurrent rollout
 can therefore overlap old and replacement pools: reserve up to twice the
-steady-state application budget—432 without the reader or 624 with the
+steady-state application budget—480 without the reader or 672 with the
 same-sized reader in the reference profile—or serialize role rollouts and
 measure their actual termination overlap. Also reserve server slots for the
 migration Job and operator access, or use a separately operated
@@ -728,7 +728,7 @@ ordinary read-model results are not promised read-after-write consistency.
 
 `runtime.worker_count` controls durable enrichment, trace, metadata, and
 maintenance workers in each process. `verification.worker_count` independently
-controls the compiler-verification workers in each API-capable process;
+controls the compiler-verification workers in each verification/all process;
 `verification.derived_worker_count` controls factory-derived verification work.
 `runtime.backfill_workers` controls independent sync range claimers, while
 `runtime.backfill_batch_blocks` bounds each durable range lease to 1–256
@@ -1370,7 +1370,7 @@ defaults) and keep these test-only overrides out of production runbooks.
 
 ## Application-locked Vyper runtimes
 
-API/all use the lock embedded in the application. No Vyper catalog URL, public
+Verification/all use the lock embedded in the application. No Vyper catalog URL, public
 key, signing service or catalog renewal is required. The supported supported versions
 and their exact dependency choices change only with an application release.
 Vyper 0.2.0 is no longer supported. All locked wheels are downloaded from
@@ -1640,8 +1640,8 @@ public-network address checks by default. No source is uploaded and no remote co
 is invoked. Solidity, Yul and locally supported Vyper sources are compiled and
 matched locally before source, ABI or verification status is published.
 
-The API/all role owns discovery, search and local verification. Keep the same
-configuration on all API replicas. Environment overrides use
+The verification/all role owns discovery, search and local verification. Keep the same
+configuration on all verification replicas. Environment overrides use
 `ETHERVIEW_BYTECODE_DB_ENABLED`, `BASE_URL`, `TIMEOUT`, `MAX_RESPONSE_BYTES`,
 `MAX_CONCURRENCY`, `REQUEST_INTERVAL` and `COOLDOWN` with the same
 `ETHERVIEW_BYTECODE_DB_` prefix. Defaults are 20 seconds, 32 MiB, two concurrent
@@ -2058,3 +2058,45 @@ actual AWS SDK HTTP signing, both payment methods on both networks in all/split
 layouts, recovery checks and independent chain/writer reconciliation. Local
 simulation does not establish real AWS IAM enforcement, production key isolation
 or public-network production readiness; P70 release gates remain separate.
+
+## Independent verification deployment
+
+Run `serve --roles=api` for admission and reads and `serve --roles=verification`
+for compiler catalogs, discovery, Sourcify and local/derived execution. Both
+use the same writer PostgreSQL database; the API needs no compiler cache or
+runtime self-test. `serve --roles=all` includes the identical components.
+Scale verification independently, starting with one replica; total local
+compilation concurrency is replicas times `verification.worker_count`.
+
+With `adapters.nats_url` configured, committed tasks send best-effort `jobs`
+wake hints and workers also retain `runtime.poll_interval` polling. Without
+NATS, PostgreSQL polling and leases perform all scheduling. A NATS outage
+increases pickup latency without losing work or withdrawing readiness. API
+remains available when workers stop; monitor queued age, failed tasks and
+compiler availability on verification instances. Expired leases are reclaimed
+within the attempt budget; stale workers cannot publish.
+
+Give compiler caches and verification HTTPS egress only to verification/all.
+Use the same `security.api_key_pepper` on API and verification for encrypted
+Sourcify credentials. Keep all execution replicas on the same runtime identity.
+This fresh-baseline change requires database recreation under the initialization
+procedure and coordinated API/verification rollout, not mixed-version operation.
+Stop every cache-mounting worker before explicit cache cleanup.
+
+## Multi-instance polling ownership
+
+Live sync, mempool, NFT source discovery and compiler catalog refresh use
+PostgreSQL session advisory locks. A replica that loses a lock-owning connection
+cannot publish the in-flight result through another connection. Other replicas
+can resume on their next poll; slow upstream requests retain ownership until
+the bounded request ends or the database session closes. Backfill ranges and
+ordinary durable workers retain their existing independent claims. Increasing
+replicas therefore does not increase concurrent singleton polls.
+
+Each active singleton cycle borrows one writer-pool connection without holding
+a transaction during external requests. Keep writer capacity for other workers
+and readiness probes. Maintenance also uses its claim connection for actual
+repair/reindex mutations. A connection failure may restart that component's
+process through the existing supervisor; recovery retries the original durable
+request. Do not remove a live owner's advisory lock administratively: stop the
+owner or terminate its physical PostgreSQL session so late writes also fail.

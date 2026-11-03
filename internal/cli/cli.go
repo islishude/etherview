@@ -14,7 +14,7 @@ import (
 )
 
 const usage = `Usage:
-  etherview serve [--config path] [--roles all|api,sync,...] [--log-level level] [--log-format json|text]
+  etherview serve [--config path] [--roles all|api,verification,sync,...] [--log-level level] [--log-format json|text]
   etherview healthcheck [--url http://127.0.0.1:9090/health/ready] [--timeout duration]
   etherview doctor [--config path] [--log-level level] [--log-format json|text]
   etherview migrate <up|status> [--config path] [--log-level level] [--log-format json|text]

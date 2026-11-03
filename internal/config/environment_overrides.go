@@ -127,12 +127,16 @@ func applySecretEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	if value, ok := lookup(envPrefix + "WALLET_ADD_CHAIN_ICON_URLS"); ok {
 		cfg.Wallet.AddChain.IconURLs = splitCSV(value)
 	}
-	pepper, err := lookupValueOrFile("API_KEY_PEPPER", lookup, readFile)
-	if err != nil {
-		return err
-	}
-	if pepper != "" {
-		cfg.Security.APIKeyPepper = pepper
+	if apiRole || slices.Contains(roles, "verification") {
+		pepper, err := lookupValueOrFile("API_KEY_PEPPER", lookup, readFile)
+		if err != nil {
+			return err
+		}
+		if pepper != "" {
+			cfg.Security.APIKeyPepper = pepper
+		}
+	} else {
+		cfg.Security.APIKeyPepper = ""
 	}
 	if apiRole && cfg.Features.UserAuth {
 		sessionPepper, err := lookupValueOrFile("SESSION_PEPPER", lookup, readFile)

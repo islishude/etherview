@@ -167,14 +167,16 @@ func TestPreviewX402(t *testing.T) {
 	key := createUserAPIKey(t, client, origin, csrf, "preview")
 	for index, mode := range []string{"split", "all"} {
 		if index > 0 {
-			run("stop", "sync", "enrich", "trace", "metadata", "maintenance")
+			run("stop", "sync", "enrich", "trace", "metadata", "maintenance", "verification")
 			all := filepath.Join(artifacts, "all.yaml")
 			if err := os.WriteFile(all, []byte(`services:
   api:
     volumes:
       - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
+      - ${PREVIEW_COMPILER_CACHE_DIR}:/var/lib/etherview/compilers
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
+      ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       ETHERVIEW_ROLES: all
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only

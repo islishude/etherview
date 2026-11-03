@@ -279,7 +279,7 @@ type VerificationConfig struct {
 }
 
 // SourcifyConfig bounds the optional external Sourcify v2 interoperability
-// adapter. API/all workers own explicit requests and bounded upstream polling.
+// adapter. Verification/all workers own explicit requests and bounded upstream polling.
 type SourcifyConfig struct {
 	UnsafeAllowPrivateNetworks bool          `yaml:"unsafe_allow_private_networks"`
 	BaseURL                    string        `yaml:"base_url"`

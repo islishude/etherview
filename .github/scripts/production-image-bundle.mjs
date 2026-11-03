@@ -1,13 +1,13 @@
 // Image transport is shared by all native production-image consumers.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const [mode, directory, architecture, ...extra] = process.argv.slice(2);
 assert(
-  ["save", "load"].includes(mode) && directory && extra.length === 0,
-  "usage: production-image-bundle.mjs save|load DIRECTORY amd64|arm64",
+  ["save", "load", "verify"].includes(mode) && directory && extra.length === 0,
+  "usage: production-image-bundle.mjs save|load|verify DIRECTORY amd64|arm64",
 );
 assert(["amd64", "arm64"].includes(architecture), "unsupported architecture");
 const bundle = resolve(directory);
@@ -18,13 +18,13 @@ const revision =
   process.env.GITHUB_SHA ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 assert.match(revision, /^[a-f0-9]{40}$/, "invalid source revision");
 let expected;
-if (mode === "load") {
+if (mode !== "save") {
   expected = JSON.parse(readFileSync(join(bundle, "identity.json"), "utf8"));
   assert.equal(expected.schema, "etherview-production-image-v1");
   assert.equal(expected.revision, revision, "image source revision mismatch");
   assert.equal(expected.architecture, architecture, "image architecture mismatch");
   assert.match(expected.image_id, /^sha256:[a-f0-9]{64}$/);
-  docker("image", "load", "--input", join(bundle, "production-image.tar"));
+  if (mode === "load") docker("image", "load", "--input", join(bundle, "production-image.tar"));
 }
 const [actual] = JSON.parse(docker("image", "inspect", image));
 assert.equal(actual.Architecture, architecture, "production image architecture mismatch");
@@ -44,5 +44,8 @@ if (mode === "save") {
     appendFileSync(process.env.GITHUB_OUTPUT, `identity=${JSON.stringify(identity)}\n`);
 } else {
   assert.equal(actual.Id, expected.image_id, "loaded image identity mismatch");
+  // Keep identity.json for later verification; discard transport only after
+  // the loaded image has passed every identity check.
+  if (mode === "load") unlinkSync(join(bundle, "production-image.tar"));
 }
 console.log(`${mode}: ${architecture} ${actual.Id}`);

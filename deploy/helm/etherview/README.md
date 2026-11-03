@@ -6,11 +6,11 @@
 > The chart does not delete databases or convert historical data.
 
 The chart runs the production image either as one `all` Deployment or as the
-same component graph split into `api`, `sync`, `enrich`, `trace`, `metadata`,
+same component graph split into `api`, `verification`, `sync`, `enrich`, `trace`, `metadata`,
 and `maintenance` Deployments. `values-distributed.yaml` selects the split
 layout. Each autoscaled role has its own `autoscaling/v2` HPA; roles that own
 singleton work are one replica by default. When public verification is enabled,
-the `all` or `api` Deployment owns the durable verification worker pool,
+the `all` or `verification` Deployment owns the durable verification worker pool,
 checksum cache, and restricted Node/solc-js subprocess executor.
 
 Install or upgrade with Job waiting enabled so the release command observes
@@ -260,18 +260,18 @@ traffic needs a distinct upstream or per-process rate policy.
 ## Reference HA and capacity profile
 
 `values-reference-capacity.yaml` is a P60 starting profile for the core/API
-route mix. It enables redundant API, sync, enrichment, ENS and maintenance roles,
+route mix. It enables redundant API, sync, enrichment, verification and maintenance roles,
 two HPAs, one `PodDisruptionBudget` per selected role, and a component-scoped
 hard hostname-spread constraint with at least two eligible domains. Optional
 trace and metadata roles plus public verification remain
 disabled so their external capability budgets can be measured separately. The
 profile's maximum 20 Pods
-and 12-connection writer pool cap require up to 216 application PostgreSQL
+and 12-connection writer pool cap require up to 240 application PostgreSQL
 connections at steady state. Its maximum 8 API Pods add 96 connections when a
-same-sized reader pool is enabled, for 312 total. `maxSurge: 0` prevents a configured rollout
+same-sized reader pool is enabled, for 336 total. `maxSurge: 0` prevents a configured rollout
 surge, but terminating Pods can overlap replacements outside that count. A
 fully concurrent rollout can therefore require the old and new pools together,
-up to 432 connections without a reader or 624 with the same-sized reader;
+up to 480 connections without a reader or 672 with the same-sized reader;
 otherwise roll roles serially and measure the overlap. Reserve
 migration/operator capacity in addition.
 
@@ -287,7 +287,7 @@ runbook for the evidence boundary and tuning formula.
 
 ## Compiler executor
 
-Public source verification requires NetworkPolicy. The selected `all` or `api`
+Public source verification requires NetworkPolicy. The selected `all` or `verification`
 Pods own official
 `emscripten-wasm32` catalog discovery, checksum validation, and execution in a
 fresh permission-restricted Node 26.13.0 SEA subprocess. The single SEA,
@@ -302,7 +302,7 @@ CPU-platform setting.
 By default `compilerCache.existingClaim` is empty and each compiler-owning Pod
 receives its existing memory-backed `emptyDir`. Set it to one operator-created
 PVC to preserve the rebuildable artifact cache across Pod replacement. The
-same claim is mounted by every selected `all` or `api` replica; multi-node
+same claim is mounted by every selected `all` or `verification` replica; multi-node
 replicas therefore require storage supporting their concurrent read/write
 mounts (normally RWX), same-directory atomic rename, coherent reads, and Unix
 ownership/modes for UID/GID 65532. The chart never creates or deletes the
@@ -336,10 +336,10 @@ change and replica restart.
 `config.verification.geas_path` defaults to the bundled read-only Geas v0.3.3
 helper. Startup requires its exact module checksum, executable digest, and
 self-test. It has no catalog, network policy exception, cache, or external
-runtime volume; keep its identity equal across every `all`/`api` replica and
+runtime volume; keep its identity equal across every `all`/`verification` replica and
 drain bound Geas jobs before replacing it.
 
-A dedicated policy selects only `all` or `api` and permits DNS plus TCP/443 for
+A dedicated policy selects only `all` or `verification` and permits DNS plus TCP/443 for
 approved compiler catalogs and artifacts. Other worker roles receive neither
 the cache nor this egress. Catalog outages do not withdraw API readiness:
 version discovery reports unavailable and Solidity/Yul jobs remain queued;
@@ -352,7 +352,7 @@ Kubernetes API access to execute compilers.
 
 The default application NetworkPolicy admits the HTTP and metrics ports and
 permits DNS, PostgreSQL, and optionally shared HTTPS egress. Public verification
-adds a dedicated policy selecting only `all`/`api` and allowing DNS plus
+adds a dedicated policy selecting only `all`/`verification` and allowing DNS plus
 TCP/443 for approved compiler catalogs and artifacts. Add endpoint-specific application rules under
 `networkPolicy.additionalEgress` for NATS, Redis, plaintext/private RPC, or an
 S3-compatible service or PostgreSQL endpoint on another port. Setting

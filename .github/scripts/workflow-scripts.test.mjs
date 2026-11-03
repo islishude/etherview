@@ -222,7 +222,7 @@ test("Vyper PR wrapper retains manual flag and paths with spaces", () =>
 
 test("production image handoff checks revision, architecture, identity and failures", () => {
   for (const architecture of ["amd64", "arm64"])
-    for (const mode of ["save", "load"]) {
+    for (const mode of ["save", "load", "verify"]) {
       for (const failure of [
         "",
         "missing",
@@ -231,7 +231,8 @@ test("production image handoff checks revision, architecture, identity and failu
         "architecture",
         "os",
         "inspect",
-        mode,
+        ...(mode === "load" ? ["archive"] : []),
+        ...(mode === "verify" ? [] : [mode]),
       ]) {
         if (mode === "save" && ["missing", "revision", "image-id"].includes(failure)) continue;
         sandbox(({ dir, env, commands }) => {
@@ -245,8 +246,11 @@ test("production image handoff checks revision, architecture, identity and failu
             architecture,
             image_id: imageID,
           };
-          if (mode === "load" && failure !== "missing")
+          if (mode !== "save" && failure !== "missing")
             writeFileSync(join(bundle, "identity.json"), JSON.stringify(metadata));
+          const archive = join(bundle, "production-image.tar");
+          if (mode === "load" && failure !== "archive") writeFileSync(archive, "archive");
+          writeFileSync(join(bundle, "retained-evidence.json"), "retained");
           const identity = [
             {
               Id: failure === "image-id" ? `sha256:${"b".repeat(64)}` : imageID,
@@ -257,12 +261,13 @@ test("production image handoff checks revision, architecture, identity and failu
           writeFileSync(
             join(dir, "bin/docker"),
             `#!${process.execPath}
-import {appendFileSync,writeFileSync} from 'node:fs';
+import {appendFileSync,writeFileSync,readFileSync} from 'node:fs';
 const args=process.argv.slice(2);
 appendFileSync(process.env.COMMAND_LOG,JSON.stringify({command:'docker',args})+'\\n');
 if(args[1]===${JSON.stringify(failure)}) process.exit(9);
 if(args[1]==='inspect') console.log(${JSON.stringify(JSON.stringify(identity))});
 if(args[1]==='save') writeFileSync(args[3],'archive');
+if(args[1]==='load') readFileSync(args[3]);
 `,
             { mode: 0o755 },
           );
@@ -276,6 +281,9 @@ if(args[1]==='save') writeFileSync(args[3],'archive');
             },
           );
           const label = `${architecture}/${mode}/${failure || "success"}`;
+          assert.equal(readFileSync(join(bundle, "retained-evidence.json"), "utf8"), "retained");
+          if (mode === "load")
+            assert.equal(existsSync(archive), !!failure && failure !== "archive", label);
           if (!failure) {
             assert.equal(result.status, 0, `${label}: ${result.stderr}`);
             assert.deepEqual(JSON.parse(readFileSync(join(bundle, "identity.json"))), metadata);
@@ -287,7 +295,11 @@ if(args[1]==='save') writeFileSync(args[3],'archive');
             else assert(!existsSync(join(dir, "output")));
             assert.deepEqual(
               commands().map((c) => c.args[1]),
-              mode === "save" ? ["inspect", "save"] : ["load", "inspect"],
+              mode === "save"
+                ? ["inspect", "save"]
+                : mode === "load"
+                  ? ["load", "inspect"]
+                  : ["inspect"],
             );
           } else {
             assert.notEqual(result.status, 0, label);
@@ -454,6 +466,8 @@ test("shared Preview setup preserves image identity and makes browser preparatio
   assert.match(action, /uses: \.\/\.github\/actions\/load-production-image/);
   assert.doesNotMatch(action, /docker-build|actions\/checkout|setup-buildx-action/);
   const steps = action.split(/^    - /m).slice(1);
+  assert.doesNotMatch(action, /\bdf\b/);
+  assert.doesNotMatch(action, /sudo rm|\/usr\/local\/lib\/android|\/usr\/share\/dotnet/);
   for (const step of steps) {
     if (step.includes("run:")) assert.match(step, /shell: bash/);
     if (/playwright install|sudo sed/.test(step))
@@ -463,9 +477,13 @@ test("shared Preview setup preserves image identity and makes browser preparatio
     "pnpm install --frozen-lockfile",
     "make install-preview-tools",
     "make preview-cert",
-    "make preview-images",
+    "make preview-images-prebuilt",
   ])
     assert.equal(action.split(command).length - 1, 1, command);
   assert.ok(action.includes("CAROOT: ${{ runner.temp }}/preview-ca"));
   assert.match(action, /TRUST_STORES: system/);
+  assert.match(
+    action,
+    /make preview-images-prebuilt\n\s+node \.github\/scripts\/production-image-bundle\.mjs verify/,
+  );
 });

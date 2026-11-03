@@ -140,7 +140,7 @@ FROM verified_contracts AS verified
 JOIN verification_jobs AS job
   ON job.id = verified.verification_job_id
  AND job.request_digest = verified.request_digest
- AND job.kind = 'address'
+ AND job.kind IN ('address', 'sourcify_import')
  AND job.status = 'succeeded'
 WHERE verified.chain_id = $3::numeric
   AND verified.code_hash = $4::bytea

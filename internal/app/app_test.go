@@ -227,11 +227,13 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 			"37-trace-enrichment-03", "37-trace-enrichment-04",
 		}},
-		{name: "api with solc-js verification", role: components.RoleAPI, setup: func(cfg *config.Config) {
+		{name: "API submits without execution", role: components.RoleAPI, setup: func(cfg *config.Config) {
+			cfg.Features.Verification = true
+		}, want: []string{"00-operations-http", "02-durable-metrics", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
+		{name: "verification with solc-js", role: components.RoleVerification, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics", "08-runtime-event-relay",
-			"09-home-snapshot-feed", "20-public-api",
+			"00-operations-http", "02-durable-metrics",
 			"35-compiler-catalog-refresher", "40-contract-verification-01",
 		}},
 		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "02-durable-metrics", "50-role-metadata"}},
@@ -339,9 +341,8 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 			"00-operations-http", "02-durable-metrics",
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 		}},
-		{role: components.RoleAPI, want: []string{
+		{role: components.RoleVerification, want: []string{
 			"00-operations-http", "02-durable-metrics",
-			"08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api",
 			"35-compiler-catalog-refresher",
 			"40-contract-verification-01", "40-contract-verification-02",
 			"41-factory-derived-verification-01", "41-factory-derived-verification-02",
@@ -770,4 +771,8 @@ func TestBrowserPushComponentRoleBoundary(t *testing.T) {
 			t.Fatalf("unexpected push component role=%s keys=%v", role, keys)
 		}
 	}
+}
+
+func (executor *appRangeExecutor) Bind(maintenance.Lease) (maintenance.RangeExecutor, error) {
+	return executor, nil
 }

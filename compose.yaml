@@ -18,26 +18,18 @@ services:
       service: nats
 
   genesis-verify:
-    image: etherview-preview-bundler:local
-    profiles: ["genesis-verify"]
-    entrypoint: ["node", "/verification/verify.mjs"]
-    user: node
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
+    extends:
+      file: preview/compose/chain.yaml
+      service: genesis-verify
     volumes:
       - ./preview/verification:/verification:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-    restart: "no"
 
   bundler:
     extends:
       file: preview/compose/chain.yaml
       service: bundler
     volumes:
-      - ./preview/bundler-start.mjs:/app/src/preview-start.mjs:ro
-      - ./preview/contracts/manifest.json:/config/contracts.json:ro
-      - ./preview/contracts/allocation.json:/config/allocation.json:ro
       - ./preview/rundler.toml:/config/rundler.toml:ro
 
   ipfs:
@@ -142,6 +134,12 @@ services:
     extends:
       file: preview/compose/app.yaml
       service: api
+
+  verification:
+    <<: *etherview-paths
+    extends:
+      file: preview/compose/app.yaml
+      service: verification
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro

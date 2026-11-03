@@ -147,7 +147,7 @@ func (worker *Worker) ProcessOne(ctx context.Context) (bool, error) {
 		return true, fmt.Errorf("guard maintenance finality: %w", err)
 	}
 
-	executionErr := worker.execute(ctx, lease.Request)
+	executionErr := worker.execute(ctx, lease)
 	if executionErr != nil {
 		if ctx.Err() != nil {
 			return true, ctx.Err()
@@ -188,17 +188,22 @@ func (worker *Worker) observe(
 	}
 }
 
-func (worker *Worker) execute(ctx context.Context, request Request) (err error) {
+func (worker *Worker) execute(ctx context.Context, lease Lease) (err error) {
 	defer func() {
 		if recover() != nil {
 			err = errors.New("maintenance range executor panicked")
 		}
 	}()
+	request := lease.Request
+	executor, err := worker.executor.Bind(lease)
+	if err != nil {
+		return err
+	}
 	switch request.Operation {
 	case OperationRepair:
-		return worker.executor.Repair(ctx, request)
+		return executor.Repair(ctx, request)
 	case OperationReindex:
-		return worker.executor.Reindex(ctx, request)
+		return executor.Reindex(ctx, request)
 	default:
 		return fmt.Errorf("%w: unsupported operation %q", ErrInvalidRequest, request.Operation)
 	}

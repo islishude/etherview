@@ -232,3 +232,51 @@ test("facilitator fixture exception is restricted to its public key and exact pa
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Rundler fixture exception retains exact key and current and historical path boundaries", () => {
+  const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-rundler-"));
+  const file = "preview/compose/chain.yaml";
+  const historical = "preview/bundler-start.mjs";
+  const key = readFileSync(file, "utf8").match(/SIGNER_PRIVATE_KEYS: "([a-f0-9]{64})"/)[1];
+  try {
+    for (const name of [file, historical, `nested/${file}`, `${file}.bak`]) {
+      mkdirSync(dirname(join(root, name)), { recursive: true });
+      writeFileSync(
+        join(root, name),
+        [key, publicHash].map((value) => `private_key = "${value}"`).join("\n"),
+      );
+    }
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        resolve(".gitleaks.toml"),
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
+    assert.deepEqual(
+      findings.map(({ File, StartLine }) => `${File}:${StartLine}`).sort(),
+      [
+        `${file}:2`,
+        `${historical}:2`,
+        `nested/${file}:1`,
+        `nested/${file}:2`,
+        `${file}.bak:1`,
+        `${file}.bak:2`,
+      ].sort(),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

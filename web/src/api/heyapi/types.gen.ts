@@ -1698,9 +1698,12 @@ export type VerificationOutcome = CompilationFailureOutcome | VerificationFailur
 
 export type VerificationJob = {
     id: string;
-    kind: 'address' | 'solidity_multipart' | 'solidity_standard_json' | 'vyper_standard_json' | 'vyper_multipart' | 'solidity_batch_multipart' | 'solidity_batch_standard_json' | 'sourcify' | 'sourcify_from_etherscan';
+    kind: 'address' | 'solidity_multipart' | 'solidity_standard_json' | 'vyper_standard_json' | 'vyper_multipart' | 'solidity_batch_multipart' | 'solidity_batch_standard_json' | 'sourcify_import' | 'sourcify' | 'sourcify_from_etherscan';
     status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
     outcome?: VerificationOutcome;
+    /**
+     * Stable terminal failure code. Source import can report sourcify_not_found, sourcify_target_mismatch, sourcify_invalid_source or sourcify_unavailable after bounded retries. Local compiler, match and canonicality failures retain their existing verification codes; upstream error details and credentials are never returned.
+     */
     error_code?: string;
     created_at: string;
     updated_at: string;
@@ -2495,9 +2498,12 @@ export type BrowserSourcifySourceImportRequest = {
 
 export type BrowserVerificationJob = {
     id: string;
-    kind: 'address' | 'solidity_multipart' | 'solidity_standard_json' | 'vyper_standard_json' | 'vyper_multipart' | 'solidity_batch_multipart' | 'solidity_batch_standard_json' | 'sourcify' | 'sourcify_from_etherscan';
+    kind: 'address' | 'solidity_multipart' | 'solidity_standard_json' | 'vyper_standard_json' | 'vyper_multipart' | 'solidity_batch_multipart' | 'solidity_batch_standard_json' | 'sourcify_import' | 'sourcify' | 'sourcify_from_etherscan';
     status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
     outcome?: BrowserVerificationOutcome;
+    /**
+     * Stable terminal failure code. Source import can report sourcify_not_found, sourcify_target_mismatch, sourcify_invalid_source or sourcify_unavailable after bounded retries. Local compiler, match and canonicality failures retain their existing verification codes; upstream error details and credentials are never returned.
+     */
     error_code?: string;
     created_at: string;
     updated_at: string;
@@ -5336,7 +5342,7 @@ export type ImportBrowserSourcifyContractError = ImportBrowserSourcifyContractEr
 
 export type ImportBrowserSourcifyContractResponses = {
     /**
-     * Verification accepted for asynchronous execution.
+     * Source import accepted for asynchronous retrieval and local verification.
      */
     202: BrowserVerificationJobResponse;
 };
@@ -5508,7 +5514,7 @@ export type ImportSourcifyContractError = ImportSourcifyContractErrors[keyof Imp
 
 export type ImportSourcifyContractResponses = {
     /**
-     * Sources retrieved and local verification queued.
+     * Source import accepted for asynchronous retrieval and local verification.
      */
     202: VerificationJobResponse;
 };

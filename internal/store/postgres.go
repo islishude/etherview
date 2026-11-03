@@ -28,7 +28,7 @@ const chainWriteIsolation pgx.TxIsoLevel = pgx.ReadCommitted
 
 type PostgresRepository struct {
 	db         dbaccess.Database
-	partitions partitionRangeCache
+	partitions *partitionRangeCache
 }
 
 func NewPostgresRepository(db dbaccess.Database) (*PostgresRepository, error) {
@@ -1055,4 +1055,20 @@ func nullableHash(reference *BlockRef) []byte {
 		return nil
 	}
 	return mustHashBytes(reference.Hash)
+}
+
+// WithLiveHead binds both observation and canonical publication to one session.
+func (r *PostgresRepository) WithLiveHead(ctx context.Context, chainID string, work func(Repository) error) (bool, error) {
+	chainID, err := normalizeChainID(chainID)
+	if err != nil {
+		return false, err
+	}
+	return dbaccess.WithSessionLock(ctx, r.db, "etherview:live-head:"+chainID, func(db dbaccess.Database) error {
+		scoped, err := NewPostgresRepository(db)
+		if err != nil {
+			return err
+		}
+		scoped.partitions = r.partitions
+		return work(scoped)
+	})
 }

@@ -20,6 +20,11 @@ correctness implementation and break the PostgreSQL-only deployment.
   tolerates missed or malformed notifications. Broker connection and publish
   failures are redacted, self-healing latency loss and do not withdraw
   readiness.
+- Verification submission emits `jobs` only after PostgreSQL commit. Each
+  verification worker subscribes through a bounded coalescing channel and drains
+  runnable work before waiting. No NATS configuration means PostgreSQL polling
+  alone; lost notifications and broker outages retain periodic polling and do
+  not withdraw readiness. Automatic discovery follows the same commit boundary.
 - Redis runs one atomic, identity-hashed token bucket shared by API replicas.
   A bounded Redis failure uses the existing process-local token bucket, so the
   degraded quota is per replica but the native and compatibility error

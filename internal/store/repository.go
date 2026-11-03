@@ -93,6 +93,7 @@ type RefreshOptions struct {
 // method that changes canonicality also changes the core checkpoint in the same
 // database transaction.
 type Repository interface {
+	WithLiveHead(context.Context, string, func(Repository) error) (bool, error)
 	ConfigureIndex(ctx context.Context, chainID string, configuredStart uint64) error
 	Coverage(ctx context.Context, chainID string) (CoreCoverage, bool, error)
 	CommitCanonicalSegment(ctx context.Context, chainID string, bundles []chainbundle.Bundle) (CoreCoverage, error)

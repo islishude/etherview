@@ -231,10 +231,8 @@ nonces and initializer state must remain together.
 ENS sources are pinned to the official v1.7.0 GitHub commit and compiled locally;
 the ENS npm package is deliberately absent because of its package-wide malware
 advisory. Rundler uses the official image with an explicit version tag in
-`preview/bundler.Dockerfile`. `make preview-bundler-image`
-copies its binary into the Node launcher image, with Docker selecting the matching
-Linux architecture. The image includes the reviewed GPL/LGPL notices.
-The launcher checks chain ID and EntryPoint code at block zero, enables only
-v0.9 and standard eth RPC, and never enables unsafe fallback. See
+`preview/compose/chain.yaml`. Compose runs Rundler directly after Geth becomes
+healthy, enables only v0.9 and standard eth RPC, and never enables unsafe fallback.
+Chain ID and EntryPoint code at block zero are checked by acceptance tests. See
 [ADR-0057](../../docs/decisions/ADR-0057-preview-rundler.md). Ordinary startup uses
 checked-in genesis bytecode and storage without compilation or deployment.

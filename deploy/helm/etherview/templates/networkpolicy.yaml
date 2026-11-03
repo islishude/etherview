@@ -80,7 +80,7 @@ spec:
   podSelector:
     matchLabels:
       {{- include "etherview.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: {{ ternary "all" "api" (eq .Values.mode "monolith") }}
+      app.kubernetes.io/component: {{ ternary "all" "verification" (eq .Values.mode "monolith") }}
   policyTypes: [Egress]
   egress:
     - ports:

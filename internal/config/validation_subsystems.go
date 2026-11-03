@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -252,7 +253,9 @@ func validateFeatureSecurityConfig(c Config) error {
 	if c.Security.PublicVerification && !c.Features.Verification {
 		errs = append(errs, errors.New("public verification requires features.verification"))
 	}
-	if c.Security.PublicVerification && len(c.Security.APIKeyPepper) < 32 {
+	roles, _ := NormalizeRoles(c.Runtime.Roles)
+	needsPepper := slices.Contains(roles, "api") || (slices.Contains(roles, "verification") && c.Features.Sourcify)
+	if c.Security.PublicVerification && needsPepper && len(c.Security.APIKeyPepper) < 32 {
 		errs = append(errs, errors.New("public verification requires API key authentication"))
 	}
 	if c.Security.APIKeyPepper != "" && len(c.Security.APIKeyPepper) < 32 {

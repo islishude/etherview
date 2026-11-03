@@ -1,4 +1,4 @@
-# ADR-0031: API-Owned Architecture-Neutral solc-js Executor
+# ADR-0031: Verification-Role-Owned Architecture-Neutral solc-js Executor
 
 Status: accepted
 
@@ -33,7 +33,7 @@ now uses application-locked packages and dual-Pyodide SEA execution.
 
 - This executor owns Solidity and Yul. Vyper and Geas have separate execution
   contracts; all use the current fresh-database publication model.
-- `api` and `all` own compiler catalog refresh, checksum-addressed artifact
+- `verification` and `all` own compiler catalog refresh, checksum-addressed artifact
   caching, job leases, compilation, and publication. There is no
   compiler-runner service, runner protocol, runner image, or compiler-specific
   deployment platform setting.
@@ -66,7 +66,7 @@ now uses application-locked packages and dual-Pyodide SEA execution.
   and Standard JSON remain hostile bounded data and never select executable
   code, paths, imports, environment, or subprocess arguments.
 - A canonical build-time manifest covers the Node binary, wrapper, production
-  package tree, and their hashes. `api` and `all` verify the complete manifest
+  package tree, and their hashes. `verification` and `all` verify the complete manifest
   and a bounded wrapper self-test before accepting compiler work. The manifest
   digest is immutable `executor_digest` provenance. New compiler work uses
   `executor_kind=node_solcjs_v1` and
@@ -90,7 +90,7 @@ now uses application-locked packages and dual-Pyodide SEA execution.
   one CPU platform. Replicas within one deployment are assumed homogeneous
   while executor-bound jobs are drained during upgrades. A runtime-path change
   follows the same rule: drain bound jobs, deploy one manifest digest to every
-  API-capable replica, and restart those replicas before admitting new work.
+  verification replica, and restart those replicas before admitting new work.
 
 This decision supersedes the earlier remote-runner decisions. It supersedes
 ADR-0024 only where that decision requires Vyper, native executable platform
@@ -98,6 +98,12 @@ selection,
 hard compiler isolation, runner images, or runner provenance. ADR-0024 remains
 authoritative for catalog integrity, dual compilation, bounded matching,
 canonical publication, stable errors, and hostile-input handling.
+
+- Catalog refresh takes a schema- and language-scoped PostgreSQL session lock
+  before downloading. Persistence and head activation use that same physical
+  connection, so a delayed response cannot overwrite a takeover's generation.
+  Contenders retry without declaring the retained catalog stale. Immutable
+  application-locked Vyper entries keep their existing publication path.
 
 ## Consequences
 

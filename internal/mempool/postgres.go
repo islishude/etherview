@@ -959,3 +959,11 @@ func equalOptionalString(left, right *string) bool {
 func equalOptionalNull(value *string, stored pgtype.Text) bool {
 	return value == nil && !stored.Valid || value != nil && stored.Valid && *value == stored.String
 }
+
+func (repository *Postgres) WithPoll(ctx context.Context, work func(Store) error) (bool, error) {
+	return dbaccess.WithSessionLock(ctx, repository.db, "etherview:mempool-poll:"+repository.chain, func(db dbaccess.Database) error {
+		scoped := *repository
+		scoped.db = db
+		return work(&scoped)
+	})
+}

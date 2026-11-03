@@ -267,3 +267,5 @@ func validRequest() Request {
 		FromBlock: 100, ToBlock: 199, Reason: "operator requested gap repair",
 	}
 }
+
+func (executor *memoryRangeExecutor) Bind(Lease) (RangeExecutor, error) { return executor, nil }

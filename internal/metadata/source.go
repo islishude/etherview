@@ -94,6 +94,7 @@ func (observation NFTSourceObservation) validate() error {
 }
 
 type NFTSourceRepository interface {
+	WithSourceDiscovery(context.Context, func(NFTSourceRepository) error) (bool, error)
 	NextNFTSource(context.Context) (NFTSourceCandidate, bool, error)
 	NFTSourceCanonical(context.Context, NFTSourceCandidate) (bool, error)
 	RecordNFTSource(context.Context, NFTSourceObservation) error
@@ -159,8 +160,18 @@ func (discoverer *SourceDiscoverer) Run(ctx context.Context) error {
 }
 
 func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, error) {
+	processed := false
+	_, err := discoverer.repository.WithSourceDiscovery(ctx, func(repository NFTSourceRepository) error {
+		var err error
+		processed, err = discoverer.processOwned(ctx, repository)
+		return err
+	})
+	return processed, err
+}
+
+func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository NFTSourceRepository) (bool, error) {
 	startedAt := time.Now()
-	candidate, found, err := discoverer.repository.NextNFTSource(ctx)
+	candidate, found, err := repository.NextNFTSource(ctx)
 	if err != nil || !found {
 		return false, err
 	}
@@ -179,7 +190,7 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 		return false, nil
 	}
 	discoverer.pool.ReportSuccess(endpoint.Name)
-	canonical, err := discoverer.repository.NFTSourceCanonical(ctx, candidate)
+	canonical, err := repository.NFTSourceCanonical(ctx, candidate)
 	if err != nil {
 		return true, err
 	}
@@ -188,7 +199,7 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 		return true, nil
 	}
 	if unavailableCode != "" {
-		err := discoverer.repository.RecordNFTSource(ctx, NFTSourceObservation{
+		err := repository.RecordNFTSource(ctx, NFTSourceObservation{
 			Candidate: candidate, State: NFTSourceUnavailable, ErrorCode: unavailableCode,
 		})
 		if err == nil {
@@ -201,10 +212,10 @@ func (discoverer *SourceDiscoverer) ProcessOnce(ctx context.Context) (bool, erro
 		BlockNumber: candidate.BlockNumber, BlockHash: candidate.BlockHash,
 		SourceURI: sourceURI, MaxAttempts: discoverer.options.MaxAttempts,
 	}
-	if _, err := discoverer.repository.EnqueueNFT(ctx, request); err != nil {
+	if _, err := repository.EnqueueNFT(ctx, request); err != nil {
 		return true, err
 	}
-	if err := discoverer.repository.RecordNFTSource(ctx, NFTSourceObservation{
+	if err := repository.RecordNFTSource(ctx, NFTSourceObservation{
 		Candidate: candidate, State: NFTSourceFound, SourceURI: sourceURI,
 	}); err != nil {
 		return true, err

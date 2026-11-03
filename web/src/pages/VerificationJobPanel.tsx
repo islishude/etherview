@@ -184,6 +184,9 @@ function resultSummary(job: BrowserVerificationJob, external: boolean) {
   if (job.error_code?.includes("too_large")) return "verification.resourceLimit";
   if (job.error_code?.startsWith("compiler_") || job.error_code === "sandbox_required")
     return "verification.compilerUnavailable";
+  if (job.error_code === "sourcify_not_found") return "verification.importNotFound";
+  if (job.error_code === "sourcify_target_mismatch") return "verification.importMismatch";
+  if (job.error_code === "sourcify_invalid_source") return "verification.importInvalid";
   if (job.error_code?.startsWith("sourcify_")) return "verification.upstreamUnavailable";
   return "verification.failedSummary";
 }

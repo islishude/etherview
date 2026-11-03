@@ -55,6 +55,9 @@ func (refresher *CatalogRefresher) Run(ctx context.Context) error {
 
 func (refresher *CatalogRefresher) refreshDelay(ctx context.Context) time.Duration {
 	generation, refreshErr := refresher.catalog.Refresh(ctx, LanguageSolidity)
+	if errors.Is(refreshErr, ErrCompilerCatalogRefreshBusy) {
+		return unavailableCatalogRetryInterval
+	}
 	if refreshErr == nil {
 		level := slog.LevelDebug
 		if refresher.state != "available" || refresher.generation != generation {

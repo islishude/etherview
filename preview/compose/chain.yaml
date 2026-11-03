@@ -1,23 +1,40 @@
 services:
+  genesis-verify:
+    image: etherview-preview-genesis-verify:local
+    build:
+      context: ../..
+      dockerfile: tools/genesis-verify/Dockerfile
+    profiles: ["genesis-verify"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
   bundler:
-    image: ${PREVIEW_BUNDLER_IMAGE:-etherview-preview-bundler:local}
-    entrypoint: ["node", "/app/src/preview-start.mjs"]
+    image: ${PREVIEW_BUNDLER_IMAGE:-alchemyplatform/rundler:v0.11.0}
+    user: "1000:1000"
+    command:
+      - node
+      - --node_http
+      - http://geth:8545
+      - --chain_spec
+      - /config/rundler.toml
+      - --enabled_entry_points
+      - v0.9
+      - --rpc.host
+      - 0.0.0.0
+      - --rpc.port
+      - "4337"
+      - --rpc.api
+      - eth
+    environment:
+      RUST_LOG: warn
+      # Public development identity: mnemonic index 9, prefunded in Preview genesis.
+      SIGNER_PRIVATE_KEYS: "2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"
     depends_on:
       geth:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4337',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_supportedEntryPoints',params:[]})}).then(r=>r.json()).then(r=>process.exit(r.result?.[0]?.toLowerCase()==='0x433709009b8330fda32311df1c2afa402ed8d009'?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 5s
-      timeout: 4s
-      retries: 36
-      start_period: 10s
 
   geth:
     image: ${GETH_IMAGE:-ethereum/client-go:v1.17.10}
@@ -44,6 +61,12 @@ services:
     ports:
       - "127.0.0.1:${GETH_HTTP_PORT:-8545}:8545"
       - "127.0.0.1:${GETH_WS_PORT:-8546}:8546"
+    healthcheck:
+      test: ["CMD", "geth", "attach", "--exec", "eth.blockNumber", "http://127.0.0.1:8545"]
+      interval: 5s
+      timeout: 4s
+      retries: 36
+      start_period: 10s
     restart: unless-stopped
 
   lighthouse:

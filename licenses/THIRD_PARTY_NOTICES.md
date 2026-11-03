@@ -153,14 +153,14 @@ The generator version and package integrity are pinned in `pnpm-lock.yaml`.
 
 ## Preview application contracts and Bundler
 
-The separate Preview Bundler image contains the official Rundler 0.11.0 binary
+Preview uses the official Rundler 0.11.0 image directly, with matching source
 from https://github.com/alchemyplatform/rundler/releases/tag/v0.11.0.
 Its executable is GPL-3.0-or-later and its libraries are LGPL-3.0-or-later.
 The matching source is available at that release tag. Both license texts are
 retained in `preview-rundler-GPL-3.0.txt` and `preview-rundler-LGPL-3.0.txt`
-and shipped under `/app/licenses/` in the image. The binary is copied from the
-official `alchemyplatform/rundler` image, whose version tag is set in
-`preview/bundler.Dockerfile` for both Linux ARM64 and AMD64.
+in this repository. The upstream `alchemyplatform/rundler` image is used
+unmodified, with its version tag set in `preview/compose/chain.yaml` for both
+Linux ARM64 and AMD64.
 
 Preview genesis embeds account-abstraction v0.9.0 contracts (commit
 b36a1ed52ae00da6f8a4c8d50181e2877e4fa410, GPL-3.0) using canonical creation

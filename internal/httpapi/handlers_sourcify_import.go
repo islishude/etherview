@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,7 +11,7 @@ import (
 )
 
 func (h *Handler) importSourcifyContract(w http.ResponseWriter, r *http.Request) {
-	if h.verificationSubmitter == nil || h.verificationTargets == nil || h.sourcifyImporter == nil || !h.cfg.Features.Sourcify {
+	if h.verificationSubmitter == nil || h.verificationTargets == nil || !h.cfg.Features.Sourcify {
 		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "Sourcify import is unavailable", nil)
 		return
 	}
@@ -23,7 +22,7 @@ func (h *Handler) importSourcifyContract(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) importSourcifyContractAuthorized(w http.ResponseWriter, r *http.Request) {
-	if h.verificationSubmitter == nil || h.verificationTargets == nil || h.sourcifyImporter == nil || !h.cfg.Features.Sourcify {
+	if h.verificationSubmitter == nil || h.verificationTargets == nil || !h.cfg.Features.Sourcify {
 		writeError(w, r, http.StatusServiceUnavailable, "verification_unavailable", "Sourcify import is unavailable", nil)
 		return
 	}
@@ -50,26 +49,12 @@ func (h *Handler) importSourcifyContractInput(w http.ResponseWriter, r *http.Req
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", "source chain ID must be a positive canonical uint64 string", nil)
 		return
 	}
-	// ResolveVerificationTarget closes its database snapshot before returning;
-	// no connection or transaction is retained across the external lookup.
+	// ResolveVerificationTarget closes its snapshot before the durable enqueue.
+	// The verification worker performs every external source request.
 	target, err := h.verificationTargets.ResolveVerificationTarget(r.Context(), address)
 	if err != nil || target.ChainID != h.cfg.Chain.ID || !strings.EqualFold(target.Address, address) {
 		h.handleVerificationTargetError(w, r, err)
 		return
 	}
-	request, err := h.sourcifyImporter.ImportV2(r.Context(), sourceChainID, target)
-	if err != nil {
-		switch {
-		case errors.Is(err, verify.ErrSourcifyNotFound):
-			writeError(w, r, http.StatusNotFound, "sourcify_not_found", "No verified contract was found on Sourcify for this chain and address", nil)
-		case errors.Is(err, verify.ErrSourcifyTargetMismatch):
-			writeError(w, r, http.StatusConflict, "sourcify_target_mismatch", "Sourcify runtime does not match the canonical local contract", nil)
-		case errors.Is(err, verify.ErrSourcifyInvalidResponse):
-			writeError(w, r, http.StatusBadGateway, "sourcify_invalid_source", "Sourcify sources or compiler settings cannot be imported", nil)
-		default:
-			writeError(w, r, http.StatusServiceUnavailable, "sourcify_unavailable", "Sourcify source retrieval is unavailable", nil)
-		}
-		return
-	}
-	h.submitV2(w, r, request)
+	h.submitV2(w, r, verify.SubmissionV2{Kind: verify.JobSourcifyImport, SourceChainID: sourceChainID, Target: &target})
 }

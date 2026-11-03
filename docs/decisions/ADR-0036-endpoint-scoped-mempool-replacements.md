@@ -54,6 +54,12 @@ inclusion must be compared without read-replica lag.
 - The unified lookup is writer-routed whenever mempool collection is enabled.
   It is an explicit exception to ordinary read-replica explorer projections.
 
+- Sync replicas serialize each complete poll with a chain-scoped session lock
+  acquired before the RPC request. Snapshot and failure publication use that
+  same connection. Contenders skip a poll and a lost session cannot publish a
+  delayed response after takeover. Response-arrival timestamps alone do not
+  establish ordering between concurrent remote observations.
+
 ## Consequences
 
 Replacement is intentionally an endpoint-scoped observation rather than a

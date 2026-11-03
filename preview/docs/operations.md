@@ -54,6 +54,13 @@ selected with `PREVIEW_NETWORK_DIR`; individual `ETHERVIEW_GENESIS_FILE` and
 `GETH_GENESIS_FILE` overrides are rejected. Custom bundles are never deleted by
 the stop target and must be reset by their owner.
 
+Compiler cache initialization validates permissions as the application user
+`65532:65532`, including an actual temporary-file access probe. On Docker Desktop,
+a different owner shown by a root container alone does not require clearing
+the cache. If application-visible ownership or mode validation fails, stop all
+cache consumers before explicit reclamation; do not use recursive `chown` or
+`chmod` on a live cache. See [cache lifecycle](setup.md) for cleanup.
+
 The template retains its pre-funded development addresses and system contracts.
 Transactions are signed locally with the standard Hardhat development account
 `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` (the first account from
@@ -458,13 +465,15 @@ remove their volumes as part of an application update.
 
 `make start-preview` runs source verification after real PoS readiness.
 `make recreate-preview` preserves existing publications and does not run this step. The `genesis-verify` Compose profile uses the existing
-Preview Node/Rundler image, a read-only source bundle, and the internal API and
-Geth endpoints. It does not deploy contracts or change chain state.
+Go tool at `tools/genesis-verify`, packaged in its own non-root image, a read-only
+source bundle, and the internal API and Geth endpoints. Its service definition
+lives in `preview/compose/chain.yaml`, extended by the root `compose.yaml`.
+Host mounts remain in the root file so relative network overrides keep the same base. It does not deploy contracts or change chain state.
 
 Run `make verify-preview-genesis` to retry this step on a running Preview.
 The host wrapper creates an API key scoped to `api:read` and `contract:verify`,
 passes it only over stdin, and revokes it in cleanup. Source verification uses
-the ordinary API queue and API-role compiler workers. It requires the normal
+the ordinary API queue and verification-role compiler workers. It requires the normal
 compiler catalog and checksum-verified compiler downloads; first startup can
 therefore take longer or fail if compiler hosts are unavailable.
 

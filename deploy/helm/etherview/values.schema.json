@@ -4,12 +4,7 @@
     "autoscaling": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "minReplicas",
-        "maxReplicas",
-        "targetCPUUtilizationPercentage"
-      ],
+      "required": ["enabled", "minReplicas", "maxReplicas", "targetCPUUtilizationPercentage"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -36,11 +31,7 @@
     "role": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "replicas",
-        "autoscaling"
-      ],
+      "required": ["enabled", "replicas", "autoscaling"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -65,11 +56,7 @@
       "properties": {
         "protocol": {
           "type": "string",
-          "enum": [
-            "TCP",
-            "UDP",
-            "SCTP"
-          ]
+          "enum": ["TCP", "UDP", "SCTP"]
         },
         "port": {
           "oneOf": [
@@ -144,10 +131,7 @@
     },
     "mode": {
       "type": "string",
-      "enum": [
-        "monolith",
-        "distributed"
-      ]
+      "enum": ["monolith", "distributed"]
     },
     "blobArchiveServiceAccounts": {
       "type": "object",
@@ -167,11 +151,7 @@
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "create",
-        "annotations",
-        "name"
-      ],
+      "required": ["create", "annotations", "name"],
       "properties": {
         "create": {
           "type": "boolean"
@@ -192,13 +172,7 @@
     "s3ServiceAccount": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "create",
-        "annotations",
-        "name",
-        "eksPodIdentity"
-      ],
+      "required": ["enabled", "create", "annotations", "name", "eksPodIdentity"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -225,12 +199,7 @@
     "apiTLS": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "existingSecret",
-        "certificateKey",
-        "privateKeyKey"
-      ],
+      "required": ["enabled", "existingSecret", "certificateKey", "privateKeyKey"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -249,10 +218,7 @@
     },
     "image": {
       "type": "object",
-      "required": [
-        "repository",
-        "pullPolicy"
-      ],
+      "required": ["repository", "pullPolicy"],
       "properties": {
         "repository": {
           "type": "string",
@@ -263,21 +229,14 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": [
-            "Always",
-            "IfNotPresent",
-            "Never"
-          ]
+          "enum": ["Always", "IfNotPresent", "Never"]
         }
       }
     },
     "compilerCache": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "existingClaim",
-        "sizeLimit"
-      ],
+      "required": ["existingClaim", "sizeLimit"],
       "properties": {
         "existingClaim": {
           "type": "string",
@@ -293,14 +252,7 @@
     "genesisState": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "existingClaim",
-        "key",
-        "mountPath",
-        "url",
-        "sha256",
-        "fetchTimeout"
-      ],
+      "required": ["existingClaim", "key", "mountPath", "url", "sha256", "fetchTimeout"],
       "properties": {
         "existingClaim": {
           "type": "string"
@@ -355,7 +307,8 @@
         "enrich",
         "trace",
         "metadata",
-        "maintenance"
+        "maintenance",
+        "verification"
       ],
       "properties": {
         "all": {
@@ -378,22 +331,19 @@
         },
         "maintenance": {
           "$ref": "#/$defs/role"
+        },
+        "verification": {
+          "$ref": "#/$defs/role"
         }
       }
     },
     "resources": {
       "type": "object",
-      "required": [
-        "requests",
-        "limits"
-      ],
+      "required": ["requests", "limits"],
       "properties": {
         "requests": {
           "type": "object",
-          "required": [
-            "cpu",
-            "memory"
-          ],
+          "required": ["cpu", "memory"],
           "properties": {
             "cpu": {
               "type": "string",
@@ -407,10 +357,7 @@
         },
         "limits": {
           "type": "object",
-          "required": [
-            "cpu",
-            "memory"
-          ],
+          "required": ["cpu", "memory"],
           "properties": {
             "cpu": {
               "type": "string",
@@ -427,10 +374,7 @@
     "deploymentStrategy": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "maxSurge",
-        "maxUnavailable"
-      ],
+      "required": ["maxSurge", "maxUnavailable"],
       "properties": {
         "maxSurge": {
           "type": "string",
@@ -445,10 +389,7 @@
     "podDisruptionBudget": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "minAvailable"
-      ],
+      "required": ["enabled", "minAvailable"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -462,13 +403,7 @@
     "roleTopologySpread": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "maxSkew",
-        "minDomains",
-        "topologyKey",
-        "whenUnsatisfiable"
-      ],
+      "required": ["enabled", "maxSkew", "minDomains", "topologyKey", "whenUnsatisfiable"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -493,12 +428,7 @@
     "migration": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "backoffLimit",
-        "activeDeadlineSeconds",
-        "ttlSecondsAfterFinished"
-      ],
+      "required": ["enabled", "backoffLimit", "activeDeadlineSeconds", "ttlSecondsAfterFinished"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -682,10 +612,7 @@
         "secretStoreRef": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "name",
-            "kind"
-          ],
+          "required": ["name", "kind"],
           "properties": {
             "name": {
               "type": "string",
@@ -693,10 +620,7 @@
             },
             "kind": {
               "type": "string",
-              "enum": [
-                "SecretStore",
-                "ClusterSecretStore"
-              ]
+              "enum": ["SecretStore", "ClusterSecretStore"]
             }
           }
         },
@@ -777,10 +701,7 @@
         "turnstile": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "enabled",
-            "site_key"
-          ],
+          "required": ["enabled", "site_key"],
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -794,11 +715,7 @@
         "push": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "enabled",
-            "public_key",
-            "contact"
-          ],
+          "required": ["enabled", "public_key", "contact"],
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -878,11 +795,7 @@
         },
         "server": {
           "type": "object",
-          "required": [
-            "public_url",
-            "tls_cert_file",
-            "tls_key_file"
-          ],
+          "required": ["public_url", "tls_cert_file", "tls_key_file"],
           "properties": {
             "public_url": {
               "type": "string",
@@ -927,11 +840,7 @@
             "add_chain": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "rpc_urls",
-                "block_explorer_urls",
-                "icon_urls"
-              ],
+              "required": ["rpc_urls", "block_explorer_urls", "icon_urls"],
               "properties": {
                 "rpc_urls": {
                   "type": "array",
@@ -969,9 +878,7 @@
         },
         "database": {
           "type": "object",
-          "required": [
-            "url"
-          ],
+          "required": ["url"],
           "properties": {
             "url": {
               "const": "",
@@ -1007,9 +914,7 @@
         },
         "rpc": {
           "type": "object",
-          "required": [
-            "endpoints"
-          ],
+          "required": ["endpoints"],
           "properties": {
             "endpoints": {
               "type": "array",
@@ -1052,9 +957,7 @@
         "erc4337": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "entry_points"
-          ],
+          "required": ["entry_points"],
           "properties": {
             "entry_points": {
               "type": "array",
@@ -1062,11 +965,7 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "address",
-                  "version",
-                  "from_block"
-                ],
+                "required": ["address", "version", "from_block"],
                 "properties": {
                   "address": {
                     "type": "string",
@@ -1074,12 +973,7 @@
                   },
                   "version": {
                     "type": "string",
-                    "enum": [
-                      "0.6",
-                      "0.7",
-                      "0.8",
-                      "0.9"
-                    ]
+                    "enum": ["0.6", "0.7", "0.8", "0.9"]
                   },
                   "from_block": {
                     "type": "integer",
@@ -1096,9 +990,7 @@
         },
         "security": {
           "type": "object",
-          "required": [
-            "api_key_pepper"
-          ],
+          "required": ["api_key_pepper"],
           "properties": {
             "api_key_pepper": {
               "const": "",
@@ -1119,11 +1011,7 @@
           ],
           "propertyNames": {
             "not": {
-              "enum": [
-                "node_path",
-                "wrapper_path",
-                "manifest_path"
-              ]
+              "enum": ["node_path", "wrapper_path", "manifest_path"]
             }
           },
           "properties": {
@@ -1292,12 +1180,7 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "name",
-                  "network",
-                  "facilitator_url",
-                  "tokens"
-                ],
+                "required": ["name", "network", "facilitator_url", "tokens"],
                 "properties": {
                   "network": {
                     "type": "string",
@@ -1363,10 +1246,7 @@
                           "uniqueItems": true,
                           "items": {
                             "type": "string",
-                            "enum": [
-                              "eip3009",
-                              "permit2"
-                            ]
+                            "enum": ["eip3009", "permit2"]
                           },
                           "minItems": 1
                         },
@@ -1472,27 +1352,15 @@
         },
         "observability": {
           "type": "object",
-          "required": [
-            "log_level",
-            "log_format",
-            "otlp_trace_endpoint"
-          ],
+          "required": ["log_level", "log_format", "otlp_trace_endpoint"],
           "properties": {
             "log_level": {
               "type": "string",
-              "enum": [
-                "debug",
-                "info",
-                "warn",
-                "error"
-              ]
+              "enum": ["debug", "info", "warn", "error"]
             },
             "log_format": {
               "type": "string",
-              "enum": [
-                "json",
-                "text"
-              ]
+              "enum": ["json", "text"]
             },
             "sync_progress_log_interval": {
               "type": "string",
@@ -1541,12 +1409,7 @@
     "networkPolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "enabled",
-        "allowExternalHTTPS",
-        "runtimeHTTPSCIDRs",
-        "additionalEgress"
-      ],
+      "required": ["enabled", "allowExternalHTTPS", "runtimeHTTPSCIDRs", "additionalEgress"],
       "properties": {
         "enabled": {
           "type": "boolean"
@@ -1584,19 +1447,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "user_operations"
-                ]
+                "required": ["user_operations"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "config"
-        ]
+        "required": ["config"]
       },
       "then": {
         "properties": {
@@ -1608,14 +1465,10 @@
                     "minItems": 1
                   }
                 },
-                "required": [
-                  "entry_points"
-                ]
+                "required": ["entry_points"]
               }
             },
-            "required": [
-              "erc4337"
-            ]
+            "required": ["erc4337"]
           }
         }
       },
@@ -1646,19 +1499,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "user_api_keys"
-                ]
+                "required": ["user_api_keys"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "config"
-        ]
+        "required": ["config"]
       },
       "then": {
         "properties": {
@@ -1670,9 +1517,7 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "user_auth"
-                ]
+                "required": ["user_auth"]
               }
             }
           }
@@ -1681,9 +1526,7 @@
     },
     {
       "if": {
-        "required": [
-          "mode"
-        ],
+        "required": ["mode"],
         "properties": {
           "mode": {
             "const": "monolith"
@@ -1708,9 +1551,7 @@
     },
     {
       "if": {
-        "required": [
-          "mode"
-        ],
+        "required": ["mode"],
         "properties": {
           "mode": {
             "const": "distributed"
@@ -1744,19 +1585,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "user_auth"
-                ]
+                "required": ["user_auth"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "config"
-        ]
+        "required": ["config"]
       },
       "then": {
         "properties": {
@@ -1768,14 +1603,10 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "public_url"
-                ]
+                "required": ["public_url"]
               }
             },
-            "required": [
-              "server"
-            ]
+            "required": ["server"]
           }
         }
       }
@@ -1789,9 +1620,7 @@
                 "const": true
               }
             },
-            "required": [
-              "enabled"
-            ]
+            "required": ["enabled"]
           },
           "config": {
             "properties": {
@@ -1801,20 +1630,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "user_auth"
-                ]
+                "required": ["user_auth"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "externalSecret",
-          "config"
-        ]
+        "required": ["externalSecret", "config"]
       },
       "then": {
         "properties": {
@@ -1824,9 +1646,7 @@
                 "minLength": 1
               }
             },
-            "required": [
-              "sessionPepperRemoteKey"
-            ]
+            "required": ["sessionPepperRemoteKey"]
           }
         }
       }
@@ -1842,19 +1662,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "x402_topups"
-                ]
+                "required": ["x402_topups"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "config"
-        ]
+        "required": ["config"]
       },
       "then": {
         "properties": {
@@ -1872,11 +1686,7 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "api_billing",
-                  "user_auth",
-                  "user_api_keys"
-                ]
+                "required": ["api_billing", "user_auth", "user_api_keys"]
               },
               "server": {
                 "properties": {
@@ -1884,9 +1694,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "public_url"
-                ]
+                "required": ["public_url"]
               },
               "billing": {
                 "properties": {
@@ -1899,10 +1707,7 @@
                 }
               }
             },
-            "required": [
-              "server",
-              "billing"
-            ]
+            "required": ["server", "billing"]
           },
           "networkPolicy": {
             "properties": {
@@ -1914,9 +1719,7 @@
               },
               "additionalEgress": {
                 "items": {
-                  "required": [
-                    "ports"
-                  ],
+                  "required": ["ports"],
                   "properties": {
                     "ports": {
                       "minItems": 1,
@@ -1927,9 +1730,7 @@
                               "anyOf": [
                                 {
                                   "not": {
-                                    "required": [
-                                      "protocol"
-                                    ]
+                                    "required": ["protocol"]
                                   }
                                 },
                                 {
@@ -1938,16 +1739,12 @@
                                       "const": "TCP"
                                     }
                                   },
-                                  "required": [
-                                    "protocol"
-                                  ]
+                                  "required": ["protocol"]
                                 }
                               ]
                             },
                             "then": {
-                              "required": [
-                                "port"
-                              ],
+                              "required": ["port"],
                               "properties": {
                                 "port": {
                                   "type": "integer",
@@ -1967,10 +1764,7 @@
                                     "minimum": 443
                                   }
                                 },
-                                "required": [
-                                  "port",
-                                  "endPort"
-                                ]
+                                "required": ["port", "endPort"]
                               }
                             }
                           }
@@ -1981,12 +1775,7 @@
                 }
               }
             },
-            "required": [
-              "enabled",
-              "allowExternalHTTPS",
-              "runtimeHTTPSCIDRs",
-              "additionalEgress"
-            ]
+            "required": ["enabled", "allowExternalHTTPS", "runtimeHTTPSCIDRs", "additionalEgress"]
           }
         }
       }
@@ -2000,9 +1789,7 @@
                 "const": true
               }
             },
-            "required": [
-              "enabled"
-            ]
+            "required": ["enabled"]
           },
           "config": {
             "properties": {
@@ -2012,20 +1799,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "x402_topups"
-                ]
+                "required": ["x402_topups"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "externalSecret",
-          "config"
-        ]
+        "required": ["externalSecret", "config"]
       },
       "then": {
         "properties": {
@@ -2035,9 +1815,7 @@
                 "minLength": 1
               }
             },
-            "required": [
-              "x402FingerprintPepperRemoteKey"
-            ]
+            "required": ["x402FingerprintPepperRemoteKey"]
           }
         }
       }
@@ -2053,19 +1831,13 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "api_billing"
-                ]
+                "required": ["api_billing"]
               }
             },
-            "required": [
-              "features"
-            ]
+            "required": ["features"]
           }
         },
-        "required": [
-          "config"
-        ]
+        "required": ["config"]
       },
       "then": {
         "properties": {
@@ -2077,9 +1849,7 @@
                     "minLength": 1
                   }
                 },
-                "required": [
-                  "base_price_atomic"
-                ]
+                "required": ["base_price_atomic"]
               }
             }
           }

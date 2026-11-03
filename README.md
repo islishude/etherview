@@ -25,7 +25,7 @@ for current status and remaining gates.
 
 ### Full-stack Preview
 
-The default `compose.yaml` runs Preview with a local Geth/Lighthouse PoS chain, all six application roles,
+The default `compose.yaml` runs Preview with a local Geth/Lighthouse PoS chain, all seven application roles,
 public contract verification, and a local Kubo HTTPS gateway for NFT metadata:
 
 ```sh

@@ -78,11 +78,17 @@ func (repository *PostgresRepository) EnqueueNFT(ctx context.Context, request NF
 	address := request.Token.Bytes()
 	blockHash := request.BlockHash.Bytes()
 
-	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return EnqueueResult{}, fmt.Errorf("begin metadata enqueue transaction: %w", err)
 	}
 	defer dbaccess.Rollback(ctx, tx)
+	// The chain lock serializes admission with canonical changes and concurrent
+	// enqueue. READ COMMITTED observes the winner after waiting for this lock.
+	if err := dbgen.New(tx).StoreLegacyLockChainStatement1(ctx, &repository.chainID); err != nil {
+		return EnqueueResult{}, err
+	}
+
 	var canonical bool
 	if err := func() error {
 		var queryValue0 pgtype.Numeric

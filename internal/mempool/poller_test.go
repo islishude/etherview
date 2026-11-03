@@ -425,3 +425,7 @@ func pendingTestSender() common.Address {
 func base64Raw(value string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(value))
 }
+
+func (store *recordingStore) WithPoll(_ context.Context, work func(Store) error) (bool, error) {
+	return true, work(store)
+}

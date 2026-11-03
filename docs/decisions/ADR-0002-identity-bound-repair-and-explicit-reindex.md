@@ -45,6 +45,13 @@ Core repair and derived reindex are separate operations:
 - Repair/reindex requests and reasons remain in PostgreSQL as the operator
   audit trail.
 
+- The worker binds the repair store, canonicalizer and reindex queue to the
+  physical PostgreSQL session holding its request advisory lock. Every
+  mutation and terminal transition uses that connection. A lost claim session
+  cannot continue writing through the shared pool after another worker takes
+  over. External fetches occur between transactions; restart still retries
+  idempotent ranges after an interrupted or ambiguous completion.
+
 ## Consequences
 
 - Repair cannot be used to rewrite canonical history or advance progress.

@@ -189,3 +189,7 @@ func encodeSourceString(value string) []byte {
 	copy(result[64:], value)
 	return result
 }
+
+func (repository *fakeSourceRepository) WithSourceDiscovery(_ context.Context, work func(NFTSourceRepository) error) (bool, error) {
+	return true, work(repository)
+}

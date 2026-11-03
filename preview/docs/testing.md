@@ -39,6 +39,19 @@ ordinary Go test suite. Receipt polling retries only null results and Geth's
 specific transaction-indexing RPC error within the existing three-minute wait;
 other RPC/transport failures and mismatched transaction hashes remain fatal.
 
+## Compiler cache regressions
+
+`make preview-network-check` includes compiler-cache regressions for repeated
+initialization with mapped ownership, application-visible UID/GID and mode
+rejection, redirected paths, access-probe failure and cleanup, artifact
+preservation, and isolation/failure propagation of both helper containers.
+For Docker-backed validation, use a dedicated temporary bind directory with
+`PREVIEW_COMPILER_CACHE_DIR`: run initialization twice, check access as
+`65532:65532`, and clean it after stopping its consumers. Never use the daily
+cache for destructive rejection or cleanup tests. A Docker-managed volume
+can separately exercise native Linux ownership rejection without Desktop
+bind-owner mapping.
+
 ## Real Lighthouse Preview acceptance
 
 `make test-preview-metadata` now uses the real PoS Preview network and locally
@@ -118,9 +131,10 @@ allocations and exercise registration, commitment age/expiry, pricing, renewal,
 transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
 confined to this contract test; it does not establish PoS or Bundler acceptance.
 
-`make test-preview-contracts` builds the production image and pinned Rundler helper,
+`make test-preview-contracts` builds the production image and pulls the pinned official Rundler image,
 then runs the Go-owned real Geth/Lighthouse Preview gate. The prebuilt equivalent
-is `make test-preview-contracts-prebuilt` after `make docker-build preview-images`.
+is `make test-preview-contracts-prebuilt` after loading the production image and
+running `make preview-images-prebuilt`.
 It checks block-zero code/storage/nonces/balances and authenticated genesis import,
 standard Bundler RPC and rejected debug methods, signed successful/reverted
 UserOperations, bad signatures, insufficient prefund at submission (Rundler can
@@ -177,7 +191,8 @@ cloud acceptance milestones.
 `make test-preview-x402` builds the production image and local helper images,
 then exercises the same Preview Geth/Lighthouse deployment in a disposable
 project with isolated ports, network material and volumes. The prebuilt form
-is `make test-preview-x402-prebuilt` after `make docker-build preview-images`.
+is `make test-preview-x402-prebuilt` after loading the production image and
+running `make preview-images-prebuilt`.
 It checks both EIP-3009 and Permit2, exact allowance consumption, replay,
 chain/credit equality, genesis predeployment, Facilitator recreation, API restart and spending during
 Facilitator outage in split and all-role modes. It also pauses the validator,
@@ -248,3 +263,18 @@ verification sources. Then run the contracts, Anvil and verification generators,
 and `node preview/contracts/x402-standard.mjs --write-fixture`. Constructor
 immutables are initialized to each chain ID and canonical address. Both standard
 contracts are included in the genesis verification inventory.
+
+### Genesis source verification helper
+
+`go test -race ./tools/genesis-verify` checks the complete checked-in source
+inventory, Solidity/Yul/Geas submission payloads, canonical genesis identities,
+publication reuse, transient admission, failed or stuck jobs, cancellation and
+bounded HTTP transport. The HTTP regression runs the Go command against test
+servers and verifies all 27 submissions and an idempotent replay. Host credential
+creation, stdin handoff and cleanup remain covered by
+`node --test preview/scripts/verify.test.mjs`.
+
+`make preview-genesis-verify-image` builds the non-root Go helper image without
+rebuilding the production application. `make preview-network-check` includes the
+Go and host-wrapper regressions. Compose layout checks verify the extended
+service, read-only inputs and isolation from the Bundler image.

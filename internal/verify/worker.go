@@ -17,6 +17,8 @@ import (
 )
 
 type WorkerOptions struct {
+	Wake           <-chan struct{}
+	Importer       SourceImporter
 	ServiceName    string
 	WorkerID       string
 	LeaseDuration  time.Duration
@@ -118,13 +120,19 @@ func (worker *Worker) Run(ctx context.Context) error {
 			return err
 		}
 		found, err := worker.processOneRunnable(ctx, worker.compilerAvailability(ctx))
-		leaseLost := recoverableVerificationLeaseLoss(err)
+		leaseLost := recoverableVerificationLeaseLoss(err) || errors.Is(err, errImportRetry)
 		if err != nil && !leaseLost {
 			return err
 		}
 		if !found || leaseLost {
-			if err := waitForContext(ctx, worker.options.PollInterval); err != nil {
-				return err
+			timer := time.NewTimer(worker.options.PollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-worker.options.Wake:
+				timer.Stop()
+			case <-timer.C:
 			}
 		}
 	}
@@ -195,6 +203,16 @@ func (worker *Worker) processLease(ctx context.Context, lease VerificationLease)
 	if lease.Job.RequestV2 == nil {
 		return errors.New("verification job payload is invalid")
 	}
+	if lease.Job.RequestV2.Kind == JobSourcifyImport {
+		prepared, err := worker.prepareImport(ctx, lease)
+		if errors.Is(err, errImportFinished) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		lease = prepared
+	}
 	return worker.processLeaseV2(ctx, lease)
 }
 
@@ -221,8 +239,16 @@ func (worker *Worker) processLeaseV2(ctx context.Context, lease VerificationLeas
 		if worker.options.Sourcify == nil {
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 		}
-		result, err := worker.options.Sourcify.RunV2(ctx, request.Kind, request.SourcifyRequest)
+		result, err := runWithLeaseHeartbeat(ctx, worker, lease, func(ctx context.Context) (SourcifyWorkflowResult, error) {
+			return worker.options.Sourcify.RunV2(ctx, request.Kind, request.SourcifyRequest)
+		})
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if errors.Is(err, ErrLeaseLost) {
+				return ErrLeaseLost
+			}
 			return worker.failLease(ctx, lease, ErrorCompilerUnavailable)
 		}
 		if !result.Successful {

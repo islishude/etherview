@@ -18,7 +18,11 @@ ADR-0024 and ADR-0039; no ABI or source is published directly by the helper.
 
 The independent Preview Rundler process simulates and bundles signed operations
 against internal Geth. Its public HTTPS RPC exposes only standard ERC-4337
-methods. It is not an Etherview runtime component or an indexing data source;
+methods. Compose runs the pinned official Rundler image as a non-root user,
+after Geth becomes healthy, without a startup wrapper or Bundler healthcheck.
+The Go genesis-verification tool has its own minimal image; the compiler-cache
+helper uses an official Node image.
+It is not an Etherview runtime component or an indexing data source;
 PostgreSQL-stored canonical calldata and receipts remain the sole userop stage
 inputs. Failure of the Bundler does not gate core/API readiness.
 

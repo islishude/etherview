@@ -19,6 +19,7 @@ import (
 // MemoryRepository implements exactly the same canonical transition contract
 // as PostgreSQL. It is intended for deterministic unit tests, not production.
 type MemoryRepository struct {
+	liveMu sync.Mutex
 	mu     sync.RWMutex
 	chains map[string]*memoryChain
 }
@@ -543,4 +544,13 @@ func checkFinalityRegression(previous, next Finality) error {
 		}
 	}
 	return nil
+}
+
+// WithLiveHead models exclusive live polling for deterministic unit tests.
+func (r *MemoryRepository) WithLiveHead(_ context.Context, _ string, work func(Repository) error) (bool, error) {
+	if !r.liveMu.TryLock() {
+		return false, nil
+	}
+	defer r.liveMu.Unlock()
+	return true, work(r)
 }

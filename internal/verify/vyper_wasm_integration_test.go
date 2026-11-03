@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -66,6 +67,16 @@ func TestVyperApplicationLockToRealCompilation(t *testing.T) {
 	parent := &VyperCompiler{Catalog: catalog, Path: fixture.Path, SharedPath: fixture.SharedPath, Cache: &CompilerCache{Root: t.TempDir(), InstallLocker: newCompilerCacheLockTestLocker(t, db), unsafeHTTPClient: lockedVyperClient(t, &downloads)}}
 	if err := parent.ValidateRuntime(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+	// A separate API catalog has no runtime identity but can read published
+	// versions matching its embedded recipe lock.
+	apiCatalog, err := NewCompilerCatalog(db, catalog.options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	versions, err := (PublicCompilerCatalog{Catalog: apiCatalog}).Versions(t.Context(), LanguageVyper)
+	if err != nil || !slices.Contains(versions, "0.4.3") {
+		t.Fatalf("API catalog: %v %v", versions, err)
 	}
 	entry, err := catalog.Lookup(t.Context(), LanguageVyper, "0.4.3")
 	if err != nil {

@@ -109,10 +109,6 @@ type VerificationSubmitter interface {
 	SubmitV2(context.Context, verify.SubmissionV2) (verify.VerificationJob, bool, error)
 }
 
-type SourcifyImporter interface {
-	ImportV2(context.Context, uint64, verify.VerificationTarget) (verify.SubmissionV2, error)
-}
-
 type CompilerCatalogReader interface {
 	Versions(context.Context, verify.Language) ([]string, error)
 }
@@ -166,7 +162,6 @@ type Options struct {
 	NFTMediaProxy         *metadata.MediaProxy
 	VerificationReader    VerificationReader
 	VerificationSubmitter VerificationSubmitter
-	SourcifyImporter      SourcifyImporter
 	CompilerCatalog       CompilerCatalogReader
 	VerificationTargets   VerificationTargetResolver
 	ProxyReader           ProxyReader
@@ -216,7 +211,6 @@ type Handler struct {
 	nftMediaProxy         *metadata.MediaProxy
 	verificationReader    VerificationReader
 	verificationSubmitter VerificationSubmitter
-	sourcifyImporter      SourcifyImporter
 	compilerCatalog       CompilerCatalogReader
 	verificationTargets   VerificationTargetResolver
 	proxyReader           ProxyReader
@@ -288,7 +282,6 @@ func New(options Options) (*Handler, error) {
 		nftMediaProxy:         options.NFTMediaProxy,
 		verificationReader:    options.VerificationReader,
 		verificationSubmitter: options.VerificationSubmitter,
-		sourcifyImporter:      options.SourcifyImporter,
 		compilerCatalog:       options.CompilerCatalog,
 		verificationTargets:   options.VerificationTargets,
 		proxyReader:           options.ProxyReader,

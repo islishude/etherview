@@ -789,8 +789,22 @@ func (h *harness) startTopology(ctx context.Context) {
 			want := "1:" + strings.TrimPrefix(h.fixture.genesisHash, "0x")
 			return err == nil && identity == want, identity, err
 		})
-		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "--remove-orphans",
-			"--scale", "sync=2", "--scale", "enrich=2")
+		// The first API startup already completed migration. Do not restart the
+		// one-shot initializer while application workers are claiming jobs: its
+		// schema/partition locks must precede all runtime transactions.
+		services, err := h.project.Run(ctx, "config", "--services")
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		args := []string{"up", "-d", "--no-deps", "--no-recreate", "--wait", "--wait-timeout", "90", "--remove-orphans",
+			"--scale", "sync=2", "--scale", "enrich=2", "--scale", "api=2", "--scale", "verification=2",
+			"--scale", "metadata=2", "--scale", "maintenance=2"}
+		for service := range strings.FieldsSeq(string(services)) {
+			if service != "migration" {
+				args = append(args, service)
+			}
+		}
+		h.compose(ctx, args...)
 		return
 	}
 	h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "--remove-orphans")
@@ -956,7 +970,7 @@ func writeRuntimeTLSKeyPair(t *testing.T) (string, string, *x509.CertPool) {
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:              []string{"localhost", "push.example", "bytecode.example"},
+		DNSNames:              []string{"localhost", "push.example", "bytecode.example", "host.docker.internal"},
 	}
 	certificateDER, err := x509.CreateCertificate(
 		rand.Reader,

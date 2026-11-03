@@ -187,8 +187,11 @@ check fails; failures still fail the job. Cancellation or setup failure skips
 the remaining checks. Retrying the grouped job reruns its short checks.
 
 All three jobs share a local setup action that installs dependencies, loads the
-exact AMD64 production image, prepares ephemeral certificates, builds Rundler
-and Facilitator helpers, and pulls Caddy and external images per runner. Only
+exact AMD64 production image, prepares ephemeral certificates, builds the small Go
+genesis-verification image, and pulls official Rundler, Node cache-helper, Caddy
+and external images per runner. `make preview-images-prebuilt` requires the loaded
+production image and never rebuilds it; setup verifies its image ID again after
+preparation. Runner SDKs remain untouched. Only
 metadata and contracts install bundled Chromium. CLI smoke runs one split-role
 transactions scenario; the full catalog, dual-layout and browser suite is opt-in
 via `make test-preview-tools-e2e-full` (or its `-prebuilt` variant), outside
@@ -198,7 +201,11 @@ its existing log and cleanup behavior. Consensus uses a separate temporary
 subdirectory so its uploaded evidence does not include CLI reports.
 All image consumers use the common load action with an exact producer artifact
 ID and validate source revision, architecture and image ID; none rebuilds a
-missing image.
+missing image. Successful loading removes only `production-image.tar` to release
+transport disk space, retaining `identity.json` for the later `verify` check.
+Load failures or load-time identity mismatches retain the archive for diagnosis. Makefile regressions
+exercise the real dependency graph; image handoff regressions cover replacement,
+missing images, post-load verification without the archive, and failure cleanup.
 
 Checks appear under `Checks / ...`. Runtime checks use `Runtime acceptance / ...`:
 `Production schema and runtime E2E`,
@@ -221,6 +228,15 @@ remove old local result files before repeating a suite because writes are
 exclusive-create. Application tests do not require production fixture evidence.
 They retain the `runtimee2e verificatione2e` Go build tags for shared harness code;
 Vyper does not require a Hardhat client image or CLI.
+
+The runtime overlay replaces the production API and metrics port mappings with
+ephemeral `127.0.0.1` bindings, matching PostgreSQL, RPC and worker metrics.
+Keep this address consistent across the rendered stack: mixing wildcard and
+loopback allocations triggers the Docker 28 port-allocation defect documented
+in [Moby #50054](https://github.com/moby/moby/pull/50054). The Compose layout
+regressions verify both topologies and the Hardhat/Vyper overlays, including
+replacement of inherited fixed ports. Do not reduce replica counts or topology
+parallelism to hide a port conflict.
 
 All intermediate artifacts carry exact producer IDs and run/attempt-qualified
 names with one-day retention. The final aggregation job waits for all three
@@ -449,7 +465,7 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   raw transaction recovery, gas pricing, numeric bounds, and key-error redaction.
 - `make test-hardhat3-e2e`: rebuild the host-native production application and
   independent Hardhat client images, then run the real Hardhat CLI against independent
-  Anvil/PostgreSQL datasets in monolith and complete six-application-role
+  Anvil/PostgreSQL datasets in monolith and complete seven-application-role
   layouts. It compiles and deploys an implementation plus EIP-1967 proxy,
   verifies both sources through the public compatibility API and official
   compiler catalog, polls durable proxy verification, upgrades and rebinds the
@@ -551,7 +567,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
 - `make test-foundry-e2e`: rebuild the host-native production application and
   independent Foundry client images, run the offline compiler preflight, and
   exercise source verification against fresh Anvil/PostgreSQL datasets in the
-  monolith and complete six-application-role layouts. These are two separate,
+  monolith and complete seven-application-role layouts. These are two separate,
   mutually exclusive Compose-profile runs, not two API services in one run:
   `monolith` starts `etherview` with `roles=all`, while `distributed` starts
   `api` plus the split worker services. The Foundry Compose override therefore
@@ -584,7 +600,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   EIP-7002 creation bytecode, submits its four-file Geas bundle through the
   native address-verification endpoint, and requires exact runtime/creation
   matches, no catalog generation, `go-module`, `etherview_geas_v1`, empty ABI,
-  and monolith/six-role publication parity.
+  and monolith/seven-role publication parity.
   Both Hardhat and Foundry verification overlays explicitly disable ENS on
   every application role and construct no ENS workers. Their isolated Anvil
   fixture is verification input, not an ENS source; ENS behavior remains owned
@@ -655,7 +671,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   recreated; historical upgrade paths are not part of acceptance.
 - `make test-runtime-e2e`: rebuild the current working tree's production image
   and run the build-tagged Go E2E suite against the production Compose file in
-  monolith and all-six-application-role layouts. Each layout gets a
+  monolith and all-seven-application-role layouts. Each layout gets a
   deterministic Prague chain from the default Foundry `v1.8.7` image and a
   fresh PostgreSQL volume. The Go harness derives deterministic temporary
   keys, funds them with `anvil_setBalance`, signs authorization tuples and raw
@@ -700,7 +716,7 @@ results, parity mismatch, deadline expiry and cleanup failure. Run it with
   adapter normalizes only the explicit clearing post-state gap; it deliberately
   does not add authority or delegate code to transaction prestate. The runtime
   therefore exercises `abi@5` recovery from the exact root Trace and prior
-  canonical code observations. Both monolith and the six-role topology assert that the
+  canonical code observations. Both monolith and the seven-role topology assert that the
   adapter observed `debug_traceBlockByHash` and no `debug_traceTransaction`
   calls. Complete provider observations pass through unchanged, so production
   receipt and trace validation remain strict. The runtime gate does not require
@@ -805,7 +821,9 @@ make test-foundry-e2e
 `make test-preview-metadata-prebuilt` and `make test-preview-consensus-prebuilt`
 require the loaded production/gateway images and readable Preview certificates.
 They check these prerequisites without building images or creating certificates.
-Prepare external Preview images once with `make preview-images`. The ordinary
+After loading the production image, prepare external Preview images once with
+`make preview-images-prebuilt`; it fails before preparation if that image is
+missing. `make preview-images` builds the production image first. The ordinary
 schema and Preview targets continue to build/prepare before invoking the same
 prebuilt test recipes. Preview network generation and archive initialization
 remain owned by each isolated test harness.
@@ -891,7 +909,7 @@ payment before authorizing any new attempt.
 `make test-runtime-e2e` does not spend testnet funds. In addition to the
 general runtime suite, it builds the test-only x402 contract and production Facilitator
 images and runs the same fixture against production Etherview images in
-monolith and six-role distributed topologies. It verifies real Anvil SIWE,
+monolith and seven-role distributed topologies. It verifies real Anvil SIWE,
 EIP-3009 and Permit2 settlement, exact Permit2 approval, replay rejection,
 shared user balance, concurrent debit, logical-failure release, operator
 bypass, and final recipient/account equality. The general runtime and x402
@@ -1469,3 +1487,36 @@ visible, then mines and verifies the existing exactly-once credit and all/split
 parity. These are local-chain and browser-fixture checks, not live-funded evidence.
 Schema changes also require `make test-schema-e2e`; run generation, Go lint,
 documentation and plan checks for the public/persistent contract changes.
+
+## Independent verification acceptance
+
+P30-T153 requires API-only admission without an installed executor, verification
+component ownership and all/split parity. Run worker wake/polling tests, real
+PostgreSQL `TestSourcifyImport` concurrency and immutable-input restart tests,
+and NATS accelerator outage/coalescing tests. Production coverage uses at least
+two API and two verification instances, tests lookup failures through task
+polling, and checks crash takeover and stale-publication rejection. Run common,
+generation, lint, deployment, schema, integration race, browser and runtime E2E
+and affected Hardhat/Vyper suites. Local results do not close P70 release gates.
+
+## Multi-instance observation and publication
+
+P30-T154 requires real PostgreSQL regressions for live sync, maintenance repair,
+mempool polling, NFT source discovery/admission and compiler catalog refresh.
+Hold one replica in external work, verify contenders skip, terminate only its
+owned database session, let another replica publish, then release the stale
+response and assert it cannot write. Retain genuine shorter-head and backfill
+conflict recovery cases. Session cleanup covers success, failure, cancellation,
+panic and absence of an open transaction during external work. Concurrent
+identical NFT enqueue must return one durable job without SQLSTATE 40001.
+Production runtime also runs `TestCompilerCacheReplicasColdStart`: three fresh
+named volumes each receive eight simultaneous container creations, covering
+Docker copy-up before application or PostgreSQL coordination can run.
+
+Run the `TestLiveSyncReplicas`, `TestMaintenanceReplicas`, `TestMempoolReplicas`,
+`TestMetadataReplicas`, `TestRuntimeSessionLock` and `TestCompilerCatalogReplicas`
+cases through the managed PostgreSQL runner with `-race`, then common,
+generation, Go lint, documentation/plan, full integration race and production
+runtime E2E gates. Preview metadata covers source discovery, URI changes and
+restart persistence; Hardhat covers catalogs and verification in both role
+layouts. These checks do not close P70 capacity or external release gates.

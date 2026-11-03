@@ -123,7 +123,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 		if role == "sync" || role == "enrich" || role == "trace" || role == "maintenance" {
 			needsRPC = true
 		}
-		if role == "api" && c.Features.Verification {
+		if role == "verification" && c.Features.Verification {
 			needsVerificationWorker = true
 		}
 		if role == "api" && c.Features.Verification {
@@ -138,7 +138,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 	}
 	if needsVerificationWorker {
 		if strings.TrimSpace(c.Verification.CacheDirectory) == "" {
-			errs = append(errs, errors.New("verification.cache_directory is required by the api verification worker"))
+			errs = append(errs, errors.New("verification.cache_directory is required by the verification worker"))
 		} else if !filepath.IsAbs(c.Verification.CacheDirectory) ||
 			filepath.Clean(c.Verification.CacheDirectory) != c.Verification.CacheDirectory {
 			errs = append(errs, errors.New("verification.cache_directory must be an absolute clean path"))
@@ -154,7 +154,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 		} {
 			if strings.TrimSpace(runtimePath.value) == "" {
 				errs = append(errs, fmt.Errorf(
-					"verification.%s is required by the api verification worker",
+					"verification.%s is required by the verification worker",
 					runtimePath.name,
 				))
 			} else if !filepath.IsAbs(runtimePath.value) ||
@@ -166,9 +166,9 @@ func (c Config) ValidateForRoles(roles []string) error {
 			}
 		}
 	}
-	if c.Verification.UnsafeAllowPrivateDownloadNetworks && !needsVerificationWorker {
+	if c.Verification.UnsafeAllowPrivateDownloadNetworks && !c.Features.Verification {
 		errs = append(errs, errors.New(
-			"verification.unsafe_allow_private_download_networks requires an api verification worker",
+			"verification.unsafe_allow_private_download_networks requires a verification worker",
 		))
 	}
 	if c.Metadata.UnsafeAllowPrivateNetworks && !metadataOnly {

@@ -113,6 +113,7 @@ func (request Request) Validate() error {
 // Implementations must be idempotent because a process can die after applying
 // a range but before persisting the terminal request status.
 type RangeExecutor interface {
+	Bind(Lease) (RangeExecutor, error)
 	Repair(context.Context, Request) error
 	Reindex(context.Context, Request) error
 }

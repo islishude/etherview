@@ -38,7 +38,7 @@ surface that is unnecessary for sys-asm compatibility.
 - The helper never reads submitted sources from disk and has no network or
   subprocess capability in its protocol. A panic becomes a stable compiler
   runtime failure without exposing the panic value or nested compiler error.
-- API and `all` startup require a regular, non-writable helper file, a successful
+- Verification and `all` startup require a regular, non-writable helper file, a successful
   fixed self-test, exact Go build-info module path/version/checksum with no
   replacement, and a helper SHA-256. Standard images supply the helper at a
   fixed path; an operator override must pass the same checks.
@@ -63,7 +63,7 @@ surface that is unnecessary for sys-asm compatibility.
 - Compiler work is claimed by family availability. A stale solc catalog cannot
   block Geas, and a missing Geas helper cannot block Solidity, proxy, or
   Sourcify work. Metrics and alerts distinguish `solcjs` and `geas`.
-- API replicas in one deployment use identical helper and module identities.
+- Verification replicas in one deployment use identical helper and module identities.
   Operators drain bound Geas jobs before upgrading either identity. Terminal
   publications remain readable across upgrades.
 

@@ -14,6 +14,7 @@
 {{- end }}
 {{- if $enabled }}
 {{- $apiCapable := or (eq $roleName "all") (eq $roleName "api") }}
+{{- $verificationCapable := or (eq $roleName "all") (eq $roleName "verification") }}
 {{- $s3Configured := not (empty ($root.Values.config.adapters.s3_endpoint | trim)) }}
 {{- $s3WorkloadIdentity := and $apiCapable $s3Configured $root.Values.s3ServiceAccount.enabled }}
 {{- $archiveServiceAccount := "" }}
@@ -174,12 +175,14 @@ spec:
                   key: {{ ternary $root.Values.secrets.blobArchiveReadSessionKey $root.Values.secrets.blobArchiveSessionKey (eq $roleName "api") | quote }}
                   optional: true
             {{- end }}
+            {{- if or $apiCapable $verificationCapable }}
             - name: ETHERVIEW_API_KEY_PEPPER
               valueFrom:
                 secretKeyRef:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.apiKeyPepperKey | quote }}
                   optional: true
+            {{- end }}
             {{- if and $root.Values.config.turnstile.enabled (or (eq $roleName "all") (eq $roleName "api")) }}
             - name: ETHERVIEW_TURNSTILE_SECRET_KEY
               valueFrom:
@@ -326,7 +329,7 @@ spec:
             {{- end }}
             - name: tmp
               mountPath: /tmp
-            {{- if and $root.Values.config.features.verification $apiCapable }}
+            {{- if and $root.Values.config.features.verification $verificationCapable }}
             - name: compiler-cache
               mountPath: /var/lib/etherview/compilers
             {{- end }}
@@ -353,7 +356,7 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
-        {{- if and $root.Values.config.features.verification $apiCapable }}
+        {{- if and $root.Values.config.features.verification $verificationCapable }}
         - name: compiler-cache
           {{- if $root.Values.compilerCache.existingClaim }}
           persistentVolumeClaim:

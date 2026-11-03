@@ -2717,6 +2717,13 @@ type VerificationCompilationUnit struct {
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type VerificationImportInput struct {
+	JobID   pgtype.UUID `db:"job_id" json:"job_id"`
+	Request []byte      `db:"request" json:"request"`
+	Payload []byte      `db:"payload" json:"payload"`
+	Digest  []byte      `db:"digest" json:"digest"`
+}
+
 type VerificationJob struct {
 	ID                  pgtype.UUID        `db:"id" json:"id"`
 	Kind                string             `db:"kind" json:"kind"`

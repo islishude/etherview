@@ -30,7 +30,11 @@ func (repository *PostgresRepository) SubmitV2(
 	if request.BytecodeDB != nil {
 		return VerificationJob{}, false, errors.New("internal source provenance is not accepted")
 	}
-	return repository.submitV2(ctx, dbgen.New(repository.db), request)
+	job, created, err := repository.submitV2(ctx, dbgen.New(repository.db), request)
+	if err == nil && repository.options.SignalJobs != nil {
+		repository.options.SignalJobs()
+	}
+	return job, created, err
 }
 
 func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbgen.Queries, request SubmissionV2) (VerificationJob, bool, error) {
@@ -73,7 +77,7 @@ func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbg
 	var generation *int64
 	var compilerDigest []byte
 	if request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan &&
-		request.Kind != JobProxy {
+		request.Kind != JobProxy && request.Kind != JobSourcifyImport {
 		language, version = new(string(request.Language)), new(request.CompilerVersion)
 		if request.Language == LanguageSolidity || request.Language == LanguageYul {
 			catalogLanguage = new(string(LanguageSolidity))
@@ -86,7 +90,7 @@ func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbg
 	var address []byte
 	var codeHash []byte
 	var blockHash []byte
-	if request.Kind == JobAddress || request.Kind == JobProxy {
+	if request.Kind == JobAddress || request.Kind == JobSourcifyImport || request.Kind == JobProxy {
 		chainID = new(strconv.FormatUint(request.Target.ChainID, 10))
 		address, _ = decodeFixedHex(request.Target.Address, 20)
 		codeHash, _ = decodeFixedHex(request.Target.CodeHash, 32)
@@ -132,7 +136,7 @@ func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbg
 func normalizeSolidityAnalysisVersion(request *SubmissionV2) {
 	if request != nil && request.Language == LanguageSolidity &&
 		request.Kind != JobSourcify && request.Kind != JobSourcifyFromEtherscan &&
-		request.Kind != JobProxy {
+		request.Kind != JobProxy && request.Kind != JobSourcifyImport {
 		request.SolidityAnalysis = cwiaargs.AnalysisVersion
 		return
 	}
@@ -286,7 +290,7 @@ func (repository *PostgresRepository) CompleteV2(
 		return errors.New("v2 verification outcome kind is invalid")
 	}
 	if len(compilations) > 1 || (len(compilations) == 1 &&
-		(lease.Job.Kind != JobAddress || outcomeKind != "verification_success")) {
+		(!localAddressJob(lease.Job.Kind) || outcomeKind != "verification_success")) {
 		return errors.New("v2 authenticated compilation is invalid for outcome")
 	}
 	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
@@ -332,7 +336,7 @@ func (repository *PostgresRepository) CompleteV2(
 		publicationTarget      common.Address
 		authenticatedArtifact  *recognizedProxyArtifact
 	)
-	if job.Kind == JobAddress && outcomeKind == "verification_success" {
+	if localAddressJob(job.Kind) && outcomeKind == "verification_success" {
 		if err := validateAddressSuccessEvidence(job.RequestV2.Target, resultFields); err != nil {
 			return err
 		}
@@ -396,7 +400,7 @@ func (repository *PostgresRepository) CompleteV2(
 	}(); err != nil {
 		return err
 	}
-	if job.Kind == JobAddress && outcomeKind == "verification_success" {
+	if localAddressJob(job.Kind) && outcomeKind == "verification_success" {
 		if err := repository.publishVerifiedContractTx(ctx, tx, verifiedPublication{
 			Job: job, Fields: resultFields, BlockNumber: publicationBlockNumber,
 			Address: publicationAddress, CodeHash: publicationCodeHash,

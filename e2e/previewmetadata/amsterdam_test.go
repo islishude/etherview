@@ -65,7 +65,7 @@ func (h *harness) assertAmsterdam(ctx context.Context, recipient string) {
 // Switch only this disposable project to the production all-role builder, then
 // mine new data to prove it uses the same processor and public contracts.
 func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
-	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "maintenance"); err != nil {
+	if _, err := h.project.Run(ctx, "stop", "sync", "enrich", "trace", "metadata", "maintenance", "verification"); err != nil {
 		h.t.Fatal(err)
 	}
 	override := filepath.Join(h.artifacts, "amsterdam-monolith.yaml")
@@ -73,12 +73,14 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
   api:
     command: ["serve", "--roles=all", "--config=/etc/etherview/config.yaml"]
     environment:
+      ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       ETHERVIEW_ROLES: all
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only
       ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "false"
       SSL_CERT_FILE: /run/ipfs-ca/rootCA.pem
     volumes:
+      - ${PREVIEW_COMPILER_CACHE_DIR}:/var/lib/etherview/compilers
       - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
       - ` + filepath.Join(h.root, ".local", "preview-tls", "rootCA.pem") + `:/run/ipfs-ca/rootCA.pem:ro
 `

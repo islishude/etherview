@@ -18,7 +18,7 @@
 {{- fail "networkPolicy.enabled must be true when verification is enabled" }}
 {{- end }}
 {{- if .Values.networkPolicy.allowExternalHTTPS }}
-{{- fail "networkPolicy.allowExternalHTTPS must be false when verification is enabled; the chart grants catalog HTTPS egress only to all/api" }}
+{{- fail "networkPolicy.allowExternalHTTPS must be false when verification is enabled; the chart grants catalog HTTPS egress only to all/verification" }}
 {{- end }}
 {{- range $runtimeCIDR := .Values.networkPolicy.runtimeHTTPSCIDRs }}
 {{- if or (eq $runtimeCIDR "0.0.0.0/0") (eq $runtimeCIDR "::/0") }}
