@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "../..");
+const helperImage = "node:26.13.0-trixie-slim";
 
 function docker(args, options = {}) {
   const command = process.env.DOCKER || "docker";
@@ -75,7 +76,7 @@ async function managePreviewCache(action, composeArgs = ["-f", "compose.yaml"]) 
         "--mount",
         `type=bind,src=${path.join(root, "preview/scripts/compiler-cache.mjs")},dst=/compiler-cache.mjs,readonly`,
         "--entrypoint=node",
-        "etherview-preview-bundler:local",
+        helperImage,
         "/compiler-cache.mjs",
         "--container",
         helperAction,

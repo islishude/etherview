@@ -10,17 +10,19 @@ simulation-result decoding patch and additional simulation predeploys.
 
 ## Decision
 
-Use the official Rundler image with an explicit version tag as the binary source
-for the independent Preview Bundler. Copy its binary
-into the Node launcher image; Docker selects the matching Linux architecture.
+Use the official Rundler image with an explicit version tag directly for the
+independent Preview Bundler. Docker selects the matching Linux architecture;
+Rundler is the container main process and receives shutdown signals directly.
 Keep canonical EntryPoint v0.9 and SimpleAccount identities; remove Alto-only
 simulation predeploys and the unused utility account. Rundler supplies its
 simulation code through RPC state overrides, not deployment transactions.
 
-Before starting Rundler, verify chain ID and exact EntryPoint code at block zero
-against the generated allocation. Enable only v0.9 and the standard eth RPC
+Compose waits for Geth health before starting Rundler. Genesis identity and
+exact EntryPoint code at block zero are verified by acceptance tests, not by a
+startup wrapper. No Bundler JSON-RPC container healthcheck is required.
+Enable only v0.9 and the standard eth RPC
 namespace, without debug/admin methods, unsafe validation or unsafe fallback.
-Pass only the public development executor key to the Bundler process. It has no
+Declare the public development executor key and logging level in Compose. It has no
 public port outside the existing HTTPS gateway and does not gate core readiness.
 Preserve canonical PostgreSQL indexing independently of the Bundler mempool.
 

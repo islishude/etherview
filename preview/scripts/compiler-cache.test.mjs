@@ -130,6 +130,7 @@ for (const failure of ["", "init", "verify"]) {
       assert.ok(!calls[1].some((arg) => arg.startsWith("--cap-add=")));
     }
     for (const args of calls) {
+      assert.match(args[args.indexOf("--entrypoint=node") + 1], /^node:/);
       for (const flag of [
         "--network=none",
         "--read-only",

@@ -466,6 +466,7 @@ test("shared Preview setup preserves image identity and makes browser preparatio
   assert.match(action, /uses: \.\/\.github\/actions\/load-production-image/);
   assert.doesNotMatch(action, /docker-build|actions\/checkout|setup-buildx-action/);
   const steps = action.split(/^    - /m).slice(1);
+  assert.doesNotMatch(action, /\bdf\b/);
   assert.doesNotMatch(action, /sudo rm|\/usr\/local\/lib\/android|\/usr\/share\/dotnet/);
   for (const step of steps) {
     if (step.includes("run:")) assert.match(step, /shell: bash/);

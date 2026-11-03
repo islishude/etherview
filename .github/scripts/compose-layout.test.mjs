@@ -376,3 +376,71 @@ test("only standalone facilitator explicitly inherits X402 credential environmen
     }
   }
 });
+
+test("Preview runs Rundler directly after Geth health, with an independent Go verification helper", () => {
+  const config = render(["-f", "compose.yaml", "--profile", "genesis-verify"]);
+  const bundler = config.services.bundler;
+  assert.match(bundler.image, /^alchemyplatform\/rundler:v/);
+  assert.equal(bundler.entrypoint ?? undefined, undefined);
+  assert.equal(bundler.build, undefined);
+  assert.equal(bundler.healthcheck, undefined);
+  assert.equal(bundler.user, "1000:1000");
+  assert.deepEqual(bundler.command, [
+    "node",
+    "--node_http",
+    "http://geth:8545",
+    "--chain_spec",
+    "/config/rundler.toml",
+    "--enabled_entry_points",
+    "v0.9",
+    "--rpc.host",
+    "0.0.0.0",
+    "--rpc.port",
+    "4337",
+    "--rpc.api",
+    "eth",
+  ]);
+  assert.equal(bundler.depends_on.geth.condition, "service_healthy");
+  assert.deepEqual(config.services.geth.healthcheck.test, [
+    "CMD",
+    "geth",
+    "attach",
+    "--exec",
+    "eth.blockNumber",
+    "http://127.0.0.1:8545",
+  ]);
+  assert.deepEqual(
+    bundler.volumes.map((mount) => mount.target),
+    ["/config/rundler.toml"],
+  );
+  assert.equal(bundler.volumes[0].read_only, true);
+  assert.match(bundler.environment.SIGNER_PRIVATE_KEYS, /^[0-9a-f]{64}$/);
+  const helper = config.services["genesis-verify"];
+  assert.equal(helper.image, "etherview-preview-genesis-verify:local");
+  assert.equal(helper.build.context, root);
+  assert.equal(helper.build.dockerfile, "tools/genesis-verify/Dockerfile");
+  assert.equal(helper.entrypoint ?? undefined, undefined);
+  assert.equal(helper.read_only, true);
+  assert.deepEqual(helper.cap_drop, ["ALL"]);
+  assert.deepEqual(helper.profiles, ["genesis-verify"]);
+  assert.equal(
+    helper.volumes.find((mount) => mount.target === "/verification").source,
+    path.join(root, "preview/verification"),
+  );
+  assert.ok(helper.volumes.every((mount) => mount.read_only));
+  const overridden = render(["-f", "compose.yaml", "--profile", "genesis-verify"], {
+    PREVIEW_BUNDLER_IMAGE: "registry.example/rundler:test",
+    PREVIEW_NETWORK_DIR: "./relative-network",
+  });
+  assert.equal(overridden.services.bundler.image, "registry.example/rundler:test");
+  assert.equal(
+    overridden.services["genesis-verify"].volumes.find(
+      (mount) => mount.target === "/config/genesis.json",
+    ).source,
+    path.join(root, "relative-network/metadata/genesis.json"),
+  );
+  assert.equal(
+    overridden.services["genesis-verify"].image,
+    config.services["genesis-verify"].image,
+  );
+});

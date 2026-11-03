@@ -18,26 +18,18 @@ services:
       service: nats
 
   genesis-verify:
-    image: etherview-preview-bundler:local
-    profiles: ["genesis-verify"]
-    entrypoint: ["node", "/verification/verify.mjs"]
-    user: node
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: ["no-new-privileges:true"]
+    extends:
+      file: preview/compose/chain.yaml
+      service: genesis-verify
     volumes:
       - ./preview/verification:/verification:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
-    restart: "no"
 
   bundler:
     extends:
       file: preview/compose/chain.yaml
       service: bundler
     volumes:
-      - ./preview/bundler-start.mjs:/app/src/preview-start.mjs:ro
-      - ./preview/contracts/manifest.json:/config/contracts.json:ro
-      - ./preview/contracts/allocation.json:/config/allocation.json:ro
       - ./preview/rundler.toml:/config/rundler.toml:ro
 
   ipfs:

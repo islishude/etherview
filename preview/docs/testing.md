@@ -131,7 +131,7 @@ allocations and exercise registration, commitment age/expiry, pricing, renewal,
 transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
 confined to this contract test; it does not establish PoS or Bundler acceptance.
 
-`make test-preview-contracts` builds the production image and pinned Rundler helper,
+`make test-preview-contracts` builds the production image and pulls the pinned official Rundler image,
 then runs the Go-owned real Geth/Lighthouse Preview gate. The prebuilt equivalent
 is `make test-preview-contracts-prebuilt` after loading the production image and
 running `make preview-images-prebuilt`.
@@ -263,3 +263,18 @@ verification sources. Then run the contracts, Anvil and verification generators,
 and `node preview/contracts/x402-standard.mjs --write-fixture`. Constructor
 immutables are initialized to each chain ID and canonical address. Both standard
 contracts are included in the genesis verification inventory.
+
+### Genesis source verification helper
+
+`go test -race ./tools/genesis-verify` checks the complete checked-in source
+inventory, Solidity/Yul/Geas submission payloads, canonical genesis identities,
+publication reuse, transient admission, failed or stuck jobs, cancellation and
+bounded HTTP transport. The HTTP regression runs the Go command against test
+servers and verifies all 27 submissions and an idempotent replay. Host credential
+creation, stdin handoff and cleanup remain covered by
+`node --test preview/scripts/verify.test.mjs`.
+
+`make preview-genesis-verify-image` builds the non-root Go helper image without
+rebuilding the production application. `make preview-network-check` includes the
+Go and host-wrapper regressions. Compose layout checks verify the extended
+service, read-only inputs and isolation from the Bundler image.

@@ -187,9 +187,9 @@ check fails; failures still fail the job. Cancellation or setup failure skips
 the remaining checks. Retrying the grouped job reruns its short checks.
 
 All three jobs share a local setup action that installs dependencies, loads the
-exact AMD64 production image, prepares ephemeral certificates, builds the
-Rundler helper on the pinned Node Debian slim runtime, and pulls Caddy and
-external images per runner. `make preview-images-prebuilt` requires the loaded
+exact AMD64 production image, prepares ephemeral certificates, builds the small Go
+genesis-verification image, and pulls official Rundler, Node cache-helper, Caddy
+and external images per runner. `make preview-images-prebuilt` requires the loaded
 production image and never rebuilds it; setup verifies its image ID again after
 preparation. Runner SDKs remain untouched. Only
 metadata and contracts install bundled Chromium. CLI smoke runs one split-role

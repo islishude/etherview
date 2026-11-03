@@ -41,7 +41,5 @@ runs:
     - name: Prepare Preview gateway and external images
       shell: bash
       run: |
-        df -h /
         make preview-images-prebuilt
         node .github/scripts/production-image-bundle.mjs verify ".local/production-image" amd64
-        df -h /

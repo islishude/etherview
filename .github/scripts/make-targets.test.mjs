@@ -13,6 +13,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
+const previewHelperImage = "node:26.13.0-trixie-slim";
+const previewVerifierImage = "etherview-preview-genesis-verify:local";
+
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "prebuilt targets "));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -85,9 +88,12 @@ test("Preview image preparation preserves a prebuilt application and fails befor
   assert.deepEqual(prepared.commands[0].args, ["image", "inspect", "etherview:local"]);
   const builds = prepared.commands.filter((command) => command.command === "buildx");
   assert.equal(builds.length, 1);
-  assert.ok(builds[0].args.includes("preview/bundler.Dockerfile"));
+  assert.ok(builds[0].args.includes("tools/genesis-verify/Dockerfile"));
   assert.ok(!builds[0].args.includes("production"));
-  assert.ok(!builds[0].args.includes("etherview:local"));
+  const pull = prepared.commands.find((command) => command.command === "compose");
+  assert.ok(pull.args.includes("pull"));
+  assert.ok(pull.args.includes("bundler"));
+  assert.ok(!pull.args.includes("genesis-verify"));
   const ordinary = f.run("preview-images");
   assert.equal(ordinary.status, 0, ordinary.stdout + ordinary.stderr);
   assert.ok(ordinary.commands[0].args.includes("production"));
@@ -127,7 +133,7 @@ for (const suite of [
     assert.equal(existsSync(join(f.dir, ".local/preview.env")), false);
     assert.deepEqual(
       prebuilt.commands.map((c) => c.command),
-      preview ? ["docker", "docker", "docker", "go"] : ["docker", "go"],
+      preview ? ["docker", "docker", "docker", "docker", "go"] : ["docker", "go"],
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
@@ -165,7 +171,7 @@ for (const suite of [
   test(`${target}: missing images and failed tests stop the command`, (t) => {
     const f = fixture(t);
     for (const missing of preview
-      ? ["etherview:local", "caddy:2.11.7-alpine", "etherview-preview-bundler:local"]
+      ? ["etherview:local", "caddy:2.11.7-alpine", previewHelperImage, previewVerifierImage]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });
       assert.notEqual(result.status, 0);

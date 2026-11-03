@@ -465,8 +465,10 @@ remove their volumes as part of an application update.
 
 `make start-preview` runs source verification after real PoS readiness.
 `make recreate-preview` preserves existing publications and does not run this step. The `genesis-verify` Compose profile uses the existing
-Preview Node/Rundler image, a read-only source bundle, and the internal API and
-Geth endpoints. It does not deploy contracts or change chain state.
+Go tool at `tools/genesis-verify`, packaged in its own non-root image, a read-only
+source bundle, and the internal API and Geth endpoints. Its service definition
+lives in `preview/compose/chain.yaml`, extended by the root `compose.yaml`.
+Host mounts remain in the root file so relative network overrides keep the same base. It does not deploy contracts or change chain state.
 
 Run `make verify-preview-genesis` to retry this step on a running Preview.
 The host wrapper creates an API key scoped to `api:read` and `contract:verify`,

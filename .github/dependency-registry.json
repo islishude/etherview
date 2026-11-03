@@ -258,6 +258,11 @@
           "path": "docs/testing.md",
           "template": "- `make toolchain-check`: require at least Go {{version}}, Node {{other}}, and pnpm",
           "count": 1
+        },
+        {
+          "path": "tools/genesis-verify/Dockerfile",
+          "template": "FROM golang:{{version}} AS builder",
+          "count": 1
         }
       ],
       "commands": [],
@@ -379,7 +384,7 @@
         },
         {
           "path": ".github/scripts/make-targets.test.mjs",
-          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\", \"etherview-preview-bundler:local\"]",
+          "template": "      ? [\"etherview:local\", \"caddy:{{version}}-alpine\", previewHelperImage, previewVerifierImage]",
           "count": 1
         },
         {
@@ -648,8 +653,23 @@
           "count": 1
         },
         {
-          "path": "preview/bundler.Dockerfile",
-          "template": "FROM node:{{version}}-trixie-slim",
+          "path": "preview/scripts/compiler-cache.mjs",
+          "template": "const helperImage = \"node:{{version}}-trixie-slim\";",
+          "count": 1
+        },
+        {
+          "path": "Makefile",
+          "template": "\t@for image in \"$(IMAGE)\" \"$(PREVIEW_GATEWAY_IMAGE)\" node:{{version}}-trixie-slim etherview-preview-genesis-verify:local; do \\",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/make-targets.test.mjs",
+          "template": "const previewHelperImage = \"node:{{version}}-trixie-slim\";",
+          "count": 1
+        },
+        {
+          "path": "Makefile",
+          "template": "\t$(DOCKER) pull node:{{version}}-trixie-slim",
           "count": 1
         }
       ],
@@ -748,6 +768,11 @@
           "path": ".github/scripts/go-license-check.sh",
           "template": "EXPECTED_GEAS_VERSION=\"v{{version}}\"",
           "count": 1
+        },
+        {
+          "path": "tools/genesis-verify/inventory.go",
+          "template": "const geasVersion = \"{{version}}\"",
+          "count": 1
         }
       ],
       "commands": [],
@@ -843,14 +868,13 @@
       "reason": "Rundler version and safe v0.9 validation require real PoS acceptance before updating.",
       "pins": [
         {
-          "path": "preview/bundler.Dockerfile",
-          "template": "FROM alchemyplatform/rundler:v{{version}} AS rundler",
+          "path": "preview/compose/chain.yaml",
+          "template": "    image: ${PREVIEW_BUNDLER_IMAGE:-alchemyplatform/rundler:v{{version}}}",
           "count": 1
         }
       ],
       "reviewFiles": [
-        "preview/bundler.Dockerfile",
-        "preview/bundler-start.mjs",
+        "preview/compose/chain.yaml",
         "preview/rundler.toml"
       ],
       "commands": [],
