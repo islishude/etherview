@@ -14,6 +14,7 @@ the detailed architecture, testing, or operations manuals.
 | Accepted consequential decisions and invariants               | [ADR catalog](decisions/index.md) and accepted ADR files                           |
 | Runnable commands, test scope, restricted hosts, and evidence | [Makefile](../Makefile) and [testing guide](testing.md)                            |
 | Deployment, telemetry, recovery, and administration           | [Operations runbook](operations.md)                                                |
+| UI design principles and visual review                        | [Design style guide](design-style-guide.md)                                        |
 | Public HTTP contract                                          | [OpenAPI source](../api/openapi.yaml)                                              |
 | Historical native pgx acceptance                              | [Native pgx acceptance record](#native-pgx-acceptance-record)                      |
 | Production executable SQL                                     | [sqlc query sources](../internal/db/queries/)                                      |
@@ -306,6 +307,16 @@ scope can cover the application without production header overrides. The Vite
 development server supplies `Service-Worker-Allowed: /` for source URLs.
 Production assets still pass through normal manifest preparation and embedding.
 The worker has no fetch handler, offline cache, or notification history.
+
+### UI design changes
+
+Read and follow the [design style guide](design-style-guide.md) before changing UI
+presentation or shared components. Reuse existing components and foundation tokens.
+Global visual rule changes must update the guide and affected shared implementation
+together; individual pages must not introduce a competing visual system.
+Include the guide's [review checklist](design-style-guide.md#change-workflow-and-review-checklist)
+and applicable visual evidence in the PR or completion report. Human review owns
+the simple, modern design judgment; existing tests verify measurable behavior.
 
 ### Stylesheet ownership
 

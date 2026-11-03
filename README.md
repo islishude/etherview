@@ -92,6 +92,7 @@ before contributing.
 
 ## Documentation
 
+- [Design style guide](docs/design-style-guide.md)
 - [Architecture](docs/architecture/overview.md) and [accepted decisions](docs/decisions/index.md)
 - [OpenAPI specification](api/openapi.yaml) and [Etherscan compatibility](docs/architecture/etherscan-v2-compatibility.md)
 - [Operations runbook](docs/operations.md) and [Helm chart](deploy/helm/etherview/README.md)

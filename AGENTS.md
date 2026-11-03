@@ -9,6 +9,8 @@ Read the [development guide](docs/development.md), relevant
 [child plan](docs/plans/index.md) when the change affects planned scope,
 dependencies, acceptance or blockers. Accepted ADRs remain mandatory; update
 or add one when its decision changes.
+Read and follow the [design style guide](docs/design-style-guide.md) before
+changing UI presentation or shared components.
 
 The development guide owns detailed workflow and boundary routing. The current
 [Makefile](Makefile) and testing guide own commands; historical plan evidence

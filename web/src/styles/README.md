@@ -74,76 +74,11 @@ request-card presentation does not increase the initial shell asset budget.
 Keep its selectors feature-specific and its colors on foundation tokens; it
 must not override shared page or navigation styles.
 
-## Visual system
-
 Address identity and select-arrow styles live beside `AddressIdentity` and
 `SelectControl` and load with their consumers.
 
-All application UI icons use Lucide through `UIIcon`, with a 2px stroke and
-14px inline/status, 16px control, 20px activity, or 24px illustration sizes.
-Import the chosen Lucide icons in their owning module to retain route splitting;
-do not add a global icon registry. `UIIcon` hides decorative SVGs from assistive
-technology; buttons and links own translated names, titles and state. Icon-only
-controls retain visible keyboard focus, and state changes must also update text
-or accessible names. Containers own spacing and color, never SVG size overrides.
-Dropdown indicators use `DropdownChevron` with a 14px Lucide chevron and a 1.5px
-stroke. Form indicators sit 12px from the right edge with 36px text clearance.
-Custom dropdowns rotate from their actual expanded state over 180ms, respecting
-reduced motion; native selects keep a downward indicator.
-`SelectControl` retains a native select and adds the shared decorative chevron;
-forced-colors mode restores the browser arrow. Loading and disclosure icons
-respect reduced motion. Brand assets, wallet/provider imagery, QR payloads and
-data visualizations are content rather than UI icons and keep their own rendering.
-`SourceEditorIcons` adapts the pinned CodeMirror search and go-to-line close
-buttons to the same Lucide SVGs while retaining the editor's native commands
-and focus handling. Editor upgrades must retain the bilingual keyboard regression.
+## Design guidance
 
-The explorer uses neutral surfaces with a blue brand accent in both themes.
-`foundation.css` owns all shared color, typography, radius and shadow tokens:
-brand colors identify interactive elements, while `--success`, `--warning`
-and `--danger` communicate outcomes independently of the brand. Use the system
-sans-serif stack for UI and monospace for hashes, addresses and source. Numeric
-values use tabular figures. Panels use 8–12px corners and fine borders; reserve
-`--shadow` for popovers and dialogs rather than ordinary content cards.
-
-The shared shell has a 1280px maximum content width. Below 1024px, explorer
-navigation becomes an expandable link list; below 768px, search occupies its
-own row and summary grids stack. Wide data tables scroll within their own
-focusable container. Language, theme, wallet and account controls
-remain reachable without expanding explorer navigation.
-
-`NavigationDisclosure` contains ordinary links with native Tab order, not ARIA
-menuitems. Escape returns focus to its trigger, and outside pointer/focus and
-link activation close it. Keep wallet connection and SIWE account identity
-separate, preserve capability-gated links, and never add initial imports of
-route-only dependencies for shell decoration.
-
-Shared page titles use `components/PageHeading`; domain pages retain
-their own identifiers and summary content. Manual refresh occupies the heading action
-slot; its route-loaded styles live in `api/browsingRefresh.css`. Keep stale status
-compact, preserve its accessible description on mobile, and expose the hint on
-keyboard focus with Escape dismissal. The account, contract and transaction
-tab primitives share the underline rules in `explorer/entities.css`. Selected tabs must
-retain visible text and keyboard focus rather than relying on a filled surface.
-Use `numeric` for right-aligned quantities without rounding source strings.
-
-## Visual acceptance
-
-`make test-e2e` serves the production SPA through the Go embedded browser fixture.
-`e2e/appearance.spec.ts` checks seven representative routes at 390, 768 and 1440px,
-in English and Chinese, in both themes. Each route checks WCAG 2.1 AA with axe,
-page overflow, CSP/console failures and unexpected external requests, then saves
-a named screenshot in `web/test-results/` and attaches it to the Playwright
-report. Inspect these artifacts after structural or token changes. The account
-and Watchlist browser flows also save authenticated account, billing-admin and
-browser notification settings. `e2e/navigation.spec.ts` covers keyboard order, Escape, focus
-restoration, mobile disclosure and capability-gated entries.
-
-`components/Message` owns transient operation feedback. Messages stack at the
-viewport top, use semantic theme colors and Lucide status icons, dismiss after
-three seconds, and pause while hovered or focused. They never take initial focus;
-manual close returns focus to the previous control. Native modal dialogs own
-their message stack so feedback remains in the accessible top layer. Identical
-concurrent messages coalesce, and caller teardown removes feedback and timers.
-Keep read/loading states, field validation and durable transaction/payment
-outcomes in their owning views.
+The [design style guide](../../../docs/design-style-guide.md) owns visual principles,
+shared component presentation, icons, interaction feedback, and visual acceptance.
+Read it before changing styles; use its review checklist for subsequent UI changes.
