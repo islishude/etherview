@@ -23,7 +23,7 @@ require (
 	github.com/holiman/uint256 v1.3.2
 	github.com/ipfs/go-cid v0.6.2
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/klauspost/compress v1.20.0
+	github.com/klauspost/compress v1.20.3
 	github.com/nats-io/nats.go v1.55.0
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/pk910/dynamic-ssz v1.4.0
