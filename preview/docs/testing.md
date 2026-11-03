@@ -39,6 +39,19 @@ ordinary Go test suite. Receipt polling retries only null results and Geth's
 specific transaction-indexing RPC error within the existing three-minute wait;
 other RPC/transport failures and mismatched transaction hashes remain fatal.
 
+## Compiler cache regressions
+
+`make preview-network-check` includes compiler-cache regressions for repeated
+initialization with mapped ownership, application-visible UID/GID and mode
+rejection, redirected paths, access-probe failure and cleanup, artifact
+preservation, and isolation/failure propagation of both helper containers.
+For Docker-backed validation, use a dedicated temporary bind directory with
+`PREVIEW_COMPILER_CACHE_DIR`: run initialization twice, check access as
+`65532:65532`, and clean it after stopping its consumers. Never use the daily
+cache for destructive rejection or cleanup tests. A Docker-managed volume
+can separately exercise native Linux ownership rejection without Desktop
+bind-owner mapping.
+
 ## Real Lighthouse Preview acceptance
 
 `make test-preview-metadata` now uses the real PoS Preview network and locally

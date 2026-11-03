@@ -55,12 +55,21 @@ inodes and spuriously rejects the installation.
   lifecycle: the host creates an empty parent, and a one-shot management
   container sets that directory and its `cache` child to UID/GID 65532 and
   mode 0750 before the API starts. Existing nonempty caches must already have
-  that ownership and mode; initialization never recursively repairs their
-  permissions. One lifecycle script invokes `docker run --rm` directly, outside
+  that ownership as seen by the application user and that mode; initialization
+  never recursively repairs their permissions. After root initialization or
+  structural validation, a second helper runs as UID/GID 65532 with all
+  capabilities dropped. It checks both directories for ownership and mode, then
+  creates a private temporary directory inside the cache to test writing,
+  making an artifact read-only, renaming, reading and removal. This check also
+  runs for newly initialized caches. Docker Desktop may map bind ownership
+  differently for root and application containers, so root-observed UID/GID is
+  not used to reject an existing cache. Incorrect application-visible ownership,
+  modes or failed filesystem operations still fail startup. One lifecycle script invokes `docker run --rm` directly, outside
   the Compose service topology. The helper reuses Preview's pinned Node tooling image, has no
   network, a read-only root filesystem, no application secrets or Docker
-  socket, and only the cache bind and read-only management script. It runs as
-  root with only CHOWN, FOWNER and DAC_OVERRIDE capabilities. Application
+  socket, and only the cache bind and read-only management script. Initialization and cleanup run as
+  root with only CHOWN, FOWNER and DAC_OVERRIDE capabilities; the verification
+  helper has the same isolated mounts and no extra capabilities. Application
   containers retain UID/GID 65532 and gain no capabilities. Among application
   roles, only `all` or `api` receives the cache. Ordinary restart,
   forced recreation, and image replacement retain it; an explicit Compose

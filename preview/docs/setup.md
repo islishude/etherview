@@ -139,10 +139,16 @@ mounts, and CHOWN/FOWNER/DAC_OVERRIDE capabilities. It receives no application
 secrets or Docker socket. No host user account or host `sudo` is needed.
 `PREVIEW_COMPILER_CACHE_DIR` selects a dedicated alternative host directory;
 symlink paths and directories containing unrelated entries are rejected.
-Existing nonempty caches must already have the expected directory ownership
-and modes. Startup reports a mismatch without recursively changing existing
-data; stop all consumers and explicitly reclaim the rebuildable cache before
-retrying. Direct Compose startup requires an already prepared cache.
+After preparation, a second network-disabled helper runs as `65532:65532`
+with all capabilities dropped. It verifies both directory owners and modes
+from the application user's view, then checks writing, read-only file creation,
+rename, readback and removal in a unique temporary directory inside the cache.
+The probe is removed without changing existing artifacts. This accommodates
+Docker Desktop bind mounts whose ownership appears different to root and the
+application user. Existing nonempty caches must already have the expected
+application-visible ownership and modes; startup never recursively repairs
+them. A real mismatch still requires stopping consumers and explicitly
+reclaiming the rebuildable cache before retrying. Direct Compose startup requires an already prepared cache.
 Cache entries remain ordinary
 read-only files named by SHA-256 and are fully revalidated before reuse. They
 do not make an expired compiler catalog usable and do not belong in backups.

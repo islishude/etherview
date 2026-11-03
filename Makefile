@@ -520,7 +520,7 @@ preview-cert-check:
 	}
 
 preview-network-check:
-	$(NODE) --test preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/bundler-start.test.mjs preview/verification/verify.test.mjs
+	$(NODE) --test preview/scripts/compiler-cache.test.mjs preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/bundler-start.test.mjs preview/verification/verify.test.mjs
 
 preview-env:
 	$(NODE) preview/scripts/env.mjs "$(PREVIEW_ENV_FILE)"

@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "../..");
 
@@ -56,30 +57,33 @@ async function managePreviewCache(action, composeArgs = ["-f", "compose.yaml"]) 
   const info = fs.lstatSync(source);
   if (!info.isDirectory() || info.isSymbolicLink())
     throw new Error("Invalid compiler cache directory");
-  docker(
-    [
-      "run",
-      "--rm",
-      "--network=none",
-      "--read-only",
-      "--user=0:0",
-      "--cap-drop=ALL",
-      "--cap-add=CHOWN",
-      "--cap-add=FOWNER",
-      "--cap-add=DAC_OVERRIDE",
-      "--security-opt=no-new-privileges:true",
-      "--mount",
-      `type=bind,src=${source},dst=/compiler-cache`,
-      "--mount",
-      `type=bind,src=${path.join(root, "preview/scripts/compiler-cache.mjs")},dst=/compiler-cache.mjs,readonly`,
-      "--entrypoint=node",
-      "etherview-preview-bundler:local",
-      "/compiler-cache.mjs",
-      "--container",
-      action,
-    ],
-    { stdio: "inherit", timeout: 60_000 },
-  );
+  const runHelper = (helperAction) =>
+    docker(
+      [
+        "run",
+        "--rm",
+        "--network=none",
+        "--read-only",
+        helperAction === "verify" ? "--user=65532:65532" : "--user=0:0",
+        "--cap-drop=ALL",
+        ...(helperAction === "verify"
+          ? []
+          : ["--cap-add=CHOWN", "--cap-add=FOWNER", "--cap-add=DAC_OVERRIDE"]),
+        "--security-opt=no-new-privileges:true",
+        "--mount",
+        `type=bind,src=${source},dst=/compiler-cache`,
+        "--mount",
+        `type=bind,src=${path.join(root, "preview/scripts/compiler-cache.mjs")},dst=/compiler-cache.mjs,readonly`,
+        "--entrypoint=node",
+        "etherview-preview-bundler:local",
+        "/compiler-cache.mjs",
+        "--container",
+        helperAction,
+      ],
+      { stdio: "inherit", timeout: 60_000 },
+    );
+  runHelper(action);
+  if (action === "init") runHelper("verify");
   // The container emptied the directory; unlinking an empty child only needs
   // its host-owned parent's permissions, regardless of the child's UID.
   if (action === "clean") fs.rmdirSync(source);
@@ -114,9 +118,9 @@ function assign(directoryPath) {
 
 // The container only receives this dedicated bind mount. No caller-supplied
 // container path or recursive ownership repair is part of the interface.
-function manageCache(action) {
-  const root = "/compiler-cache";
-  if (!["init", "clean"].includes(action)) throw new Error("Expected init or clean");
+export function manageCache(action, root = "/compiler-cache") {
+  if (!["init", "clean", "verify"].includes(action))
+    throw new Error("Expected init, clean or verify");
   const info = directory(root);
   const entries = fs.readdirSync(root);
   if (entries.some((entry) => entry !== "cache"))
@@ -128,8 +132,20 @@ function manageCache(action) {
     fs.rmSync(cache, { recursive: true, force: true });
     return;
   }
-  if (entries.length > 0) {
+  if (action === "verify") {
+    if (process.getuid() !== uid || process.getgid() !== gid)
+      throw new Error("Compiler cache verification requires application UID/GID 65532:65532");
     if (!owned(info) || !owned(directory(cache)))
+      throw new Error(
+        "Compiler cache ownership/mode differs from 65532:65532/0750 for the application user; stop its consumers and explicitly clean it first",
+      );
+    probeCache(cache);
+    return;
+  }
+  if (entries.length > 0) {
+    // Docker Desktop may present the bind owner as the container user. Check
+    // ownership in the separate unprivileged helper, never from this root view.
+    if ((info.mode & 0o7777) !== 0o750 || (directory(cache).mode & 0o7777) !== 0o750)
       throw new Error(
         "Existing compiler cache ownership/mode differs from 65532:65532/0750; stop its consumers and explicitly clean it first",
       );
@@ -140,17 +156,37 @@ function manageCache(action) {
   assign(cache);
 }
 
-try {
-  if (process.argv[2] === "--container") {
-    if (process.argv.length !== 4) throw new Error("Expected init or clean");
-    manageCache(process.argv[3]);
-  } else {
-    await managePreviewCache(
-      process.argv[2],
-      process.argv.length > 3 ? process.argv.slice(3) : undefined,
-    );
+// Exercise the filesystem operations needed to install artifacts without touching
+// existing entries. A unique private directory also isolates concurrent probes.
+function probeCache(cache) {
+  let probe;
+  try {
+    probe = fs.mkdtempSync(path.join(cache, ".preview-access-"));
+    const temporary = path.join(probe, "temporary");
+    const installed = path.join(probe, "installed");
+    fs.writeFileSync(temporary, "preview compiler cache probe", { flag: "wx", mode: 0o600 });
+    fs.chmodSync(temporary, 0o400);
+    fs.renameSync(temporary, installed);
+    if (fs.readFileSync(installed, "utf8") !== "preview compiler cache probe")
+      throw new Error("Compiler cache probe readback failed");
+  } finally {
+    if (probe) fs.rmSync(probe, { recursive: true, force: true });
   }
-} catch (error) {
-  console.error(`preview compiler cache: ${error.message}`);
-  process.exitCode = 1;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  try {
+    if (process.argv[2] === "--container") {
+      if (process.argv.length !== 4) throw new Error("Expected init, clean or verify");
+      manageCache(process.argv[3]);
+    } else {
+      await managePreviewCache(
+        process.argv[2],
+        process.argv.length > 3 ? process.argv.slice(3) : undefined,
+      );
+    }
+  } catch (error) {
+    console.error(`preview compiler cache: ${error.message}`);
+    process.exitCode = 1;
+  }
 }

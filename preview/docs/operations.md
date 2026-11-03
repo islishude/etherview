@@ -54,6 +54,13 @@ selected with `PREVIEW_NETWORK_DIR`; individual `ETHERVIEW_GENESIS_FILE` and
 `GETH_GENESIS_FILE` overrides are rejected. Custom bundles are never deleted by
 the stop target and must be reset by their owner.
 
+Compiler cache initialization validates permissions as the application user
+`65532:65532`, including an actual temporary-file access probe. On Docker Desktop,
+a different owner shown by a root container alone does not require clearing
+the cache. If application-visible ownership or mode validation fails, stop all
+cache consumers before explicit reclamation; do not use recursive `chown` or
+`chmod` on a live cache. See [cache lifecycle](setup.md) for cleanup.
+
 The template retains its pre-funded development addresses and system contracts.
 Transactions are signed locally with the standard Hardhat development account
 `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` (the first account from
