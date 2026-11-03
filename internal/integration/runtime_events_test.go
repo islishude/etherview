@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"sync"
@@ -58,12 +59,21 @@ func TestCanonicalTransitionsAndRuntimeStatusShareDurableEventLedger(t *testing.
 	if err != nil {
 		t.Fatalf("replay durable events: %v", err)
 	}
-	if len(replayed) != 4 {
+	if len(replayed) != 7 {
 		t.Fatalf("runtime events = %+v", replayed)
 	}
-	for index, wantType := range []string{"head", "head", "reorg", "status"} {
+	for index, wantType := range []string{"head", "status", "head", "status", "reorg", "status", "status"} {
 		if replayed[index].Type != wantType || index > 0 && replayed[index-1].ID >= replayed[index].ID {
-			t.Fatalf("runtime events are not ordered head/head/reorg/status: %+v", replayed)
+			t.Fatalf("runtime events lost canonical/publication/status ordering: %+v", replayed)
+		}
+	}
+	for _, index := range []int{1, 3, 5} {
+		var publication struct {
+			Reason string `json:"reason"`
+			Stage  string `json:"stage"`
+		}
+		if err := json.Unmarshal(replayed[index].Data, &publication); err != nil || publication.Reason != "browsing_publication" || publication.Stage != "core" {
+			t.Fatalf("core browsing event=%+v error=%v", replayed[index], err)
 		}
 	}
 	if replayed[len(replayed)-1].ID != statusEvent.ID {
@@ -75,7 +85,7 @@ func TestCanonicalTransitionsAndRuntimeStatusShareDurableEventLedger(t *testing.
 	if err := repository.ApplyReorg(ctx, "1", reorg); err == nil {
 		t.Fatal("reapplying stale reorg unexpectedly succeeded")
 	}
-	assertRowCount(t, ctx, db, `SELECT count(*) FROM runtime_events WHERE chain_id = 1`, 4)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM runtime_events WHERE chain_id = 1`, 7)
 }
 
 func TestBoundedRuntimeReplayAndIndependentAPIReplicaRelays(t *testing.T) {

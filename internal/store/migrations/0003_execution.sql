@@ -242,8 +242,16 @@ CREATE TABLE logs (
     tx_index bigint NOT NULL,
     tx_hash bytea NOT NULL,
     address bytea NOT NULL,
-    topic0 bytea,
+    topic0 bytea GENERATED ALWAYS AS (decode(substring(raw->'topics'->>0 FROM 3), 'hex')) STORED,
+    topic1 bytea GENERATED ALWAYS AS (decode(substring(raw->'topics'->>1 FROM 3), 'hex')) STORED,
+    topic2 bytea GENERATED ALWAYS AS (decode(substring(raw->'topics'->>2 FROM 3), 'hex')) STORED,
+    topic3 bytea GENERATED ALWAYS AS (decode(substring(raw->'topics'->>3 FROM 3), 'hex')) STORED,
     raw jsonb NOT NULL,
+    CONSTRAINT logs_topics_check CHECK (jsonb_typeof(raw->'topics') = 'array' AND jsonb_array_length(raw->'topics') BETWEEN 0 AND 4 AND raw ? 'topics' AND NOT jsonb_path_exists(raw, '$.topics[*] ? (@.type() != "string")')),
+    CONSTRAINT logs_topic0_shape CHECK (topic0 IS NULL OR (octet_length(topic0) = 32 AND (raw->'topics'->>0) ~ '^0x[0-9a-fA-F]{64}$')),
+    CONSTRAINT logs_topic1_shape CHECK (topic1 IS NULL OR (octet_length(topic1) = 32 AND (raw->'topics'->>1) ~ '^0x[0-9a-fA-F]{64}$')),
+    CONSTRAINT logs_topic2_shape CHECK (topic2 IS NULL OR (octet_length(topic2) = 32 AND (raw->'topics'->>2) ~ '^0x[0-9a-fA-F]{64}$')),
+    CONSTRAINT logs_topic3_shape CHECK (topic3 IS NULL OR (octet_length(topic3) = 32 AND (raw->'topics'->>3) ~ '^0x[0-9a-fA-F]{64}$')),
     CONSTRAINT logs_address_check CHECK ((octet_length(address) = 20)),
     CONSTRAINT logs_log_index_check CHECK ((log_index >= 0)),
     CONSTRAINT logs_topic0_check CHECK (((topic0 IS NULL) OR (octet_length(topic0) = 32))),
@@ -457,11 +465,11 @@ CREATE INDEX eip7702_authorizations_p_0_10_chain_id_authority_block_numb_idx ON 
 
 CREATE INDEX eip7702_authorizations_p_0_10_chain_id_transaction_hash_aut_idx ON eip7702_authorizations_p_0_1000000 USING btree (chain_id, transaction_hash, authorization_index);
 
-CREATE INDEX logs_default_chain_id_address_block_number_idx ON logs_default USING btree (chain_id, address, block_number DESC);
+CREATE INDEX logs_default_chain_id_address_block_number_idx ON logs_default USING btree (chain_id, address, block_number DESC, tx_index DESC, log_index DESC);
 
 CREATE INDEX logs_default_chain_id_topic0_block_number_idx ON logs_default USING btree (chain_id, topic0, block_number DESC);
 
-CREATE INDEX logs_p_0_1000000_chain_id_address_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, address, block_number DESC);
+CREATE INDEX logs_p_0_1000000_chain_id_address_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, address, block_number DESC, tx_index DESC, log_index DESC);
 
 CREATE INDEX logs_p_0_1000000_chain_id_topic0_block_number_idx ON logs_p_0_1000000 USING btree (chain_id, topic0, block_number DESC);
 
@@ -543,7 +551,31 @@ CREATE INDEX eip7702_authorizations_authority_idx ON eip7702_authorizations USIN
 
 CREATE INDEX eip7702_authorizations_tx_idx ON eip7702_authorizations USING btree (chain_id, transaction_hash, authorization_index);
 
-CREATE INDEX logs_address_idx ON logs USING btree (chain_id, address, block_number DESC);
+CREATE INDEX logs_default_address_topic0_idx ON logs_default (chain_id, address, topic0, block_number DESC, tx_index DESC, log_index DESC) WHERE topic0 IS NOT NULL;
+
+CREATE INDEX logs_p_0_1000000_address_topic0_idx ON logs_p_0_1000000 (chain_id, address, topic0, block_number DESC, tx_index DESC, log_index DESC) WHERE topic0 IS NOT NULL;
+
+CREATE INDEX logs_address_topic0_idx ON logs (chain_id, address, topic0, block_number DESC, tx_index DESC, log_index DESC) WHERE topic0 IS NOT NULL;
+
+CREATE INDEX logs_default_address_topic1_idx ON logs_default (chain_id, address, topic1, block_number DESC, tx_index DESC, log_index DESC) WHERE topic1 IS NOT NULL;
+
+CREATE INDEX logs_p_0_1000000_address_topic1_idx ON logs_p_0_1000000 (chain_id, address, topic1, block_number DESC, tx_index DESC, log_index DESC) WHERE topic1 IS NOT NULL;
+
+CREATE INDEX logs_address_topic1_idx ON logs (chain_id, address, topic1, block_number DESC, tx_index DESC, log_index DESC) WHERE topic1 IS NOT NULL;
+
+CREATE INDEX logs_default_address_topic2_idx ON logs_default (chain_id, address, topic2, block_number DESC, tx_index DESC, log_index DESC) WHERE topic2 IS NOT NULL;
+
+CREATE INDEX logs_p_0_1000000_address_topic2_idx ON logs_p_0_1000000 (chain_id, address, topic2, block_number DESC, tx_index DESC, log_index DESC) WHERE topic2 IS NOT NULL;
+
+CREATE INDEX logs_address_topic2_idx ON logs (chain_id, address, topic2, block_number DESC, tx_index DESC, log_index DESC) WHERE topic2 IS NOT NULL;
+
+CREATE INDEX logs_default_address_topic3_idx ON logs_default (chain_id, address, topic3, block_number DESC, tx_index DESC, log_index DESC) WHERE topic3 IS NOT NULL;
+
+CREATE INDEX logs_p_0_1000000_address_topic3_idx ON logs_p_0_1000000 (chain_id, address, topic3, block_number DESC, tx_index DESC, log_index DESC) WHERE topic3 IS NOT NULL;
+
+CREATE INDEX logs_address_topic3_idx ON logs (chain_id, address, topic3, block_number DESC, tx_index DESC, log_index DESC) WHERE topic3 IS NOT NULL;
+
+CREATE INDEX logs_address_idx ON logs USING btree (chain_id, address, block_number DESC, tx_index DESC, log_index DESC);
 
 CREATE INDEX logs_topic0_idx ON logs USING btree (chain_id, topic0, block_number DESC);
 
@@ -652,3 +684,51 @@ CREATE INDEX consensus_observations_hash_idx ON consensus_observations(chain_id,
 CREATE INDEX blob_manifests_hash_idx ON blob_manifests(chain_id,block_hash);
 CREATE INDEX block_stage_results_consensus_health_idx ON block_stage_results(chain_id,stage,stage_version,block_number DESC)
 WHERE stage IN ('consensus','blob','requests');
+
+-- Historical event names are compact references; raw log bodies stay in logs.
+CREATE TABLE event_signatures (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    signature text NOT NULL CHECK (octet_length(signature) BETWEEN 1 AND 4096),
+    digest bytea NOT NULL CHECK (digest=sha256(convert_to(signature, 'UTF8'))),
+    name text GENERATED ALWAYS AS (split_part(signature, '(', 1)) STORED,
+    UNIQUE (digest)
+);
+CREATE TABLE address_event_logs (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    log_index bigint NOT NULL CHECK (log_index >= 0),
+    tx_index bigint NOT NULL CHECK (tx_index >= 0),
+    address bytea NOT NULL CHECK (octet_length(address) = 20),
+    signature_id bigint NOT NULL REFERENCES event_signatures(id),
+    PRIMARY KEY (chain_id, block_number, block_hash, log_index),
+    FOREIGN KEY (chain_id, block_number, block_hash, log_index) REFERENCES logs(chain_id, block_number, block_hash, log_index) ON DELETE CASCADE
+) PARTITION BY RANGE (block_number);
+CREATE TABLE address_event_logs_default PARTITION OF address_event_logs DEFAULT;
+CREATE TABLE address_event_logs_p_0_1000000 PARTITION OF address_event_logs FOR VALUES FROM (0) TO (1000000);
+CREATE INDEX address_event_logs_default_lookup_idx ON address_event_logs_default (chain_id, address, signature_id, block_number DESC, tx_index DESC, log_index DESC);
+CREATE INDEX address_event_logs_p_0_1000000_lookup_idx ON address_event_logs_p_0_1000000 (chain_id, address, signature_id, block_number DESC, tx_index DESC, log_index DESC);
+CREATE INDEX address_event_logs_lookup_idx ON address_event_logs (chain_id, address, signature_id, block_number DESC, tx_index DESC, log_index DESC);
+CREATE TABLE address_event_blocks (
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash) = 32),
+    address bytea NOT NULL CHECK (octet_length(address) = 20),
+    signature_id bigint NOT NULL REFERENCES event_signatures(id),
+    log_count bigint NOT NULL CHECK (log_count > 0),
+    PRIMARY KEY (chain_id, block_number, block_hash, address, signature_id)
+) PARTITION BY RANGE (block_number);
+CREATE TABLE address_event_blocks_default PARTITION OF address_event_blocks DEFAULT;
+CREATE TABLE address_event_blocks_p_0_1000000 PARTITION OF address_event_blocks FOR VALUES FROM (0) TO (1000000);
+CREATE INDEX address_event_blocks_default_lookup_idx ON address_event_blocks_default (chain_id, address, signature_id, block_number);
+CREATE INDEX address_event_blocks_p_0_1000000_lookup_idx ON address_event_blocks_p_0_1000000 (chain_id, address, signature_id, block_number);
+CREATE INDEX address_event_blocks_lookup_idx ON address_event_blocks (chain_id, address, signature_id, block_number);
+CREATE TABLE address_event_directory (
+    chain_id numeric(78,0) NOT NULL,
+    address bytea NOT NULL CHECK (octet_length(address) = 20),
+    signature_id bigint NOT NULL REFERENCES event_signatures(id),
+    name text NOT NULL,
+    log_count bigint NOT NULL CHECK (log_count >= 0),
+    PRIMARY KEY (chain_id, address, signature_id)
+);
+CREATE INDEX address_event_directory_name_idx ON address_event_directory (chain_id, address, lower(left(name,128)) text_pattern_ops, signature_id) WHERE log_count > 0;

@@ -17,6 +17,7 @@ make preview-tool ARGS='list'
 make preview-tool ARGS='run blob'
 make preview-tool ARGS='run aa'
 make preview-tool ARGS='run proxy.uups'
+make preview-tool ARGS='run events'
 make preview-tool ARGS='act --run RUN_ID upgrade'
 make preview-tool ARGS='run eip7702'
 make preview-tool ARGS='act --run RUN_ID redelegate'
@@ -40,25 +41,26 @@ funded by public development account 0. Only use these tools on Preview.
 
 ## Scenario catalog
 
-| Scenario            | Initial data                                                                                          | Explicit actions                                                                 |
-| ------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `transactions`      | Legacy, access-list and EIP-1559 transfers; creation, internal transfer, state/log changes and revert | `activity`                                                                       |
-| `blob`              | Real one-blob and two-blob transactions, cell proofs, archive readback                                | None                                                                             |
-| `aa`                | Funded SimpleAccount deployed through Rundler v0.9                                                    | `execute`, `revert`, `bad-signature`, `insufficient-prefund`                     |
-| `tokens`            | ERC-20, ERC-721 and ERC-1155; large integer IDs and local IPFS metadata                               | `transfer`, `approve`, `burn`, `metadata-update`, `metadata-invalid`, `activity` |
-| `ens`               | A unique `.test` registration and matching primary name                                               | `renew`, `transfer`, `reclaim`, `set-address`, `set-primary`, `mismatch`         |
-| `contracts`         | Exact verified, same-code and unverified examples; source upload files                                | `verify`                                                                         |
-| `proxy.erc1967`     | ERC-1967 proxy and implementation                                                                     | `write`, `upgrade`                                                               |
-| `proxy.transparent` | Transparent proxy and its immutable ProxyAdmin                                                        | `write`, `upgrade`                                                               |
-| `proxy.uups`        | UUPS proxy plus valid and invalid upgrade targets                                                     | `write`, `bad-upgrade`, `upgrade`                                                |
-| `proxy.beacon`      | Two independently initialized proxies sharing one Beacon                                              | `write`, `upgrade`                                                               |
-| `proxy.erc1167`     | Factory-created standard clone                                                                        | `write`                                                                          |
-| `proxy.immutable`   | OpenZeppelin immutable-args clone                                                                     | `write`                                                                          |
-| `proxy.cwia`        | Exact Solady legacy CWIA with large integer and bytes arguments                                       | `write`, `unauthorized`                                                          |
-| `proxy.safe`        | Official Safe 1.4.1 singleton and factory-created proxy                                               | None; inspect recognition, not management authorization                          |
-| `proxy.diamond`     | Diamond and two facets                                                                                | `write`, `add`, `replace`, `remove`                                              |
-| `eip7702`           | A separately funded authority delegated to verified code                                              | `execute`, `redelegate`, `skip`, `revert`, `clear`                               |
-| `wallet`            | ETH, Local USD, ERC-20, ERC-721 and ERC-1155 for the specified browser wallet                         | `activity`                                                                       |
+| Scenario            | Initial data                                                                                                        | Explicit actions                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `events`            | Verified/unverified emitters, 33 direct logs, overloaded and anonymous events, four topics and an upgradeable proxy | `emit`, `upgrade`                                                                |
+| `transactions`      | Legacy, access-list and EIP-1559 transfers; creation, internal transfer, state/log changes and revert               | `activity`                                                                       |
+| `blob`              | Real one-blob and two-blob transactions, cell proofs, archive readback                                              | None                                                                             |
+| `aa`                | Funded SimpleAccount deployed through Rundler v0.9                                                                  | `execute`, `revert`, `bad-signature`, `insufficient-prefund`                     |
+| `tokens`            | ERC-20, ERC-721 and ERC-1155; large integer IDs and local IPFS metadata                                             | `transfer`, `approve`, `burn`, `metadata-update`, `metadata-invalid`, `activity` |
+| `ens`               | A unique `.test` registration and matching primary name                                                             | `renew`, `transfer`, `reclaim`, `set-address`, `set-primary`, `mismatch`         |
+| `contracts`         | Exact verified, same-code and unverified examples; source upload files                                              | `verify`                                                                         |
+| `proxy.erc1967`     | ERC-1967 proxy and implementation                                                                                   | `write`, `upgrade`                                                               |
+| `proxy.transparent` | Transparent proxy and its immutable ProxyAdmin                                                                      | `write`, `upgrade`                                                               |
+| `proxy.uups`        | UUPS proxy plus valid and invalid upgrade targets                                                                   | `write`, `bad-upgrade`, `upgrade`                                                |
+| `proxy.beacon`      | Two independently initialized proxies sharing one Beacon                                                            | `write`, `upgrade`                                                               |
+| `proxy.erc1167`     | Factory-created standard clone                                                                                      | `write`                                                                          |
+| `proxy.immutable`   | OpenZeppelin immutable-args clone                                                                                   | `write`                                                                          |
+| `proxy.cwia`        | Exact Solady legacy CWIA with large integer and bytes arguments                                                     | `write`, `unauthorized`                                                          |
+| `proxy.safe`        | Official Safe 1.4.1 singleton and factory-created proxy                                                             | None; inspect recognition, not management authorization                          |
+| `proxy.diamond`     | Diamond and two facets                                                                                              | `write`, `add`, `replace`, `remove`                                              |
+| `eip7702`           | A separately funded authority delegated to verified code                                                            | `execute`, `redelegate`, `skip`, `revert`, `clear`                               |
+| `wallet`            | ETH, Local USD, ERC-20, ERC-721 and ERC-1155 for the specified browser wallet                                       | `activity`                                                                       |
 
 With a multi-scenario run, select the scenario explicitly:
 
@@ -81,6 +83,30 @@ execution ends at the final state (including cleared delegation and invalid
 metadata), so inspect the initial state first if you need a visual comparison.
 Actions are real transactions. For example, repeating a transfer of the same
 ERC-721 after ownership has changed can revert. Reports retain that outcome.
+
+### Contract event logs
+
+`run events` prepares a verified emitter with more than 25 logs, a separate
+unverified emitter, and a proxy with old-implementation events. Its report links
+open the Event Logs tab directly, including `Changed(uint256)`,
+`Changed(bytes32)`, anonymous `Hidden(bytes)` and each exact topic0–3 filter.
+The generated values include integers above JavaScript's safe range.
+
+`act --run RUN_ID emit` adds another page of direct events for explicit refresh.
+`act --run RUN_ID upgrade` upgrades only the fixture proxy and emits
+`AfterUpgrade(address,uint256)`. The new implementation omits the old event
+declarations; checks require the proxy's historical `Changed(uint256)` logs to
+remain available with the proxy as emitter. Use `run events --lifecycle` to
+prepare both final states in one run.
+
+Automatic checks cover all four topic positions, full-signature selection,
+overloaded names, anonymous logs, raw unverified logs, address isolation and
+two descending keyset pages without duplicates. `check` repeats pagination
+from a fresh snapshot without sending transactions. `--no-verify` leaves name
+and decoded-source acceptance manual. Reports keep the browser checklist
+unchecked: inspect name search, mutually exclusive mode switching, URL reload,
+next/previous pages, raw data and provenance in both languages and mobile layout.
+An ordinary EOA must not show the new tab.
 
 ## Reports and recovery
 
@@ -222,3 +248,9 @@ With slower operator polling, binding may time out while new heads advance;
 the run preserves its transactions for `check` and `resume`. Test cleanup owns
 only its projects, never the daily Preview. These gates establish local
 behavior, not external payment, public-source availability or remote CI results.
+
+The `events` report also links the original emission's single-block interval and
+the upgraded proxy's new-event interval. `check` derives inclusive bounds from
+saved mined receipts, verifies exact topic matches and empty earlier ranges, and
+requires the post-upgrade directory to exclude old signatures. It sends no new
+transactions, so an existing run can validate a UI/API update on the same Preview.

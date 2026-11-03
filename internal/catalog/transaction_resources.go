@@ -215,123 +215,12 @@ func (catalog *Postgres) TransactionLogs(
 		return TransactionLogPage{}, fmt.Errorf("list transaction logs: %w", err)
 	}
 
-	type rawLog struct {
-		protocol         protocolLogEvidence
-		index            int64
-		raw              []byte
-		persisted        persistedLogDecoding
-		tracePath        pgtype.Text
-		executionAddress []byte
-	}
-	rawLogs := make([]rawLog, 0, resolution.limit+1)
-	for _, storedRow := range rows {
-		var raw []byte
-		var logIndex int64
-		var persisted persistedLogDecoding
-		var storedTracePath pgtype.Text
-		var executionAddress []byte
-		{
-			logIndex = storedRow.LogIndex
-			raw = storedRow.Raw
-			var queryValue2 pgtype.Text
-			if storedRow.Status != nil {
-				queryValue2 = pgtype.Text{String: *storedRow.Status, Valid: true}
-			}
-			persisted.status = queryValue2
-			var queryValue4 pgtype.Text
-			if storedRow.Signature != nil {
-				queryValue4 = pgtype.Text{String: *storedRow.Signature, Valid: true}
-			}
-			persisted.signature = queryValue4
-			var queryValue6 pgtype.Text
-			if storedRow.Source != nil {
-				queryValue6 = pgtype.Text{String: *storedRow.Source, Valid: true}
-			}
-			persisted.source = queryValue6
-			var queryValue8 pgtype.Text
-			if storedRow.Confidence != nil {
-				queryValue8 = pgtype.Text{String: *storedRow.Confidence, Valid: true}
-			}
-			persisted.confidence = queryValue8
-			persisted.arguments = storedRow.Arguments
-			persisted.candidates = storedRow.Candidates
-			var queryValue12 pgtype.Text
-			if storedRow.Warning != nil {
-				queryValue12 = pgtype.Text{String: *storedRow.Warning, Valid: true}
-			}
-			persisted.warning = queryValue12
-			persisted.targetAddress = storedRow.TargetAddress
-			persisted.targetCodeHash = storedRow.TargetCodeHash
-			persisted.sourceAddress = storedRow.SourceAddress
-			persisted.sourceCodeHash = storedRow.SourceCodeHash
-			var queryValue18 pgtype.Text
-			if storedRow.TracePath != nil {
-				queryValue18 = pgtype.Text{String: *storedRow.TracePath, Valid: true}
-			}
-			storedTracePath = queryValue18
-			executionAddress = storedRow.ExecutionAddress
+	for _, row := range rows {
+		item, err := projectStoredTransactionLog(ctx, tx, resolution.identity, row, nil)
+		if err != nil {
+			return TransactionLogPage{}, err
 		}
-		if logIndex < 0 {
-			return TransactionLogPage{}, ErrCorruptData
-		}
-		rawLogs = append(rawLogs, rawLog{
-			index: logIndex, raw: raw, persisted: persisted,
-			protocol:  protocolLogEvidence{amsterdam: storedRow.Amsterdam, published: storedRow.NativePublished, from: storedRow.NativeFrom, to: storedRow.NativeTo, amount: storedRow.NativeAmount},
-			tracePath: storedTracePath, executionAddress: executionAddress,
-		})
-	}
-
-	for _, stored := range rawLogs {
-		blockNumber, parseErr := strconv.ParseUint(resolution.identity.BlockNumber, 10, 64)
-		if parseErr != nil {
-			return TransactionLogPage{}, ErrCorruptData
-		}
-		decoded, decodeErr := chainbundle.DecodeLog(
-			stored.raw, common.BytesToHash(resolution.txHash), common.BytesToHash(resolution.blockHash),
-			blockNumber, uint64(resolution.txIndex), uint64(stored.index),
-		)
-		if decodeErr != nil {
-			return TransactionLogPage{}, ErrCorruptData
-		}
-		topics := make([]string, len(decoded.Topics))
-		for index := range decoded.Topics {
-			topics[index] = decoded.Topics[index].Hex()
-		}
-		protocol, recognized, protocolErr := decodeProtocolLog(decoded, stored.protocol)
-		if protocolErr != nil {
-			return TransactionLogPage{}, protocolErr
-		}
-		if recognized {
-			page.Items = append(page.Items, TransactionLog{Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10), Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: protocol})
-			continue
-		}
-		decodeAddress := decoded.Address
-		attribution := TransactionLogAttribution{Mode: "address_fallback", TracePath: []uint32{}}
-		if stored.tracePath.Valid || len(stored.executionAddress) != 0 {
-			if !stored.tracePath.Valid || len(stored.executionAddress) != common.AddressLength {
-				return TransactionLogPage{}, ErrCorruptData
-			}
-			path, pathErr := parseTracePath(stored.tracePath.String)
-			if pathErr != nil {
-				return TransactionLogPage{}, ErrCorruptData
-			}
-			decodeAddress = common.BytesToAddress(stored.executionAddress)
-			attribution = TransactionLogAttribution{
-				Mode: "exact_trace", TracePath: path, ExecutionAddress: decodeAddress.Hex(),
-			}
-		}
-		decoding, decodeErr := resolveTransactionLogDecoding(
-			ctx, tx, request.ChainID, blockNumber, resolution.blockHash,
-			decodeAddress, decoded.Topics, decoded.Data, stored.persisted,
-		)
-		if decodeErr != nil {
-			return TransactionLogPage{}, fmt.Errorf("decode transaction log ABI: %w", decodeErr)
-		}
-		page.Items = append(page.Items, TransactionLog{
-			Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10),
-			Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: decoding,
-		})
-		page.Items[len(page.Items)-1].Decoding.Attribution = attribution
+		page.Items = append(page.Items, item)
 	}
 	if len(page.Items) > resolution.limit {
 		page.Items = page.Items[:resolution.limit]
@@ -578,4 +467,131 @@ func (resolution transactionResourceResolution) nextCursor(kind string, offset i
 		TransactionHash: resolution.identity.TransactionHash, BlockHash: resolution.identity.BlockHash,
 		Generation: resolution.generation, Offset: offset,
 	})
+}
+
+func projectStoredTransactionLog(ctx context.Context, tx pgx.Tx, identity TransactionResourceIdentity, storedRow dbgen.CatalogTransactionLogsRow, budget *logReadBudget) (TransactionLog, error) {
+	txHash, err := decodeFixedHex(identity.TransactionHash, 32)
+	if err != nil {
+		return TransactionLog{}, ErrCorruptData
+	}
+	blockHash, err := decodeFixedHex(identity.BlockHash, 32)
+	if err != nil {
+		return TransactionLog{}, ErrCorruptData
+	}
+	txIndex, err := strconv.ParseUint(identity.TransactionIndex, 10, 64)
+	if err != nil {
+		return TransactionLog{}, ErrCorruptData
+	}
+	type storedTransactionLog struct {
+		protocol         protocolLogEvidence
+		index            int64
+		raw              []byte
+		persisted        persistedLogDecoding
+		tracePath        pgtype.Text
+		executionAddress []byte
+	}
+	var raw []byte
+	var logIndex int64
+	var persisted persistedLogDecoding
+	var storedTracePath pgtype.Text
+	var executionAddress []byte
+	{
+		logIndex = storedRow.LogIndex
+		raw = storedRow.Raw
+		var queryValue2 pgtype.Text
+		if storedRow.Status != nil {
+			queryValue2 = pgtype.Text{String: *storedRow.Status, Valid: true}
+		}
+		persisted.status = queryValue2
+		var queryValue4 pgtype.Text
+		if storedRow.Signature != nil {
+			queryValue4 = pgtype.Text{String: *storedRow.Signature, Valid: true}
+		}
+		persisted.signature = queryValue4
+		var queryValue6 pgtype.Text
+		if storedRow.Source != nil {
+			queryValue6 = pgtype.Text{String: *storedRow.Source, Valid: true}
+		}
+		persisted.source = queryValue6
+		var queryValue8 pgtype.Text
+		if storedRow.Confidence != nil {
+			queryValue8 = pgtype.Text{String: *storedRow.Confidence, Valid: true}
+		}
+		persisted.confidence = queryValue8
+		persisted.arguments = storedRow.Arguments
+		persisted.candidates = storedRow.Candidates
+		var queryValue12 pgtype.Text
+		if storedRow.Warning != nil {
+			queryValue12 = pgtype.Text{String: *storedRow.Warning, Valid: true}
+		}
+		persisted.warning = queryValue12
+		persisted.targetAddress = storedRow.TargetAddress
+		persisted.targetCodeHash = storedRow.TargetCodeHash
+		persisted.sourceAddress = storedRow.SourceAddress
+		persisted.sourceCodeHash = storedRow.SourceCodeHash
+		var queryValue18 pgtype.Text
+		if storedRow.TracePath != nil {
+			queryValue18 = pgtype.Text{String: *storedRow.TracePath, Valid: true}
+		}
+		storedTracePath = queryValue18
+		executionAddress = storedRow.ExecutionAddress
+	}
+
+	if logIndex < 0 {
+		return TransactionLog{}, ErrCorruptData
+	}
+	stored := storedTransactionLog{
+		index: logIndex, raw: raw, persisted: persisted,
+		protocol:  protocolLogEvidence{amsterdam: storedRow.Amsterdam, published: storedRow.NativePublished, from: storedRow.NativeFrom, to: storedRow.NativeTo, amount: storedRow.NativeAmount},
+		tracePath: storedTracePath, executionAddress: executionAddress,
+	}
+	blockNumber, parseErr := strconv.ParseUint(identity.BlockNumber, 10, 64)
+	if parseErr != nil {
+		return TransactionLog{}, ErrCorruptData
+	}
+	decoded, decodeErr := chainbundle.DecodeLog(
+		stored.raw, common.BytesToHash(txHash), common.BytesToHash(blockHash),
+		blockNumber, txIndex, uint64(stored.index),
+	)
+	if decodeErr != nil {
+		return TransactionLog{}, ErrCorruptData
+	}
+	topics := make([]string, len(decoded.Topics))
+	for index := range decoded.Topics {
+		topics[index] = decoded.Topics[index].Hex()
+	}
+	protocol, recognized, protocolErr := decodeProtocolLog(decoded, stored.protocol)
+	if protocolErr != nil {
+		return TransactionLog{}, protocolErr
+	}
+	if recognized {
+		return TransactionLog{Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10), Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: protocol}, nil
+	}
+	decodeAddress := decoded.Address
+	attribution := TransactionLogAttribution{Mode: "address_fallback", TracePath: []uint32{}}
+	if stored.tracePath.Valid || len(stored.executionAddress) != 0 {
+		if !stored.tracePath.Valid || len(stored.executionAddress) != common.AddressLength {
+			return TransactionLog{}, ErrCorruptData
+		}
+		path, pathErr := parseTracePath(stored.tracePath.String)
+		if pathErr != nil {
+			return TransactionLog{}, ErrCorruptData
+		}
+		decodeAddress = common.BytesToAddress(stored.executionAddress)
+		attribution = TransactionLogAttribution{
+			Mode: "exact_trace", TracePath: path, ExecutionAddress: decodeAddress.Hex(),
+		}
+	}
+	decoding, decodeErr := resolveTransactionLogDecodingBudget(
+		ctx, tx, identity.ChainID, blockNumber, blockHash,
+		decodeAddress, decoded.Topics, decoded.Data, stored.persisted, budget,
+	)
+	if decodeErr != nil {
+		return TransactionLog{}, fmt.Errorf("decode transaction log ABI: %w", decodeErr)
+	}
+	decoding.Attribution = attribution
+	return TransactionLog{
+		Address: decoded.Address.Hex(), LogIndex: strconv.FormatInt(stored.index, 10),
+		Topics: topics, Data: "0x" + hex.EncodeToString(decoded.Data), Decoding: decoding,
+	}, nil
 }

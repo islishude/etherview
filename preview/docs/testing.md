@@ -242,6 +242,15 @@ demand for the complete catalog, lifecycle and initial/final split/all browser
 checks. Both targets have `-prebuilt` variants. Reports retain manual wallet and
 provider-dependent checks as unverified.
 
+For address event logs, run `make preview-tool ARGS='run events'` on the running
+Preview, inspect the initial report, then run `emit` and `upgrade` with its run
+ID. The CLI checks published overloads/anonymous events, exact positioned topics,
+raw unverified emitters, proxy history and descending keyset pages. Follow with
+read-only `check`; its transaction identities must remain unchanged. The full
+browser harness also opens the event tab in English desktop and Chinese mobile
+layouts and retains screenshots. Unit coverage rejects overlapping, ascending
+and cross-emitter pages and verifies encoded filter links in public reports.
+
 ### Anvil payment fixture regressions
 
 `make preview-contracts-check` also verifies the deterministic Anvil seed and

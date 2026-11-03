@@ -366,6 +366,8 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"listAddressERC20Balances",
 		"listAddressERC20Transfers",
 		"listAddressInternalTransactions",
+		"listAddressLogEvents",
+		"listAddressLogs",
 		"listAddressNFTBalances",
 		"listAddressNFTTransfers",
 		"listAddressNames",

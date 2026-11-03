@@ -140,3 +140,25 @@ contract ToolERC1967Implementation {
 contract ToolERC1967ImplementationV2 is ToolERC1967Implementation {
     function version() external pure returns(uint256) { return 2; }
 }
+
+contract ToolEvents is ToolERC1967Implementation {
+    event Changed(uint256 value);
+    event Changed(bytes32 value);
+    event Positioned(bytes32 indexed first, bytes32 indexed second, bytes32 indexed third, uint256 value);
+    event Hidden(bytes payload) anonymous;
+    function emitSamples(uint256 count) external {
+        require(count <= 50);
+        for (uint256 i; i < count; i++) emit Changed(i + 9007199254740993);
+        emit Changed(bytes32(uint256(42)));
+        emit Positioned(bytes32(uint256(11)), bytes32(uint256(22)), bytes32(uint256(33)), count);
+        emit Hidden(hex"123456");
+    }
+}
+contract ToolEventsV2 is ToolERC1967Implementation {
+    event AfterUpgrade(address indexed caller, uint256 value);
+    function emitAfterUpgrade() external { emit AfterUpgrade(msg.sender, 9007199254740993); }
+}
+contract ToolRawEvents {
+    event PreviewUnverifiedLog(bytes32 indexed first, bytes32 indexed second, bytes32 indexed third, bytes payload);
+    function emitRaw() external { emit PreviewUnverifiedLog(bytes32(uint256(11)), bytes32(uint256(22)), bytes32(uint256(33)), hex"aabbcc"); }
+}

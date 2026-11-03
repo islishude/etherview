@@ -16,11 +16,16 @@ type Status struct {
 
 // Read shares the caller's repeatable-read transaction with data and cursor checks.
 func Read(ctx context.Context, db dbgen.DBTX, chain, number, hash string, stage stagecontract.ID, from, digest string) (*Status, error) {
+	return ReadRange(ctx, db, chain, number, hash, stage, from, number, digest)
+}
+
+// ReadRange keeps the snapshot identity while scoping coverage and revisions to an inclusive interval.
+func ReadRange(ctx context.Context, db dbgen.DBTX, chain, number, hash string, stage stagecontract.ID, from, to, digest string) (*Status, error) {
 	var chainID, end, start pgtype.Numeric
 	if err := chainID.Scan(chain); err != nil {
 		return nil, err
 	}
-	if err := end.Scan(number); err != nil {
+	if err := end.Scan(to); err != nil {
 		return nil, err
 	}
 	if from != "" {
@@ -35,5 +40,5 @@ func Read(ctx context.Context, db dbgen.DBTX, chain, number, hash string, stage 
 	if err != nil {
 		return nil, fmt.Errorf("read browsing publication: %w", err)
 	}
-	return &Status{State: row.State, ChainID: chain, BlockNumber: number, BlockHash: hash, FromBlock: row.FromBlock, ToBlock: number, Revision: row.Revision}, nil
+	return &Status{State: row.State, ChainID: chain, BlockNumber: number, BlockHash: hash, FromBlock: row.FromBlock, ToBlock: to, Revision: row.Revision}, nil
 }

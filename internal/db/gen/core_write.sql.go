@@ -117,22 +117,20 @@ WITH decoded AS (
            (item.value->>'tx_index')::bigint AS tx_index,
            decode(item.value->>'tx_hash', 'hex') AS tx_hash,
            decode(item.value->>'address', 'hex') AS address,
-           CASE WHEN item.value->'topic0' = 'null'::jsonb
-                THEN NULL ELSE decode(item.value->>'topic0', 'hex') END AS topic0,
            item.value->'raw' AS raw
     FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS item(value, ordinality)
 ), input AS (
     SELECT DISTINCT ON (block_number, block_hash, log_index)
-           block_number, block_hash, log_index, tx_index, tx_hash, address, topic0, raw
+           block_number, block_hash, log_index, tx_index, tx_hash, address, raw
     FROM decoded
     ORDER BY block_number, block_hash, log_index, ordinality DESC
 )
 INSERT INTO logs (
     chain_id, block_number, block_hash, log_index, tx_index,
-    tx_hash, address, topic0, raw
+    tx_hash, address, raw
 )
 SELECT $1::numeric, block_number, block_hash, log_index, tx_index,
-       tx_hash, address, topic0, raw
+       tx_hash, address, raw
 FROM input
 ON CONFLICT (chain_id, block_number, block_hash, log_index)
 DO UPDATE SET raw = EXCLUDED.raw

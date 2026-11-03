@@ -28,6 +28,8 @@ var partitionTableNames = map[string]string{
 	"transaction_inclusions":                     "etherview_p_txi_1000000_2000000",
 	"receipts":                                   "etherview_p_rcp_1000000_2000000",
 	"logs":                                       "etherview_p_log_1000000_2000000",
+	"address_event_logs":                         "etherview_p_ael_1000000_2000000",
+	"address_event_blocks":                       "etherview_p_aeb_1000000_2000000",
 	"withdrawals":                                "etherview_p_wdr_1000000_2000000",
 	"token_events":                               "etherview_p_tev_1000000_2000000",
 	"token_balance_deltas":                       "etherview_p_tbd_1000000_2000000",
@@ -138,6 +140,15 @@ func TestPostgresPartitionLifecycleEvacuatesDefaultRowsAtomically(t *testing.T) 
 		assertPartitionRangeCount(t, ctx, db, child, 1)
 		assertPartitionRangeCount(t, ctx, db, parent, 1)
 	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM logs WHERE topic0=decode(substring(raw->'topics'->>0 FROM 3),'hex')
+        AND topic1 IS NULL AND topic2 IS NULL AND topic3 IS NULL`, 1)
+	for _, topics := range []string{`null`, `[null]`, `["0x01"]`, `[1]`, `[]`, `["0x` + strings.Repeat("ab", 32) + `"]`} {
+		_, err := db.Exec(ctx, `UPDATE logs SET raw=jsonb_build_object('topics',$1::jsonb)`, topics)
+		valid := topics == `[]` || strings.Contains(topics, strings.Repeat("ab", 32))
+		if (err == nil) != valid {
+			t.Fatalf("topic constraint for %s: %v", topics, err)
+		}
+	}
 }
 
 func TestPostgresPartitionLifecycleReportsRecoverablePartialState(t *testing.T) {
@@ -201,9 +212,15 @@ func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *pgxpo
 	execFixture(t, ctx, db, `
 		INSERT INTO logs (
 			chain_id, block_number, block_hash, log_index, tx_index,
-			tx_hash, address, topic0, raw
-		) VALUES (1, $1::numeric, $2, 0, 0, $3, $4, $5, '{}'::jsonb)`,
+			tx_hash, address, raw
+		) VALUES (1, $1::numeric, $2, 0, 0, $3, $4, jsonb_build_object('topics',jsonb_build_array('0x' || encode($5::bytea,'hex'))))`,
 		height, blockHash, transactionHash, tokenAddress, topic)
+	execFixture(t, ctx, db, `INSERT INTO event_signatures(signature,digest)
+        VALUES ('Moved(uint256)',sha256(convert_to('Moved(uint256)','UTF8')))`)
+	execFixture(t, ctx, db, `INSERT INTO address_event_logs(chain_id,block_number,block_hash,log_index,tx_index,address,signature_id)
+        SELECT 1,$1::numeric,$2,0,0,$3,id FROM event_signatures`, height, blockHash, tokenAddress)
+	execFixture(t, ctx, db, `INSERT INTO address_event_blocks(chain_id,block_number,block_hash,address,signature_id,log_count)
+        SELECT 1,$1::numeric,$2,$3,id,1 FROM event_signatures`, height, blockHash, tokenAddress)
 	execFixture(t, ctx, db, `
 		INSERT INTO withdrawals (
 			chain_id, block_number, block_hash, withdrawal_index,

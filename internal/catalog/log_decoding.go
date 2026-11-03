@@ -44,7 +44,9 @@ type logABICandidate struct {
 	validTo       pgtype.Text
 }
 
-func resolveTransactionLogDecoding(
+type logReadBudget struct{ bytes, candidates int }
+
+func resolveTransactionLogDecodingBudget(
 	ctx context.Context,
 	tx pgx.Tx,
 	chainID string,
@@ -54,6 +56,7 @@ func resolveTransactionLogDecoding(
 	topics []common.Hash,
 	data []byte,
 	persisted persistedLogDecoding,
+	budget *logReadBudget,
 ) (TransactionLogDecoding, error) {
 	stored, hasStored, err := publicPersistedLogDecoding(persisted)
 	if err != nil {
@@ -83,6 +86,13 @@ func resolveTransactionLogDecoding(
 	registry := enrich.NewABIRegistry()
 	provenance := make(map[enrich.ABISource]ABISource, len(candidates))
 	for _, candidate := range candidates {
+		if budget != nil {
+			if budget.candidates <= 0 || len(candidate.abi) > budget.bytes {
+				return emptyLogDecoding("unavailable", "page ABI decoding budget exhausted"), nil
+			}
+			budget.candidates--
+			budget.bytes -= len(candidate.abi)
+		}
 		var validTo *uint64
 		if candidate.validTo.Valid {
 			value, err := strconv.ParseUint(candidate.validTo.String, 10, 64)

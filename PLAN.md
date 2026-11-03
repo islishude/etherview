@@ -33,6 +33,12 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P40-T34 and P50-T87 deliver range-scoped event queries and compact event-log browsing; their child plans record local database, browser and Preview acceptance.
+
+P40-T33 and P50-T86 deliver indexed contract event logs, the publication-owned
+historical event directory and bilingual address-page signature/topic filters.
+Their child plans record local database, browser and production topology acceptance.
+
 Delivered P00–P60 capabilities include P30-T153 independent verification
 execution, PostgreSQL task claims with optional NATS wake and asynchronous
 Sourcify import, plus P30-T154 session-fenced multi-instance polling, maintenance

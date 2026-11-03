@@ -135,7 +135,6 @@ type coreLogWriteRow struct {
 	TxIndex     string          `json:"tx_index"`
 	TxHash      string          `json:"tx_hash"`
 	Address     string          `json:"address"`
-	Topic0      *string         `json:"topic0"`
 	Raw         json.RawMessage `json:"raw"`
 }
 
@@ -292,11 +291,7 @@ func putLogRowsTx(
 			transactionHash := bundle.Block.Transactions()[transactionIndex].Hash()
 			for logPosition, logEntry := range receipt.Logs {
 				raw := bundle.RawLogs[transactionIndex][logPosition]
-				var topic0 *string
-				if len(logEntry.Topics) > 0 {
-					encoded := encodeCoreBytes(logEntry.Topics[0][:])
-					topic0 = &encoded
-				}
+
 				if err := writer.add(coreLogWriteRow{
 					BlockNumber: decimal(reference.Number),
 					BlockHash:   encodeCoreBytes(reference.Hash[:]),
@@ -304,7 +299,6 @@ func putLogRowsTx(
 					TxIndex:     strconv.Itoa(transactionIndex),
 					TxHash:      encodeCoreBytes(transactionHash[:]),
 					Address:     encodeCoreBytes(logEntry.Address[:]),
-					Topic0:      topic0,
 					Raw:         raw,
 				}, len(raw)+coreWriteRowOverhead); err != nil {
 					return err

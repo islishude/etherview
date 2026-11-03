@@ -129,3 +129,27 @@ address/code hash proven by raw `state_diff@3` or its transaction-positioned
 effective-identity materialization, while constructors require a full
 verified creation match and exact persisted argument suffix. EIP-7702 never
 changes the call/storage context or invents proxy provenance.
+
+### Historical address event directory
+
+A PostgreSQL projection indexes published `decoded` log signatures by the
+original emitter and exact chain/block/log identity. Compact signature IDs
+avoid repeating long ABI text in each log index. Per-block contributions feed
+an address directory atomically with the authoritative ABI publication.
+Deferred publication triggers consume the final fenced job, journal, outbox and
+canonical mapping; replay withdrawal and reorg remove contributions, and
+idempotent publication cannot inflate counts. Historical raw logs and ABI facts
+remain authoritative and retain orphan history.
+
+Ambiguous, unknown and malformed decodings do not invent selectable names.
+Signature-database guesses can supply names but retain `guess` provenance on
+log detail. Selecting a name matches the published signature, including
+anonymous events; it does not assert verification. Bounded read-time decoding
+may improve detail without writing the directory; names enter the directory
+when background ABI processing publishes them.
+
+Range-scoped name lookup tests canonical published block contributions inside
+both inclusive bounds. It never substitutes the current ABI for historical
+membership or scans raw logs for names. Draft UI ranges may change the selector's
+candidates independently of the explicitly submitted log query; a selected
+signature is never silently discarded when it has no matching contribution.

@@ -1256,6 +1256,30 @@ export type TransactionTokenTransfers = TransactionSubresourceIdentity & {
     items: Array<TokenEvent>;
 };
 
+export type AddressLog = {
+    log: TransactionLog;
+    block_number: Quantity;
+    block_hash: Hash;
+    block_timestamp: string;
+    transaction_hash: Hash;
+    transaction_index: Quantity;
+};
+
+export type AddressLogEvent = {
+    name: string;
+    signature: string;
+};
+
+export type AddressLogListResponse = {
+    data: Array<AddressLog>;
+    meta: Meta;
+};
+
+export type AddressLogEventListResponse = {
+    data: Array<AddressLogEvent>;
+    meta: Meta;
+};
+
 export type TransactionLog = {
     address: Address;
     log_index: Quantity;
@@ -4710,6 +4734,98 @@ export type ListAddressNftTransfersResponses = {
 };
 
 export type ListAddressNftTransfersResponse = ListAddressNftTransfersResponses[keyof ListAddressNftTransfersResponses];
+
+export type ListAddressLogsData = {
+    body?: never;
+    path: {
+        address: Address;
+    };
+    query?: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+        /**
+         * Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+         */
+        event_signature?: string;
+        /**
+         * Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+         */
+        topic_index?: number;
+        /**
+         * Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+         */
+        topic?: Hash;
+        /**
+         * Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
+         */
+        from_block?: Quantity;
+        /**
+         * Inclusive upper block bound, capped at the frozen snapshot height; omitted means the snapshot height. Event names use the same range.
+         */
+        to_block?: Quantity;
+    };
+    url: '/addresses/{address}/logs';
+};
+
+export type ListAddressLogsErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListAddressLogsError = ListAddressLogsErrors[keyof ListAddressLogsErrors];
+
+export type ListAddressLogsResponses = {
+    /**
+     * Published canonical results, newest logs first; event names ordered alphabetically.
+     */
+    200: AddressLogListResponse;
+};
+
+export type ListAddressLogsResponse = ListAddressLogsResponses[keyof ListAddressLogsResponses];
+
+export type ListAddressLogEventsData = {
+    body?: never;
+    path: {
+        address: Address;
+    };
+    query?: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+        /**
+         * Case-insensitive event-name prefix.
+         */
+        name?: string;
+        /**
+         * Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
+         */
+        from_block?: Quantity;
+        /**
+         * Inclusive upper block bound, capped at the frozen snapshot height; omitted means the snapshot height. Event names use the same range.
+         */
+        to_block?: Quantity;
+    };
+    url: '/addresses/{address}/log-events';
+};
+
+export type ListAddressLogEventsErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListAddressLogEventsError = ListAddressLogEventsErrors[keyof ListAddressLogEventsErrors];
+
+export type ListAddressLogEventsResponses = {
+    /**
+     * Published canonical results, newest logs first; event names ordered alphabetically.
+     */
+    200: AddressLogEventListResponse;
+};
+
+export type ListAddressLogEventsResponse = ListAddressLogEventsResponses[keyof ListAddressLogEventsResponses];
 
 export type ListAddressNftBalancesData = {
     body?: never;

@@ -4084,6 +4084,41 @@ type AddressInternalTransactionListResponse struct {
 	Meta Meta                         `json:"meta"`
 }
 
+// AddressLog defines model for AddressLog.
+type AddressLog struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber    Quantity       `json:"block_number"`
+	BlockTimestamp time.Time      `json:"block_timestamp"`
+	Log            TransactionLog `json:"log"`
+
+	// TransactionHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	TransactionHash Hash `json:"transaction_hash"`
+
+	// TransactionIndex A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TransactionIndex Quantity `json:"transaction_index"`
+}
+
+// AddressLogEvent defines model for AddressLogEvent.
+type AddressLogEvent struct {
+	Name      string `json:"name"`
+	Signature string `json:"signature"`
+}
+
+// AddressLogEventListResponse defines model for AddressLogEventListResponse.
+type AddressLogEventListResponse struct {
+	Data []AddressLogEvent `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// AddressLogListResponse defines model for AddressLogListResponse.
+type AddressLogListResponse struct {
+	Data []AddressLog `json:"data"`
+	Meta Meta         `json:"meta"`
+}
+
 // AddressNameLookup defines model for AddressNameLookup.
 type AddressNameLookup struct {
 	// Address A 20-byte address; responses use the EIP-55 checksum form.
@@ -8326,6 +8361,42 @@ type ListAddressERC20TransfersParams struct {
 type ListAddressInternalTransactionsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListAddressLogEventsParams defines parameters for ListAddressLogEvents.
+type ListAddressLogEventsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Name Case-insensitive event-name prefix.
+	Name *string `form:"name,omitempty" json:"name,omitempty"`
+
+	// FromBlock Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
+	FromBlock *Quantity `form:"from_block,omitempty" json:"from_block,omitempty"`
+
+	// ToBlock Inclusive upper block bound, capped at the frozen snapshot height; omitted means the snapshot height. Event names use the same range.
+	ToBlock *Quantity `form:"to_block,omitempty" json:"to_block,omitempty"`
+}
+
+// ListAddressLogsParams defines parameters for ListAddressLogs.
+type ListAddressLogsParams struct {
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// EventSignature Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+	EventSignature *string `form:"event_signature,omitempty" json:"event_signature,omitempty"`
+
+	// TopicIndex Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+	TopicIndex *int `form:"topic_index,omitempty" json:"topic_index,omitempty"`
+
+	// Topic Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+	Topic *Hash `form:"topic,omitempty" json:"topic,omitempty"`
+
+	// FromBlock Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
+	FromBlock *Quantity `form:"from_block,omitempty" json:"from_block,omitempty"`
+
+	// ToBlock Inclusive upper block bound, capped at the frozen snapshot height; omitted means the snapshot height. Event names use the same range.
+	ToBlock *Quantity `form:"to_block,omitempty" json:"to_block,omitempty"`
 }
 
 // ListAddressNativeTransfersParams defines parameters for ListAddressNativeTransfers.

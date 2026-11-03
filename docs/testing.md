@@ -1520,3 +1520,28 @@ generation, Go lint, documentation/plan, full integration race and production
 runtime E2E gates. Preview metadata covers source discovery, URI changes and
 restart persistence; Hardhat covers catalogs and verification in both role
 layouts. These checks do not close P70 capacity or external release gates.
+
+## Address event logs
+
+P40-T33 and P50-T86 require positioned topic and historical-signature API,
+frontend and browser regressions. Run `TestAddressLogs`,
+`TestABIStageBindsPriorityRangeAndForkIdentity`, and
+`TestPostgresPartitionLifecycle` with the managed PostgreSQL integration runner
+and `-race`. The address-log query-plan case uses 30,003 logs across partitions,
+selective topic3 values and actual `EXPLAIN (ANALYZE, BUFFERS)` output without
+forcing the planner. The published-directory fixture adds 508 logs with repeated,
+overloaded and anonymous signatures, verifies ordered projection-index reads,
+and checks that directory reads do not scan raw logs or historical decodings.
+Partition fixtures cover both derived tables and generated topics; same-hash
+reattachment must keep names withdrawn until replay publishes a new generation.
+Record index footprint and indexed insert time separately from production capacity.
+Run generation, Go/frontend lint, documentation/plan, browser, schema and
+production all/split runtime gates before closing the milestones.
+
+P40-T34/P50-T87 extend those checks with inclusive/one-sided/future block ranges,
+range-scoped name directories and cursor revisions. Range tests cover every
+positioned topic and ABI replay outside the selected interval. Query-plan fixtures
+retain cross-partition ranges and exact identity materialization. Frontend tests
+cover draft-only edits, URL restoration, in-popup search/loading/pagination,
+keyboard focus, late responses and expandable summaries. Production all/split
+checks compare exact-block logs and directory contribution membership.

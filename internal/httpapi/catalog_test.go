@@ -16,6 +16,7 @@ import (
 )
 
 type fakeCatalog struct {
+	logRequest   catalog.AddressLogRequest
 	tokenPage    catalog.TokenPage
 	token        catalog.TokenContract
 	tokenErr     error
@@ -943,5 +944,43 @@ func TestPartialCatalogMetadataDoesNotClaimContinuousCoverage(t *testing.T) {
 				t.Fatalf("misleading coverage=%+v", body.Meta)
 			}
 		})
+	}
+}
+
+func (fake *fakeCatalog) AddressLogs(_ context.Context, request catalog.AddressLogRequest) (catalog.AddressLogPage, error) {
+	fake.logRequest = request
+	return catalog.AddressLogPage{Items: []catalog.AddressLog{}}, nil
+}
+func (fake *fakeCatalog) AddressLogEvents(_ context.Context, request catalog.AddressLogRequest) (catalog.AddressLogEventPage, error) {
+	fake.logRequest = request
+	return catalog.AddressLogEventPage{Items: []catalog.AddressLogEvent{}}, nil
+}
+
+func TestAddressLogHTTPFilters(t *testing.T) {
+	fake := &fakeCatalog{}
+	handler := testAddressActivityHandler(t, &fakeAddressActivityReader{}, fake)
+	address := "0x" + strings.Repeat("11", 20)
+	topic := "0x" + strings.Repeat("aa", 32)
+	for _, test := range []struct {
+		query  string
+		status int
+	}{
+		{"", 200}, {"?event_signature=Changed(uint256)", 200}, {"?topic_index=3&topic=" + topic, 200},
+		{"?topic_index=4&topic=" + topic, 400}, {"?topic=" + topic, 400}, {"?topic_index=0", 400},
+		{"?topic_index=0&topic=0x12", 400}, {"?event_signature=Changed()&topic_index=0&topic=" + topic, 400},
+		{"?from_block=0&to_block=1", 200}, {"?from_block=9007199254740993", 200}, {"?to_block=1", 200},
+		{"?from_block=2&to_block=1", 400}, {"?from_block=", 400}, {"?from_block=01", 400}, {"?to_block=-1", 400}, {"?from_block=1.1", 400}, {"?from_block=1&from_block=2", 400},
+		{"?event_signature=", 400}, {"?limit=101", 400}, {"?topic_index=0&topic_index=1&topic=" + topic, 400},
+	} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/addresses/"+address+"/logs"+test.query, nil))
+		if recorder.Code != test.status {
+			t.Fatalf("%s status=%d body=%s", test.query, recorder.Code, recorder.Body.String())
+		}
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/addresses/"+address+"/log-events?name=Trans&from_block=1&to_block=3", nil))
+	if recorder.Code != 200 || fake.logRequest.Name != "Trans" || fake.logRequest.FromBlock != "1" || fake.logRequest.ToBlock != "3" {
+		t.Fatalf("directory=%s request=%+v", recorder.Body.String(), fake.logRequest)
 	}
 }

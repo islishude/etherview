@@ -1,0 +1,336 @@
+.address-logs {
+  overflow: visible;
+}
+.address-logs-heading h2 {
+  margin: 0;
+}
+.address-logs-heading p {
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  margin: 0.4rem 0 1.25rem;
+}
+.address-log-toolbar {
+  padding: 1rem;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.address-log-toolbar label,
+.address-log-field-label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  min-width: 0;
+}
+.address-log-toolbar input,
+.address-log-toolbar select,
+.event-name-trigger {
+  box-sizing: border-box;
+  min-height: 2.65rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+.address-log-toolbar input:focus-visible,
+.address-log-toolbar button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.address-log-toolbar input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.address-log-segments {
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  background: var(--surface-strong);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+}
+.address-log-segments button {
+  border: 0;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  color: var(--text-soft);
+  background: transparent;
+  font-weight: 600;
+  cursor: pointer;
+}
+.address-log-segments button[aria-pressed="true"] {
+  color: var(--brand);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+}
+.address-log-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 1rem;
+}
+.address-log-main-filter {
+  flex: 2 1 20rem;
+  min-width: 0;
+}
+.address-log-topic-fields {
+  display: flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.address-log-topic-fields > label:first-child {
+  flex: 0 0 6.5rem;
+}
+.address-log-topic-input {
+  flex: 1;
+}
+.address-log-range {
+  display: flex;
+  align-items: end;
+  gap: 0.5rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.address-log-range label {
+  flex: 1;
+  min-width: 0;
+}
+.address-log-range > span {
+  padding-bottom: 0.7rem;
+  color: var(--text-soft);
+}
+.address-log-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.address-log-actions button,
+.event-name-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.65rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+}
+.address-log-actions .address-log-submit {
+  background: var(--brand);
+  color: var(--on-brand);
+  border-color: var(--brand);
+}
+.address-log-actions button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.address-log-error {
+  margin: 0.75rem 0 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+.event-name-select {
+  position: relative;
+  min-width: 0;
+}
+.event-name-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  text-align: left;
+  margin-top: 0.4rem;
+  cursor: pointer;
+}
+.event-name-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-name-trigger svg {
+  flex: none;
+}
+.event-name-popup {
+  position: absolute;
+  inset: calc(100% + 0.4rem) 0 auto;
+  z-index: 30;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+}
+.event-name-popup .event-name-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.event-name-search input {
+  border: 0;
+  background: transparent;
+}
+.event-name-options {
+  max-height: 17rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-top: 0.4rem;
+}
+.event-name-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.65rem;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.event-name-options button:hover,
+.event-name-options button[data-active="true"] {
+  background: var(--surface-raised);
+}
+.event-name-options button[aria-selected="true"] {
+  color: var(--brand);
+  background: var(--brand-soft);
+}
+.event-name-options button > span {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.event-name-options code {
+  font-size: 0.7rem;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+.event-name-options svg {
+  flex: none;
+}
+.event-name-note,
+.event-name-popup > p {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  margin: 0.5rem;
+}
+.event-name-more {
+  width: 100%;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+}
+.address-log-results-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+.address-log-applied {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.address-log-applied > span {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.25rem 0.5rem;
+  overflow-wrap: anywhere;
+}
+.address-log-coverage {
+  margin: 0 0 0.75rem;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+.address-log-entry {
+  min-width: 0;
+  margin: 0.6rem 0;
+}
+.address-log-entry .transaction-log {
+  margin: 0;
+  background: var(--surface);
+}
+.event-log-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  padding: 0;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.event-log-toggle > svg {
+  flex: none;
+  color: var(--text-soft);
+  transition: transform 0.15s;
+}
+.event-log-toggle[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
+}
+.event-log-toggle strong {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+.event-status {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+}
+.address-log-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.75rem;
+  padding: 0.5rem 0 0;
+  overflow-wrap: anywhere;
+}
+.address-log-context a {
+  color: var(--text-soft);
+}
+.transaction-log-compact .transaction-log-address {
+  margin-top: 1rem;
+}
+@media (max-width: 600px) {
+  .address-log-toolbar {
+    padding: 0.75rem;
+  }
+  .address-log-main-filter,
+  .address-log-range {
+    flex-basis: 100%;
+  }
+  .address-log-actions {
+    width: 100%;
+  }
+  .address-log-actions button {
+    flex: 1;
+  }
+  .event-name-popup {
+    max-width: 100%;
+  }
+}

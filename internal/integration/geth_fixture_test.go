@@ -357,7 +357,7 @@ func cloneIntegrationLogs(source []*types.Log) []*types.Log {
 			continue
 		}
 		copy := *log
-		copy.Topics = append([]common.Hash(nil), log.Topics...)
+		copy.Topics = append([]common.Hash{}, log.Topics...)
 		copy.Data = common.CopyBytes(log.Data)
 		result[index] = &copy
 	}

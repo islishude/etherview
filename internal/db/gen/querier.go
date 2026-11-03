@@ -11,6 +11,16 @@ import (
 )
 
 type Querier interface {
+	AddressLogDetail(ctx context.Context, arg AddressLogDetailParams) (AddressLogDetailRow, error)
+	AddressLogEvents(ctx context.Context, arg AddressLogEventsParams) ([]AddressLogEventsRow, error)
+	// Materialize the ordered identity page before reading bodies. Correlated scalar
+	// lookups keep publication joins from driving an unbounded candidate sort.
+	AddressLogsAll(ctx context.Context, arg AddressLogsAllParams) ([]AddressLogsAllRow, error)
+	AddressLogsSignature(ctx context.Context, arg AddressLogsSignatureParams) ([]AddressLogsSignatureRow, error)
+	AddressLogsTopic0(ctx context.Context, arg AddressLogsTopic0Params) ([]AddressLogsTopic0Row, error)
+	AddressLogsTopic1(ctx context.Context, arg AddressLogsTopic1Params) ([]AddressLogsTopic1Row, error)
+	AddressLogsTopic2(ctx context.Context, arg AddressLogsTopic2Params) ([]AddressLogsTopic2Row, error)
+	AddressLogsTopic3(ctx context.Context, arg AddressLogsTopic3Params) ([]AddressLogsTopic3Row, error)
 	AdjustBillingAccount(ctx context.Context, arg AdjustBillingAccountParams) (AdjustBillingAccountRow, error)
 	AdminWriteEnqueueRepairStatement1(ctx context.Context, arg AdminWriteEnqueueRepairStatement1Params) (AdminWriteEnqueueRepairStatement1Row, error)
 	AdvanceENSSyncAddressCursor(ctx context.Context, afterAddress []byte, completedCycle int64, sourceID int64) error

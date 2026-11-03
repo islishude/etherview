@@ -15,6 +15,7 @@ import { generatePrivateKey, privateKeyToAccount, mnemonicToAccount } from "viem
 import { runCompose } from "../../../.github/scripts/compose.mjs";
 import { connect, contracts, stringify } from "../client.mjs";
 import { digest, root } from "./artifacts.mjs";
+import { checkEventPages, registerEventRanges } from "./events.mjs";
 import { acquireLock } from "./state.mjs";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -791,6 +792,7 @@ export async function checkScenario(engine, s) {
       }
     }
   }
+  registerEventRanges(engine, s);
   for (const c of s.checks) {
     c.status = "pending";
     s.activeStep = "check:" + c.label;
@@ -808,6 +810,7 @@ export async function checkScenario(engine, s) {
     c.status = "passed";
     engine.run.save();
   }
+  await checkEventPages(engine, s, request);
   if (!s.setupComplete || s.actions.some((a) => a.status !== "complete"))
     throw Error("Scenario has unfinished steps; use resume after checking the saved operations");
   s.status = "api_published";

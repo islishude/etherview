@@ -1,3 +1,4 @@
+import { AddressLogs } from "./AddressLogs";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import "./AddressQRCode.css";
 import { AddressAssets, type AddressAssetTab } from "./AddressAssets";
@@ -61,6 +62,7 @@ import {
 import { TransactionStatusBadge } from "./TransactionPage";
 
 type AddressTab =
+  | "logs"
   | "native-transfers"
   | "transactions"
   | "internal-transactions"
@@ -105,6 +107,7 @@ export function AddressDetailPage({
       : (account.isPending || delegationAvailable) && delegationHash
         ? "delegation"
         : isAddressTab(tab) &&
+            (tab !== "logs" || account.data?.type === "contract") &&
             (tab !== "delegation" || account.isPending || delegationAvailable) &&
             (tab !== "user-operations" || userOperationsEnabled)
           ? tab
@@ -202,6 +205,9 @@ export function AddressDetailPage({
             ["erc20-transfers", t("addressTab.erc20Transfers")],
             ["nft-transfers", t("addressTab.nftTransfers")],
             ["assets", t("addressTab.assets")],
+            ...(account.data?.type === "contract"
+              ? ([["logs", t("addressLogs.title")]] as const)
+              : []),
             ...(userOperationsEnabled
               ? ([["user-operations", t("addressTab.userOperations")]] as const)
               : []),
@@ -341,6 +347,7 @@ export function AddressDetailPage({
           />
         </BrowsingScope>
       )}
+      {activeTab === "logs" && <AddressLogs address={address} />}
       {activeTab === "assets" && <AddressAssets address={address} asset={asset} />}
       {activeTab === "native-transfers" && (
         <NativeTransfersPanel kind="address" identity={address} />
@@ -610,6 +617,7 @@ function AddressOriginDetails({ origin }: { origin?: AddressSummary["origin"] })
 
 function isAddressTab(tab: string): tab is AddressTab {
   return [
+    "logs",
     "native-transfers",
     "transactions",
     "internal-transactions",
