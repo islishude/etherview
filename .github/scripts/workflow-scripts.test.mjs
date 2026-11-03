@@ -454,6 +454,15 @@ test("shared Preview setup preserves image identity and makes browser preparatio
   assert.match(action, /uses: \.\/\.github\/actions\/load-production-image/);
   assert.doesNotMatch(action, /docker-build|actions\/checkout|setup-buildx-action/);
   const steps = action.split(/^    - /m).slice(1);
+  const reclaim = steps.filter((step) => step.includes("sudo rm"));
+  assert.equal(reclaim.length, 1);
+  assert.ok(
+    reclaim[0].includes("if: ${{ runner.environment == 'github-hosted' && runner.os == 'Linux' }}"),
+  );
+  assert.match(reclaim[0], /sudo rm -rf \/usr\/local\/lib\/android \/usr\/share\/dotnet\n/);
+  assert.ok(
+    steps.indexOf(reclaim[0]) < steps.findIndex((step) => step.includes("setup-toolchain")),
+  );
   for (const step of steps) {
     if (step.includes("run:")) assert.match(step, /shell: bash/);
     if (/playwright install|sudo sed/.test(step))

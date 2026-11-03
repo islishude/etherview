@@ -188,7 +188,10 @@ the remaining checks. Retrying the grouped job reruns its short checks.
 
 All three jobs share a local setup action that installs dependencies, loads the
 exact AMD64 production image, prepares ephemeral certificates, builds Rundler
-and Facilitator helpers, and pulls Caddy and external images per runner. Only
+and Facilitator helpers, and pulls Caddy and external images per runner.
+GitHub-hosted Linux Preview runners first remove their unused preinstalled
+Android and .NET SDKs to reserve disk space for those builds and image imports;
+local and self-hosted environments are untouched. Only
 metadata and contracts install bundled Chromium. CLI smoke runs one split-role
 transactions scenario; the full catalog, dual-layout and browser suite is opt-in
 via `make test-preview-tools-e2e-full` (or its `-prebuilt` variant), outside
