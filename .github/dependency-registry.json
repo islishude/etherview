@@ -387,6 +387,21 @@
           "path": "preview/docs/contracts.md",
           "template": "Use Anvil {{version}} and the locked pnpm workspace. Do not copy runtime bytecode to a",
           "count": 1
+        },
+        {
+          "path": "Makefile",
+          "template": "FOUNDRY_VERSION ?= {{version}}",
+          "count": 1
+        },
+        {
+          "path": "docs/testing.md",
+          "template": "  and Preview fixtures outside Foundry projects. Install Foundry {{version}} first;",
+          "count": 1
+        },
+        {
+          "path": ".github/workflows/ci-checks.yml",
+          "template": "          version: v{{version}}",
+          "count": 1
         }
       ],
       "commands": [

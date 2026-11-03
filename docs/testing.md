@@ -331,8 +331,18 @@ environments are prepared by `node compiler/vyper/reference.mjs` with uv `>=0.13
   responses, nullable fields and string quantities. Runtime client tests cover
   URL confinement, credentials, errors, 204, raw binary responses and cancellation;
   the embedded browser gate retains native EventSource recovery acceptance.
+- `make solidity-format` / `make solidity-format-check`: format / check every
+  Git-tracked `.sol` file with Forge's default style, including Hardhat, runtime
+  and Preview fixtures outside Foundry projects. Install Foundry 1.9.0 first;
+  `FORGE` can select its executable. Missing or mismatched versions fail clearly.
+  Checks never rewrite sources. `make format`, `make format-check`, and
+  `make lint` include the corresponding Solidity target, so `make check` also
+  checks Solidity. The CI lint job installs the pinned version through
+  `foundry-rs/foundry-toolchain`. After formatting source-owned Preview contracts,
+  regenerate affected artifacts through their maintained generators and run
+  `make preview-contracts-check` to verify source and artifact consistency.
 - `make format` / `make format-check`: write formatting / check without writing,
-  using locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
+  using Forge for Solidity and locked Oxfmt 0.70.0 from the root pnpm workspace. The root configuration covers
   `.js`, `.mjs`, `.cjs`, `.yaml`, `.yml`, and `.md`, including hidden workflow
   and script directories. The existing frontend scope runs separately, using
   its own configuration. Root `pnpm run format` and `pnpm run format:check`

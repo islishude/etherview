@@ -11,6 +11,7 @@ BUILDX ?= .github/scripts/buildx.sh
 COMPOSE ?= .github/scripts/compose.sh
 HELM ?= helm
 MKCERT ?= mkcert
+FORGE ?= forge
 
 GO_PACKAGES ?= ./...
 GO_TEST_FLAGS ?=
@@ -34,6 +35,7 @@ GO_LICENSES_VERSION ?= v2.0.1
 GOLANGCI_LINT_VERSION ?= v2.15.0
 WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
 MKCERT_VERSION ?= v1.4.4
+FOUNDRY_VERSION ?= 1.9.0
 
 GENERATED_PATHS := internal/facilitator/contract.gen.go \
 	internal/verify/vyper_runtime_policy_generated.go \
@@ -165,11 +167,15 @@ openapi-check: pnpm-install
 source-check:
 	$(GO) test -count=1 ./internal/sourcecheck
 
-format: pnpm-install
+format: solidity-format pnpm-install
 	$(PNPM) run format
 
-format-check: pnpm-install
+format-check: solidity-format-check pnpm-install
 	$(PNPM) run format:check
+
+.PHONY: solidity-format solidity-format-check
+solidity-format solidity-format-check:
+	FORGE="$(FORGE)" FOUNDRY_VERSION="$(FOUNDRY_VERSION)" $(NODE) .github/scripts/solidity-format.mjs $(if $(filter solidity-format-check,$@),--check)
 
 repo-format-check: pnpm-install
 	$(PNPM) run format:repo:check
@@ -177,7 +183,7 @@ repo-format-check: pnpm-install
 web-format-check: web-install
 	$(PNPM) --dir web run format:check
 
-lint: lint-go pnpm-install
+lint: solidity-format-check lint-go pnpm-install
 	$(PNPM) run lint
 
 lint-go: lint-tool-check source-check web-build

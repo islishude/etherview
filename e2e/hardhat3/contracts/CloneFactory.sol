@@ -12,10 +12,7 @@ contract CloneFactory {
         standardClone = instance;
     }
 
-    function deployWithImmutableArgs(
-        address implementation,
-        bytes calldata args
-    ) external returns (address instance) {
+    function deployWithImmutableArgs(address implementation, bytes calldata args) external returns (address instance) {
         instance = Clones.cloneWithImmutableArgs(implementation, args);
         immutableArgsClone = instance;
     }
