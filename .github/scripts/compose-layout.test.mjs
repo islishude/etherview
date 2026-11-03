@@ -147,6 +147,39 @@ test("deployment overlays keep repository-root build contexts and mounts", () =>
   assert.ok(config.services["runtime-fixture"]);
 });
 
+for (const mode of ["monolith", "distributed"]) {
+  for (const suite of ["runtime", "hardhat3", "vyper"]) {
+    test(`${suite} ${mode} publishes only ephemeral loopback ports`, () => {
+      const files = ["deploy/compose.yaml", "e2e/runtime/compose.yaml"];
+      if (suite !== "runtime") files.push("e2e/runtime/verification.compose.yaml");
+      if (suite === "hardhat3") files.push("e2e/hardhat3/compose.yaml");
+      if (suite === "vyper") files.push("e2e/runtime/vyper.compose.yaml");
+      const config = render(
+        ["--project-directory", root, ...files.flatMap((file) => ["-f", file]), "--profile", mode],
+        {
+          ANVIL_ARGS: "",
+          ETHERVIEW_PORT: "18080",
+          ETHERVIEW_METRICS_PORT: "19090",
+          ETHERVIEW_HARDHAT3_IMAGE: "etherview-hardhat3:local",
+          ETHERVIEW_HARDHAT3_API_SERVICE: mode === "monolith" ? "etherview" : "api",
+          ETHERVIEW_HARDHAT3_ARTIFACT_DIR: "/tmp/etherview-compose-port-regression",
+        },
+      );
+      const owner = mode === "monolith" ? "etherview" : "api";
+      assert.deepEqual(
+        config.services[owner].ports.map((port) => port.target).sort(),
+        [8080, 9090],
+      );
+      for (const [name, service] of Object.entries(config.services)) {
+        for (const port of service.ports ?? []) {
+          assert.equal(port.host_ip, "127.0.0.1", `${name}: mixed wildcard/loopback allocation`);
+          assert.equal(port.published, "0", `${name}: fixed port cannot scale or run in parallel`);
+        }
+      }
+    });
+  }
+}
+
 for (const key of [
   "ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS",
   "ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS",

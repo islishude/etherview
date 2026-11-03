@@ -110,6 +110,13 @@ with separate invalidation and content-moderation obligations.
   authentication returns a typed authorization failure and cannot expose this
   expensive capability anonymously.
 
+- NFT source discovery takes a chain-scoped PostgreSQL session lock before
+  selecting a candidate and keeps that session through exact-state RPC and
+  source/job publication. Contenders skip discovery; document-fetch workers
+  remain independently lease-claimed. Admission uses READ COMMITTED under the
+  canonical chain lock, so concurrent identical enqueue observes the winner
+  instead of failing with a serialization error. No snapshot crosses RPC.
+
 ## Consequences
 
 Media availability depends on the current upstream on every request and the

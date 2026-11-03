@@ -2082,3 +2082,21 @@ Sourcify credentials. Keep all execution replicas on the same runtime identity.
 This fresh-baseline change requires database recreation under the initialization
 procedure and coordinated API/verification rollout, not mixed-version operation.
 Stop every cache-mounting worker before explicit cache cleanup.
+
+## Multi-instance polling ownership
+
+Live sync, mempool, NFT source discovery and compiler catalog refresh use
+PostgreSQL session advisory locks. A replica that loses a lock-owning connection
+cannot publish the in-flight result through another connection. Other replicas
+can resume on their next poll; slow upstream requests retain ownership until
+the bounded request ends or the database session closes. Backfill ranges and
+ordinary durable workers retain their existing independent claims. Increasing
+replicas therefore does not increase concurrent singleton polls.
+
+Each active singleton cycle borrows one writer-pool connection without holding
+a transaction during external requests. Keep writer capacity for other workers
+and readiness probes. Maintenance also uses its claim connection for actual
+repair/reindex mutations. A connection failure may restart that component's
+process through the existing supervisor; recovery retries the original durable
+request. Do not remove a live owner's advisory lock administratively: stop the
+owner or terminate its physical PostgreSQL session so late writes also fail.

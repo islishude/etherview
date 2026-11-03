@@ -33,6 +33,7 @@ const (
 )
 
 var (
+	ErrCompilerCatalogRefreshBusy = errors.New("compiler catalog refresh is already owned")
 	ErrCompilerCatalogStale       = errors.New("compiler catalog is stale")
 	ErrCompilerCatalogUnavailable = errors.New("compiler catalog is unavailable")
 	ErrCompilerVersionUnavailable = errors.New("compiler version is unavailable")
@@ -221,6 +222,22 @@ func (catalog *CompilerCatalog) Refresh(ctx context.Context, language Language) 
 	if catalog == nil || catalog.db == nil {
 		return 0, errors.New("refresh using nil compiler catalog")
 	}
+	var generation int64
+	ran, err := dbaccess.WithSessionLock(ctx, catalog.db, "etherview:compiler-catalog:"+string(language), func(db dbaccess.Database) error {
+		var err error
+		generation, err = catalog.refreshOwned(ctx, db, language)
+		return err
+	})
+	if err == nil && !ran {
+		return 0, ErrCompilerCatalogRefreshBusy
+	}
+	return generation, err
+}
+
+func (catalog *CompilerCatalog) refreshOwned(ctx context.Context, database dbaccess.Database, language Language) (int64, error) {
+	if catalog == nil || catalog.db == nil {
+		return 0, errors.New("refresh using nil compiler catalog")
+	}
 	catalog.sourceMu.RLock()
 	source, ok := catalog.options.Sources[language]
 	catalog.sourceMu.RUnlock()
@@ -260,7 +277,7 @@ func (catalog *CompilerCatalog) Refresh(ctx context.Context, language Language) 
 	})
 	var digest [sha256.Size]byte
 	copy(digest[:], hasher.Sum(nil))
-	return catalog.persist(ctx, language, strings.Join(sources, ","), digest, entries)
+	return catalog.persistUsing(ctx, database, language, strings.Join(sources, ","), digest, entries)
 }
 
 func (catalog *CompilerCatalog) fetch(ctx context.Context, source string) ([]byte, error) {
@@ -417,7 +434,11 @@ func (catalog *CompilerCatalog) persist(
 	digest [sha256.Size]byte,
 	entries []CatalogEntry,
 ) (int64, error) {
-	tx, err := catalog.db.BeginTx(ctx, pgx.TxOptions{})
+	return catalog.persistUsing(ctx, catalog.db, language, source, digest, entries)
+}
+
+func (catalog *CompilerCatalog) persistUsing(ctx context.Context, database dbaccess.Database, language Language, source string, digest [sha256.Size]byte, entries []CatalogEntry) (int64, error) {
+	tx, err := database.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("begin compiler catalog refresh: %w", err)
 	}

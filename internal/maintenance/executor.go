@@ -215,3 +215,21 @@ func forBlockRange(ctx context.Context, from, to uint64, visit func(uint64) erro
 		}
 	}
 }
+
+// Bind routes every core mutation and replay enqueue through the claim session.
+// A disconnected owner cannot publish through an unrelated pool connection.
+func (executor *Executor) Bind(lease Lease) (RangeExecutor, error) {
+	if lease.session == nil || lease.session.released || lease.session.conn == nil || lease.session.request != lease.Request {
+		return nil, ErrLeaseLost
+	}
+	repository, err := store.NewPostgresRepository(lease.session.conn)
+	if err != nil {
+		return nil, err
+	}
+	queue, err := enrich.NewPostgresJobQueue(lease.session.conn)
+	if err != nil {
+		return nil, err
+	}
+	canonicalizer := &indexer.Canonicalizer{ChainID: executor.chainID, Repository: repository}
+	return NewExecutor(executor.chainID, executor.source, canonicalizer, repository, queue)
+}

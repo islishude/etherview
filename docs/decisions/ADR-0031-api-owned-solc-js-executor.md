@@ -99,6 +99,12 @@ hard compiler isolation, runner images, or runner provenance. ADR-0024 remains
 authoritative for catalog integrity, dual compilation, bounded matching,
 canonical publication, stable errors, and hostile-input handling.
 
+- Catalog refresh takes a schema- and language-scoped PostgreSQL session lock
+  before downloading. Persistence and head activation use that same physical
+  connection, so a delayed response cannot overwrite a takeover's generation.
+  Contenders retry without declaring the retained catalog stale. Immutable
+  application-locked Vyper entries keep their existing publication path.
+
 ## Consequences
 
 Preview and production no longer carry a hidden AMD64 compiler dependency.

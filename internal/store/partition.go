@@ -125,8 +125,8 @@ type partitionRangeCache struct {
 	ensured map[uint64]struct{}
 }
 
-func newPartitionRangeCache() partitionRangeCache {
-	return partitionRangeCache{ensured: make(map[uint64]struct{})}
+func newPartitionRangeCache() *partitionRangeCache {
+	return &partitionRangeCache{ensured: make(map[uint64]struct{})}
 }
 
 func (c *partitionRangeCache) contains(lower uint64) bool {

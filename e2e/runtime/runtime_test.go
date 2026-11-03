@@ -797,7 +797,8 @@ func (h *harness) startTopology(ctx context.Context) {
 			h.t.Fatal(err)
 		}
 		args := []string{"up", "-d", "--no-deps", "--no-recreate", "--wait", "--wait-timeout", "90", "--remove-orphans",
-			"--scale", "sync=2", "--scale", "enrich=2", "--scale", "api=2", "--scale", "verification=2"}
+			"--scale", "sync=2", "--scale", "enrich=2", "--scale", "api=2", "--scale", "verification=2",
+			"--scale", "metadata=2", "--scale", "maintenance=2"}
 		for service := range strings.FieldsSeq(string(services)) {
 			if service != "migration" {
 				args = append(args, service)

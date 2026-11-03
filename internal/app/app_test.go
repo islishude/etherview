@@ -772,3 +772,7 @@ func TestBrowserPushComponentRoleBoundary(t *testing.T) {
 		}
 	}
 }
+
+func (executor *appRangeExecutor) Bind(maintenance.Lease) (maintenance.RangeExecutor, error) {
+	return executor, nil
+}

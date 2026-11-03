@@ -674,6 +674,7 @@ type Querier interface {
 	RefreshENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64, expectedGeneration int64) (int64, error)
 	RegisterENSEffectivePolicy(ctx context.Context, arg RegisterENSEffectivePolicyParams) error
 	ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error)
+	ReleaseRuntimeSessionLock(ctx context.Context, lockName string) (bool, error)
 	RequestsListItems(ctx context.Context, arg RequestsListItemsParams) ([]RequestsListItemsRow, error)
 	RequestsReadSet(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (RequestsReadSetRow, error)
 	RequestsRetainedItems(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
@@ -765,6 +766,7 @@ type Querier interface {
 	SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric) (SummarizeBillingAccountsRow, error)
 	SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error)
 	TouchActiveUserSession(ctx context.Context, observedAt pgtype.Timestamptz, iD pgtype.UUID, touchBefore pgtype.Timestamptz) error
+	TryRuntimeSessionLock(ctx context.Context, lockName string) (bool, error)
 	TrySearchCatalogMaintenanceLock(ctx context.Context, chainID string) (bool, error)
 	UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) (User, error)
 	UpdateCurrentUserDisplayName(ctx context.Context, displayName *string, updatedAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)

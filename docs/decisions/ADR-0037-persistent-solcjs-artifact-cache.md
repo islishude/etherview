@@ -50,7 +50,10 @@ inodes and spuriously rejects the installation.
   download. An uncertain acquisition or release discards the connection, and
   there is no unlocked fallback.
 - Base Compose mounts one project-scoped named volume at the compiler cache
-  boundary. Preview instead bind-mounts `.local/preview-compilers` from the
+  boundary. The image seeds only the empty, owned parent directory; the
+  application creates its `cache` child with idempotent directory creation.
+  Pre-seeding that child lets concurrent Docker volume copy-up fail before
+  replicas start, outside PostgreSQL coordination. Preview instead bind-mounts `.local/preview-compilers` from the
   repository. Daily Preview and its E2E suites share one explicit bind-cache
   lifecycle: the host creates an empty parent, and a one-shot management
   container sets that directory and its `cache` child to UID/GID 65532 and

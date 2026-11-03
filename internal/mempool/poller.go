@@ -163,11 +163,16 @@ func (poller *Poller) Run(ctx context.Context) error {
 }
 
 func (poller *Poller) Cycle(ctx context.Context) error {
+	_, err := poller.store.WithPoll(ctx, func(store Store) error { return poller.cycleOwned(ctx, store) })
+	return err
+}
+
+func (poller *Poller) cycleOwned(ctx context.Context, store Store) error {
 	rawContent, endpoint, err := poller.source.PendingTransactions(ctx)
 	observedAt := poller.options.Now().UTC()
 	if err != nil {
 		failure := sourceFailure(err, endpoint, observedAt)
-		if storeErr := poller.store.StoreFailure(ctx, failure); storeErr != nil {
+		if storeErr := store.StoreFailure(ctx, failure); storeErr != nil {
 			return cycleFailure("storage_or_internal_failure", fmt.Errorf("persist mempool failure status: %w", storeErr))
 		}
 		return err
@@ -178,12 +183,12 @@ func (poller *Poller) Cycle(ctx context.Context) error {
 			State: StateFailed, Endpoint: endpoint, Code: "invalid_snapshot",
 			Message: boundedMessage(err.Error()), ObservedAt: observedAt,
 		}
-		if storeErr := poller.store.StoreFailure(ctx, failure); storeErr != nil {
+		if storeErr := store.StoreFailure(ctx, failure); storeErr != nil {
 			return cycleFailure("storage_or_internal_failure", fmt.Errorf("persist invalid mempool status: %w", storeErr))
 		}
 		return cycleFailure("invalid_snapshot", err)
 	}
-	info, err := poller.store.StoreSnapshot(ctx, snapshot)
+	info, err := store.StoreSnapshot(ctx, snapshot)
 	if err != nil {
 		return cycleFailure("storage_or_internal_failure", fmt.Errorf("persist mempool snapshot: %w", err))
 	}

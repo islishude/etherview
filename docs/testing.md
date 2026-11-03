@@ -222,6 +222,15 @@ exclusive-create. Application tests do not require production fixture evidence.
 They retain the `runtimee2e verificatione2e` Go build tags for shared harness code;
 Vyper does not require a Hardhat client image or CLI.
 
+The runtime overlay replaces the production API and metrics port mappings with
+ephemeral `127.0.0.1` bindings, matching PostgreSQL, RPC and worker metrics.
+Keep this address consistent across the rendered stack: mixing wildcard and
+loopback allocations triggers the Docker 28 port-allocation defect documented
+in [Moby #50054](https://github.com/moby/moby/pull/50054). The Compose layout
+regressions verify both topologies and the Hardhat/Vyper overlays, including
+replacement of inherited fixed ports. Do not reduce replica counts or topology
+parallelism to hide a port conflict.
+
 All intermediate artifacts carry exact producer IDs and run/attempt-qualified
 names with one-day retention. The final aggregation job waits for all three
 jobs, downloads their exact output IDs and checks source, architecture, image,
@@ -1480,3 +1489,25 @@ two API and two verification instances, tests lookup failures through task
 polling, and checks crash takeover and stale-publication rejection. Run common,
 generation, lint, deployment, schema, integration race, browser and runtime E2E
 and affected Hardhat/Vyper suites. Local results do not close P70 release gates.
+
+## Multi-instance observation and publication
+
+P30-T154 requires real PostgreSQL regressions for live sync, maintenance repair,
+mempool polling, NFT source discovery/admission and compiler catalog refresh.
+Hold one replica in external work, verify contenders skip, terminate only its
+owned database session, let another replica publish, then release the stale
+response and assert it cannot write. Retain genuine shorter-head and backfill
+conflict recovery cases. Session cleanup covers success, failure, cancellation,
+panic and absence of an open transaction during external work. Concurrent
+identical NFT enqueue must return one durable job without SQLSTATE 40001.
+Production runtime also runs `TestCompilerCacheReplicasColdStart`: three fresh
+named volumes each receive eight simultaneous container creations, covering
+Docker copy-up before application or PostgreSQL coordination can run.
+
+Run the `TestLiveSyncReplicas`, `TestMaintenanceReplicas`, `TestMempoolReplicas`,
+`TestMetadataReplicas`, `TestRuntimeSessionLock` and `TestCompilerCatalogReplicas`
+cases through the managed PostgreSQL runner with `-race`, then common,
+generation, Go lint, documentation/plan, full integration race and production
+runtime E2E gates. Preview metadata covers source discovery, URI changes and
+restart persistence; Hardhat covers catalogs and verification in both role
+layouts. These checks do not close P70 capacity or external release gates.

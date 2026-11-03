@@ -136,6 +136,7 @@ type Service struct {
 
 	latest          atomic.Uint64
 	latestKnown     atomic.Bool
+	liveSkipped     atomic.Bool
 	statusMu        sync.Mutex
 	liveErrorCode   string
 	backfillErrCode string
@@ -276,6 +277,16 @@ func (s *Service) runBackfill(ctx context.Context, wake <-chan struct{}, owner s
 }
 
 func (s *Service) liveOnce(ctx context.Context) error {
+	ran, err := s.Repository.WithLiveHead(ctx, s.ChainID, func(repository store.Repository) error {
+		canonicalizer := *s.Canonicalizer
+		canonicalizer.Repository = repository
+		return s.liveOnceOwned(ctx, repository, &canonicalizer)
+	})
+	s.liveSkipped.Store(err == nil && !ran)
+	return err
+}
+
+func (s *Service) liveOnceOwned(ctx context.Context, repository store.Repository, canonicalizer *indexer.Canonicalizer) error {
 	head, err := s.Source.Head(ctx)
 	if err != nil {
 		return fmt.Errorf("read authoritative head: %w", err)
@@ -297,51 +308,51 @@ func (s *Service) liveOnce(ctx context.Context) error {
 		return fmt.Errorf("authoritative head bundle height is %d, expected %d", reference.Number, head)
 	}
 
-	tip, tipExists, err := s.Repository.CanonicalTip(ctx, s.ChainID)
+	tip, tipExists, err := repository.CanonicalTip(ctx, s.ChainID)
 	if err != nil {
 		return fmt.Errorf("read canonical tip: %w", err)
 	}
-	canonical, canonicalExists, err := s.Repository.CanonicalBlock(ctx, s.ChainID, head)
+	canonical, canonicalExists, err := repository.CanonicalBlock(ctx, s.ChainID, head)
 	if err != nil {
 		return fmt.Errorf("read authoritative canonical height: %w", err)
 	}
 	if canonicalExists && canonical.Hash == reference.Hash {
 		if tipExists && tip.Number > head {
-			result, applyErr := s.Canonicalizer.ApplyHead(ctx, bundle)
+			result, applyErr := canonicalizer.ApplyHead(ctx, bundle)
 			if applyErr != nil {
 				return applyErr
 			}
 			s.publish(result)
 		}
-		return s.updateAvailableFinality(ctx)
+		return s.updateAvailableFinality(ctx, repository, canonicalizer)
 	}
-	coverage, configured, err := s.Repository.Coverage(ctx, s.ChainID)
+	coverage, configured, err := repository.Coverage(ctx, s.ChainID)
 	if err != nil {
 		return fmt.Errorf("read canonical coverage before live commit: %w", err)
 	}
 	if configured && tipExists && shouldResolveShallowLiveGap(coverage, tip, reference, s.maxReorgDepth()) {
-		result, applyErr := s.Canonicalizer.ApplyHead(ctx, bundle)
+		result, applyErr := canonicalizer.ApplyHead(ctx, bundle)
 		if applyErr != nil {
 			return applyErr
 		}
 		s.publish(result)
-		return s.updateAvailableFinality(ctx)
+		return s.updateAvailableFinality(ctx, repository, canonicalizer)
 	}
 
-	_, err = s.Repository.CommitCanonicalSegment(ctx, s.ChainID, []chainbundle.Bundle{bundle})
+	_, err = repository.CommitCanonicalSegment(ctx, s.ChainID, []chainbundle.Bundle{bundle})
 	if err == nil {
 		s.signalEvents()
-		return s.updateAvailableFinality(ctx)
+		return s.updateAvailableFinality(ctx, repository, canonicalizer)
 	}
 	if !errors.Is(err, store.ErrConflict) {
 		return fmt.Errorf("commit authoritative live head %d: %w", head, err)
 	}
-	result, applyErr := s.Canonicalizer.ApplyHead(ctx, bundle)
+	result, applyErr := canonicalizer.ApplyHead(ctx, bundle)
 	if applyErr != nil {
 		return applyErr
 	}
 	s.publish(result)
-	return s.updateAvailableFinality(ctx)
+	return s.updateAvailableFinality(ctx, repository, canonicalizer)
 }
 
 func (s *Service) backfillOnce(ctx context.Context, owner string) (bool, error) {
@@ -497,6 +508,18 @@ func (s *Service) resolveBackfillCommitError(
 }
 
 func (s *Service) resolveAuthoritativeBackfillConflict(ctx context.Context) (indexer.ApplyResult, error) {
+	result := indexer.ApplyResult{Disposition: indexer.DispositionAlreadyKnown}
+	_, err := s.Repository.WithLiveHead(ctx, s.ChainID, func(repository store.Repository) error {
+		canonicalizer := *s.Canonicalizer
+		canonicalizer.Repository = repository
+		var err error
+		result, err = s.resolveAuthoritativeBackfillConflictOwned(ctx, &canonicalizer)
+		return err
+	})
+	return result, err
+}
+
+func (s *Service) resolveAuthoritativeBackfillConflictOwned(ctx context.Context, canonicalizer *indexer.Canonicalizer) (indexer.ApplyResult, error) {
 	head, err := s.Source.Head(ctx)
 	if err != nil {
 		return indexer.ApplyResult{}, fmt.Errorf("refresh authoritative head after backfill conflict: %w", err)
@@ -514,7 +537,7 @@ func (s *Service) resolveAuthoritativeBackfillConflict(ctx context.Context) (ind
 	if reference.Number != head {
 		return indexer.ApplyResult{}, fmt.Errorf("authoritative conflict head height is %d, expected %d", reference.Number, head)
 	}
-	return s.Canonicalizer.ApplyHead(ctx, bundle)
+	return canonicalizer.ApplyHead(ctx, bundle)
 }
 
 // syncRange remains a bounded cancellation-safe helper for focused transport
@@ -576,7 +599,7 @@ func (s *Service) syncRange(ctx context.Context, start, end, head uint64) error 
 	return nil
 }
 
-func (s *Service) updateAvailableFinality(ctx context.Context) error {
+func (s *Service) updateAvailableFinality(ctx context.Context, repository store.Repository, canonicalizer *indexer.Canonicalizer) error {
 	safe, finalized, err := s.Source.Finality(ctx)
 	if err != nil {
 		return fmt.Errorf("read safe/finalized heads: %w", err)
@@ -588,7 +611,7 @@ func (s *Service) updateAvailableFinality(ctx context.Context) error {
 		if requested == nil {
 			continue
 		}
-		canonical, exists, err := s.Repository.CanonicalBlock(ctx, s.ChainID, requested.Number)
+		canonical, exists, err := repository.CanonicalBlock(ctx, s.ChainID, requested.Number)
 		if err != nil {
 			return fmt.Errorf("check finality coverage: %w", err)
 		}
@@ -598,7 +621,7 @@ func (s *Service) updateAvailableFinality(ctx context.Context) error {
 			return nil
 		}
 	}
-	if err := s.Canonicalizer.UpdateFinality(ctx, safe, finalized); err != nil {
+	if err := canonicalizer.UpdateFinality(ctx, safe, finalized); err != nil {
 		return fmt.Errorf("update finality: %w", err)
 	}
 	return nil
@@ -627,6 +650,11 @@ func (s *Service) recordRuntimeStatus(ctx context.Context) error {
 	backfillErrorCode := s.backfillErrCode
 	safetyHaltCode := s.safetyHaltCode
 	s.statusMu.Unlock()
+	// A skipped observation must not renew the separate status writer lease
+	// with an old head (especially while the live owner accepts a shorter head).
+	if s.liveSkipped.Load() && safetyHaltCode == "" {
+		return nil
+	}
 	coverage, exists, err := s.Repository.Coverage(ctx, s.ChainID)
 	if err != nil {
 		return fmt.Errorf("read coverage for runtime status: %w", err)

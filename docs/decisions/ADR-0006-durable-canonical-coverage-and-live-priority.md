@@ -66,6 +66,16 @@ ownership without a durable coordination rule.
   until operator cancellation, keeping the safety halt observable while
   repair and restart are coordinated.
 
+- Live-head observation and publication run under one chain-scoped PostgreSQL
+  session lock, acquired before reading the remote head. Canonical writes and
+  finality updates use that exact connection. Backfill conflict recovery takes
+  the same lock before re-reading the authoritative head. Losing the session
+  rejects late results, while another replica can take over; ordinary backfill
+  range workers retain their independent leases. This preserves real shorter
+  fork-choice heads without accepting a delayed observation from an old owner.
+  Skipped cycles do not refresh the separate status reporter lease using a
+  previous observation; safety-halt reporting remains active.
+
 ## Consequences
 
 Backfill ranges may finish out of order without overstating readiness. Multiple

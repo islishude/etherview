@@ -100,6 +100,7 @@ type Failure struct {
 }
 
 type Store interface {
+	WithPoll(context.Context, func(Store) error) (bool, error)
 	StoreSnapshot(context.Context, Snapshot) (SnapshotInfo, error)
 	StoreFailure(context.Context, Failure) error
 }

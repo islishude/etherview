@@ -47,6 +47,13 @@ the old maximum-idle setting. Read bounds retain their documented inheritance.
 Pool metrics report native acquisition and lifecycle statistics with truthful
 names; unsupported database/sql statistics are not synthesized.
 
+Singleton observation cycles reserve a schema-scoped advisory lock before
+external work and use that same physical connection for every subsequent
+publication transaction. A failed connection must never fall back to the pool.
+Contenders skip the cycle; cancellation, error and panic release or discard the
+session. No transaction remains open during external work. Maintenance binds
+repair and reindex executors to their existing claim session as well.
+
 ## Consequences
 
 All repositories, tools and tests share one native database stack. Unit tests

@@ -86,6 +86,17 @@ services:
       ETHERVIEW_SESSION_PEPPER: ${ETHERVIEW_RUNTIME_SESSION_PEPPER:-}
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
+    # Replace production wildcard bindings instead of merging another mapping.
+    # Docker 28 can allocate overlapping wildcard and loopback ephemeral ports.
+    ports: !override
+      - target: 8080
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+      - target: 9090
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
 
   api:
     environment:
@@ -93,6 +104,15 @@ services:
       ETHERVIEW_SESSION_PEPPER: ${ETHERVIEW_RUNTIME_SESSION_PEPPER:-}
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: !override
+      - target: 8080
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
+      - target: 9090
+        published: "0"
+        host_ip: 127.0.0.1
+        protocol: tcp
 
   verification:
     environment: *runtime-e2e-environment

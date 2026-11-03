@@ -1083,3 +1083,32 @@ func mustSyncTestRef(bundle chainbundle.Bundle) store.BlockRef {
 	}
 	return reference
 }
+
+func TestSkippedLivePollDoesNotRenewStatusFromOldObservation(t *testing.T) {
+	repository := store.NewMemoryRepository()
+	source := &fakeSource{head: 2, bundles: testChain(3)}
+	statuses := &statusRecorder{}
+	service := &Service{ChainID: "1", Workers: 2, Source: source, Repository: repository,
+		Canonicalizer: &indexer.Canonicalizer{ChainID: "1", MaxReorgDepth: 128, Repository: repository}, Tracker: &Tracker{}, Status: statuses}
+	if err := service.Cycle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	before := statuses.count()
+	acquired, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		_, err := repository.WithLiveHead(t.Context(), "1", func(store.Repository) error { close(acquired); <-release; return nil })
+		done <- err
+	}()
+	<-acquired
+	err := service.Cycle(t.Context())
+	close(release)
+	if lockErr := <-done; lockErr != nil {
+		t.Fatal(lockErr)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := statuses.count(); got != before {
+		t.Fatalf("skipped poll refreshed status: before=%d after=%d", before, got)
+	}
+}

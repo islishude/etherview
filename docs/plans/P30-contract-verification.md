@@ -97,9 +97,13 @@ availability does not gate core readiness.
 | P30-T151 | done   | P30-T150                                                      | Representative Mainnet core-to-publication acceptance and independent reconciliation                                                                                                                                    | Pinned image/manifest/blocks, event and imported candidate provenance, independent RPC comparisons                                                                      |
 | P30-T152 | done   | P30-T144, P30-T150                                            | Preview manual scenarios, resumable transaction journal, reports, proxy families and EIP-7702 lifecycle controls                                                                                                        | Tool regressions, isolated split/all Preview CLI and browser acceptance                                                                                                 |
 | P30-T153 | done   | P30-T10, P30-T141                                             | Independent verification role, optional NATS wake and PostgreSQL claims, fully asynchronous Sourcify import                                                                                                             | Multi-instance lease/recovery, immutable import input, all/split parity and production deployment gates                                                                 |
+| P30-T154 | done   | P30-T153                                                      | Session-owned polling and publication for live sync, maintenance, NFT source discovery, mempool and compiler catalogs; safe concurrent compiler-cache startup                                                           | PostgreSQL contention, lost-session takeover, stale-write and Docker cold-start regressions, common and production parity gates                                         |
 
 ## Acceptance
 
+- [x] Multi-instance observation and publication reject stale owners after session
+      loss; concurrent NFT admission and fresh compiler-cache startup pass real
+      PostgreSQL race and production all/split regressions.
 - [x] Compiler/helper identity, dual compilation, exact matching, immutable
       provenance and canonical lease-fenced publication pass each language's gates.
 - [x] Vyper uses application-locked archives and fresh dual-Pyodide SEA execution;
@@ -148,6 +152,20 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P70 release gates remain independent.
 
 ## Evidence
+
+P30-T154 local acceptance passed on 2026-11-03 in the worktree based on
+`4197eb3adb047770ba64a38e3a1343c11b52f4e0`. Real PostgreSQL 18 race regressions
+cover contention, connection termination, takeover, rejected stale writes,
+identical NFT admission, session cleanup and snapshot boundaries. Three fresh
+compiler-cache volumes each passed eight concurrent container creations.
+`make check`, `make test-integration-race`, and the schema/runtime, Preview
+metadata and Hardhat prebuilt targets passed; Hardhat used
+`VERIFICATION_PARALLEL=2`. Production split tests use two sync, enrich, API,
+verification, metadata and maintenance replicas. The final local Linux ARM64
+image `etherview:multiinstance-fix` is
+`sha256:176bf78e9fd67ae408395e51b5051e8279fb48bb2ec4c039c24db80606702f45`.
+This macOS-hosted working-tree acceptance does not establish native Linux,
+AMD64, clean-release, capacity or security closure in P70.
 
 P30-T153 local acceptance passed: independent API admission, eight concurrent
 PostgreSQL claimers, immutable input races/restart, canonical and stale-lease

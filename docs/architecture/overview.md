@@ -179,6 +179,14 @@ uncertain ownership discards that connection. SQL originates in
 handwritten SQL. Large scans use bounded keyset pages within their original
 snapshot or chain-lock boundary. P00 owns database acceptance; P30 tracks production-image acceptance.
 
+Live sync (including backfill conflict recovery), mempool polling, NFT source
+discovery and compiler catalog refresh each reserve a PostgreSQL session before
+external work. Publications use the same connection as the advisory lock;
+connection loss cannot redirect stale results through a healthy pool session.
+Maintenance repair/reindex executors likewise use their existing claim session.
+Contenders skip polling and retry normally. Locks do not retain transactions
+across external requests; ordinary durable worker queues remain independent.
+
 ## Chain Correctness
 
 - Each deployment serves one configured chain and binds it with chain ID plus

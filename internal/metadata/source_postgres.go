@@ -11,6 +11,7 @@ import (
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
+	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
 
@@ -194,4 +195,12 @@ func nullableString(value string) *string {
 		return nil
 	}
 	return new(value)
+}
+
+func (repository *PostgresRepository) WithSourceDiscovery(ctx context.Context, work func(NFTSourceRepository) error) (bool, error) {
+	return dbaccess.WithSessionLock(ctx, repository.db, "etherview:nft-source:"+repository.chainID, func(db dbaccess.Database) error {
+		scoped := *repository
+		scoped.db = db
+		return work(&scoped)
+	})
 }
