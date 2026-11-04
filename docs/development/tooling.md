@@ -55,9 +55,10 @@ stable pnpm 12 release through the standalone installer and checks its major.
 Automatic peer installation is disabled, so the artifact-only Safe fixture's
 unused Ethers v5 peer is not installed. Required peers are explicit workspace
 dependencies, including the frontend test DOM library. API generation uses
-TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:26.13.0` image's curl to download the
+TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses `node:26.13.0-slim` and curl to download the
 [official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
-with `PNPM_VERSION=12`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
+with curl and CA certificates installed for the script and its package downloads,
+`PNPM_VERSION=12`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then
 uses the same workspace policy with frozen, filtered installs. Dependency caches
 mount at `/pnpm-cache`, outside `PNPM_HOME`, so they cannot hide the installed
 pnpm runtime and its store links. CI pins

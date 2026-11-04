@@ -2,9 +2,12 @@
 
 FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
-FROM node:26.13.0 AS node-builder
+FROM node:26.13.0-slim AS node-builder
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}/bin:${PATH}"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://get.pnpm.io/install.sh -o /tmp/install-pnpm.sh \
     && env PNPM_VERSION=12 ENV=/root/.shrc SHELL=/bin/sh sh /tmp/install-pnpm.sh \
     && rm /tmp/install-pnpm.sh \
