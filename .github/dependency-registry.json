@@ -598,12 +598,12 @@
         },
         {
           "path": "Dockerfile",
-          "template": "FROM node:{{version}} AS node-builder",
+          "template": "FROM node:{{version}}-slim AS node-builder",
           "count": 1
         },
         {
           "path": "e2e/hardhat3/Dockerfile",
-          "template": "FROM node:{{version}}",
+          "template": "FROM node:{{version}}-slim",
           "count": 1
         },
         {
@@ -658,7 +658,7 @@
         },
         {
           "path": "docs/development/tooling.md",
-          "template": "TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:{{version}}` image's curl to download the",
+          "template": "TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses `node:{{version}}-slim` and curl to download the",
           "count": 1
         },
         {
