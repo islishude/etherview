@@ -1,72 +1,75 @@
 # Etherview
 
 Etherview is a pre-release Ethereum execution-layer explorer with a Go backend
-and embedded bilingual React application. Run it as one process or independently
-scalable roles. PostgreSQL is the only required external service and the source
-of truth for identities and publication. Redis, NATS, and the S3 trace cache are
-optional accelerators; optional blob bodies use a separate durable object archive.
+and a bilingual React interface.
 
 ## Capabilities
 
-- Reorg-safe block, transaction, receipt, log, withdrawal, and mempool indexing
-- Block-scoped traces, ABI/proxy decoding, tokens, NFTs, balances, and statistics
-- Optional ERC-4337 EntryPoint v0.6-v0.9 UserOperation browsing
-- Solidity/Yul, Vyper, and Geas contract verification, with optional Sourcify interoperability
-- Optional Beacon consensus observations, execution requests, and durable blob archives
-- Native REST/SSE APIs and an Etherscan V2 compatibility subset
-- API keys, SIWE sessions, optional x402 billing and API TLS, Prometheus metrics,
-  Compose, and Helm deployments
+- **Explore chain activity** — Browse blocks, transactions, receipts, event logs,
+  withdrawals, and pending transactions, with reorg-safe indexing.
+- **Understand contract execution** — Inspect execution traces, decoded calls
+  and events, and proxy implementations.
+- **Verify and interact with contracts** — Verify Solidity/Yul, Vyper, and Geas
+  sources, with optional Sourcify interoperability; read and write contracts
+  through an injected wallet.
+- **Track tokens and NFTs** — Explore ERC-20 balances and holders, ERC-721 and
+  ERC-1155 ownership, and NFT metadata and traits.
+- **Discover ENS names** — Search names and browse registration profiles,
+  resolution records, and on-chain history.
+- **Follow what matters** — Sign in with Ethereum to manage private watchlists,
+  receive optional browser notifications, and export data as CSV.
+- **Explore protocol extensions** — Optional ERC-4337 UserOperation browsing,
+  Beacon consensus observations, execution requests, and blob archives.
+- **Build integrations** — Use native REST/SSE APIs, scoped API keys, an
+  Etherscan V2 compatibility subset, and optional x402 billing.
+- **Browse in English or Chinese** — A bilingual interface for everyday
+  exploration and contract analysis.
 
-Validator browsing, MEV accounting, and L2-specific batch semantics are outside
-the v1 core scope. See [the release plan](PLAN.md)
-for current status and remaining gates.
+See the [architecture overview](docs/architecture/overview.md) for details and
+the [release plan](PLAN.md) for scope and status.
 
 ## Quick start
 
 ### Full-stack Preview
 
-The default `compose.yaml` runs Preview with a local Geth/Lighthouse PoS chain, all seven application roles,
-public contract verification, and a local Kubo HTTPS gateway for NFT metadata:
+Requires Docker with Docker Compose. Start Docker, then run the full application
+with a local Ethereum chain:
 
 ```sh
-make preview-cert
 make start-preview
 ```
 
-`preview-cert` installs mkcert's local CA and creates ignored localhost
-certificates. Open <https://app.etherview.localhost>; the operations listener
-is at <http://localhost:9090>. Solidity/Yul compilation uses a bounded,
-permission-restricted Node 26.13.0 SEA subprocess.
+Open <https://app.etherview.localhost>.
 
-Use `make recreate-preview` to rebuild application roles while preserving data
-and the compiler cache. **`make stop-preview` deletes Preview and all its
-volumes.** See [Preview setup and lifecycle](preview/docs/README.md)
-for prerequisites, compiler details, and endpoint overrides. The
-[IPFS file tool](preview/docs/tools.md#ipfs-file-tool) uploads and downloads single
-files through the loopback Kubo API.
+See [Preview setup and lifecycle](preview/docs/README.md) for prerequisites,
+rebuilding and cleanup. **`make stop-preview` deletes Preview data.**
+
+To populate sample data for all Preview scenarios:
+
+```sh
+make preview-tool ARGS='run all'
+```
+
+Open the printed explorer links. See [Preview tools](preview/docs/tools.md)
+for wallet setup and individual scenarios.
 
 ### Deploy against an external chain
 
-The maintained deployment template is `deploy/compose.yaml`. From the repository
-root, configure an external execution RPC endpoint and serve the monolith at
-<http://localhost:8080>:
+Configure an execution RPC endpoint and chain identity using the
+[deployment guide](deploy/README.md#docker-compose), then start with Docker Compose:
 
 ```sh
 cp deploy/compose.env.example .env.deploy
-# Set a password and a compatible execution RPC endpoint in .env.deploy.
+# Edit .env.deploy with your database password, RPC endpoint, and chain identity.
 docker compose --project-directory . -f deploy/compose.yaml --env-file .env.deploy --profile monolith up --build
 ```
 
-Use `--profile distributed` for one process per role; add
-`--profile accelerators` to enable optional infrastructure. See the
-[deployment guide](deploy/README.md#docker-compose) for prerequisites and migration
-from an existing deployment `.env`. Preview and deployment use separate projects
-and volumes; choose different published ports if running both concurrently.
+Open <http://localhost:8080>. For Kubernetes, see the
+[Helm chart](deploy/helm/etherview/README.md).
 
 ## Development
 
-Toolchains: Go >=1.27.3, Node.js 26.13.0, and pnpm 12.16.1 (pinned in
-`package.json`). The compiler workspace requires exactly Node.js 26.13.0.
+Requires Go >=1.27.3, Node 26.13.0, and pnpm 12.16.1.
 
 ```sh
 make toolchain-check
@@ -74,21 +77,17 @@ make go-build
 make test
 ```
 
-For frontend development, run the backend at <http://localhost:8080>, then:
+For frontend hot reload, follow [Web development](docs/development/web.md)
+to start a backend, then run:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm --dir web run dev
 ```
 
-Open <http://127.0.0.1:5173>. Vite proxies `/api` to the backend.
-Use `pnpm --dir web run build` for the production bundle and
-`pnpm --dir web run preview` to inspect it at <http://127.0.0.1:4173>.
-
-`make check` runs the common gates. Service-backed and long-running tests are
-explicit targets documented in the [testing guide](docs/testing.md).
 Read [AGENTS.md](AGENTS.md) and the [development guide](docs/development.md)
-before contributing.
+before contributing. Run `make check` for common checks; see the
+[testing guide](docs/testing.md) for additional suites.
 
 ## Documentation
 

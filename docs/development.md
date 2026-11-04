@@ -9,6 +9,7 @@ are changing. Accepted ADRs and applicable test gates remain mandatory.
 | Task                                                                   | Guide                                                             |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | Change APIs, SQL, runtime roles, security boundaries or billing prices | [Implementation boundaries](development/implementation.md)        |
+| Run the frontend with a backend, proxy API requests or preview a build | [Web development](development/web.md)                             |
 | Configure Go tags/lint, pnpm, generated clients, workers or styles     | [Go and frontend tooling](development/tooling.md)                 |
 | Update dependencies, locks or license notices                          | [Dependencies and license inventory](development/dependencies.md) |
 | Choose validation commands and interpret results                       | [Testing and verification](testing.md)                            |

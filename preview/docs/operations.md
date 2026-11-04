@@ -7,7 +7,6 @@
 Initialize and start the full-stack Preview:
 
 ```sh
-make preview-cert
 make start-preview
 ```
 
@@ -22,7 +21,8 @@ described in the [deployment guide](../../deploy/README.md#docker-compose).
 The project names and volume identities are unchanged; this file relocation
 does not require stopping, deleting or migrating either environment's data.
 
-The explicit certificate target installs mkcert trust and generates an ignored
+Startup reuses existing TLS files and runs `make preview-cert` if the certificate,
+private key, or public root CA is missing. This installs mkcert trust and generates an ignored
 `*.etherview.localhost` pair mounted read-only only into Caddy. The public app is
 `https://app.etherview.localhost`; `http://localhost:9090` remains the operations
 listener. See name resolution in [Preview Caddy gateway](#preview-caddy-gateway).

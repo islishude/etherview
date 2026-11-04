@@ -14,7 +14,7 @@ repository-root `compose.yaml`. Run all commands from the repository root.
 - [Testing](testing.md): isolated metadata, consensus, browser, contracts and
   payment acceptance gates.
 
-Start with `make preview-cert` and `make start-preview`.
+Start with `make start-preview`; it runs `make preview-cert` if TLS files are missing.
 `make recreate-preview` preserves data; **`make stop-preview` deletes Preview
 volumes and its default generated network bundle**.
 

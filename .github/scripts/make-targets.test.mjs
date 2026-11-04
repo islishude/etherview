@@ -81,6 +81,96 @@ if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAI
   };
 }
 
+test("Preview tools install locked dependencies before running and stop if installation fails", (t) => {
+  const f = fixture(t);
+  const overrides = ["NODE=stub-go", "ARGS=run all"];
+  const result = f.run("preview-tool", {}, overrides);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(
+    result.commands.map(({ command, args }) => ({ command, args })),
+    [
+      { command: "pnpm", args: ["install", "--frozen-lockfile"] },
+      { command: "go", args: ["preview/contracts/tools/cli.mjs", "run", "all"] },
+    ],
+  );
+  const failed = f.run("preview-tool", { FAIL_COMMAND: "pnpm" }, overrides);
+  assert.notEqual(failed.status, 0);
+  assert.deepEqual(
+    failed.commands.map(({ command }) => command),
+    ["pnpm"],
+  );
+});
+
+test("Preview startup reuses TLS files and generates missing files before starting services", (t) => {
+  const f = fixture(t);
+  const mkcert = join(f.dir, "bin", "mkcert");
+  const caRoot = join(f.dir, "ca-root");
+  mkdirSync(caRoot);
+  writeFileSync(join(caRoot, "rootCA.pem"), "public CA");
+  writeFileSync(
+    mkcert,
+    `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.COMMAND_LOG, JSON.stringify({ command: "mkcert", args }) + "\\n");
+if (args[0] === "-CAROOT") console.log(${JSON.stringify(caRoot)});
+if (args[0] === "-ecdsa") {
+  fs.writeFileSync(args[args.indexOf("-cert-file") + 1], "certificate");
+  fs.writeFileSync(args[args.indexOf("-key-file") + 1], "private key");
+}
+`,
+    { mode: 0o755 },
+  );
+  const overrides = [
+    "NODE=stub-go",
+    `MKCERT=${mkcert}`,
+    "-o",
+    "docker-build",
+    "-o",
+    "preview-images",
+  ];
+  const existing = f.run("start-preview", {}, overrides);
+  assert.equal(existing.status, 0, existing.stdout + existing.stderr);
+  assert.equal(
+    existing.commands.some(({ command }) => command === "mkcert"),
+    false,
+  );
+  for (const file of ["gateway.crt", "gateway.key", "rootCA.pem"]) {
+    rmSync(join(f.dir, ".local/preview-tls", file));
+    const generated = f.run("start-preview", {}, overrides);
+    assert.equal(generated.status, 0, generated.stdout + generated.stderr);
+    assert.ok(existsSync(join(f.dir, ".local/preview-tls", file)));
+    const installed = generated.commands.findIndex(
+      ({ command, args }) => command === "mkcert" && args[0] === "-install",
+    );
+    const started = generated.commands.findIndex(({ command }) => command === "compose");
+    assert.ok(installed >= 0 && started > installed);
+  }
+  rmSync(join(f.dir, ".local/preview-tls/gateway.crt"));
+  rmSync(mkcert);
+  const failed = f.run("start-preview", {}, overrides);
+  assert.notEqual(failed.status, 0);
+  assert.ok(failed.stderr.includes("https://github.com/filosottile/mkcert#installation"));
+  assert.equal(
+    failed.commands.some(({ command }) => command === "compose"),
+    false,
+  );
+});
+
+test("Preview certificate setup explains how to install missing mkcert before creating certificates", (t) => {
+  const f = fixture(t);
+  const tlsDir = join(f.dir, "new-tls");
+  const result = f.run("preview-cert", {}, [
+    `MKCERT=${join(f.dir, "missing-mkcert")}`,
+    `PREVIEW_TLS_DIR=${tlsDir}`,
+  ]);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /mkcert is required/);
+  assert.ok(result.stderr.includes("https://github.com/filosottile/mkcert#installation"));
+  assert.ok(result.stderr.includes("rerun 'make preview-cert'"));
+  assert.equal(existsSync(tlsDir), false);
+});
+
 test("Preview image preparation preserves a prebuilt application and fails before side effects when missing", (t) => {
   const f = fixture(t);
   const prepared = f.run("preview-images-prebuilt");

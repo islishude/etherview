@@ -497,16 +497,20 @@ helm-check:
 
 # Preview lifecycle
 
-.PHONY: preview-cert preview-cert-check preview-network-check preview-env preview-network-runtime \
+.PHONY: preview-cert preview-cert-ensure preview-cert-check preview-network-check preview-env preview-network-runtime \
 	preview-images preview-x402-images start-preview stop-preview recreate-preview test-preview-gateway
 
 start-preview recreate-preview stop-preview preview-images preview-images-prebuilt preview-network-runtime verify-preview-genesis clean-preview-compiler-cache: export COMPOSE_ENV_FILES = $(PREVIEW_ENV_FILE)
 
 preview-cert:
-	@command -v "$(MKCERT)" >/dev/null 2>&1 || { echo "preview-cert: mkcert is required"; exit 1; }
+	@command -v "$(MKCERT)" >/dev/null 2>&1 || { \
+		echo "preview-cert: mkcert is required. Install it, then rerun 'make preview-cert'." >&2; \
+		echo "Installation: https://github.com/filosottile/mkcert#installation" >&2; \
+		exit 1; \
+	}
 	@mkdir -p "$(PREVIEW_TLS_DIR)"
-	$(MKCERT) -install
-	$(MKCERT) -ecdsa -cert-file "$(PREVIEW_GATEWAY_CERT)" -key-file "$(PREVIEW_GATEWAY_KEY)" \
+	"$(MKCERT)" -install
+	"$(MKCERT)" -ecdsa -cert-file "$(PREVIEW_GATEWAY_CERT)" -key-file "$(PREVIEW_GATEWAY_KEY)" \
 		'*.etherview.localhost'
 	@set -eu; \
 		ca_root="$$("$(MKCERT)" -CAROOT)"; \
@@ -518,6 +522,12 @@ preview-cert:
 	@chmod 600 "$(PREVIEW_GATEWAY_KEY)"
 	@chmod 644 "$(PREVIEW_GATEWAY_CERT)" "$(PREVIEW_TLS_CA)"
 	@echo "preview-cert: wrote $(PREVIEW_GATEWAY_CERT), $(PREVIEW_GATEWAY_KEY), and public $(PREVIEW_TLS_CA)"
+
+preview-cert-ensure:
+	@test -r "$(PREVIEW_TLS_CA)" && \
+		test -r "$(PREVIEW_GATEWAY_CERT)" && test -r "$(PREVIEW_GATEWAY_KEY)" || \
+		$(MAKE) --no-print-directory preview-cert
+	@$(MAKE) --no-print-directory preview-cert-check
 
 preview-cert-check:
 	@test -r "$(PREVIEW_TLS_CA)" && \
@@ -553,7 +563,7 @@ preview-images-prebuilt:
 	$(DOCKER) pull node:26.13.0-trixie-slim
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
-start-preview: preview-env preview-cert-check docker-build preview-images
+start-preview: preview-env preview-cert-ensure docker-build preview-images
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/compiler-cache.mjs init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/network.mjs prepare
 	PREVIEW_GATEWAY_IMAGE="$(PREVIEW_GATEWAY_IMAGE)" ETHERVIEW_IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml \
@@ -642,7 +652,7 @@ preview-verification-check: pnpm-install
 
 # Explicit manual scenarios; never start or reset the daily Preview implicitly.
 .PHONY: preview-tool test-preview-tools test-preview-tools-e2e test-preview-tools-e2e-prebuilt test-preview-tools-e2e-full test-preview-tools-e2e-full-prebuilt
-preview-tool:
+preview-tool: pnpm-install
 	@NODE_EXTRA_CA_CERTS="$${NODE_EXTRA_CA_CERTS:-$(CURDIR)/$(PREVIEW_TLS_CA)}" $(NODE) preview/contracts/tools/cli.mjs $(ARGS)
 
 test-preview-tools: pnpm-install

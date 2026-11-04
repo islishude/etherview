@@ -1,7 +1,8 @@
 # Preview manual tools
 
 [Documentation index](README.md). Run commands from the repository root after
-`pnpm install --frozen-lockfile` and `make start-preview`. The tools operate on
+`make start-preview`. `make preview-tool` installs the locked pnpm dependencies
+before running the CLI. The tools operate on
 that already-running disposable chain; they never start, stop or reset it.
 Local IPFS metadata normally uses Preview's dedicated metadata worker.
 [ADR-0005](../../docs/decisions/ADR-0005-safe-nft-metadata-and-media-boundary.md)

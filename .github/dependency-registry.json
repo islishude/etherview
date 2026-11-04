@@ -191,7 +191,7 @@
         },
         {
           "path": "README.md",
-          "template": "Toolchains: Go >={{other}}, Node.js {{other}}, and pnpm {{version}} (pinned in",
+          "template": "Requires Go >={{other}}, Node {{other}}, and pnpm {{version}}.",
           "count": 1
         },
         {
@@ -251,7 +251,7 @@
         },
         {
           "path": "README.md",
-          "template": "Toolchains: Go >={{version}}, Node.js {{other}}, and pnpm {{other}} (pinned in",
+          "template": "Requires Go >={{version}}, Node {{other}}, and pnpm {{other}}.",
           "count": 1
         },
         {
@@ -638,17 +638,7 @@
         },
         {
           "path": "README.md",
-          "template": "Toolchains: Go >={{other}}, Node.js {{version}}, and pnpm {{other}} (pinned in",
-          "count": 1
-        },
-        {
-          "path": "README.md",
-          "template": "`package.json`). The compiler workspace requires exactly Node.js {{version}}.",
-          "count": 1
-        },
-        {
-          "path": "README.md",
-          "template": "permission-restricted Node {{version}} SEA subprocess.",
+          "template": "Requires Go >={{other}}, Node {{version}}, and pnpm {{other}}.",
           "count": 1
         },
         {

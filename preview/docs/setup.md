@@ -28,13 +28,14 @@ execution image or published ports with `GETH_IMAGE`, `GETH_HTTP_PORT`, and
 `GETH_WS_PORT`; use a complete network bundle when changing genesis.
 
 ```sh
-make preview-cert
 make start-preview
 curl --cacert .local/preview-tls/rootCA.pem \
   -fsS https://app.etherview.localhost/api/v1/config
 ```
 
-`make preview-cert` is an explicit, one-time local trust operation: it requires
+`make start-preview` reuses existing TLS files or runs `make preview-cert` if
+the certificate, private key, or public root CA is missing.
+`make preview-cert` is a local trust operation: it requires
 mkcert, installs mkcert's local CA, and generates an ignored certificate pair
 under `.local/preview-tls/` for `*.etherview.localhost`. If the host client needs
 explicit name resolution, add the hosts entries from the
