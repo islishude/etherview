@@ -290,3 +290,10 @@ creation, stdin handoff and cleanup remain covered by
 rebuilding the production application. `make preview-network-check` includes the
 Go and host-wrapper regressions. Compose layout checks verify the extended
 service, read-only inputs and isolation from the Bundler image.
+
+## IPFS CLI regressions
+
+- `go test -race ./preview/cmd/ipfs`: streaming upload/download regressions for binary
+  and empty files, Kubo multipart filename encoding, literal and URI-encoded
+  paths, encoded traversal rejection, input type, RPC and stream errors,
+  cancellation/timeouts, non-overwriting publication and temporary cleanup.

@@ -57,6 +57,6 @@ P00-T03/P00-T04/P00-T05 passed CLI/configuration, generated API/SQL,
 PostgreSQL migration, frontend build/deep-link and component-parity checks at
 their delivery revisions. Native pgx and neutral contracts passed exact-value,
 snapshot/routing, lease/commit, cancellation, session-lock disposal, race and
-source/import-boundary regressions. The [development guide](../development.md#native-pgx-acceptance-record)
+source/import-boundary regressions. The [native pgx acceptance record](../reviews/native-pgx-acceptance.md#native-pgx-acceptance-record)
 retains bounded benchmark evidence; P30-T35 owns production-image acceptance.
 Toolchain and governance maintenance follow the normal workflow.

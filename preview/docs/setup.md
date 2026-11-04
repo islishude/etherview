@@ -105,13 +105,13 @@ API) are published; override them with `PREVIEW_HTTPS_PORT`/`IPFS_API_PORT`.
 without automatic public-gateway fallback. The metadata-only private-network
 exception permits the controlled local gateway, while API media fetches, other
 roles, deployment Compose and Helm remain strict. TLS, redirect, content and resource
-checks are preserved. The separate API-only compiler-download exception remains
+checks are preserved. The separate verification-worker compiler-download exception remains
 available for Docker Desktop fake-IP routing. Neither exception is a production
 SSRF policy or permission to contact unrelated private services.
 
 `preview/cmd/ipfs` uploads and pins one file, or downloads a CID/path atomically without
 overwriting an existing file, through the loopback Kubo RPC API. See
-[IPFS file tool](../../docs/operations.md#ipfs-file-tool) for commands and defaults.
+[IPFS file tool](tools.md#ipfs-file-tool) for commands and defaults.
 The gateway proxy never exposes that management API.
 
 Run `make test-preview-metadata` after `make preview-cert` for offline real-Kubo

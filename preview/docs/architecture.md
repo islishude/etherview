@@ -2,7 +2,7 @@
 
 [Documentation index](README.md). Run shell commands from the repository root.
 
-### Preview genesis application contracts
+## Preview genesis application contracts
 
 Preview authenticates genesis allocations for EntryPoint v0.9, SenderCreator,
 SimpleAccount and its factory, and a local `.test` ENS registration system, plus the Local USD x402 fixture and funded Facilitator.
@@ -13,7 +13,7 @@ allocation/ABI manifests participate in immutable network reuse validation.
 Ordinary startup never deploys these contracts. After chain readiness, an
 explicit Compose helper submits the fixed source inventory to the normal API
 verification queue and requires exact-address runtime publications for every
-genesis contract. The API role performs normal pinned local compilation under
+genesis contract. The verification role performs normal pinned local compilation under
 ADR-0024 and ADR-0039; no ABI or source is published directly by the helper.
 
 The independent Preview Rundler process simulates and bundles signed operations
@@ -34,7 +34,7 @@ there is no official/custom classification or fallback policy.
 Preview Bundler release identity and safe-validation boundaries are owned by
 [ADR-0057](../../docs/decisions/ADR-0057-preview-rundler.md).
 
-### Second payment network
+## Second payment network
 
 The Preview Compose stack also runs Reth with chain ID 31337. It is a payment
 fixture only: the explorer and SIWE identity continue using Geth chain 48815.
@@ -58,3 +58,34 @@ The existing Caddy gateway exposes HTTP JSON-RPC and WebSocket RPC on
 local Geth wallet endpoint, including wildcard local-development CORS, bounded
 requests, scrubbed errors and no retries. Neither payment network is a core
 readiness dependency. Multi-option account funding is tracked by P60-T25.
+
+## Gateway and local service boundaries
+
+Preview uses pinned Kubo, Geth and Lighthouse nodes behind the official Caddy
+`preview-gateway`. Explicit `*.etherview.localhost` hosts route app/API,
+read-only IPFS, execution JSON-RPC/WSS, Beacon REST/SSE and Bundler JSON-RPC. TLS terminates at
+Caddy; API traffic inside the container network uses HTTP. The gateway is not
+an application role and its health does not depend on optional upstreams.
+Only Caddy holds its wildcard private key. Metadata trusts the public CA and
+explicitly permits its private IPFS host; API media policy remains strict.
+Preview separately allowlists the exact IPFS HTTPS origin for confirmed image
+navigation; production defaults to no navigation exceptions.
+The local Geth host accepts arbitrary Origins for JSON-RPC/WSS and returns
+wildcard CORS without credentials, allowing browser-extension wallets. Beacon
+and Bundler retain the exact configurable Origin allowlist. The SPA continues
+using the generated same-origin client and injected wallet boundary.
+Daily Preview retrieves IPFS content; acceptance seeds the same CID offline.
+The independent `preview/cmd/ipfs` operator tool uses Kubo's loopback management API,
+which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
+
+Preview also runs the standalone x402 Facilitator and Local USD token on its
+Geth/Lighthouse chain. Token code, constructor storage, initial owner balance
+and Facilitator funding are predeployed in genesis. Startup validates the
+network bundle without deploying or funding contracts; recreation preserves
+chain and account state. The Facilitator is not a core role dependency;
+existing credit remains spendable during its outage. The API/all role owns the fingerprint pepper and the normal production
+billing components. Standard Permit2/proxy contracts are predeployed; the private-network HTTP
+exception remains a development-only boundary under ADR-0044 and ADR-0059.
+
+Old Anvil state is not migrated; the [Preview runbook](operations.md#reth-payment-chain-fixture)
+requires reconciliation and a fresh billing database at the switch.

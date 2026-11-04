@@ -120,7 +120,7 @@ to version `0.6`, `0.7`, `0.8`, or `0.9` and an inclusive
 feature without entries; application startup additionally rejects zero
 addresses, overlapping ranges for one address, unknown versions, and more than
 16 entries. Follow the bounded enablement and reindex procedure in the
-[operations runbook](../docs/operations.md#erc-4337-useroperation-indexing).
+[operations runbook](../docs/operations/chain-data.md#erc-4337-useroperation-indexing).
 
 ## Full-stack Preview
 
@@ -216,7 +216,7 @@ The migration Job initializes the current fresh-database baseline. Databases
 created with the earlier development migration chain must be recreated; the
 Job rejects their old baseline checksum and does not delete or convert data.
 Stop all connected roles and retain any needed backup before provisioning a
-new empty database. Follow the [initialization procedure](../docs/operations.md#fresh-database-initialization)
+new empty database. Follow the [initialization procedure](../docs/operations/deployment.md#fresh-database-initialization)
 before starting the release. Do not modify migration ledger checksums to bypass
 compatibility checks.
 
@@ -365,7 +365,7 @@ See [Preview configuration layout](../preview/docs/operations.md#preview-configu
 
 The optional production facilitator shares the root Dockerfile production image
 with Etherview and runs `/x402facilitator` through an explicit entrypoint override.
-It retains its own configuration, database login and signer identity. See [operations](../docs/operations.md#standalone-multi-chain-facilitator)
+It retains its own configuration, database login and signer identity. See [operations](../docs/operations/billing.md#standalone-multi-chain-facilitator)
 and `deploy/facilitator/config.example.yaml`. Its standalone Helm chart requires
 an existing Secret and explicit egress CIDRs; label authorized API/all pods
 `etherview-facilitator-client: "true"`. It is not a new `serve` role.

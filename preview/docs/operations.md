@@ -138,7 +138,7 @@ CIDRs. `make recreate-preview` preserves network and database volumes;
 explicit local transfer to `0x70997970C51812dc3A010C7d01b50e0d17dc79C8`.
 If broadcasting or receipt lookup becomes uncertain, the local Facilitator
 returns `settlement_pending` with the signed transaction hash. Resume the chain,
-inspect that exact receipt, then use the [billing reconciliation procedure](../../docs/operations.md#prepaid-api-billing-and-x402-top-ups);
+inspect that exact receipt, then use the [billing reconciliation procedure](../../docs/operations/billing.md#prepaid-api-billing-and-x402-top-ups);
 never create a replacement payment to recover an uncertain settlement.
 
 Permit2 uses the standard Permit2 and x402 proxy predeployed contracts. This
@@ -300,7 +300,7 @@ File-based keys may retain `ETHERVIEW_PUSH_PRIVATE_KEY_FILE` with the matching
 public key and an explicit read-only Compose mount.
 
 Use a trusted Preview TLS certificate. Existing databases from before this schema change must be
-recreated under the [fresh-database policy](../../docs/operations.md#fresh-database-initialization);
+recreated under the [fresh-database policy](../../docs/operations/deployment.md#fresh-database-initialization);
 `make recreate-preview` replaces runtime containers but does not reset an old
 database. After fresh initialization, sign in, add a watch, enable this browser,
 then close all site tabs while leaving the browser/system able to receive push.
@@ -311,6 +311,9 @@ the observed result. Offline delivery is deliberately not an acceptance goal:
 TTL 0 drops messages instead of storing them for later delivery.
 
 ### Preview Caddy gateway
+
+Preview uses the official Caddy image directly; its upstream image owns its
+license inventory, rather than the application image build.
 
 Preview uses `caddy:2.11.7-alpine` directly, configurable with
 `PREVIEW_GATEWAY_IMAGE`. `make preview-images` pulls it; lifecycle commands and
@@ -443,15 +446,15 @@ Set `ETHERVIEW_SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS=false` and
 `ETHERVIEW_BYTECODE_DB_UNSAFE_ALLOW_PRIVATE_NETWORKS=false` to restore strict
 public-network checks. Put overrides in `.local/preview.env` (or the file
 selected by `PREVIEW_ENV_FILE`) and run `make recreate-preview` to apply them.
-See the [Sourcify workflow](../../docs/operations.md#sourcify-operations) and
-[bytecode discovery](../../docs/operations.md#automatic-bytecode-database-source-discovery)
+See the [Sourcify workflow](../../docs/operations/verification.md#sourcify-operations) and
+[bytecode discovery](../../docs/operations/verification.md#automatic-bytecode-database-source-discovery)
 for publication, credential and verification boundaries.
 
 ## Verification recovery
 
 For an existing Preview deployment, rebuild and recreate only the application
 services with `make recreate-preview`; do not remove the PostgreSQL or Geth
-volumes. Then run the [address-scoped recovery command](../../docs/operations.md#factory-derived-verification-rollout-and-backfill) inside the API container. This
+volumes. Then run the [address-scoped recovery command](../../docs/operations/verification.md#factory-derived-verification-rollout-and-backfill) inside the API container. This
 repairs scans created by an older binary whose cursor began at verification
 publication rather than at the creator code epoch.
 
@@ -537,4 +540,17 @@ journal in PostgreSQL. Checked-in keystore/password/bearer files under
 `POSTGRES_PASSWORD`, also provide `X402_FACILITATOR_DATABASE_URL_FILE` referencing
 a matching local database URL file. No production credentials belong in these
 fixtures. Stop the facilitator before an operator-authorized exact-transaction
-rebroadcast, as described in the shared operations guide.
+rebroadcast, as described in the [facilitator runbook](../../docs/operations/billing.md#standalone-multi-chain-facilitator).
+
+## Web branding at build time
+
+Prepare the public branding directory as described in the
+[shared build guide](../../docs/operations/deployment.md#web-branding-at-build-time), then build Preview with:
+
+```sh
+ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
+  --env-file .local/preview.env build api
+```
+
+Run normal Preview initialization and deployment lifecycle commands to apply the
+rebuilt image. A container environment change alone cannot change embedded branding.

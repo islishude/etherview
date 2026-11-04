@@ -7,7 +7,7 @@ repository-root `compose.yaml`. Run all commands from the repository root.
 - [Operations](operations.md): lifecycle, TLS gateway, x402, IPFS, browser push,
   configuration layout and archive IAM limitations.
 - [Manual tools](tools.md): scenario CLI, proxy and EIP-7702 lifecycle controls,
-  browser checklists and recovery.
+  browser checklists, IPFS uploads/downloads and recovery.
 - [Contracts](contracts.md): genesis allocations, funded accounts, ERC-4337 and
   the local ENS management CLI.
 - [Architecture](architecture.md): genesis provenance and Bundler boundaries.

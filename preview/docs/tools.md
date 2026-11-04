@@ -254,3 +254,34 @@ the upgraded proxy's new-event interval. `check` derives inclusive bounds from
 saved mined receipts, verifies exact topic matches and empty earlier ranges, and
 requires the post-upgrade directory to exclude old signatures. It sends no new
 transactions, so an existing run can validate a UI/API update on the same Preview.
+
+## IPFS file tool
+
+The independent `preview/cmd/ipfs` command uses the local Kubo management API. This
+API is published only on `127.0.0.1:5001`; the HTTPS proxy serves `/ipfs/` reads
+and does not expose management operations. No host IPFS CLI is needed.
+
+```sh
+go run ./preview/cmd/ipfs upload --api http://127.0.0.1:5001 ./file.json
+go run ./preview/cmd/ipfs upload --wrap --api http://127.0.0.1:5001 ./metadata.json
+go run ./preview/cmd/ipfs download --api http://127.0.0.1:5001 --output ./download.json CID/metadata.json
+```
+
+Upload accepts one regular file and pins its CIDv1 SHA-256/raw-leaf content.
+Without `--wrap`, stdout contains the file CID; with `--wrap`, it contains the
+directory CID, allowing `CID/filename` downloads. Download accepts a CID,
+CID/path, or `ipfs://CID/path` and requires a new output filename. Bare CID/path
+arguments preserve literal filename characters, including `+`, `%`, `?`, and
+`#`. URI paths use percent encoding (for example, `my%20file.json` or
+`token%231.json`), decoded once per segment; query strings, fragments and
+decoded traversal/separator characters are rejected. It streams to
+a same-directory temporary file, then publishes atomically without overwriting
+an existing file. Failures and cancellation remove temporary output. Directory
+recursion and IPNS are unsupported. Uploaded data remains pinned locally until
+explicitly removed; other nodes' retention is not guaranteed.
+
+Both commands default to `--api http://127.0.0.1:5001` and `--timeout 5m`.
+HTTPS endpoints use system certificate trust. RPC redirects and environment
+proxies are disabled. Diagnostics go to stderr; exit codes are 0 for success,
+2 for argument errors, and 1 for operation failures. Build an independent
+binary with `go build -o /tmp/etherview-ipfs ./preview/cmd/ipfs`.

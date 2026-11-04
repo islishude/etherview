@@ -163,7 +163,7 @@ and the new version's capabilities and official reference fixtures. The candidat
 matrix and local package integrity checks must pass before a patch is emitted.
 Maintainers review the locked dependency set and authenticated archive identities.
 Review and apply the patch with Git, then run the complete release gates in the
-[testing guide](../../docs/testing.md#vyper-verification-gates).
+[testing guide](../../docs/testing/compilers.md#vyper-verification-gates).
 
 The `Vyper compiler updates` workflow runs daily at 09:37 Asia/Shanghai and can
 be dispatched manually with an optional exact version. Each version has one

@@ -2,7 +2,7 @@
 
 > The migration Job initializes a fresh database. Earlier development schemas
 > must be recreated; old baseline checksums are rejected. Retain any needed
-> backup and follow the [initialization procedure](../../../docs/operations.md#fresh-database-initialization).
+> backup and follow the [initialization procedure](../../../docs/operations/deployment.md#fresh-database-initialization).
 > The chart does not delete databases or convert historical data.
 
 The chart runs the production image either as one `all` Deployment or as the
@@ -154,9 +154,9 @@ accounts selected by `blobArchiveServiceAccounts.api`, `.enrich`, and `.all`.
 These override the trace-cache account on archive roles. Review nonstandard
 Beacon/object-store ports in `networkPolicy.additionalEgress`.
 
-See the runbook for [archive provisioning and recovery](../../../docs/operations.md#optional-consensus-and-blob-archives),
-[push setup](../../../docs/operations.md#private-watches-notifications-and-csv-exports),
-and [Turnstile configuration](../../../docs/operations.md#optional-turnstile-protection).
+See the runbook for [archive provisioning and recovery](../../../docs/operations/chain-data.md#optional-consensus-and-blob-archives),
+[push setup](../../../docs/operations/accounts.md#private-watches-notifications-and-csv-exports),
+and [Turnstile configuration](../../../docs/operations/accounts.md#optional-turnstile-protection).
 
 ## S3 workload identity
 
@@ -403,5 +403,5 @@ ENS uses `config.ens.manifest`, one current-chain configuration and
 under `/etc/etherview/ens` in `all`/`enrich`. Configure the matching
 `config.ens.policy_digest` in API and enrich. There is no ENS service or separate
 RPC Secret: bounded ENS workers reuse enrich's current-chain RPC pool.
-See the [ENS runbook](../../../docs/operations.md#ens-primary-names) for imports,
+See the [ENS runbook](../../../docs/operations/chain-data.md#ens-primary-names) for imports,
 replay, coverage and identity recovery.

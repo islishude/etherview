@@ -195,12 +195,12 @@
           "count": 1
         },
         {
-          "path": "docs/development.md",
+          "path": "docs/development/tooling.md",
           "template": "`pnpm-lock.yaml`. Install pnpm {{version}} (pinned by `packageManager`), then run",
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/quality.md",
           "template": "  {{version}} before generating or validating artifacts. Compatible newer stable",
           "count": 1
         }
@@ -255,7 +255,7 @@
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/quality.md",
           "template": "- `make toolchain-check`: require at least Go {{version}}, Node {{other}}, and pnpm",
           "count": 1
         },
@@ -324,17 +324,17 @@
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/runtime.md",
           "template": "  deterministic Prague chain from the default Foundry `v{{version}}` image and a",
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/verification-clients.md",
           "template": "  v{{version}} client image with no network and force a Solidity 0.8.30 rebuild. The",
           "count": 1
         },
         {
-          "path": "docs/operations.md",
+          "path": "docs/testing/runtime.md",
           "template": "Foundry `v{{version}}` and starts anvil on the Prague hard fork as its deterministic",
           "count": 1
         },
@@ -394,7 +394,7 @@
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/quality.md",
           "template": "  and Preview fixtures outside Foundry projects. Install Foundry {{version}} first;",
           "count": 1
         },
@@ -667,32 +667,32 @@
           "count": 1
         },
         {
-          "path": "docs/development.md",
+          "path": "docs/development/tooling.md",
           "template": "TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses the `node:{{version}}` image's curl to download the",
           "count": 1
         },
         {
-          "path": "docs/development.md",
+          "path": "docs/development/tooling.md",
           "template": "exactly Node {{version}} and solc {{other}}, while the Hardhat fixture keeps solc 0.8.30.",
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/runtime.md",
           "template": "  The image contains one read-only Node {{version}} SEA, only the automatically",
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/quality.md",
           "template": "  enforce the compiler workspace's exact Node {{version}} engine.",
           "count": 1
         },
         {
-          "path": "docs/testing.md",
+          "path": "docs/testing/quality.md",
           "template": "- `make toolchain-check`: require at least Go {{other}}, Node {{version}}, and pnpm",
           "count": 1
         },
         {
-          "path": "docs/architecture/overview.md",
+          "path": "docs/architecture/verification.md",
           "template": "- The production image includes one Node {{version}} SEA containing the",
           "count": 1
         },
@@ -722,7 +722,7 @@
           "count": 1
         },
         {
-          "path": "docs/operations.md",
+          "path": "docs/operations/deployment.md",
           "template": "one lockfile. The compiler workspace requires Node {{version}}; root pnpm policy",
           "count": 1
         },
@@ -1023,7 +1023,7 @@
         "preview/reth/generate.mjs",
         "preview/docs/architecture.md",
         "preview/docs/operations.md",
-        "docs/architecture/overview.md",
+        "docs/architecture/billing.md",
         "docs/decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md",
         ".github/scripts/docs-check.mjs"
       ]

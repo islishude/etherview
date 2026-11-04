@@ -158,6 +158,7 @@ plan-check:
 
 docs-check:
 	$(NODE) .github/scripts/docs-check.mjs
+	$(NODE) .github/scripts/docs-links.mjs
 
 openapi-check: pnpm-install
 	$(PNPM) --dir api run check:schema
@@ -280,7 +281,7 @@ test-race: web-build compiler-install
 	$(GO) test -race $(GO_TEST_FLAGS) $(GO_PACKAGES)
 
 test-workflow-scripts: test-dependency-updates
-	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/make-targets.test.mjs
+	$(NODE) --test .github/scripts/workflow-scripts.test.mjs .github/scripts/production-evidence.test.mjs .github/scripts/make-targets.test.mjs .github/scripts/docs-links.test.mjs
 
 # Without INTEGRATION_DATABASE_URL the Go runner owns a fresh PostgreSQL 18
 # Compose project. Supplying a URL remains useful for an explicitly disposable

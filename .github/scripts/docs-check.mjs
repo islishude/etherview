@@ -23,10 +23,47 @@ const maintained = [
   "deploy/README.md",
   "deploy/helm/etherview/README.md",
   "docs/architecture/overview.md",
+  "docs/architecture/runtime.md",
+  "docs/architecture/storage.md",
+  "docs/architecture/indexing.md",
+  "docs/architecture/publication.md",
+  "docs/architecture/contract-intelligence.md",
+  "docs/architecture/verification.md",
+  "docs/architecture/api.md",
+  "docs/architecture/web.md",
+  "docs/architecture/ens.md",
+  "docs/architecture/tokens.md",
+  "docs/architecture/billing.md",
+  "docs/architecture/consensus.md",
   "docs/architecture/etherscan-v2-compatibility.md",
   "docs/operations.md",
+  "docs/operations/accounts.md",
+  "docs/operations/billing.md",
+  "docs/operations/capacity.md",
+  "docs/operations/chain-data.md",
+  "docs/operations/deployment.md",
+  "docs/operations/maintenance.md",
+  "docs/operations/observability.md",
+  "docs/operations/recovery.md",
+  "docs/operations/trace-cache.md",
+  "docs/operations/verification.md",
   "docs/testing.md",
   "docs/development.md",
+  "docs/development/implementation.md",
+  "docs/development/tooling.md",
+  "docs/development/dependencies.md",
+  "docs/reviews/native-pgx-acceptance.md",
+  "docs/testing/ci.md",
+  "docs/testing/quality.md",
+  "docs/testing/browser.md",
+  "docs/testing/integration.md",
+  "docs/testing/runtime.md",
+  "docs/testing/verification-clients.md",
+  "docs/testing/compilers.md",
+  "docs/testing/contracts.md",
+  "docs/testing/chain-data.md",
+  "docs/testing/billing.md",
+  "docs/testing/performance.md",
   "preview/docs/operations.md",
   "preview/docs/contracts.md",
   "preview/docs/architecture.md",
@@ -60,12 +97,12 @@ contains(
 );
 contains("preview/docs/operations.md", "it never creates or modifies a Genesis file");
 contains("deploy/README.md", "Public verification is configured in the mounted YAML through");
-forbid("docs/operations.md", "creating it once if missing");
+forbid("docs/operations/deployment.md", "creating it once if missing");
 
 const compose = read("deploy/compose.yaml");
 check(/^name: etherview$/m.test(compose), "deployment project identity changed");
 check(/^name: etherview-preview$/m.test(read("compose.yaml")), "Preview project identity changed");
-for (const file of ["README.md", "deploy/README.md", "docs/operations.md"]) {
+for (const file of ["README.md", "deploy/README.md", "docs/operations/deployment.md"]) {
   contains(file, "--project-directory . -f deploy/compose.yaml --env-file .env.deploy");
 }
 const profiles = new Set(
@@ -103,13 +140,13 @@ for (const file of [
   "README.md",
   "deploy/README.md",
   "deploy/helm/etherview/README.md",
-  "docs/testing.md",
+  "docs/testing/quality.md",
 ]) {
   contains(file, `Node ${nodeVersion}`);
 }
 forbid("docs/decisions/ADR-0031-api-owned-solc-js-executor.md", "Node 26.5.0 binary");
-contains("docs/architecture/overview.md", `Node ${nodeVersion} SEA`);
-contains("docs/architecture/overview.md", `\`${wrapperVersion}\` wrapper protocol`);
+contains("docs/architecture/verification.md", `Node ${nodeVersion} SEA`);
+contains("docs/architecture/verification.md", `\`${wrapperVersion}\` wrapper protocol`);
 
 const stageSource = read("internal/stagecontract/stage.go");
 const stages = [...stageSource.matchAll(/Name:\s*"([a-z0-9_-]+)",\s*Version:\s*(\d+)/gu)].map(
@@ -117,19 +154,27 @@ const stages = [...stageSource.matchAll(/Name:\s*"([a-z0-9_-]+)",\s*Version:\s*(
 );
 check(stages.length > 0, "current stage identities are not discoverable");
 const stagePattern = stages.map((stage) => stage.name).join("|");
-contains("docs/operations.md", `reindex --stage ${stagePattern}`);
+contains("docs/operations/recovery.md", `reindex --stage ${stagePattern}`);
 const traceStage = stages.find((stage) => stage.name === "trace");
 const abiStage = stages.find((stage) => stage.name === "abi");
 check(abiStage !== undefined, "current ABI stage is missing");
 contains(
-  "docs/operations.md",
+  "docs/operations/recovery.md",
   `--reason "publish ABI v${abiStage?.version} after trace v${traceStage?.version} and proxy v2 are complete"`,
 );
-contains("docs/operations.md", "`verification.worker_count` independently controls");
+contains("docs/operations/capacity.md", "`verification.worker_count` independently controls");
 forbid(
-  "docs/operations.md",
+  "docs/operations/capacity.md",
   "runtime.worker_count` controls durable enrichment, trace, verification",
 );
+
+// Operator instructions must follow the verification role and catalog pricing.
+contains("docs/operations/verification.md", "on every `all`/`verification`");
+contains("docs/operations/verification.md", "`ETHERVIEW_DERIVED_VERIFY_ENABLED=true`");
+forbid("docs/operations/verification.md", "`DERIVED_VERIFY_");
+forbid("docs/operations/verification.md", "every `all`/`api`");
+forbid("docs/operations/billing.md", "empty operation-price map");
+forbid("preview/docs/setup.md", "API-only compiler-download");
 
 const handlerSource = read("internal/etherscan/handler.go");
 const supportedStart = handlerSource.indexOf("var supported =");

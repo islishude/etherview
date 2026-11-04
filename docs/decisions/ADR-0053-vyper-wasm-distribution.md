@@ -120,7 +120,7 @@ and secret scanning are unchanged. There is no replacement CVE allowlist.
 Verification is not contract safety certification. Historical EVM compiler
 bugs remain reproducible, and bounded pathological input is not an upstream
 vulnerability fix. Retired advisory reviews and runtime measurements remain in
-Git. Current [validation](../testing.md#vyper-verification-gates) and
+Git. Current [validation](../testing/compilers.md#vyper-verification-gates) and
 [benchmark procedures](../../compiler/vyper/README.md#integrity-and-security-checks)
 require evidence bound to the selected runtime and package identities.
 

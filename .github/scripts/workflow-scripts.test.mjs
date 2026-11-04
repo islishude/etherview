@@ -322,10 +322,47 @@ test("docs checker accepts aligned action tables and still rejects missing or un
     "deploy/README.md",
     "deploy/helm/etherview/README.md",
     "docs/architecture/overview.md",
+    "docs/architecture/runtime.md",
+    "docs/architecture/storage.md",
+    "docs/architecture/indexing.md",
+    "docs/architecture/publication.md",
+    "docs/architecture/contract-intelligence.md",
+    "docs/architecture/verification.md",
+    "docs/architecture/api.md",
+    "docs/architecture/web.md",
+    "docs/architecture/ens.md",
+    "docs/architecture/tokens.md",
+    "docs/architecture/billing.md",
+    "docs/architecture/consensus.md",
     matrixPath,
     "docs/operations.md",
+    "docs/operations/accounts.md",
+    "docs/operations/billing.md",
+    "docs/operations/capacity.md",
+    "docs/operations/chain-data.md",
+    "docs/operations/deployment.md",
+    "docs/operations/maintenance.md",
+    "docs/operations/observability.md",
+    "docs/operations/recovery.md",
+    "docs/operations/trace-cache.md",
+    "docs/operations/verification.md",
     "docs/testing.md",
     "docs/development.md",
+    "docs/development/implementation.md",
+    "docs/development/tooling.md",
+    "docs/development/dependencies.md",
+    "docs/reviews/native-pgx-acceptance.md",
+    "docs/testing/ci.md",
+    "docs/testing/quality.md",
+    "docs/testing/browser.md",
+    "docs/testing/integration.md",
+    "docs/testing/runtime.md",
+    "docs/testing/verification-clients.md",
+    "docs/testing/compilers.md",
+    "docs/testing/contracts.md",
+    "docs/testing/chain-data.md",
+    "docs/testing/billing.md",
+    "docs/testing/performance.md",
     "preview/docs/operations.md",
     "preview/docs/contracts.md",
     "preview/docs/architecture.md",
@@ -368,6 +405,56 @@ test("docs checker accepts aligned action tables and still rejects missing or un
     const result = run();
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stderr, /action map and compatibility matrix drift/);
+  }
+  writeFileSync(join(dir, matrixPath), matrix);
+  for (const [file, mutate, diagnostic] of [
+    [
+      "docs/operations/recovery.md",
+      (text) => text.replace("reindex --stage", "reindex --removed-stage"),
+      /recovery\.md is missing: reindex --stage/,
+    ],
+    [
+      "docs/operations/verification.md",
+      (text) => `${text}\n--profile verification\n`,
+      /verification\.md contains stale text/,
+    ],
+    [
+      "docs/development/implementation.md",
+      (text) => `${text}\nroles=verify\n`,
+      /implementation\.md contains stale text/,
+    ],
+    [
+      "docs/testing/quality.md",
+      (text) => text.replaceAll("Node ", "RetiredNodeVersion "),
+      /quality\.md is missing: Node/,
+    ],
+    [
+      "docs/architecture/verification.md",
+      (text) => text.replace("wrapper protocol", "removed protocol"),
+      /verification\.md is missing: .*wrapper protocol/,
+    ],
+    [
+      "docs/architecture/runtime.md",
+      (text) => `${text}\nroles=verify\n`,
+      /runtime\.md contains stale text/,
+    ],
+    [
+      "docs/operations/verification.md",
+      (text) => text.replaceAll("ETHERVIEW_DERIVED_VERIFY_", "DERIVED_VERIFY_"),
+      /verification\.md.*DERIVED_VERIFY_/,
+    ],
+    [
+      "docs/operations/billing.md",
+      (text) => `${text}\nRoll out with an empty operation-price map.\n`,
+      /billing\.md contains stale text/,
+    ],
+  ]) {
+    const original = readFileSync(join(dir, file), "utf8");
+    writeFileSync(join(dir, file), mutate(original));
+    const result = run();
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, diagnostic);
+    writeFileSync(join(dir, file), original);
   }
 });
 
