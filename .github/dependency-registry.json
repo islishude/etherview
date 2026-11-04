@@ -731,22 +731,22 @@
         },
         {
           "path": "preview/scripts/compiler-cache.mjs",
-          "template": "const helperImage = \"node:{{version}}-trixie-slim\";",
+          "template": "const helperImage = \"node:{{version}}-slim\";",
           "count": 1
         },
         {
           "path": "Makefile",
-          "template": "\t@for image in \"$(IMAGE)\" \"$(PREVIEW_GATEWAY_IMAGE)\" node:{{version}}-trixie-slim etherview-preview-genesis-verify:local; do \\",
+          "template": "\t@for image in \"$(IMAGE)\" \"$(PREVIEW_GATEWAY_IMAGE)\" node:{{version}}-slim etherview-preview-genesis-verify:local; do \\",
           "count": 1
         },
         {
           "path": ".github/scripts/make-targets.test.mjs",
-          "template": "const previewHelperImage = \"node:{{version}}-trixie-slim\";",
+          "template": "const previewHelperImage = \"node:{{version}}-slim\";",
           "count": 1
         },
         {
           "path": "Makefile",
-          "template": "\t$(DOCKER) pull node:{{version}}-trixie-slim",
+          "template": "\t$(DOCKER) pull node:{{version}}-slim",
           "count": 1
         }
       ],

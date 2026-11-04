@@ -341,7 +341,7 @@ test-preview-metadata: pnpm-install preview-cert-check docker-build preview-imag
 	@$(MAKE) --no-print-directory test-preview-metadata-prebuilt
 
 preview-e2e-check: preview-cert-check
-	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" node:26.13.0-trixie-slim etherview-preview-genesis-verify:local; do \
+	@for image in "$(IMAGE)" "$(PREVIEW_GATEWAY_IMAGE)" node:26.13.0-slim etherview-preview-genesis-verify:local; do \
 		$(call require-image,$$image,Preview image $$image is not loaded; run 'make docker-build preview-images' first); \
 	done
 
@@ -560,7 +560,7 @@ preview-images-prebuilt:
 	@$(call require-image,$(IMAGE),preview-images-prebuilt: image $(IMAGE) is not loaded; run 'make docker-build' first)
 	@$(MAKE) --no-print-directory preview-env preview-genesis-verify-image
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml pull bundler geth lighthouse validator object-storage archive-init ipfs preview-gateway reth nats
-	$(DOCKER) pull node:26.13.0-trixie-slim
+	$(DOCKER) pull node:26.13.0-slim
 	$(DOCKER) pull ethpandaops/ethereum-genesis-generator:6.2.7
 
 start-preview: preview-env preview-cert-ensure docker-build preview-images
