@@ -4,7 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "../..");
-const helperImage = "node:26.13.0-trixie-slim";
+const helperImage = "node:26.13.0-slim";
 
 function docker(args, options = {}) {
   const command = process.env.DOCKER || "docker";
