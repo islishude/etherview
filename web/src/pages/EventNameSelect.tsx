@@ -1,3 +1,4 @@
+import type { AddressLogEvent } from "@/api/heyapi/types.gen";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Search } from "lucide-react";
@@ -10,15 +11,17 @@ import { QueryNotice } from "@/components/QueryNotice";
 export function EventNameSelect({
   address,
   value,
+  label,
   range,
   disabled,
   onChange,
 }: {
   address: string;
   value: string;
+  label: string;
   range: AddressLogRange;
   disabled: boolean;
-  onChange: (value: string) => void;
+  onChange: (value: AddressLogEvent | undefined) => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -58,12 +61,12 @@ export function EventNameSelect({
         ref={trigger}
         type="button"
         disabled={disabled}
-        aria-label={`${t("addressLogs.event")}: ${value || t("addressLogs.all")}`}
+        aria-label={`${t("addressLogs.event")}: ${label || t("addressLogs.all")}`}
         aria-haspopup="listbox"
         aria-expanded={open && !disabled}
         onClick={() => setOpen(!open)}
       >
-        <span>{value || t("addressLogs.all")}</span>
+        <span>{label || t("addressLogs.all")}</span>
         <UIIcon icon={ChevronDown} size={16} />
       </button>
       {open && !disabled && (
@@ -90,7 +93,7 @@ function EventOptions({
   address: string;
   range: AddressLogRange;
   value: string;
-  choose: (value: string) => void;
+  choose: (value: AddressLogEvent | undefined) => void;
 }) {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
@@ -120,10 +123,16 @@ function EventOptions({
     pager.reset();
   };
   const options = [
-    { name: t("addressLogs.all"), signature: "" },
+    {
+      name: t("addressLogs.all"),
+      signature: "",
+      event_id: "",
+      indexed_fields: [],
+      anonymous: false,
+    },
     ...Array.from(
       new Map(
-        (events.data?.pages.flatMap((p) => p.data) ?? []).map((item) => [item.signature, item]),
+        (events.data?.pages.flatMap((p) => p.data) ?? []).map((item) => [item.event_id, item]),
       ).values(),
     ),
   ];
@@ -162,7 +171,8 @@ function EventOptions({
             }
             if (event.key === "Enter") {
               event.preventDefault();
-              if (options[selected]) choose(options[selected].signature);
+              if (options[selected])
+                choose(options[selected].event_id ? options[selected] : undefined);
             }
           }}
         />
@@ -181,18 +191,29 @@ function EventOptions({
               type="button"
               role="option"
               id={`${id}-${index}`}
-              key={option.signature}
+              key={option.event_id}
               tabIndex={-1}
-              aria-selected={value === option.signature}
+              aria-selected={value === option.event_id}
               data-active={selected === index}
               onPointerDown={(event) => event.preventDefault()}
-              onClick={() => choose(option.signature)}
+              onClick={() => choose(option.event_id ? option : undefined)}
             >
               <span>
                 <strong>{option.name}</strong>
                 {option.signature && <code>{option.signature}</code>}
+                {option.indexed_fields.length > 0 && (
+                  <code>
+                    {option.indexed_fields
+                      .map(
+                        (field) =>
+                          `${field.name || `#${field.parameter_index}`}: ${field.type} (topic${field.topic_index})`,
+                      )
+                      .join(", ")}
+                  </code>
+                )}
+                {option.anonymous && <code>anonymous</code>}
               </span>
-              {value === option.signature && <UIIcon icon={Check} size={16} />}
+              {value === option.event_id && <UIIcon icon={Check} size={16} />}
             </button>
           ))}
         </div>

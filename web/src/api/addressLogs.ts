@@ -10,8 +10,11 @@ export interface AddressLogRange {
 }
 export interface AddressLogFilter extends AddressLogRange {
   event_signature?: string;
-  topic_index?: number;
-  topic?: string;
+  event_id?: string;
+  topic0?: string;
+  topic1?: string;
+  topic2?: string;
+  topic3?: string;
 }
 export function validLogRange(from: string, to: string) {
   const valid = (v: string) =>
@@ -55,6 +58,23 @@ export function useAddressLogEvents(
         }),
       ),
     getNextPageParam: (last) => last.meta.next_cursor || undefined,
+    retry: false,
+  });
+}
+
+export function useAddressLogDefinition(address: string, eventID?: string) {
+  return useQuery({
+    queryKey: ["address", address, "log-definition", eventID],
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await sdk.listAddressLogEvents({
+          client: apiClient,
+          signal,
+          path: { address },
+          query: { event_id: eventID, limit: 1 },
+        }),
+      ),
+    enabled: Boolean(eventID),
     retry: false,
   });
 }

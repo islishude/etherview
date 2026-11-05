@@ -2,13 +2,16 @@ package enrich
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/abicontract"
 )
 
 // ABIRegistry indexes ABI entries by an exact chain/address/code/block
@@ -168,7 +171,8 @@ func appendUniqueABIEntry(entries []abiEntry, candidate abiEntry) []abiEntry {
 	for index, existing := range entries {
 		if existing.kind == candidate.kind && existing.signature == candidate.signature && existing.source == candidate.source &&
 			existing.sourceAddress == candidate.sourceAddress && existing.sourceCodeHash == candidate.sourceCodeHash &&
-			existing.anonymous == candidate.anonymous && existing.selectorless == candidate.selectorless {
+			existing.anonymous == candidate.anonymous && existing.selectorless == candidate.selectorless &&
+			(candidate.kind != ABIKindEvent || reflect.DeepEqual(existing.inputs, candidate.inputs)) {
 			entries[index] = candidate
 			return entries
 		}
@@ -433,7 +437,12 @@ func chooseDecodedABICandidate(kind ABIKind, decoded []decodedABICandidate) (Dec
 		if confidenceRank(item.entry.confidence()) != bestRank {
 			break
 		}
-		bestSignatures[abiCandidateLabel(item.entry)] = struct{}{}
+		key := abiCandidateLabel(item.entry)
+		if kind == ABIKindEvent {
+			shape, _ := json.Marshal(item.entry.inputs)
+			key += fmt.Sprintf("/%t/%s", item.entry.anonymous, shape)
+		}
+		bestSignatures[key] = struct{}{}
 	}
 	status := DecodeDecoded
 	warning := ""
@@ -548,7 +557,22 @@ func (registry *ABIRegistry) DecodeLog(identity ABIIdentity, topics []common.Has
 			Warning:    strings.Join(failures, "; "),
 		}
 	}
-	result, _ := chooseDecodedABICandidate(ABIKindEvent, decoded)
+	result, selected := chooseDecodedABICandidate(ABIKindEvent, decoded)
+	if selected != nil {
+		definition := &abicontract.EventDefinition{Anonymous: selected.anonymous, IndexedFields: []abicontract.EventField{}}
+		position := 1
+		if selected.anonymous {
+			position = 0
+		}
+		for i, input := range selected.inputs {
+			if !input.Indexed {
+				continue
+			}
+			definition.IndexedFields = append(definition.IndexedFields, abicontract.EventField{EventParameter: eventParameter(input), ParameterIndex: i, TopicIndex: position})
+			position++
+		}
+		result.EventDefinition = definition
+	}
 	return result
 }
 
@@ -607,4 +631,12 @@ func indexedValueIsHashed(valueType *abiType) bool {
 	default:
 		return false
 	}
+}
+
+func eventParameter(input abiParameter) abicontract.EventParameter {
+	result := abicontract.EventParameter{Name: input.Name, Type: input.Type}
+	for _, child := range input.Components {
+		result.Components = append(result.Components, eventParameter(child))
+	}
+	return result
 }

@@ -2,6 +2,14 @@ export const addressesResources = {
   en: {
     addressLogs: {
       title: "Event Logs",
+      indexedField: "Indexed field",
+      addCondition: "Add condition",
+      removeCondition: "Remove condition",
+      valueFormat: "Value format",
+      rawValue: "Original value",
+      invalidValue: "Enter a valid value for each field within the ABI size limits.",
+      definitionUnavailable:
+        "This historical event definition is unavailable. Filters have been retained.",
       subtitle: "Explore contract activity by event, topic and block range.",
       fromBlock: "From block",
       toBlock: "To block",
@@ -110,6 +118,13 @@ export const addressesResources = {
   zh: {
     addressLogs: {
       title: "事件日志",
+      indexedField: "Indexed 字段",
+      addCondition: "添加条件",
+      removeCondition: "删除条件",
+      valueFormat: "输入格式",
+      rawValue: "原始值",
+      invalidValue: "请按字段类型填写有效值，并遵守 ABI 大小限制。",
+      definitionUnavailable: "此历史事件定义暂不可用，已保留筛选条件。",
       subtitle: "按事件、Topic 与区块区间浏览合约活动。",
       fromBlock: "起始区块",
       toBlock: "结束区块",

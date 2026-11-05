@@ -76,7 +76,7 @@
   gap: 1rem;
 }
 .address-log-main-filter {
-  flex: 2 1 20rem;
+  flex: 1 1 100%;
   min-width: 0;
 }
 .address-log-topic-fields {
@@ -333,4 +333,66 @@
   .event-name-popup {
     max-width: 100%;
   }
+}
+
+.address-log-filter-editor,
+.address-log-condition {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.address-log-condition {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.address-log-condition-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+}
+.address-log-condition-heading > label {
+  flex: 1 1 12rem;
+}
+.address-log-condition-heading code {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.address-log-condition button,
+.address-log-add-condition button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.address-log-condition .abi-composite-input {
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 0.5rem;
+}
+.address-log-condition .abi-array-item {
+  min-width: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.address-log-condition textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 4rem;
+  resize: vertical;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface);
+}
+.address-log-condition .abi-input-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }

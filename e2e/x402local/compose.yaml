@@ -52,7 +52,8 @@ services:
       POSTGRES_USER: etherview
       POSTGRES_PASSWORD: etherview-x402-local
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U etherview -d etherview]
+      # The initialization server accepts only Unix sockets; migrations need TCP.
+      test: [CMD-SHELL, pg_isready -h 127.0.0.1 -U etherview -d etherview]
       interval: 1s
       timeout: 2s
       retries: 30

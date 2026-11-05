@@ -161,8 +161,11 @@ const addressRoute = createRoute({
     asset?: "tokens" | "nfts";
     log_mode?: "name" | "topic";
     event_signature?: string;
-    topic?: string;
-    topic_index?: number;
+    event_id?: string;
+    topic0?: string;
+    topic1?: string;
+    topic2?: string;
+    topic3?: string;
     from_block?: string;
     to_block?: string;
   } => {
@@ -184,20 +187,20 @@ const addressRoute = createRoute({
             : search.to_block === undefined
               ? undefined
               : String(search.to_block),
-        ...(log_mode === "name"
-          ? {
-              event_signature:
-                typeof search.event_signature === "string"
-                  ? search.event_signature.slice(0, 4096)
-                  : undefined,
-            }
-          : {
-              // Retain one excess character so invalid URLs cannot become a different valid hash.
-              topic: typeof search.topic === "string" ? search.topic.slice(0, 67) : undefined,
-              topic_index: [0, 1, 2, 3].includes(Number(search.topic_index))
-                ? Number(search.topic_index)
-                : 0,
-            }),
+        event_signature:
+          log_mode === "name" && typeof search.event_signature === "string"
+            ? search.event_signature.slice(0, 4097)
+            : undefined,
+        event_id:
+          log_mode === "name" && search.event_id !== undefined
+            ? String(search.event_id).slice(0, 67)
+            : undefined,
+        ...Object.fromEntries(
+          ["topic0", "topic1", "topic2", "topic3"].map((key) => [
+            key,
+            search[key] === undefined ? undefined : String(search[key]).slice(0, 67),
+          ]),
+        ),
       };
     }
     if (tab === "transactions") return {};

@@ -22,6 +22,7 @@ type AbiDecoding struct {
 	Signature       *string            `db:"signature" json:"signature"`
 	Source          *string            `db:"source" json:"source"`
 	Confidence      *string            `db:"confidence" json:"confidence"`
+	EventDefinition []byte             `db:"event_definition" json:"event_definition"`
 	Arguments       []byte             `db:"arguments" json:"arguments"`
 	Candidates      []byte             `db:"candidates" json:"candidates"`
 	Warning         string             `db:"warning" json:"warning"`
@@ -48,6 +49,7 @@ type AbiDecodingsDefault struct {
 	Signature       *string            `db:"signature" json:"signature"`
 	Source          *string            `db:"source" json:"source"`
 	Confidence      *string            `db:"confidence" json:"confidence"`
+	EventDefinition []byte             `db:"event_definition" json:"event_definition"`
 	Arguments       []byte             `db:"arguments" json:"arguments"`
 	Candidates      []byte             `db:"candidates" json:"candidates"`
 	Warning         string             `db:"warning" json:"warning"`
@@ -74,6 +76,7 @@ type AbiDecodingsP01000000 struct {
 	Signature       *string            `db:"signature" json:"signature"`
 	Source          *string            `db:"source" json:"source"`
 	Confidence      *string            `db:"confidence" json:"confidence"`
+	EventDefinition []byte             `db:"event_definition" json:"event_definition"`
 	Arguments       []byte             `db:"arguments" json:"arguments"`
 	Candidates      []byte             `db:"candidates" json:"candidates"`
 	Warning         string             `db:"warning" json:"warning"`
@@ -1622,10 +1625,12 @@ type EtherviewSchemaMigration struct {
 }
 
 type EventSignature struct {
-	ID        int64   `db:"id" json:"id"`
-	Signature string  `db:"signature" json:"signature"`
-	Digest    []byte  `db:"digest" json:"digest"`
-	Name      *string `db:"name" json:"name"`
+	ID              int64   `db:"id" json:"id"`
+	Signature       string  `db:"signature" json:"signature"`
+	SignatureDigest []byte  `db:"signature_digest" json:"signature_digest"`
+	Definition      []byte  `db:"definition" json:"definition"`
+	Digest          []byte  `db:"digest" json:"digest"`
+	Name            *string `db:"name" json:"name"`
 }
 
 type ExecutionRequest struct {

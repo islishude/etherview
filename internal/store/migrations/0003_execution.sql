@@ -16,6 +16,7 @@ CREATE TABLE abi_decodings (
     signature text,
     source text,
     confidence text,
+    event_definition jsonb CHECK (event_definition IS NULL OR (object_kind='log' AND status='decoded' AND jsonb_typeof(event_definition)='object')),
     arguments jsonb DEFAULT '[]'::jsonb NOT NULL,
     candidates jsonb DEFAULT '[]'::jsonb NOT NULL,
     warning text DEFAULT ''::text NOT NULL,
@@ -689,10 +690,13 @@ WHERE stage IN ('consensus','blob','requests');
 CREATE TABLE event_signatures (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     signature text NOT NULL CHECK (octet_length(signature) BETWEEN 1 AND 4096),
-    digest bytea NOT NULL CHECK (digest=sha256(convert_to(signature, 'UTF8'))),
+    signature_digest bytea NOT NULL CHECK (signature_digest=sha256(convert_to(signature,'UTF8'))),
+    definition jsonb NOT NULL CHECK (jsonb_typeof(definition)='object' AND octet_length(definition::text)<=1048576),
+    digest bytea NOT NULL CHECK (digest=sha256(convert_to(signature || definition::text, 'UTF8'))),
     name text GENERATED ALWAYS AS (split_part(signature, '(', 1)) STORED,
     UNIQUE (digest)
 );
+CREATE INDEX event_signatures_signature_idx ON event_signatures(signature_digest);
 CREATE TABLE address_event_logs (
     chain_id numeric(78,0) NOT NULL,
     block_number numeric(78,0) NOT NULL,

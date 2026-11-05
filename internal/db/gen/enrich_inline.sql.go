@@ -1510,12 +1510,12 @@ INSERT INTO abi_decodings (
 			chain_id, block_number, block_hash, object_kind, transaction_hash,
 			object_index, target_address, target_code_hash, abi_kind, status,
 			signature, source, confidence, source_address, source_code_hash,
-			arguments, candidates, warning, return_status, return_arguments,
+			event_definition, arguments, candidates, warning, return_status, return_arguments,
 			decoding_kind, canonical
 		) VALUES (
 			$1::numeric, $2::numeric, $3, $4, $5, $6, $7, $8, $9, $10,
-			$11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18,
-			$19, $20::jsonb, $21, TRUE
+			$11, $12, $13, $14, $15, $16::jsonb, $17::jsonb, $18::jsonb, $19,
+			$20, $21::jsonb, $22, TRUE
 		)
 `
 
@@ -1535,6 +1535,7 @@ type EnrichInlinePersistABIDecodingStatement1Params struct {
 	Confidence      *string        `db:"confidence" json:"confidence"`
 	SourceAddress   []byte         `db:"source_address" json:"source_address"`
 	SourceCodeHash  []byte         `db:"source_code_hash" json:"source_code_hash"`
+	EventDefinition []byte         `db:"event_definition" json:"event_definition"`
 	Arguments       []byte         `db:"arguments" json:"arguments"`
 	Candidates      []byte         `db:"candidates" json:"candidates"`
 	Warning         string         `db:"warning" json:"warning"`
@@ -1560,6 +1561,7 @@ func (q *Queries) EnrichInlinePersistABIDecodingStatement1(ctx context.Context, 
 		arg.Confidence,
 		arg.SourceAddress,
 		arg.SourceCodeHash,
+		arg.EventDefinition,
 		arg.Arguments,
 		arg.Candidates,
 		arg.Warning,

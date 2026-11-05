@@ -965,7 +965,7 @@ func TestAddressLogHTTPFilters(t *testing.T) {
 		query  string
 		status int
 	}{
-		{"", 200}, {"?event_signature=Changed(uint256)", 200}, {"?topic_index=3&topic=" + topic, 200},
+		{"", 200}, {"?event_signature=Changed(uint256)", 200}, {"?topic3=" + topic, 200}, {"?topic0=" + topic + "&topic2=" + topic, 200}, {"?event_signature=Changed()&topic1=" + topic, 200}, {"?event_id=" + topic + "&topic1=" + topic, 200}, {"?topic1=" + topic + "&topic1=" + topic, 400}, {"?event_id=" + topic + "&event_signature=Changed()", 400}, {"?topic2=", 400},
 		{"?topic_index=4&topic=" + topic, 400}, {"?topic=" + topic, 400}, {"?topic_index=0", 400},
 		{"?topic_index=0&topic=0x12", 400}, {"?event_signature=Changed()&topic_index=0&topic=" + topic, 400},
 		{"?from_block=0&to_block=1", 200}, {"?from_block=9007199254740993", 200}, {"?to_block=1", 200},

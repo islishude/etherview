@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/islishude/etherview/internal/abicontract"
 	"github.com/islishude/etherview/internal/browsing"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
@@ -19,10 +22,10 @@ import (
 )
 
 type AddressLogRequest struct {
-	ChainID, Address, Cursor, EventSignature, Topic, Name string
-	FromBlock, ToBlock                                    string
-	TopicIndex                                            *int
-	Limit                                                 int
+	ChainID, Address, Cursor, EventSignature, EventID, Name string
+	FromBlock, ToBlock                                      string
+	Topics                                                  [4]string
+	Limit                                                   int
 }
 type AddressLog struct {
 	Log                                                       TransactionLog
@@ -34,7 +37,10 @@ type AddressLogPage struct {
 	NextCursor string
 	Snapshot   Snapshot
 }
-type AddressLogEvent struct{ Name, Signature string }
+type AddressLogEvent struct {
+	Name, Signature, EventID string
+	abicontract.EventDefinition
+}
 type AddressLogEventPage struct {
 	Items      []AddressLogEvent
 	NextCursor string
@@ -64,23 +70,32 @@ func (r AddressLogRequest) validate(directory bool) error {
 	if (r.FromBlock != "" && !canonicalUint256(r.FromBlock)) || (r.ToBlock != "" && !canonicalUint256(r.ToBlock)) || (r.FromBlock != "" && r.ToBlock != "" && compareUnsignedDecimal(r.FromBlock, r.ToBlock) > 0) {
 		return ErrInvalidInput
 	}
-	if directory {
-		if r.EventSignature != "" || r.Topic != "" || r.TopicIndex != nil {
+	if r.EventID != "" {
+		if _, err := decodeFixedHex(r.EventID, 32); err != nil {
 			return ErrInvalidInput
-		}
-	} else {
-		if r.Name != "" || (r.EventSignature != "" && (r.Topic != "" || r.TopicIndex != nil)) || (r.Topic != "") != (r.TopicIndex != nil) {
-			return ErrInvalidInput
-		}
-		if r.TopicIndex != nil {
-			if *r.TopicIndex < 0 || *r.TopicIndex > 3 {
-				return ErrInvalidInput
-			}
-			if _, err := decodeFixedHex(r.Topic, 32); err != nil {
-				return ErrInvalidInput
-			}
 		}
 	}
+	if r.EventSignature != "" && r.EventID != "" {
+		return ErrInvalidInput
+	}
+	if directory && r.EventSignature != "" {
+		return ErrInvalidInput
+	}
+	if !directory && r.Name != "" {
+		return ErrInvalidInput
+	}
+	for _, topic := range r.Topics {
+		if topic == "" {
+			continue
+		}
+		if directory {
+			return ErrInvalidInput
+		}
+		if _, err := decodeFixedHex(topic, 32); err != nil {
+			return ErrInvalidInput
+		}
+	}
+
 	return nil
 }
 
@@ -95,13 +110,9 @@ func (catalog *Postgres) addressLogSnapshot(ctx context.Context, tx pgx.Tx, requ
 	if directory {
 		kind = "events"
 	}
-	index := ""
-	if request.TopicIndex != nil {
-		index = strconv.Itoa(*request.TopicIndex)
-	}
-	digest := sha256.Sum256([]byte(request.EventSignature + "\x00" + index + "\x00" + strings.ToLower(request.Topic) + "\x00" + strings.ToLower(request.Name) + "\x00" + request.FromBlock + "\x00" + request.ToBlock))
+	digest := sha256.Sum256([]byte(request.EventSignature + "\x00" + strings.ToLower(request.EventID) + "\x00" + strings.ToLower(strings.Join(request.Topics[:], "\x00")) + "\x00" + strings.ToLower(request.Name) + "\x00" + request.FromBlock + "\x00" + request.ToBlock))
 	filter := hex.EncodeToString(digest[:])
-	cursor := addressLogCursor{Version: 2, Kind: kind, Chain: request.ChainID, Address: address, Filter: filter, BeforeTx: math.MaxInt64, BeforeLog: math.MaxInt64}
+	cursor := addressLogCursor{Version: 3, Kind: kind, Chain: request.ChainID, Address: address, Filter: filter, BeforeTx: math.MaxInt64, BeforeLog: math.MaxInt64}
 	var snapshot Snapshot
 	if request.Cursor == "" {
 		snapshot, err = readCanonicalSnapshot(ctx, tx, request.ChainID)
@@ -110,7 +121,7 @@ func (catalog *Postgres) addressLogSnapshot(ctx context.Context, tx pgx.Tx, requ
 		}
 		cursor.Number, cursor.Hash, cursor.BeforeNumber = snapshot.BlockNumber, snapshot.BlockHash, snapshot.BlockNumber
 	} else {
-		if decodeCursor(request.Cursor, &cursor) != nil || cursor.Version != 2 || cursor.Kind != kind || cursor.Chain != request.ChainID || cursor.Address != address || cursor.Filter != filter || !canonicalUint256(cursor.BeforeNumber) || cursor.BeforeTx < 0 || cursor.BeforeLog < 0 || cursor.AfterID < 0 {
+		if decodeCursor(request.Cursor, &cursor) != nil || cursor.Version != 3 || cursor.Kind != kind || cursor.Chain != request.ChainID || cursor.Address != address || cursor.Filter != filter || !canonicalUint256(cursor.BeforeNumber) || cursor.BeforeTx < 0 || cursor.BeforeLog < 0 || cursor.AfterID < 0 {
 			return snapshot, cursor, ErrInvalidCursor
 		}
 		snapshot = Snapshot{ChainID: request.ChainID, BlockNumber: cursor.Number, BlockHash: cursor.Hash}
@@ -126,7 +137,7 @@ func (catalog *Postgres) addressLogSnapshot(ctx context.Context, tx pgx.Tx, requ
 		return snapshot, cursor, err
 	}
 	cursor.CoreRevision = snapshot.Revision
-	if directory || request.EventSignature != "" {
+	if directory || request.EventSignature != "" || request.EventID != "" {
 		snapshot.Revision = cursor.ABIRevision
 		if err = readAddressLogBrowsing(ctx, tx, &snapshot, request, StageABI); err != nil {
 			return snapshot, cursor, err
@@ -188,6 +199,31 @@ func (catalog *Postgres) AddressLogs(ctx context.Context, request AddressLogRequ
 	}
 	page.Snapshot = snapshot
 	q := dbgen.New(tx)
+	if request.EventID != "" {
+		definition, err := q.AddressLogEventDefinition(ctx, logHex(request.EventID), logNumeric(request.ChainID), address)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return page, ErrInvalidInput
+		}
+		if err != nil {
+			return page, err
+		}
+		var shape abicontract.EventDefinition
+		if json.Unmarshal(definition, &shape) != nil {
+			return page, ErrCorruptData
+		}
+		allowed := [4]bool{}
+		for _, field := range shape.IndexedFields {
+			if field.TopicIndex < 0 || field.TopicIndex > 3 {
+				return page, ErrCorruptData
+			}
+			allowed[field.TopicIndex] = true
+		}
+		for i, topic := range request.Topics {
+			if topic != "" && !allowed[i] {
+				return page, ErrInvalidInput
+			}
+		}
+	}
 	from, to := request.bounds(snapshot.BlockNumber)
 	params := dbgen.AddressLogsAllParams{ChainID: logNumeric(request.ChainID), Address: address, SnapshotNumber: logNumeric(to), FromBlock: logNumeric(from), BeforeNumber: logNumeric(cursor.BeforeNumber), BeforeTx: cursor.BeforeTx, BeforeLog: cursor.BeforeLog, PageLimit: int32(limit + 1)}
 	rows, err := addressLogRows(ctx, q, params, request)
@@ -259,7 +295,7 @@ func (catalog *Postgres) AddressLogEvents(ctx context.Context, request AddressLo
 	page.Snapshot = snapshot
 	from, to := request.bounds(snapshot.BlockNumber)
 	prefix := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(strings.ToLower(request.Name)) + "%"
-	rows, err := dbgen.New(tx).AddressLogEvents(ctx, dbgen.AddressLogEventsParams{ChainID: logNumeric(request.ChainID), Address: address, SnapshotNumber: logNumeric(to), FromBlock: logNumeric(from), NamePrefix: prefix, AfterID: cursor.AfterID, PageLimit: int32(limit + 1)})
+	rows, err := dbgen.New(tx).AddressLogEvents(ctx, dbgen.AddressLogEventsParams{ChainID: logNumeric(request.ChainID), Address: address, SnapshotNumber: logNumeric(to), FromBlock: logNumeric(from), EventID: logHex(request.EventID), NamePrefix: prefix, AfterID: cursor.AfterID, PageLimit: int32(limit + 1)})
 	if err != nil {
 		return page, fmt.Errorf("read address event directory: %w", err)
 	}
@@ -267,8 +303,21 @@ func (catalog *Postgres) AddressLogEvents(ctx context.Context, request AddressLo
 	if more {
 		rows = rows[:limit]
 	}
+	totalBytes := 0
 	for _, row := range rows {
-		page.Items = append(page.Items, AddressLogEvent{Name: row.Name, Signature: row.Signature})
+		totalBytes += len(row.Definition) + len(row.Signature)
+		if totalBytes > catalog.options.MaxTraceDataBytes {
+			if len(page.Items) == 0 {
+				return page, StageUnavailableError{Stage: StageABI, State: StageUnavailable}
+			}
+			more = true
+			break
+		}
+		var definition abicontract.EventDefinition
+		if json.Unmarshal(row.Definition, &definition) != nil {
+			return page, ErrCorruptData
+		}
+		page.Items = append(page.Items, AddressLogEvent{Name: row.Name, Signature: row.Signature, EventID: "0x" + hex.EncodeToString(row.Digest), EventDefinition: definition})
 		cursor.AfterID = row.SignatureID
 	}
 	if more {
@@ -281,23 +330,26 @@ func (catalog *Postgres) AddressLogEvents(ctx context.Context, request AddressLo
 }
 
 func addressLogRows(ctx context.Context, q *dbgen.Queries, p dbgen.AddressLogsAllParams, r AddressLogRequest) ([]dbgen.AddressLogsAllRow, error) {
-	if r.EventSignature != "" {
-		rows, err := q.AddressLogsSignature(ctx, dbgen.AddressLogsSignatureParams{ChainID: p.ChainID, Address: p.Address, SnapshotNumber: p.SnapshotNumber, FromBlock: p.FromBlock, BeforeNumber: p.BeforeNumber, BeforeTx: p.BeforeTx, BeforeLog: p.BeforeLog, PageLimit: p.PageLimit, Signature: r.EventSignature})
+	if r.EventSignature != "" || r.EventID != "" {
+		rows, err := q.AddressLogsSignature(ctx, dbgen.AddressLogsSignatureParams{ChainID: p.ChainID, Address: p.Address, SnapshotNumber: p.SnapshotNumber, FromBlock: p.FromBlock, BeforeNumber: p.BeforeNumber, BeforeTx: p.BeforeTx, BeforeLog: p.BeforeLog, PageLimit: p.PageLimit, Signature: r.EventSignature, EventID: logHex(r.EventID), Topic0: logHex(r.Topics[0]), Topic1: logHex(r.Topics[1]), Topic2: logHex(r.Topics[2]), Topic3: logHex(r.Topics[3])})
 		result := make([]dbgen.AddressLogsAllRow, len(rows))
 		for i, row := range rows {
 			result[i] = dbgen.AddressLogsAllRow(row)
 		}
 		return result, err
 	}
-	if r.TopicIndex == nil {
+	position := -1
+	for i, topic := range r.Topics {
+		if topic != "" {
+			position = i
+		}
+	}
+	if position == -1 {
 		return q.AddressLogsAll(ctx, p)
 	}
-	topic, err := decodeFixedHex(r.Topic, 32)
-	if err != nil {
-		return nil, ErrInvalidInput
-	}
-	params := dbgen.AddressLogsTopic0Params{ChainID: p.ChainID, Address: p.Address, SnapshotNumber: p.SnapshotNumber, FromBlock: p.FromBlock, BeforeNumber: p.BeforeNumber, BeforeTx: p.BeforeTx, BeforeLog: p.BeforeLog, PageLimit: p.PageLimit, Topic: topic}
-	switch *r.TopicIndex {
+	topic := logHex(r.Topics[position])
+	params := dbgen.AddressLogsTopic0Params{ChainID: p.ChainID, Address: p.Address, SnapshotNumber: p.SnapshotNumber, FromBlock: p.FromBlock, BeforeNumber: p.BeforeNumber, BeforeTx: p.BeforeTx, BeforeLog: p.BeforeLog, PageLimit: p.PageLimit, Topic: topic, Topic0: logHex(r.Topics[0]), Topic1: logHex(r.Topics[1]), Topic2: logHex(r.Topics[2]), Topic3: logHex(r.Topics[3])}
+	switch position {
 	case 0:
 		rows, err := q.AddressLogsTopic0(ctx, dbgen.AddressLogsTopic0Params(params))
 		result := make([]dbgen.AddressLogsAllRow, len(rows))
@@ -328,4 +380,13 @@ func addressLogRows(ctx context.Context, q *dbgen.Queries, p dbgen.AddressLogsAl
 		return result, err
 	}
 	return nil, ErrInvalidInput
+}
+
+// Inputs have already passed fixed-width validation before query conversion.
+func logHex(value string) []byte {
+	if value == "" {
+		return nil
+	}
+	decoded, _ := decodeFixedHex(value, 32)
+	return decoded
 }

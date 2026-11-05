@@ -133,8 +133,13 @@ changes the call/storage context or invents proxy provenance.
 ### Historical address event directory
 
 A PostgreSQL projection indexes published `decoded` log signatures by the
-original emitter and exact chain/block/log identity. Compact signature IDs
-avoid repeating long ABI text in each log index. Per-block contributions feed
+original emitter and exact chain/block/log identity. Compact definition IDs
+avoid repeating ABI text in each log index. A definition binds the full signature,
+anonymous flag and indexed parameter layout including names and recursive tuple
+components. The ABI worker persists this bounded shape separately from value-only
+`arguments` using the exact selected candidate. Its digest includes the signature
+and canonical JSONB definition. Equal-confidence event candidates with conflicting
+layouts remain ambiguous instead of choosing a field mapping. Per-block contributions feed
 an address directory atomically with the authoritative ABI publication.
 Deferred publication triggers consume the final fenced job, journal, outbox and
 canonical mapping; replay withdrawal and reorg remove contributions, and

@@ -185,8 +185,7 @@ export function links(state, s) {
             new URLSearchParams({
               tab: "logs",
               log_mode: "topic",
-              topic_index: i,
-              topic: eventTopics[i],
+              [`topic${i}`]: eventTopics[i],
             }),
         );
     }

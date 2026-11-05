@@ -33,6 +33,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P40-T35 and P50-T88 deliver multi-topic AND queries, historical indexed event
+definitions, and dynamic typed filters with browser-side topic encoding. Their
+child plans record completed local database, browser and production topology acceptance.
+
 P40-T34 and P50-T87 deliver range-scoped event queries and compact event-log browsing; their child plans record local database, browser and Preview acceptance.
 
 P40-T33 and P50-T86 deliver indexed contract event logs, the publication-owned

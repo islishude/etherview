@@ -636,3 +636,31 @@ func testABIBinding(identity ABIIdentity, source ABISource) ABIBinding {
 	}
 	return binding
 }
+
+func TestABIEventDefinitionRetainsHistoricalIndexedShape(t *testing.T) {
+	registry := NewABIRegistry()
+	identity := testABIIdentity(10, 100, 1000)
+	document := `[{"type":"event","name":"Example","inputs":[{"name":"first","type":"address","indexed":true},{"name":"third","type":"uint256"},{"name":"pair","type":"tuple[]","indexed":true,"components":[{"name":"label","type":"string"},{"name":"n","type":"int16"}]}]}]`
+	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(document)); err != nil {
+		t.Fatal(err)
+	}
+	topics := []common.Hash{SignatureHash("Example(address,uint256,(string,int16)[])"), addressWord(testAddress(1)), uintWord(9)}
+	result := registry.DecodeLog(identity, topics, wordBytes(uintWord(3)))
+	if result.Status != DecodeDecoded || result.EventDefinition == nil {
+		t.Fatalf("%+v", result)
+	}
+	fields := result.EventDefinition.IndexedFields
+	if len(fields) != 2 || fields[1].ParameterIndex != 2 || fields[1].TopicIndex != 2 || fields[1].Type != "tuple[]" || len(fields[1].Components) != 2 || fields[1].Components[0].Name != "label" {
+		t.Fatalf("%+v", fields)
+	}
+	// A same-signature equal-confidence declaration with another indexed layout
+	// must not manufacture a unique historical field mapping.
+	second := `[{"type":"event","name":"Example","inputs":[{"name":"first","type":"address"},{"name":"third","type":"uint256","indexed":true},{"name":"pair","type":"tuple[]","indexed":true,"components":[{"name":"label","type":"string"},{"name":"n","type":"int16"}]}]}]`
+	if err := registry.RegisterJSON(testABIBinding(identity, ABISourceVerified), []byte(second)); err != nil {
+		t.Fatal(err)
+	}
+	result = registry.DecodeLog(identity, topics, wordBytes(uintWord(3)))
+	if result.Status != DecodeAmbiguous || result.EventDefinition != nil {
+		t.Fatalf("ambiguous shape: %+v", result)
+	}
+}

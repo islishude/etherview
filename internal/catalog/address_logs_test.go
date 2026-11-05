@@ -5,23 +5,26 @@ import (
 	"testing"
 )
 
-func TestAddressLogFiltersAreBoundedAndExclusive(t *testing.T) {
-	zero, three, four := 0, 3, 4
-	topic := "0x" + string(make([]byte, 64))
-	valid := "0x0000000000000000000000000000000000000000000000000000000000000001"
+func TestAddressLogFiltersAreBoundedAndCombined(t *testing.T) {
+	valid := "0x" + strings.Repeat("01", 32)
 	for _, r := range []AddressLogRequest{
-		{ChainID: "1", Limit: 101}, {ChainID: "1", Topic: valid}, {ChainID: "1", TopicIndex: &zero},
-		{ChainID: "1", Topic: topic, TopicIndex: &zero}, {ChainID: "1", Topic: valid, TopicIndex: &four},
-		{ChainID: "1", EventSignature: "Transfer(address)", Topic: valid, TopicIndex: &zero},
+		{ChainID: "1", Limit: 101}, {ChainID: "1", Topics: [4]string{"0x12"}},
+		{ChainID: "1", EventID: "x"}, {ChainID: "1", EventID: valid, EventSignature: "Changed()"},
 	} {
 		if r.validate(false) == nil {
 			t.Fatalf("accepted invalid filter: %+v", r)
 		}
 	}
-	for _, r := range []AddressLogRequest{{ChainID: "1"}, {ChainID: "1", EventSignature: "Anonymous(uint256)"}, {ChainID: "1", Topic: valid, TopicIndex: &three}} {
+	for _, r := range []AddressLogRequest{
+		{ChainID: "1"}, {ChainID: "1", EventSignature: "Changed()", Topics: [4]string{valid, "", valid}},
+		{ChainID: "1", EventID: valid, Topics: [4]string{"", valid, valid}},
+	} {
 		if err := r.validate(false); err != nil {
-			t.Fatalf("valid filter: %v", err)
+			t.Fatal(err)
 		}
+	}
+	if (AddressLogRequest{ChainID: "1", Topics: [4]string{valid}}).validate(true) == nil {
+		t.Fatal("directory accepted topics")
 	}
 }
 

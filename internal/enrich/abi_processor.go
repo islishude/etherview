@@ -1319,6 +1319,14 @@ func persistABIDecoding(
 	decoded decodedABIObservation,
 ) error {
 	result := decoded.result
+	var eventDefinition []byte
+	if result.EventDefinition != nil {
+		var err error
+		eventDefinition, err = json.Marshal(result.EventDefinition)
+		if err != nil {
+			return Permanent(fmt.Errorf("encode event definition: %w", err))
+		}
+	}
 	arguments, err := json.Marshal(result.Arguments)
 	if err != nil {
 		return Permanent(fmt.Errorf("encode decoded ABI arguments: %w", err))
@@ -1361,7 +1369,7 @@ func persistABIDecoding(
 		if err := queryValue1.Scan(strconv.FormatUint(job.BlockNumber, 10)); err != nil {
 			return err
 		}
-		return dbgen.New(tx).EnrichInlinePersistABIDecodingStatement1(ctx, dbgen.EnrichInlinePersistABIDecodingStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], ObjectKind: observation.objectKind, TransactionHash: observation.transactionHash[:], ObjectIndex: observation.objectIndex, TargetAddress: identity.Address[:], TargetCodeHash: identity.CodeHash[:], AbiKind: string(result.Kind), Status: string(result.Status), Signature: signature, Source: source, Confidence: confidence, SourceAddress: sourceAddress, SourceCodeHash: sourceCodeHash, Arguments: arguments, Candidates: candidates, Warning: result.Warning, ReturnStatus: string(decoded.returnStatus), ReturnArguments: returnArguments, DecodingKind: string(result.Kind)})
+		return dbgen.New(tx).EnrichInlinePersistABIDecodingStatement1(ctx, dbgen.EnrichInlinePersistABIDecodingStatement1Params{ChainID: queryValue0, BlockNumber: queryValue1, BlockHash: job.BlockHash[:], ObjectKind: observation.objectKind, TransactionHash: observation.transactionHash[:], ObjectIndex: observation.objectIndex, TargetAddress: identity.Address[:], TargetCodeHash: identity.CodeHash[:], AbiKind: string(result.Kind), Status: string(result.Status), Signature: signature, Source: source, Confidence: confidence, SourceAddress: sourceAddress, SourceCodeHash: sourceCodeHash, EventDefinition: eventDefinition, Arguments: arguments, Candidates: candidates, Warning: result.Warning, ReturnStatus: string(decoded.returnStatus), ReturnArguments: returnArguments, DecodingKind: string(result.Kind)})
 	}(); err != nil {
 		return fmt.Errorf("persist ABI decoding: %w", err)
 	}

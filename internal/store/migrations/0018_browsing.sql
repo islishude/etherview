@@ -36,13 +36,13 @@ BEGIN
         WHERE chain_id=target_chain AND address=contribution.address AND signature_id=contribution.signature_id;
     END LOOP;
     DELETE FROM address_event_logs WHERE chain_id=target_chain AND block_number=target_number;
-    INSERT INTO event_signatures(signature,digest)
-    SELECT DISTINCT d.signature,sha256(convert_to(d.signature,'UTF8')) FROM abi_decodings d
+    INSERT INTO event_signatures(signature,signature_digest,definition,digest)
+    SELECT DISTINCT d.signature,sha256(convert_to(d.signature,'UTF8')),d.event_definition,sha256(convert_to(d.signature || d.event_definition::text,'UTF8')) FROM abi_decodings d
     JOIN canonical_blocks c ON c.chain_id=d.chain_id AND c.number=d.block_number AND c.block_hash=d.block_hash
     JOIN published_block_stage_results p ON p.chain_id=d.chain_id AND p.block_number=d.block_number
         AND p.block_hash=d.block_hash AND p.stage='abi' AND p.stage_version=5 AND p.state='complete'
     WHERE d.chain_id=target_chain AND d.block_number=target_number AND d.object_kind='log'
-        AND d.status='decoded' AND d.canonical AND d.signature IS NOT NULL
+        AND d.status='decoded' AND d.canonical AND d.signature IS NOT NULL AND d.event_definition IS NOT NULL
     ON CONFLICT (digest) DO NOTHING;
     INSERT INTO address_event_logs(chain_id,block_number,block_hash,log_index,tx_index,address,signature_id)
     SELECT l.chain_id,l.block_number,l.block_hash,l.log_index,l.tx_index,l.address,s.id
@@ -51,7 +51,7 @@ BEGIN
         AND p.block_hash=l.block_hash AND p.stage='abi' AND p.stage_version=5 AND p.state='complete'
     JOIN abi_decodings d ON d.chain_id=l.chain_id AND d.block_number=l.block_number AND d.block_hash=l.block_hash
         AND d.transaction_hash=l.tx_hash AND d.object_kind='log' AND d.object_index=l.log_index::text AND d.canonical AND d.status='decoded'
-    JOIN event_signatures s ON s.digest=sha256(convert_to(d.signature,'UTF8')) AND s.signature=d.signature
+    JOIN event_signatures s ON s.digest=sha256(convert_to(d.signature || d.event_definition::text,'UTF8')) AND s.signature=d.signature AND s.definition=d.event_definition
     WHERE l.chain_id=target_chain AND l.block_number=target_number;
     FOR contribution IN
         INSERT INTO address_event_blocks(chain_id,block_number,block_hash,address,signature_id,log_count)

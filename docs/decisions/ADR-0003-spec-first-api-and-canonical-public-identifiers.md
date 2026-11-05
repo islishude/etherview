@@ -280,11 +280,26 @@ never substitutes zero or unverified rows for missing facts.
 ### Address event log browsing
 
 `GET /addresses/{address}/logs` exposes canonical emitter logs through the
-native generated client. A complete historical event signature and a positioned
-32-byte topic filter are mutually exclusive. Positions 0–3 are exact matches;
-there is no substring, multi-topic, or implicit address-padding search.
+native generated client. Optional `topic0`–`topic3` are exact 32-byte filters combined with AND.
+They can accompany either a complete historical `event_signature` or a stable
+`event_id` identifying one published definition; those two identifiers are
+mutually exclusive. Definition queries accept only its indexed topic positions.
+There is no substring or field-local OR search. The former `topic_index`/`topic`
+parameters are not accepted.
 `GET /addresses/{address}/log-events` pages a case-insensitive name-prefix
-search over published historical event signatures, including anonymous events.
+search over published historical event definitions, including anonymous events.
+Each item includes its content-derived ID, signature, anonymous flag and indexed
+field descriptors with recursive tuple components, parameter indices and topic
+positions. An exact `event_id` lookup supports restoring saved filters. Equal
+signatures with different field names or layouts remain separate definitions.
+
+The browser accepts typed raw values through the shared bounded ABI editor.
+Value types become ABI words; strings/bytes, all arrays and tuples use Solidity's
+indexed-event in-place encoding and Keccak-256. The browser sends only final
+32-byte topics to the native API. Empty strings/bytes/arrays are values, not
+absent conditions. URLs retain final topics; irreversible values restore in
+explicit hash mode. Types or shapes outside the bounded editor remain searchable
+in hash mode. Raw inputs remain local to the current form.
 Neither resource makes RPC calls or writes during reads.
 
 Both resources use bounded keyset pagination (25 by default, at most 100),

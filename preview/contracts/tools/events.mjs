@@ -19,7 +19,7 @@ function checks(e, s) {
     "data.0.transaction_hash": s.steps["raw-events"].hash,
   });
   for (const [i, topic] of eventTopics.entries())
-    e.check(s, `exact topic${i}`, route(verified, "logs", { topic_index: i, topic }), {
+    e.check(s, `exact topic${i}`, route(verified, "logs", { [`topic${i}`]: topic }), {
       data: { $contains: { "log.address": verified, [`log.topics.${i}`]: topic } },
     });
   if (e.options["no-verify"]) return;
@@ -145,7 +145,7 @@ export function registerEventRanges(e, s) {
     e.check(
       s,
       `single-block topic${i}`,
-      route(s.entities.verified, "logs", { ...range, topic_index: i, topic }),
+      route(s.entities.verified, "logs", { ...range, [`topic${i}`]: topic }),
       { "data.length": 1, "data.0.block_number": block },
     );
   const before = s.steps.verified.receipt.blockNumber;
