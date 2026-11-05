@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
+	pgx "github.com/jackc/pgx/v5"
 	pgxpool "github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/islishude/etherview/internal/chainbundle"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/store"
 )
 
@@ -267,4 +270,79 @@ func assertProxyInteractionCoverageContains(
 			start.Number, start.Hash, end.Number, end.Hash, got, want,
 		)
 	}
+}
+
+// Batch replay must not hold the chain coverage lock while waiting for another
+// job's publication lock. Publishers take the job lock before refreshing coverage.
+func TestProxyInteractionCoverageBatchReplayLockOrder(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := testBundle(0, testHash(166_000), testHash(0), testHash(167_000), "coverage-lock-genesis")
+	next := testBundle(1, testHash(166_001), genesis.Block.Hash(), testHash(167_001), "coverage-lock-next")
+	commitCanonical(t, ctx, repository, genesis)
+	commitCanonical(t, ctx, repository, next)
+	first, second := mustBlockRef(t, genesis), mustBlockRef(t, next)
+	publishEmptyProxyVerificationCoverage(t, ctx, db, first)
+	publishEmptyProxyVerificationCoverage(t, ctx, db, second)
+	queue, err := enrich.NewPostgresJobQueue(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := func(block store.BlockRef, key string) enrich.EnqueueRequest {
+		word, err := enrich.ParseWord(block.Hash.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return enrich.EnqueueRequest{Stage: enrich.ProxyStage, ChainID: "1", BlockHash: word, BlockNumber: block.Number,
+			Replay: enrich.ReplaySource{Kind: "coverage-lock-order", Key: key}}
+	}
+	var secondID int64
+	if err := db.QueryRow(ctx, `SELECT id FROM durable_jobs WHERE chain_id=1 AND stage='proxy' AND payload->>'block_hash'=$1`, second.Hash.String()).Scan(&secondID); err != nil {
+		t.Fatal(err)
+	}
+	publisher, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer publisher.Rollback(context.Background()) //nolint:errcheck
+	if err := dbgen.New(publisher).EnrichLegacyLockPublicationJob(ctx, secondID); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer batch.Rollback(context.Background()) //nolint:errcheck
+	if _, err := queue.EnqueueTx(ctx, batch, request(first, "batch-first")); err != nil {
+		t.Fatal(err)
+	}
+	waiting := make(chan error, 1)
+	go func() {
+		_, err := queue.EnqueueTx(ctx, batch, request(second, "batch-second"))
+		waiting <- err
+	}()
+	waitForProxyCoverageLockWaiters(t, ctx, db, 1)
+	// This terminal generation withdrawal fires the same coverage trigger as
+	// successful publication, while holding the second job's publication lock.
+	if _, err := queue.EnqueueTx(ctx, publisher, request(second, "publisher-second")); err != nil {
+		t.Fatal(err)
+	}
+	if err := publisher.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-waiting; err != nil {
+		t.Fatalf("batch replay: %v", err)
+	}
+	if err := batch.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertProxyInteractionCoverageRanges(t, ctx, db, nil)
+	publishPendingEmptyProxyVerificationCoverage(t, ctx, db, first)
+	publishPendingEmptyProxyVerificationCoverage(t, ctx, db, second)
+	assertProxyInteractionCoverageRanges(t, ctx, db, [][2]store.BlockRef{{first, second}})
 }
