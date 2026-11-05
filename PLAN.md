@@ -33,6 +33,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P30-T155 delivers database-wide deadlock acceptance for managed integration and
+both production runtime layouts, with bounded diagnostics and cross-domain
+concurrency. Its child plan records completed local acceptance.
+
 P40-T35 and P50-T88 deliver multi-topic AND queries, historical indexed event
 definitions, and dynamic typed filters with browser-side topic encoding. Their
 child plans record completed local database, browser and production topology acceptance.

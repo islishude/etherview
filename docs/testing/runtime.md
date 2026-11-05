@@ -231,3 +231,20 @@ transaction hashes in manual checks; capture identity from
 reuse the captured values.
 Set `ANVIL_ARGS` only for local launch tuning (for example alternate anvil
 defaults) and keep these test-only overrides out of production runbooks.
+
+## Database deadlock acceptance
+
+Both production layouts use the same `internal/testdbguard` database-wide
+zero-new-deadlocks gate as managed integration. The observer starts before
+migration/application startup. Cleanup stops application writers and closes
+harness business connections, checks statistics before removing PostgreSQL,
+and makes incomplete or failed checks fail acceptance. Intentional temporary
+PostgreSQL pauses may interrupt samples; the observer reconnects and still
+requires unchanged database/statistics identity and complete final evidence.
+
+The runtime scenario verifies an exact blocked replay transaction while the
+fixture mines the next block and deployed workers are active. Existing reorg,
+restart and outage phases then verify convergence and all/split parity.
+`concurrent-replay.json` records the verified overlap and `deadlocks.json`
+records bounded waits and final database evidence in existing runtime failure
+artifacts. This bounded CI scenario is separate from the P70 reference soak.

@@ -6,12 +6,14 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/testcompose"
+	"github.com/islishude/etherview/internal/testdbguard"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
 	"testing"
 )
 
 type harness struct {
+	deadlockGuard   *testdbguard.Guard
 	pushURL         string
 	pushHTTP        *http.Client
 	pushInput       gen.PushSubscriptionInput

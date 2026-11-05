@@ -7,9 +7,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -20,6 +22,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/testcompose"
+	"github.com/islishude/etherview/internal/testdbguard"
 )
 
 type options struct {
@@ -55,14 +58,14 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, opts options) error {
+func run(ctx context.Context, opts options) (result error) {
 	if err := validateSharding(opts); err != nil {
 		return err
 	}
 	databaseURL := strings.TrimSpace(os.Getenv("INTEGRATION_DATABASE_URL"))
 	var project *testcompose.Project
 	if databaseURL == "" {
-		project = testcompose.New(
+		project = testcompose.NewQuiet(
 			opts.root,
 			testcompose.UniqueProjectName("etherview-integration"),
 			"e2e/integration/compose.yaml",
@@ -80,6 +83,49 @@ func run(ctx context.Context, opts options) error {
 		databaseURL = "postgres://etherview:etherview-integration@" + binding + "/etherview?sslmode=disable"
 	} else {
 		fmt.Println("test-integration: using caller-supplied disposable PostgreSQL database")
+	}
+
+	artifacts, err := os.MkdirTemp("", "etherview-integration-evidence-")
+	if err != nil {
+		return err
+	}
+	output, err := os.OpenFile(filepath.Join(artifacts, "tests.log"), os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	ctx = context.WithValue(ctx, outputKey{}, output)
+	var guard *testdbguard.Guard
+	defer func() {
+		report := testdbguard.Report{Failure: "deadlock observer did not start"}
+		if guard != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			var guardErr error
+			report, guardErr = guard.Finish(cleanupCtx)
+			cancel()
+			result = errors.Join(result, guardErr)
+		}
+		result = errors.Join(result, output.Close())
+		encoded, encodeErr := json.MarshalIndent(report, "", "  ")
+		if encodeErr == nil {
+			encodeErr = os.WriteFile(filepath.Join(artifacts, "deadlocks.json"), encoded, 0o600)
+		}
+		result = errors.Join(result, encodeErr)
+		if result != nil {
+			if project != nil {
+				logCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				logs := strings.ReplaceAll(project.Logs(logCtx), "etherview-integration", "[REDACTED]")
+				cancel()
+				result = errors.Join(result, os.WriteFile(filepath.Join(artifacts, "postgres.log"), []byte(logs), 0o600))
+			}
+			fmt.Fprintf(os.Stderr, "test-integration: diagnostics retained at %s\n", artifacts)
+		} else {
+			_ = os.RemoveAll(artifacts)
+		}
+	}()
+
+	guard, err = testdbguard.Start(ctx, databaseURL)
+	if err != nil {
+		return err
 	}
 
 	goCommand := strings.TrimSpace(os.Getenv("GO"))
@@ -213,12 +259,19 @@ func hasIntegrationBuildTag(contents []byte) bool {
 	return false
 }
 
+type outputKey struct{}
+
 func runCommand(ctx context.Context, directory string, environment []string, name string, arguments ...string) error {
 	command := exec.CommandContext(ctx, name, arguments...)
 	command.Dir = directory
 	command.Env = append(os.Environ(), environment...)
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
+	if output, ok := ctx.Value(outputKey{}).(io.Writer); ok {
+		// One shared writer lets os/exec serialize stdout and stderr copies.
+		writer := io.MultiWriter(os.Stdout, output)
+		command.Stdout, command.Stderr = writer, writer
+	}
 	fmt.Printf("test-integration: running %s %s\n", name, strings.Join(arguments, " "))
 	return command.Run()
 }

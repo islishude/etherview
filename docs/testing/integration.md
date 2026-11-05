@@ -58,3 +58,44 @@ migrations, and teardown. If the explicit 15-minute limit is reached, inspect
 the active test and goroutine dump for a hang or an actual duration regression;
 do not automatically raise either timeout. Focused and race modes must continue
 to use the same package bound.
+
+## Database-wide deadlock gate
+
+The managed runner checks the entire disposable database, across all test
+schemas and packages. Ordinary, focused, sharded, race and benchmark runs all
+require zero new PostgreSQL-detected deadlocks, even if application retries
+succeed. Synthetic SQLSTATE injection in retry tests is not a detected lock
+cycle. Detector self-tests own a separate Compose database; ordinary tests have
+no deadlock allowance.
+
+The observer records database identity, server start, statistics reset epoch
+and deadlock count before migrations. After the test process exits it waits up
+to 15 seconds for business sessions to disappear, then observes a five-second
+statistics settling window without cached snapshots. A changed epoch, missing
+statistics, invisible sessions or incomplete shutdown fails the run. External
+`INTEGRATION_DATABASE_URL` databases must be exclusive, disposable and permit
+full session observation; the runner never kills their sessions or resets stats.
+
+A bounded 250 ms sampler retains the latest 128 lock-wait snapshots, including
+backend identities and blocking edges, without query text or parameters.
+`internal/testdbguard` also provides a concurrent start barrier and exact
+backend blocking assertions. Business tests cover publication/replay/renewal,
+same/reverse/overlapping replay streams, lease takeover, ENS invalidation,
+token observation conflicts, verification
+admission and prepaid credit/debit contention. Tests assert domain invariants
+as well as completion; normal lock waits are allowed.
+
+Failures retain `etherview-integration-evidence-*` under the host temporary
+directory: `tests.log`, `deadlocks.json` and, for owned Compose databases,
+`postgres.log`. CI uploads each failed shard's evidence. External database
+server logs remain operator-owned and are not collected. Query sampling gaps
+are counted; final statistics and quiescence are mandatory. Diagnostics are
+collected before Compose teardown. These checks cover executed interleavings,
+not a proof that all possible database schedules are deadlock-free.
+
+Run the detector, runner failure-propagation and cross-domain regressions with:
+
+```sh
+go run ./e2e/cmd/testintegration -race \
+  -run 'Test(DatabaseDeadlockGuardPostgres|ManagedRunner|PublicationReplayAndRenewConcurrent|ConcurrentReplayStreamsPreserveGenerations|PrepaidConcurrentCreditAndUsageCommit|VerificationConcurrentIdenticalAdmission)'
+```

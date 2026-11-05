@@ -17,6 +17,7 @@ import (
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/store"
+	"github.com/islishude/etherview/internal/testdbguard"
 )
 
 func TestProxyInteractionCoverageRangesMergeSplitAndRecover(t *testing.T) {
@@ -326,7 +327,9 @@ func TestProxyInteractionCoverageBatchReplayLockOrder(t *testing.T) {
 		_, err := queue.EnqueueTx(ctx, batch, request(second, "batch-second"))
 		waiting <- err
 	}()
-	waitForProxyCoverageLockWaiters(t, ctx, db, 1)
+	if err := testdbguard.WaitBlocked(ctx, db, int32(batch.Conn().PgConn().PID()), int32(publisher.Conn().PgConn().PID())); err != nil {
+		t.Fatal(err)
+	}
 	// This terminal generation withdrawal fires the same coverage trigger as
 	// successful publication, while holding the second job's publication lock.
 	if _, err := queue.EnqueueTx(ctx, publisher, request(second, "publisher-second")); err != nil {
