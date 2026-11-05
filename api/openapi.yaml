@@ -1280,20 +1280,33 @@ paths:
             maximum: 100
         - name: event_signature
           in: query
-          description: Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+          description: Published historical signature; mutually exclusive with event_id. All supplied topics are ANDed.
           schema:
             type: string
             maxLength: 4096
-        - name: topic_index
+        - name: event_id
           in: query
-          description: Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+          description: Exact historical event definition ID, mutually exclusive with event_signature. Topic positions must belong to its indexed fields.
           schema:
-            type: integer
-            minimum: 0
-            maximum: 3
-        - name: topic
+            $ref: "#/components/schemas/Hash"
+        - name: topic0
           in: query
-          description: Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+          description: Exact 32-byte topic at position 0; all supplied positions are ANDed.
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: topic1
+          in: query
+          description: Exact 32-byte topic at position 1; all supplied positions are ANDed.
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: topic2
+          in: query
+          description: Exact 32-byte topic at position 2; all supplied positions are ANDed.
+          schema:
+            $ref: "#/components/schemas/Hash"
+        - name: topic3
+          in: query
+          description: Exact 32-byte topic at position 3; all supplied positions are ANDed.
           schema:
             $ref: "#/components/schemas/Hash"
         - name: from_block
@@ -1330,6 +1343,11 @@ paths:
             default: 25
             minimum: 1
             maximum: 100
+        - name: event_id
+          in: query
+          description: Return only this historical event definition within the selected range.
+          schema:
+            $ref: "#/components/schemas/Hash"
         - name: name
           in: query
           description: Case-insensitive event-name prefix.
@@ -5705,9 +5723,36 @@ components:
           $ref: "#/components/schemas/Hash"
         transaction_index:
           $ref: "#/components/schemas/Quantity"
+    EventParameter:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        components:
+          type: array
+          maxItems: 256
+          items:
+            $ref: "#/components/schemas/EventParameter"
+    EventIndexedField:
+      allOf:
+        - $ref: "#/components/schemas/EventParameter"
+        - type: object
+          required: [parameter_index, topic_index]
+          properties:
+            parameter_index:
+              type: integer
+              minimum: 0
+              maximum: 255
+            topic_index:
+              type: integer
+              minimum: 0
+              maximum: 3
     AddressLogEvent:
       type: object
-      required: [name, signature]
+      required: [name, signature, event_id, anonymous, indexed_fields]
       properties:
         name:
           type: string
@@ -5715,6 +5760,15 @@ components:
         signature:
           type: string
           maxLength: 4096
+        event_id:
+          $ref: "#/components/schemas/Hash"
+        anonymous:
+          type: boolean
+        indexed_fields:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/EventIndexedField"
     AddressLogListResponse:
       type: object
       required: [data, meta]

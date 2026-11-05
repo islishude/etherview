@@ -215,8 +215,8 @@ func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *pgxpo
 			tx_hash, address, raw
 		) VALUES (1, $1::numeric, $2, 0, 0, $3, $4, jsonb_build_object('topics',jsonb_build_array('0x' || encode($5::bytea,'hex'))))`,
 		height, blockHash, transactionHash, tokenAddress, topic)
-	execFixture(t, ctx, db, `INSERT INTO event_signatures(signature,digest)
-        VALUES ('Moved(uint256)',sha256(convert_to('Moved(uint256)','UTF8')))`)
+	execFixture(t, ctx, db, `INSERT INTO event_signatures(signature,signature_digest,definition,digest)
+        VALUES ('Moved(uint256)',sha256(convert_to('Moved(uint256)','UTF8')),'{}',sha256(convert_to('Moved(uint256){}','UTF8')))`)
 	execFixture(t, ctx, db, `INSERT INTO address_event_logs(chain_id,block_number,block_hash,log_index,tx_index,address,signature_id)
         SELECT 1,$1::numeric,$2,0,0,$3,id FROM event_signatures`, height, blockHash, tokenAddress)
 	execFixture(t, ctx, db, `INSERT INTO address_event_blocks(chain_id,block_number,block_hash,address,signature_id,log_count)

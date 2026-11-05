@@ -1,32 +1,55 @@
 import { UIIcon } from "@/components/UIIcon";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Search, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAddressLogs, validLogRange, type AddressLogFilter } from "@/api/addressLogs";
 import { useBrowsingCursorHistory } from "@/api/pagination";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
-import { SelectControl } from "@/components/SelectControl";
 import { QueryNotice } from "@/components/QueryNotice";
 import { formatInteger, formatRelativeTimestamp, shorten } from "@/components/format";
 import { CursorPagination } from "./pages";
 import { TransactionLogCard } from "./TransactionLogs";
-import { EventNameSelect } from "./EventNameSelect";
+import { AddressLogFilters } from "./AddressLogFilters";
+import {
+  appliedLogFilter,
+  logDraft,
+  logFilterKey,
+  topicKeys,
+  type LogDraft,
+} from "./logFilterState";
 import "./AddressLogs.css";
 
 export function AddressLogs({ address }: { address: string }) {
   const search = useSearch({ from: "/address/$address" });
-  return <AddressLogsContent key={JSON.stringify([address, search])} address={address} />;
+  const retained = useRef<{ key: string; draft: LogDraft } | undefined>(undefined);
+  const key = JSON.stringify([address, logFilterKey(search)]);
+  return (
+    <AddressLogsContent
+      key={key}
+      address={address}
+      initialDraft={retained.current?.key === key ? retained.current.draft : undefined}
+      retain={(filter, draft) => {
+        retained.current = { key: JSON.stringify([address, logFilterKey(filter)]), draft };
+      }}
+    />
+  );
 }
-function AddressLogsContent({ address }: { address: string }) {
+function AddressLogsContent({
+  address,
+  initialDraft,
+  retain,
+}: {
+  address: string;
+  initialDraft?: LogDraft;
+  retain: (filter: AddressLogFilter & { log_mode?: string }, draft: LogDraft) => void;
+}) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "en";
   const search = useSearch({ from: "/address/$address" });
   const navigate = useNavigate();
-  const [mode, setMode] = useState(search.log_mode ?? "name");
-  const [signature, setSignature] = useState(search.event_signature ?? "");
-  const [topic, setTopic] = useState(search.topic ?? "");
-  const [position, setPosition] = useState(search.topic_index ?? 0);
+  const [draft, setDraft] = useState(initialDraft ?? logDraft(search));
+  const mode = draft.mode;
   const [from, setFrom] = useState(search.from_block ?? "");
   const [to, setTo] = useState(search.to_block ?? "");
   const [error, setError] = useState("");
@@ -34,9 +57,9 @@ function AddressLogsContent({ address }: { address: string }) {
   const filter: AddressLogFilter = {
     from_block: search.from_block,
     to_block: search.to_block,
-    ...(search.log_mode === "topic"
-      ? { topic_index: search.topic ? (search.topic_index ?? 0) : undefined, topic: search.topic }
-      : { event_signature: search.event_signature }),
+    event_signature: search.log_mode === "topic" ? undefined : search.event_signature,
+    event_id: search.log_mode === "topic" ? undefined : search.event_id,
+    ...Object.fromEntries(topicKeys.map((key) => [key, search[key]])),
   };
   const pager = useBrowsingCursorHistory(`address-logs:${address}:${JSON.stringify(filter)}`);
   const logs = useAddressLogs(address, filter, pager.request);
@@ -48,25 +71,27 @@ function AddressLogsContent({ address }: { address: string }) {
       setError("addressLogs.invalidRange");
       return;
     }
-    const value = topic.trim();
-    if (mode === "topic" && value && !/^0x[0-9a-fA-F]{64}$/u.test(value)) {
-      setError("addressLogs.invalidTopic");
+    let applied: AddressLogFilter;
+    try {
+      applied = appliedLogFilter(draft);
+    } catch {
+      setError(mode === "topic" ? "addressLogs.invalidTopic" : "addressLogs.invalidValue");
       return;
     }
+    const next = {
+      tab: "logs",
+      log_mode: mode,
+      from_block: from || undefined,
+      to_block: to || undefined,
+      ...applied,
+    };
+    retain(next, draft);
     setError("");
     void navigate({
       to: "/address/$address",
       params: { address },
       hash: "",
-      search: {
-        tab: "logs",
-        log_mode: mode,
-        from_block: from || undefined,
-        to_block: to || undefined,
-        ...(mode === "name"
-          ? { event_signature: signature || undefined }
-          : { topic: value.toLowerCase() || undefined, topic_index: value ? position : undefined }),
-      },
+      search: next,
     });
     pager.reset();
   };
@@ -96,9 +121,7 @@ function AddressLogsContent({ address }: { address: string }) {
               aria-pressed={mode === value}
               onClick={() => {
                 if (mode === value) return;
-                setMode(value);
-                setSignature("");
-                setTopic("");
+                setDraft({ mode: value, eventID: "", signature: "", conditions: [] });
                 setError("");
               }}
             >
@@ -108,45 +131,14 @@ function AddressLogsContent({ address }: { address: string }) {
         </div>
         <div className="address-log-filter-row">
           <div className="address-log-main-filter">
-            {mode === "name" ? (
-              <EventNameSelect
-                address={address}
-                value={signature}
-                range={{ from_block: from || undefined, to_block: to || undefined }}
-                disabled={!rangeValid}
-                onChange={setSignature}
-              />
-            ) : (
-              <div className="address-log-topic-fields">
-                <label>
-                  {t("addressLogs.position")}
-                  <SelectControl
-                    value={position}
-                    onChange={(e) => setPosition(Number(e.target.value))}
-                  >
-                    {[0, 1, 2, 3].map((index) => (
-                      <option key={index} value={index}>
-                        topic{index}
-                      </option>
-                    ))}
-                  </SelectControl>
-                </label>
-                <label className="address-log-topic-input">
-                  {t("addressLogs.topic")}
-                  <input
-                    value={topic}
-                    maxLength={66}
-                    spellCheck={false}
-                    aria-invalid={error === "addressLogs.invalidTopic"}
-                    onChange={(e) => {
-                      setTopic(e.target.value);
-                      setError("");
-                    }}
-                    placeholder="0x…"
-                  />
-                </label>
-              </div>
-            )}
+            <AddressLogFilters
+              address={address}
+              draft={draft}
+              range={{ from_block: from || undefined, to_block: to || undefined }}
+              disabled={!rangeValid}
+              invalid={!!error}
+              onChange={setDraft}
+            />
           </div>
           <div className="address-log-range">
             <label>
@@ -187,10 +179,7 @@ function AddressLogsContent({ address }: { address: string }) {
             <button
               type="button"
               onClick={() => {
-                setMode("name");
-                setSignature("");
-                setTopic("");
-                setPosition(0);
+                setDraft(logDraft({}));
                 setFrom("");
                 setTo("");
                 setError("");
@@ -219,10 +208,18 @@ function AddressLogsContent({ address }: { address: string }) {
         <div className="address-log-applied" aria-label={t("addressLogs.applied")}>
           <span>{appliedRange}</span>
           {filter.event_signature && <span>{filter.event_signature}</span>}
-          {filter.topic && (
-            <span title={filter.topic}>
-              topic{filter.topic_index}: {shorten(filter.topic)}
+          {filter.event_id && (
+            <span>
+              {draft.event?.event_id === filter.event_id ? draft.event.signature : filter.event_id}
             </span>
+          )}
+          {topicKeys.map(
+            (key) =>
+              filter[key] && (
+                <span key={key} title={filter[key]}>
+                  {key}: {shorten(filter[key]!)}
+                </span>
+              ),
           )}
         </div>
       </div>

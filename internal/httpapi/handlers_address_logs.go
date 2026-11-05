@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
+	"github.com/islishude/etherview/internal/abicontract"
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/catalog"
 )
@@ -17,7 +17,7 @@ func (h *Handler) addressLogRequest(w http.ResponseWriter, r *http.Request) (cat
 	query := r.URL.Query()
 	directory := strings.HasSuffix(r.URL.Path, "/log-events")
 	for key, values := range query {
-		allowed := key == "cursor" || key == "limit" || key == "from_block" || key == "to_block" || (directory && key == "name") || (!directory && (key == "event_signature" || key == "topic_index" || key == "topic"))
+		allowed := key == "cursor" || key == "limit" || key == "from_block" || key == "to_block" || key == "event_id" || (directory && key == "name") || (!directory && (key == "event_signature" || key == "topic0" || key == "topic1" || key == "topic2" || key == "topic3"))
 		if !allowed || len(values) != 1 {
 			h.handleCatalogError(w, r, catalog.ErrInvalidInput)
 			return catalog.AddressLogRequest{}, false
@@ -27,7 +27,7 @@ func (h *Handler) addressLogRequest(w http.ResponseWriter, r *http.Request) (cat
 		h.handleCatalogError(w, r, catalog.ErrInvalidInput)
 		return catalog.AddressLogRequest{}, false
 	}
-	request := catalog.AddressLogRequest{ChainID: h.chainID(), Address: address, Limit: limit, Cursor: cursor, EventSignature: query.Get("event_signature"), Topic: query.Get("topic"), Name: query.Get("name"), FromBlock: query.Get("from_block"), ToBlock: query.Get("to_block")}
+	request := catalog.AddressLogRequest{ChainID: h.chainID(), Address: address, Limit: limit, Cursor: cursor, EventSignature: query.Get("event_signature"), EventID: query.Get("event_id"), Name: query.Get("name"), FromBlock: query.Get("from_block"), ToBlock: query.Get("to_block")}
 	for _, bound := range []string{"from_block", "to_block"} {
 		if query.Has(bound) && !canonicalQuantity(query.Get(bound)) {
 			h.handleCatalogError(w, r, catalog.ErrInvalidInput)
@@ -38,18 +38,18 @@ func (h *Handler) addressLogRequest(w http.ResponseWriter, r *http.Request) (cat
 		h.handleCatalogError(w, r, catalog.ErrInvalidInput)
 		return request, false
 	}
-	if query.Has("topic_index") {
-		index, err := strconv.Atoi(query.Get("topic_index"))
-		if err != nil || index < 0 || index > 3 {
+	for i, key := range []string{"topic0", "topic1", "topic2", "topic3"} {
+		if query.Has(key) && !hashPattern.MatchString(query.Get(key)) {
 			h.handleCatalogError(w, r, catalog.ErrInvalidInput)
 			return request, false
 		}
-		request.TopicIndex = &index
+		request.Topics[i] = query.Get(key)
 	}
-	if (query.Has("topic") != query.Has("topic_index")) || (query.Has("event_signature") && (request.EventSignature == "" || query.Has("topic"))) || (query.Has("topic") && !hashPattern.MatchString(request.Topic)) {
+	if (query.Has("event_id") && !hashPattern.MatchString(request.EventID)) || (query.Has("event_signature") && (request.EventSignature == "" || query.Has("event_id"))) {
 		h.handleCatalogError(w, r, catalog.ErrInvalidInput)
 		return request, false
 	}
+
 	return request, true
 }
 func (h *Handler) addressLogs(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +80,22 @@ func (h *Handler) addressLogEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]gen.AddressLogEvent, len(page.Items))
 	for i, item := range page.Items {
-		items[i] = gen.AddressLogEvent{Name: item.Name, Signature: item.Signature}
+		fields := make([]gen.EventIndexedField, len(item.IndexedFields))
+		for j, field := range item.IndexedFields {
+			fields[j] = gen.EventIndexedField{Name: field.Name, Type: field.Type, ParameterIndex: field.ParameterIndex, TopicIndex: field.TopicIndex, Components: eventParameterModels(field.Components)}
+		}
+		items[i] = gen.AddressLogEvent{Name: item.Name, Signature: item.Signature, EventId: item.EventID, Anonymous: item.Anonymous, IndexedFields: fields}
 	}
 	writeJSON(w, http.StatusOK, gen.AddressLogEventListResponse{Data: items, Meta: h.catalogPageMeta(r, page.NextCursor, page.Snapshot)})
+}
+
+func eventParameterModels(parameters []abicontract.EventParameter) *[]gen.EventParameter {
+	if len(parameters) == 0 {
+		return nil
+	}
+	result := make([]gen.EventParameter, len(parameters))
+	for i, parameter := range parameters {
+		result[i] = gen.EventParameter{Name: parameter.Name, Type: parameter.Type, Components: eventParameterModels(parameter.Components)}
+	}
+	return &result
 }

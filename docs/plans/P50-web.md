@@ -62,6 +62,7 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T81 | done   | P40-T27                            | Bilingual name search/detail/links and expandable ENS history; atomic explicit reads, expiry hiding and incomplete-directory notices                                                                   | Keyboard/mobile/theme, inert values, pagination, local expiry, single SSE and production topology regressions       |
 | P50-T86 | done   | P40-T33, P50-T10                   | Bilingual contract event log tab with mutually exclusive historical-name and positioned-topic filters                                                                                                  | Generated client, bilingual URL/filter/page, keyboard/mobile and production runtime checks                          |
 | P50-T87 | done   | P40-T34, P50-T86                   | Compact event browsing with searchable dropdown, draft range filters and expandable logs                                                                                                               | 992 frontend tests, 235 browser tests, keyboard/IME and real Preview range checks                                   |
+| P50-T88 | done   | P40-T35, P50-T87                   | Dynamic indexed-field filters with browser-side indexed event encoding and shared recursive ABI inputs                                                                                                 | Typed encoding, historical identity, pagination, database/browser and all/split acceptance                          |
 
 ## Acceptance
 
@@ -88,9 +89,10 @@ protect browser verification and CSV downloads; address actions use a compact to
 - [x] Optional Turnstile protects verification/CSV with server validation,
       session-fenced widgets and narrow CSP; native key clients are unchanged.
 
-- [x] Contract-only event logs retain mutually exclusive signature/topic filters,
-      URL restoration, explicit refresh, bounded pagination and visible coverage;
-      shared log cards preserve raw data and decoding provenance.
+- [x] Contract-only event logs retain separate name/topic modes, dynamic indexed
+      AND conditions, URL restoration, explicit refresh, bounded pagination and
+      visible coverage. Original values use shared recursive ABI inputs and
+      browser-side topic encoding; shared log cards preserve decoding provenance.
 
 ## Current Blockers
 
@@ -150,3 +152,14 @@ restoration. Frontend (992), full browser (235), focused final browser and
 production all/split gates passed. Real Preview checked 36 event APIs and
 English desktop/Chinese 390px light/dark range views; reports and screenshots
 remain in the Preview-tool run.
+
+P50-T88 passed 239 embedded Chromium scenarios (`make test-e2e`); final UI
+review passed 1010 frontend tests and five focused event-log browser scenarios,
+including field-switch focus retention and exact-topic fallback for types or
+shapes outside the bounded editor. Solidity-emitted vectors verify
+string/bytes, arrays, nested tuples, scalar words, anonymous events and empty
+values. Read/Write Contract editor regressions, indexed-only choices, dynamic
+conditions/focus, draft submission and hash-only URL restoration passed.
+English/Chinese, light/dark and 390px/desktop screenshots were reviewed.
+Common, PostgreSQL, schema and all/split gates are recorded under P40-T35;
+local acceptance does not close P70 release gates.

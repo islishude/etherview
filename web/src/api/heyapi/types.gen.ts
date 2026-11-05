@@ -1265,9 +1265,23 @@ export type AddressLog = {
     transaction_index: Quantity;
 };
 
+export type EventParameter = {
+    name: string;
+    type: string;
+    components?: Array<EventParameter>;
+};
+
+export type EventIndexedField = EventParameter & {
+    parameter_index: number;
+    topic_index: number;
+};
+
 export type AddressLogEvent = {
     name: string;
     signature: string;
+    event_id: Hash;
+    anonymous: boolean;
+    indexed_fields: Array<EventIndexedField>;
 };
 
 export type AddressLogListResponse = {
@@ -4744,17 +4758,29 @@ export type ListAddressLogsData = {
         cursor?: OpaqueCursor;
         limit?: number;
         /**
-         * Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+         * Published historical signature; mutually exclusive with event_id. All supplied topics are ANDed.
          */
         event_signature?: string;
         /**
-         * Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+         * Exact historical event definition ID, mutually exclusive with event_signature. Topic positions must belong to its indexed fields.
          */
-        topic_index?: number;
+        event_id?: Hash;
         /**
-         * Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+         * Exact 32-byte topic at position 0; all supplied positions are ANDed.
          */
-        topic?: Hash;
+        topic0?: Hash;
+        /**
+         * Exact 32-byte topic at position 1; all supplied positions are ANDed.
+         */
+        topic1?: Hash;
+        /**
+         * Exact 32-byte topic at position 2; all supplied positions are ANDed.
+         */
+        topic2?: Hash;
+        /**
+         * Exact 32-byte topic at position 3; all supplied positions are ANDed.
+         */
+        topic3?: Hash;
         /**
          * Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
          */
@@ -4793,6 +4819,10 @@ export type ListAddressLogEventsData = {
     query?: {
         cursor?: OpaqueCursor;
         limit?: number;
+        /**
+         * Return only this historical event definition within the selected range.
+         */
+        event_id?: Hash;
         /**
          * Case-insensitive event-name prefix.
          */

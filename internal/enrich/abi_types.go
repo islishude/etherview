@@ -180,17 +180,18 @@ type DecodedParameter struct {
 }
 
 type DecodeResult struct {
-	Status         DecodeStatus
-	Kind           ABIKind
-	Name           string
-	Signature      string
-	Source         ABISource
-	SourceAddress  common.Address
-	SourceCodeHash common.Hash
-	Confidence     Confidence
-	Arguments      []DecodedArgument
-	Candidates     []string
-	Warning        string
+	EventDefinition *abicontract.EventDefinition
+	Status          DecodeStatus
+	Kind            ABIKind
+	Name            string
+	Signature       string
+	Source          ABISource
+	SourceAddress   common.Address
+	SourceCodeHash  common.Hash
+	Confidence      Confidence
+	Arguments       []DecodedArgument
+	Candidates      []string
+	Warning         string
 }
 
 type ReturnStatus string

@@ -128,22 +128,37 @@ func (q *Queries) AddressLogDetail(ctx context.Context, arg AddressLogDetailPara
 	return i, err
 }
 
+const addressLogEventDefinition = `-- name: AddressLogEventDefinition :one
+SELECT s.definition FROM event_signatures s
+WHERE s.digest=$1::bytea
+ AND EXISTS (SELECT 1 FROM address_event_directory d WHERE d.signature_id=s.id AND d.chain_id=$2::numeric AND d.address=$3::bytea AND d.log_count>0)
+`
+
+func (q *Queries) AddressLogEventDefinition(ctx context.Context, eventID []byte, chainID pgtype.Numeric, address []byte) ([]byte, error) {
+	row := q.db.QueryRow(ctx, addressLogEventDefinition, eventID, chainID, address)
+	var definition []byte
+	err := row.Scan(&definition)
+	return definition, err
+}
+
 const addressLogEvents = `-- name: AddressLogEvents :many
-SELECT d.signature_id,COALESCE(s.name,'')::text AS name,s.signature,lower(left(d.name,128))::text AS sort_name
+SELECT d.signature_id,s.digest,s.definition,COALESCE(s.name,'')::text AS name,s.signature,lower(left(d.name,128))::text AS sort_name
 FROM address_event_directory d JOIN event_signatures s ON s.id=d.signature_id
 WHERE d.chain_id=$1::numeric AND d.address=$2::bytea AND d.log_count>0
- AND lower(left(d.name,128)) LIKE $3::text ESCAPE '\'
- AND (lower(left(d.name,128)),d.signature_id)>(COALESCE((SELECT lower(left(name,128)) FROM event_signatures WHERE id=$4::bigint),''),$4::bigint)
+ AND ($3::bytea IS NULL OR s.digest=$3::bytea)
+ AND lower(left(d.name,128)) LIKE $4::text ESCAPE '\'
+ AND (lower(left(d.name,128)),d.signature_id)>(COALESCE((SELECT lower(left(name,128)) FROM event_signatures WHERE id=$5::bigint),''),$5::bigint)
  AND EXISTS (SELECT 1 FROM address_event_blocks b
  JOIN canonical_blocks c ON c.chain_id=b.chain_id AND c.number=b.block_number AND c.block_hash=b.block_hash
  JOIN published_block_stage_results p ON p.chain_id=b.chain_id AND p.block_number=b.block_number AND p.block_hash=b.block_hash AND p.stage='abi' AND p.stage_version=5 AND p.state='complete'
- WHERE b.chain_id=d.chain_id AND b.address=d.address AND b.signature_id=d.signature_id AND b.block_number<=$5::numeric AND b.block_number>=$6::numeric)
-ORDER BY lower(left(d.name,128)),d.signature_id LIMIT $7::integer
+ WHERE b.chain_id=d.chain_id AND b.address=d.address AND b.signature_id=d.signature_id AND b.block_number<=$6::numeric AND b.block_number>=$7::numeric)
+ORDER BY lower(left(d.name,128)),d.signature_id LIMIT $8::integer
 `
 
 type AddressLogEventsParams struct {
 	ChainID        pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	Address        []byte         `db:"address" json:"address"`
+	EventID        []byte         `db:"event_id" json:"event_id"`
 	NamePrefix     string         `db:"name_prefix" json:"name_prefix"`
 	AfterID        int64          `db:"after_id" json:"after_id"`
 	SnapshotNumber pgtype.Numeric `db:"snapshot_number" json:"snapshot_number"`
@@ -153,6 +168,8 @@ type AddressLogEventsParams struct {
 
 type AddressLogEventsRow struct {
 	SignatureID int64  `db:"signature_id" json:"signature_id"`
+	Digest      []byte `db:"digest" json:"digest"`
+	Definition  []byte `db:"definition" json:"definition"`
 	Name        string `db:"name" json:"name"`
 	Signature   string `db:"signature" json:"signature"`
 	SortName    string `db:"sort_name" json:"sort_name"`
@@ -162,6 +179,7 @@ func (q *Queries) AddressLogEvents(ctx context.Context, arg AddressLogEventsPara
 	rows, err := q.db.Query(ctx, addressLogEvents,
 		arg.ChainID,
 		arg.Address,
+		arg.EventID,
 		arg.NamePrefix,
 		arg.AfterID,
 		arg.SnapshotNumber,
@@ -177,6 +195,8 @@ func (q *Queries) AddressLogEvents(ctx context.Context, arg AddressLogEventsPara
 		var i AddressLogEventsRow
 		if err := rows.Scan(
 			&i.SignatureID,
+			&i.Digest,
+			&i.Definition,
 			&i.Name,
 			&i.Signature,
 			&i.SortName,
@@ -273,9 +293,13 @@ WITH selected AS MATERIALIZED (
  FROM address_event_logs l
  WHERE l.chain_id=$1::numeric AND l.address=$2::bytea
   AND l.block_number<=$3::numeric AND l.block_number>=$4::numeric
-  AND (l.block_number,l.tx_index,l.log_index)<($5::numeric,$6::bigint,$7::bigint) AND l.signature_id=(SELECT id FROM event_signatures WHERE digest=sha256(convert_to($8::text,'UTF8')) AND signature=$8::text) AND (SELECT p.state FROM published_block_stage_results p WHERE p.chain_id=l.chain_id AND p.block_number=l.block_number AND p.block_hash=l.block_hash AND p.stage='abi' AND p.stage_version=5 LIMIT 1)='complete'
+  AND (l.block_number,l.tx_index,l.log_index)<($5::numeric,$6::bigint,$7::bigint) AND l.signature_id = ANY (ARRAY(SELECT id FROM event_signatures WHERE ($8::text='' OR (signature_digest=sha256(convert_to($8::text,'UTF8')) AND signature=$8::text)) AND ($9::bytea IS NULL OR digest=$9::bytea))) AND (SELECT true FROM logs raw WHERE raw.chain_id=l.chain_id AND raw.block_number=l.block_number AND raw.block_hash=l.block_hash AND raw.log_index=l.log_index
+ AND ($10::bytea IS NULL OR raw.topic0=$10::bytea)
+ AND ($11::bytea IS NULL OR raw.topic1=$11::bytea)
+ AND ($12::bytea IS NULL OR raw.topic2=$12::bytea)
+ AND ($13::bytea IS NULL OR raw.topic3=$13::bytea)) AND (SELECT p.state FROM published_block_stage_results p WHERE p.chain_id=l.chain_id AND p.block_number=l.block_number AND p.block_hash=l.block_hash AND p.stage='abi' AND p.stage_version=5 LIMIT 1)='complete'
   AND l.block_hash=(SELECT c.block_hash FROM canonical_blocks c WHERE c.chain_id=l.chain_id AND c.number=l.block_number)
- ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $9::integer
+ ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $14::integer
 )
 SELECT s.block_number::text AS block_number,s.block_hash,
  (SELECT l.tx_hash FROM logs l WHERE l.chain_id=s.chain_id AND l.block_number=s.block_number AND l.block_hash=s.block_hash AND l.log_index=s.log_index) AS tx_hash,
@@ -294,6 +318,11 @@ type AddressLogsSignatureParams struct {
 	BeforeTx       int64          `db:"before_tx" json:"before_tx"`
 	BeforeLog      int64          `db:"before_log" json:"before_log"`
 	Signature      string         `db:"signature" json:"signature"`
+	EventID        []byte         `db:"event_id" json:"event_id"`
+	Topic0         []byte         `db:"topic0" json:"topic0"`
+	Topic1         []byte         `db:"topic1" json:"topic1"`
+	Topic2         []byte         `db:"topic2" json:"topic2"`
+	Topic3         []byte         `db:"topic3" json:"topic3"`
 	PageLimit      int32          `db:"page_limit" json:"page_limit"`
 }
 
@@ -316,6 +345,11 @@ func (q *Queries) AddressLogsSignature(ctx context.Context, arg AddressLogsSigna
 		arg.BeforeTx,
 		arg.BeforeLog,
 		arg.Signature,
+		arg.EventID,
+		arg.Topic0,
+		arg.Topic1,
+		arg.Topic2,
+		arg.Topic3,
 		arg.PageLimit,
 	)
 	if err != nil {
@@ -350,8 +384,12 @@ WITH selected AS MATERIALIZED (
  WHERE l.chain_id=$1::numeric AND l.address=$2::bytea
   AND l.block_number<=$3::numeric AND l.block_number>=$4::numeric
   AND (l.block_number,l.tx_index,l.log_index)<($5::numeric,$6::bigint,$7::bigint) AND l.topic0=$8::bytea
+  AND ($9::bytea IS NULL OR l.topic0=$9::bytea)
+  AND ($10::bytea IS NULL OR l.topic1=$10::bytea)
+  AND ($11::bytea IS NULL OR l.topic2=$11::bytea)
+  AND ($12::bytea IS NULL OR l.topic3=$12::bytea)
   AND l.block_hash=(SELECT c.block_hash FROM canonical_blocks c WHERE c.chain_id=l.chain_id AND c.number=l.block_number)
- ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $9::integer
+ ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $13::integer
 )
 SELECT s.block_number::text AS block_number,s.block_hash,
  (SELECT l.tx_hash FROM logs l WHERE l.chain_id=s.chain_id AND l.block_number=s.block_number AND l.block_hash=s.block_hash AND l.log_index=s.log_index) AS tx_hash,
@@ -370,6 +408,10 @@ type AddressLogsTopic0Params struct {
 	BeforeTx       int64          `db:"before_tx" json:"before_tx"`
 	BeforeLog      int64          `db:"before_log" json:"before_log"`
 	Topic          []byte         `db:"topic" json:"topic"`
+	Topic0         []byte         `db:"topic0" json:"topic0"`
+	Topic1         []byte         `db:"topic1" json:"topic1"`
+	Topic2         []byte         `db:"topic2" json:"topic2"`
+	Topic3         []byte         `db:"topic3" json:"topic3"`
 	PageLimit      int32          `db:"page_limit" json:"page_limit"`
 }
 
@@ -392,6 +434,10 @@ func (q *Queries) AddressLogsTopic0(ctx context.Context, arg AddressLogsTopic0Pa
 		arg.BeforeTx,
 		arg.BeforeLog,
 		arg.Topic,
+		arg.Topic0,
+		arg.Topic1,
+		arg.Topic2,
+		arg.Topic3,
 		arg.PageLimit,
 	)
 	if err != nil {
@@ -426,8 +472,12 @@ WITH selected AS MATERIALIZED (
  WHERE l.chain_id=$1::numeric AND l.address=$2::bytea
   AND l.block_number<=$3::numeric AND l.block_number>=$4::numeric
   AND (l.block_number,l.tx_index,l.log_index)<($5::numeric,$6::bigint,$7::bigint) AND l.topic1=$8::bytea
+  AND ($9::bytea IS NULL OR l.topic0=$9::bytea)
+  AND ($10::bytea IS NULL OR l.topic1=$10::bytea)
+  AND ($11::bytea IS NULL OR l.topic2=$11::bytea)
+  AND ($12::bytea IS NULL OR l.topic3=$12::bytea)
   AND l.block_hash=(SELECT c.block_hash FROM canonical_blocks c WHERE c.chain_id=l.chain_id AND c.number=l.block_number)
- ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $9::integer
+ ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $13::integer
 )
 SELECT s.block_number::text AS block_number,s.block_hash,
  (SELECT l.tx_hash FROM logs l WHERE l.chain_id=s.chain_id AND l.block_number=s.block_number AND l.block_hash=s.block_hash AND l.log_index=s.log_index) AS tx_hash,
@@ -446,6 +496,10 @@ type AddressLogsTopic1Params struct {
 	BeforeTx       int64          `db:"before_tx" json:"before_tx"`
 	BeforeLog      int64          `db:"before_log" json:"before_log"`
 	Topic          []byte         `db:"topic" json:"topic"`
+	Topic0         []byte         `db:"topic0" json:"topic0"`
+	Topic1         []byte         `db:"topic1" json:"topic1"`
+	Topic2         []byte         `db:"topic2" json:"topic2"`
+	Topic3         []byte         `db:"topic3" json:"topic3"`
 	PageLimit      int32          `db:"page_limit" json:"page_limit"`
 }
 
@@ -468,6 +522,10 @@ func (q *Queries) AddressLogsTopic1(ctx context.Context, arg AddressLogsTopic1Pa
 		arg.BeforeTx,
 		arg.BeforeLog,
 		arg.Topic,
+		arg.Topic0,
+		arg.Topic1,
+		arg.Topic2,
+		arg.Topic3,
 		arg.PageLimit,
 	)
 	if err != nil {
@@ -502,8 +560,12 @@ WITH selected AS MATERIALIZED (
  WHERE l.chain_id=$1::numeric AND l.address=$2::bytea
   AND l.block_number<=$3::numeric AND l.block_number>=$4::numeric
   AND (l.block_number,l.tx_index,l.log_index)<($5::numeric,$6::bigint,$7::bigint) AND l.topic2=$8::bytea
+  AND ($9::bytea IS NULL OR l.topic0=$9::bytea)
+  AND ($10::bytea IS NULL OR l.topic1=$10::bytea)
+  AND ($11::bytea IS NULL OR l.topic2=$11::bytea)
+  AND ($12::bytea IS NULL OR l.topic3=$12::bytea)
   AND l.block_hash=(SELECT c.block_hash FROM canonical_blocks c WHERE c.chain_id=l.chain_id AND c.number=l.block_number)
- ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $9::integer
+ ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $13::integer
 )
 SELECT s.block_number::text AS block_number,s.block_hash,
  (SELECT l.tx_hash FROM logs l WHERE l.chain_id=s.chain_id AND l.block_number=s.block_number AND l.block_hash=s.block_hash AND l.log_index=s.log_index) AS tx_hash,
@@ -522,6 +584,10 @@ type AddressLogsTopic2Params struct {
 	BeforeTx       int64          `db:"before_tx" json:"before_tx"`
 	BeforeLog      int64          `db:"before_log" json:"before_log"`
 	Topic          []byte         `db:"topic" json:"topic"`
+	Topic0         []byte         `db:"topic0" json:"topic0"`
+	Topic1         []byte         `db:"topic1" json:"topic1"`
+	Topic2         []byte         `db:"topic2" json:"topic2"`
+	Topic3         []byte         `db:"topic3" json:"topic3"`
 	PageLimit      int32          `db:"page_limit" json:"page_limit"`
 }
 
@@ -544,6 +610,10 @@ func (q *Queries) AddressLogsTopic2(ctx context.Context, arg AddressLogsTopic2Pa
 		arg.BeforeTx,
 		arg.BeforeLog,
 		arg.Topic,
+		arg.Topic0,
+		arg.Topic1,
+		arg.Topic2,
+		arg.Topic3,
 		arg.PageLimit,
 	)
 	if err != nil {
@@ -578,8 +648,12 @@ WITH selected AS MATERIALIZED (
  WHERE l.chain_id=$1::numeric AND l.address=$2::bytea
   AND l.block_number<=$3::numeric AND l.block_number>=$4::numeric
   AND (l.block_number,l.tx_index,l.log_index)<($5::numeric,$6::bigint,$7::bigint) AND l.topic3=$8::bytea
+  AND ($9::bytea IS NULL OR l.topic0=$9::bytea)
+  AND ($10::bytea IS NULL OR l.topic1=$10::bytea)
+  AND ($11::bytea IS NULL OR l.topic2=$11::bytea)
+  AND ($12::bytea IS NULL OR l.topic3=$12::bytea)
   AND l.block_hash=(SELECT c.block_hash FROM canonical_blocks c WHERE c.chain_id=l.chain_id AND c.number=l.block_number)
- ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $9::integer
+ ORDER BY l.block_number DESC,l.tx_index DESC,l.log_index DESC LIMIT $13::integer
 )
 SELECT s.block_number::text AS block_number,s.block_hash,
  (SELECT l.tx_hash FROM logs l WHERE l.chain_id=s.chain_id AND l.block_number=s.block_number AND l.block_hash=s.block_hash AND l.log_index=s.log_index) AS tx_hash,
@@ -598,6 +672,10 @@ type AddressLogsTopic3Params struct {
 	BeforeTx       int64          `db:"before_tx" json:"before_tx"`
 	BeforeLog      int64          `db:"before_log" json:"before_log"`
 	Topic          []byte         `db:"topic" json:"topic"`
+	Topic0         []byte         `db:"topic0" json:"topic0"`
+	Topic1         []byte         `db:"topic1" json:"topic1"`
+	Topic2         []byte         `db:"topic2" json:"topic2"`
+	Topic3         []byte         `db:"topic3" json:"topic3"`
 	PageLimit      int32          `db:"page_limit" json:"page_limit"`
 }
 
@@ -620,6 +698,10 @@ func (q *Queries) AddressLogsTopic3(ctx context.Context, arg AddressLogsTopic3Pa
 		arg.BeforeTx,
 		arg.BeforeLog,
 		arg.Topic,
+		arg.Topic0,
+		arg.Topic1,
+		arg.Topic2,
+		arg.Topic3,
 		arg.PageLimit,
 	)
 	if err != nil {

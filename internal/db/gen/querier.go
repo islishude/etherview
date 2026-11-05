@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AddressLogDetail(ctx context.Context, arg AddressLogDetailParams) (AddressLogDetailRow, error)
+	AddressLogEventDefinition(ctx context.Context, eventID []byte, chainID pgtype.Numeric, address []byte) ([]byte, error)
 	AddressLogEvents(ctx context.Context, arg AddressLogEventsParams) ([]AddressLogEventsRow, error)
 	// Materialize the ordered identity page before reading bodies. Correlated scalar
 	// lookups keep publication joins from driving an unbounded candidate sort.

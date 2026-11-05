@@ -431,15 +431,15 @@ test("event report links preserve complete signatures and positioned topics", (t
   );
   assert.equal(query.searchParams.get("from_block"), "9007199254740993");
   assert.equal(query.searchParams.get("to_block"), "9007199254740993");
-  assert.equal(query.searchParams.get("topic_index"), "3");
+  assert.equal(query.searchParams.has("topic3"), true);
   const report = publicReport(run.state).scenarios[0];
   const ranged = new URL(report.links.find((l) => l.label === "post-upgrade events").url);
   assert.equal(ranged.searchParams.get("from_block"), "9007199254740995");
   assert.equal(ranged.searchParams.get("to_block"), "9007199254740995");
   for (let i = 0; i < 4; i++) {
     const url = new URL(report.links.find((l) => l.label === "topic" + i).url);
-    assert.equal(url.searchParams.get("topic_index"), String(i));
-    assert.equal(url.searchParams.get("topic"), eventTopics[i]);
+    assert.equal(url.searchParams.has(`topic${i}`), true);
+    assert.equal(url.searchParams.get(`topic${i}`), eventTopics[i]);
     assert.equal(url.searchParams.get("log_mode"), "topic");
     assert.equal(url.searchParams.has("event_signature"), false);
   }

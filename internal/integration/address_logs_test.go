@@ -76,22 +76,31 @@ func TestAddressLogsTopicPaginationAndReorg(t *testing.T) {
 	}
 	for i, topic := range first.Items[0].Log.Topics {
 		r.Cursor = ""
-		r.TopicIndex = &i
-		r.Topic = topic
+		r.Topics = [4]string{}
+		r.Topics[i] = topic
 		page, err := reader.AddressLogs(ctx, r)
 		if err != nil || len(page.Items) != 1 {
 			t.Fatalf("topic%d=%+v err=%v", i, page, err)
 		}
 	}
-	third := 3
-	r.TopicIndex = &third
-	r.Topic = testHash(9).Hex()
+	r.Topics = [4]string{}
+	copy(r.Topics[:], first.Items[0].Log.Topics)
+	combined, err := reader.AddressLogs(ctx, r)
+	if err != nil || len(combined.Items) != 1 || combined.NextCursor == "" {
+		t.Fatal(combined, err)
+	}
+	r.Cursor = combined.NextCursor
+	r.Topics[1] = testHash(999).Hex()
+	if _, err = reader.AddressLogs(ctx, r); !errors.Is(err, catalog.ErrInvalidCursor) {
+		t.Fatal("cursor accepted changed AND predicate", err)
+	}
+	r.Cursor = ""
+	r.Topics = [4]string{"", "", "", testHash(9).Hex()}
 	page, err := reader.AddressLogs(ctx, r)
 	if err != nil || len(page.Items) != 0 {
 		t.Fatalf("absent topic3=%+v err=%v", page, err)
 	}
-	r.Topic = ""
-	r.TopicIndex = nil
+	r.Topics = [4]string{}
 	r.Address = testAddress(99).Hex()
 	page, err = reader.AddressLogs(ctx, r)
 	if err != nil || len(page.Items) != 0 {
@@ -131,7 +140,8 @@ func TestAddressLogsQueryPlansAcrossPartitions(t *testing.T) {
 		index string
 	}{
 		{"AddressLogsAll", []any{"1", address.Bytes(), "1000001", "1000000", "1000001", int64(1 << 62), int64(1 << 62), int32(26)}, "address"},
-		{"AddressLogsTopic3", []any{"1", address.Bytes(), "1000001", "1000000", "1000001", int64(1 << 62), int64(1 << 62), common.HexToHash("0x" + strings.Repeat("ab", 32)).Bytes(), int32(26)}, "topic3"},
+		{"AddressLogsTopic3", []any{"1", address.Bytes(), "1000001", "1000000", "1000001", int64(1 << 62), int64(1 << 62), common.HexToHash("0x" + strings.Repeat("ab", 32)).Bytes(), nil, nil, nil, nil, int32(26)}, "topic3"},
+		{"AddressLogsTopic3", []any{"1", address.Bytes(), "1000001", "1000000", "1000001", int64(1 << 62), int64(1 << 62), common.HexToHash("0x" + strings.Repeat("ab", 32)).Bytes(), nil, common.LeftPadBytes(testAddress(31).Bytes(), 32), nil, nil, int32(26)}, "topic3"},
 	} {
 		rows, err := db.Query(ctx, "EXPLAIN (ANALYZE, BUFFERS) "+testpgx.Statement(test.name), test.args...)
 		if err != nil {
@@ -227,8 +237,7 @@ func TestAddressLogsPublishedDirectoryAndReplay(t *testing.T) {
 	if err != nil || len(hidden.Items) != 1 || len(hidden.Items[0].Log.Topics) != 0 || hidden.NextCursor == "" {
 		t.Fatalf("anonymous logs=%+v err=%v", hidden, err)
 	}
-	position := 3
-	topicPage, err := reader.AddressLogs(ctx, catalog.AddressLogRequest{ChainID: "1", Address: address.Hex(), TopicIndex: &position, Topic: testHash(43).Hex()})
+	topicPage, err := reader.AddressLogs(ctx, catalog.AddressLogRequest{ChainID: "1", Address: address.Hex(), Topics: [4]string{"", "", "", testHash(43).Hex()}})
 	if err != nil || len(topicPage.Items) != 2 {
 		t.Fatalf("topic3=%+v err=%v", topicPage, err)
 	}
@@ -242,8 +251,8 @@ func TestAddressLogsPublishedDirectoryAndReplay(t *testing.T) {
 		name string
 		args []any
 	}{
-		{"AddressLogEvents", []any{"1", address.Bytes(), "%", int64(0), "2", "0", int32(25)}},
-		{"AddressLogsSignature", []any{"1", address.Bytes(), "2", "0", "2", int64(1 << 62), int64(1 << 62), "Changed(uint256)", int32(26)}},
+		{"AddressLogEvents", []any{"1", address.Bytes(), nil, "%", int64(0), "2", "0", int32(25)}},
+		{"AddressLogsSignature", []any{"1", address.Bytes(), "2", "0", "2", int64(1 << 62), int64(1 << 62), "Changed(uint256)", nil, nil, nil, nil, nil, int32(26)}},
 	} {
 		rows, err := db.Query(ctx, "EXPLAIN (ANALYZE, BUFFERS) "+testpgx.Statement(test.name), test.args...)
 		if err != nil {
@@ -283,7 +292,7 @@ func TestAddressLogsPublishedDirectoryAndReplay(t *testing.T) {
 	}
 	rangedLogs.Cursor = logsBefore.NextCursor
 	for position, topic := range topicPage.Items[0].Log.Topics {
-		page, err := reader.AddressLogs(ctx, catalog.AddressLogRequest{ChainID: "1", Address: address.Hex(), FromBlock: "1", ToBlock: "1", TopicIndex: &position, Topic: topic})
+		page, err := reader.AddressLogs(ctx, catalog.AddressLogRequest{ChainID: "1", Address: address.Hex(), FromBlock: "1", ToBlock: "1", Topics: func() [4]string { var result [4]string; result[position] = topic; return result }()})
 		if err != nil || len(page.Items) != 1 || page.Items[0].BlockNumber != "1" {
 			t.Fatal("ranged topic", position, page, err)
 		}

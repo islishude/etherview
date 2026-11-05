@@ -73,6 +73,7 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T27 | done   | P20-T27                            | Database-only ENS publications, name details/search and transaction-grouped history with independent profile/resolution validity and bounded event cursors                             | Read-only HTTP/query, unknown/expired names, publication/canonical/association snapshots, generation and PostgreSQL race |
 | P40-T33 | done   | P40-T07, P40-T25                   | Indexed address event logs, historical event directory, topic0–3 search and publication-fenced pagination                                                                              | Publication/replay/reorg, partition, indexed-query, generation and production all/split checks                           |
 | P40-T34 | done   | P40-T33                            | Inclusive address-log block ranges and range-scoped event directory, coverage and cursors                                                                                              | Inclusive ranges, revision/cursor isolation, indexed plans, integration race and all/split runtime                       |
+| P40-T35 | done   | P40-T34                            | Multi-topic AND filters and publication-bound historical event definitions with recursive indexed ABI metadata                                                                         | Typed encoding, historical identity, pagination, database/browser and all/split acceptance                               |
 
 ## Acceptance
 
@@ -107,8 +108,9 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
       authorization and SSRF validation remain independent.
 - [x] Monolith/split API components, writer fences and public results agree.
 
-- [x] Contract event logs retain raw Core coverage, exact topic0–3/keyset filters,
-      historical published signature membership and independent ABI coverage;
+- [x] Contract event logs retain raw Core coverage, exact topic0–3 AND/keyset filters,
+      historical definition membership with recursive indexed ABI metadata and
+      independent ABI coverage. Definition filters reject non-indexed positions;
       replay/reorg/reattach update the compact event directory atomically.
 
 ## Current Blockers
@@ -172,3 +174,15 @@ regressions, interval-scoped revision/cursor checks, full PostgreSQL race and
 production schema/all/split gates. Cross-partition plans retained bounded index
 reads and partition pruning; directory reads used published block contributions.
 No new schema or startup backfill was added. Measurements remain local fixtures.
+
+P40-T35 passed on 2026-11-05 in the working tree based on `e8886e54`
+(macOS arm64, PostgreSQL 18, Docker linux/arm64). `make check`,
+`make test-integration-race` (all seven packages), `make test-schema-e2e` and
+`make test-runtime-e2e` passed, including monolith/distributed and x402 checks.
+The production image was
+`sha256:f2e457a65a7df9cc82617342abd1c09f8fd2730294dea3ae31319694ae33c3dc`.
+Regressions cover AND predicates before pagination, cursor binding, indexed-only
+positions, historical layouts sharing a signature, publication/reorg/replay and
+ordered cross-partition query plans. Independent Solidity logs pass through the
+real ABI worker to verify definition identity and exact result membership.
+These are local feature gates, not P70 production capacity or live-chain coverage.

@@ -175,3 +175,15 @@ retain cross-partition ranges and exact identity materialization. Frontend tests
 cover draft-only edits, URL restoration, in-popup search/loading/pagination,
 keyboard focus, late responses and expandable summaries. Production all/split
 checks compare exact-block logs and directory contribution membership.
+
+P40-T35/P50-T88 add AND combinations, definition-scoped indexed positions and
+recursive ABI inputs. `TestAddressLogsSolidityIndexedDefinitions` publishes the
+independent Solidity log fixture through the real ABI worker and queries exact
+result membership. `web/src/contracts/eventTopics.test.ts` compares browser
+encoding with those emitted topics, including empty and nested values. Regenerate
+the fixture with `go run ./e2e/cmd/eventfixture` using the pinned compiler; its
+Solidity source remains in `internal/enrich/testdata/indexed-events/`; the shared
+JSON (including runtime bytecode) lives in `web/src/contracts/fixtures/`. Browser tests also retain
+Read/Write Contract editor regressions, add/remove focus, typed values, hash-only
+URL restoration and bilingual mobile acceptance. These local fixtures do not
+establish P70 production capacity.

@@ -4103,8 +4103,13 @@ type AddressLog struct {
 
 // AddressLogEvent defines model for AddressLogEvent.
 type AddressLogEvent struct {
-	Name      string `json:"name"`
-	Signature string `json:"signature"`
+	Anonymous bool `json:"anonymous"`
+
+	// EventId A 32-byte hash; responses use normalized lowercase hexadecimal.
+	EventId       Hash                `json:"event_id"`
+	IndexedFields []EventIndexedField `json:"indexed_fields"`
+	Name          string              `json:"name"`
+	Signature     string              `json:"signature"`
 }
 
 // AddressLogEventListResponse defines model for AddressLogEventListResponse.
@@ -5776,6 +5781,22 @@ type ERC20BalanceListResponse struct {
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
 	Error APIError `json:"error"`
+}
+
+// EventIndexedField defines model for EventIndexedField.
+type EventIndexedField struct {
+	Components     *[]EventParameter `json:"components,omitempty"`
+	Name           string            `json:"name"`
+	ParameterIndex int               `json:"parameter_index"`
+	TopicIndex     int               `json:"topic_index"`
+	Type           string            `json:"type"`
+}
+
+// EventParameter defines model for EventParameter.
+type EventParameter struct {
+	Components *[]EventParameter `json:"components,omitempty"`
+	Name       string            `json:"name"`
+	Type       string            `json:"type"`
 }
 
 // ExecutionRequest defines model for ExecutionRequest.
@@ -8368,6 +8389,9 @@ type ListAddressLogEventsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 
+	// EventId Return only this historical event definition within the selected range.
+	EventId *Hash `form:"event_id,omitempty" json:"event_id,omitempty"`
+
 	// Name Case-insensitive event-name prefix.
 	Name *string `form:"name,omitempty" json:"name,omitempty"`
 
@@ -8383,14 +8407,23 @@ type ListAddressLogsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// EventSignature Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
+	// EventSignature Published historical signature; mutually exclusive with event_id. All supplied topics are ANDed.
 	EventSignature *string `form:"event_signature,omitempty" json:"event_signature,omitempty"`
 
-	// TopicIndex Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
-	TopicIndex *int `form:"topic_index,omitempty" json:"topic_index,omitempty"`
+	// EventId Exact historical event definition ID, mutually exclusive with event_signature. Topic positions must belong to its indexed fields.
+	EventId *Hash `form:"event_id,omitempty" json:"event_id,omitempty"`
 
-	// Topic Event signature and positioned topic filters are mutually exclusive; topic and topic_index must be supplied together.
-	Topic *Hash `form:"topic,omitempty" json:"topic,omitempty"`
+	// Topic0 Exact 32-byte topic at position 0; all supplied positions are ANDed.
+	Topic0 *Hash `form:"topic0,omitempty" json:"topic0,omitempty"`
+
+	// Topic1 Exact 32-byte topic at position 1; all supplied positions are ANDed.
+	Topic1 *Hash `form:"topic1,omitempty" json:"topic1,omitempty"`
+
+	// Topic2 Exact 32-byte topic at position 2; all supplied positions are ANDed.
+	Topic2 *Hash `form:"topic2,omitempty" json:"topic2,omitempty"`
+
+	// Topic3 Exact 32-byte topic at position 3; all supplied positions are ANDed.
+	Topic3 *Hash `form:"topic3,omitempty" json:"topic3,omitempty"`
 
 	// FromBlock Inclusive lower block bound, default 0. Must not exceed an explicitly supplied to_block.
 	FromBlock *Quantity `form:"from_block,omitempty" json:"from_block,omitempty"`

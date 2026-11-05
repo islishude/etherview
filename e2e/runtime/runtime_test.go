@@ -1489,9 +1489,24 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		}
 		if len(item.Log.Topics) > 0 {
 			var filtered gen.AddressLogListResponse
-			h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?topic_index=0&topic="+item.Log.Topics[0], &filtered)
+			h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?topic0="+item.Log.Topics[0], &filtered)
 			if len(filtered.Data) == 0 {
 				h.t.Fatal("positioned topic filter lost its source log")
+			}
+			query := url.Values{}
+			for position, topic := range item.Log.Topics {
+				query.Set("topic"+strconv.Itoa(position), topic)
+			}
+			h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?"+query.Encode(), &filtered)
+			if len(filtered.Data) == 0 {
+				h.t.Fatal("combined topic filter lost source log")
+			}
+			for _, row := range filtered.Data {
+				for position, topic := range item.Log.Topics {
+					if len(row.Log.Topics) <= position || row.Log.Topics[position] != topic {
+						h.t.Fatal("combined topic predicate ignored")
+					}
+				}
 			}
 			break
 		}
@@ -1501,6 +1516,16 @@ func (h *harness) captureAPI(ctx context.Context) apiSnapshot {
 		h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?event_signature="+url.QueryEscape(event.Signature), &filtered)
 		if len(filtered.Data) == 0 {
 			h.t.Fatalf("event directory has no contributing logs: %s", event.Signature)
+		}
+
+		query := url.Values{"event_id": {event.EventId}}
+		source := filtered.Data[0]
+		for _, field := range event.IndexedFields {
+			query.Set("topic"+strconv.Itoa(field.TopicIndex), source.Log.Topics[field.TopicIndex])
+		}
+		h.mustGetJSON(ctx, "/api/v1/addresses/"+h.fixture.entryPoint+"/logs?"+query.Encode(), &filtered)
+		if len(filtered.Data) == 0 {
+			h.t.Fatal("definition and indexed values lost source log")
 		}
 	}
 

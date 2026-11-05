@@ -663,11 +663,11 @@ INSERT INTO abi_decodings (
 			chain_id, block_number, block_hash, object_kind, transaction_hash,
 			object_index, target_address, target_code_hash, abi_kind, status,
 			signature, source, confidence, source_address, source_code_hash,
-			arguments, candidates, warning, return_status, return_arguments,
+			event_definition, arguments, candidates, warning, return_status, return_arguments,
 			decoding_kind, canonical
 		) VALUES (
 			sqlc.arg('chain_id')::numeric, sqlc.arg('block_number')::numeric, sqlc.arg('block_hash'), sqlc.arg('object_kind'), sqlc.arg('transaction_hash'), sqlc.arg('object_index'), sqlc.arg('target_address'), sqlc.arg('target_code_hash'), sqlc.arg('abi_kind'), sqlc.arg('status'),
-			sqlc.narg('signature'), sqlc.narg('source'), sqlc.narg('confidence'), sqlc.arg('source_address'), sqlc.arg('source_code_hash'), sqlc.arg('arguments')::jsonb, sqlc.arg('candidates')::jsonb, sqlc.arg('warning'),
+			sqlc.narg('signature'), sqlc.narg('source'), sqlc.narg('confidence'), sqlc.arg('source_address'), sqlc.arg('source_code_hash'), sqlc.narg('event_definition')::jsonb, sqlc.arg('arguments')::jsonb, sqlc.arg('candidates')::jsonb, sqlc.arg('warning'),
 			sqlc.arg('return_status'), sqlc.arg('return_arguments')::jsonb, sqlc.arg('decoding_kind'), TRUE
 		);
 
