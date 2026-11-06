@@ -60,6 +60,9 @@ services:
         "-c",
         "log_line_prefix=%m [%p] %d %a %e ",
       ]
+    healthcheck:
+      # Keep probe sessions outside the database observed by the deadlock gate.
+      test: ["CMD-SHELL", "pg_isready -U etherview -d postgres"]
     ports:
       - target: 5432
         published: "0"

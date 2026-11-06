@@ -18,7 +18,8 @@ services:
       POSTGRES_USER: etherview
       POSTGRES_PASSWORD: etherview-integration
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U etherview -d etherview"]
+      # Keep probe sessions outside the database observed by the deadlock gate.
+      test: ["CMD-SHELL", "pg_isready -U etherview -d postgres"]
       interval: 1s
       timeout: 3s
       retries: 30

@@ -26,6 +26,21 @@ function assertApplicationPaths(service, config) {
   assert.equal(mounts[0].read_only, true);
 }
 
+test("deadlock-gated databases keep health probes in the maintenance database", () => {
+  for (const files of [
+    ["e2e/integration/compose.yaml"],
+    ["deploy/compose.yaml", "e2e/runtime/compose.yaml"],
+  ]) {
+    const config = render(["--project-directory", root, ...files.flatMap((file) => ["-f", file])]);
+    const postgres = config.services.postgres;
+    assert.notEqual(postgres.environment.POSTGRES_DB, "postgres");
+    assert.deepEqual(postgres.healthcheck.test, [
+      "CMD-SHELL",
+      "pg_isready -U etherview -d postgres",
+    ]);
+  }
+});
+
 test("push private keys reach only the sending role in deployment", (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-push-compose-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
