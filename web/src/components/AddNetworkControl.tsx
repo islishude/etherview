@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -76,14 +77,15 @@ export function AddNetworkControl({ menuOpen }: AddNetworkControlProps) {
         <strong id="wallet-network-title">{t("common.chain")}</strong>
         <span className="quiet">{chainName}</span>
       </div>
-      <button
+      <Button
+        variant="outline"
         className="button secondary full add-network-button"
         disabled={wallet.addingChain || (!wallet.active && wallet.providers.length === 0)}
         onClick={start}
         type="button"
       >
         {t("wallet.addNetwork", { chain: chainName })}
-      </button>
+      </Button>
       {choosing && wallet.providers.length > 1 ? (
         <div
           aria-label={t("wallet.addNetworkChoose", { chain: chainName })}
@@ -91,7 +93,8 @@ export function AddNetworkControl({ menuOpen }: AddNetworkControlProps) {
           role="group"
         >
           {wallet.providers.slice(0, 32).map((provider) => (
-            <button
+            <Button
+              variant="ghost"
               className="add-network-option"
               disabled={wallet.addingChain}
               key={provider.uuid}
@@ -105,7 +108,7 @@ export function AddNetworkControl({ menuOpen }: AddNetworkControlProps) {
                 <strong>{provider.name}</strong>
                 <small>{provider.rdns}</small>
               </span>
-            </button>
+            </Button>
           ))}
         </div>
       ) : null}

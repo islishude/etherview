@@ -284,31 +284,6 @@
   font-weight: 900;
 }
 
-.button {
-  min-height: 2.55rem;
-  padding: 0.65rem 1rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.button:disabled {
-  cursor: not-allowed;
-  opacity: 0.48;
-}
-
-.button.primary {
-  color: var(--on-brand);
-  background: var(--brand-strong);
-}
-
-.button.secondary {
-  color: var(--text);
-  background: var(--surface-raised);
-  border-color: var(--line);
-}
-
 .button.full {
   width: 100%;
 }
@@ -457,14 +432,6 @@
 .auth-action-panel .siwe-login-control {
   flex: 0 1 22rem;
   width: min(100%, 22rem);
-}
-
-.button.primary:hover:not(:disabled) {
-  background: var(--brand);
-}
-.button.secondary:hover:not(:disabled) {
-  background: var(--surface-strong);
-  border-color: var(--line-strong);
 }
 
 .search-name-result {

@@ -1,3 +1,5 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useState } from "react";
@@ -210,14 +212,15 @@ export function BrowserPushPanel() {
           {active ? <UIIcon icon={BellRing} size={20} /> : <UIIcon icon={Bell} size={20} />}
         </span>
         <h3>{t("browserPush.title")}</h3>
-        <span className={`browser-push-badge${active ? " is-active" : ""}`}>
+        <Badge variant="status" className={`browser-push-badge${active ? " is-active" : ""}`}>
           {t(`browserPush.${badge}`)}
-        </span>
+        </Badge>
       </div>
       <p id="browser-push-status" role="status">
         {t(`browserPush.${status}`)}
       </p>
-      <button
+      <Button
+        variant="outline"
         className="button secondary inline-button account-action browser-push-action"
         type="button"
         aria-describedby="browser-push-status"
@@ -240,7 +243,7 @@ export function BrowserPushPanel() {
                 ? "browserPush.enable"
                 : "browserPush.allow",
         )}
-      </button>
+      </Button>
       {query.isError && <p role="alert">{t("browserPush.error")}</p>}
       {error && <Message type="error">{t("browserPush.error")}</Message>}
     </section>

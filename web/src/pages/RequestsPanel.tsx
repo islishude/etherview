@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { UIIcon } from "@/components/UIIcon";
 import "@/styles/explorer/requests.css";
 import i18n from "@/i18n";
@@ -152,99 +153,101 @@ export function RequestsPanel({ hash }: { hash: string }) {
   const query = useBlockRequests(hash, type, pager.request);
   const data = query.data?.data;
   return (
-    <section
-      className="panel transaction-tab-panel requests-panel"
-      role="tabpanel"
-      aria-label={t("blockTabs.requests")}
-    >
-      <header className="requests-heading">
-        <div className="requests-heading-title">
-          <span className="requests-heading-icon" aria-hidden="true">
-            <UIIcon icon={Layers} size={24} />
-          </span>
-          <div>
-            <h2>{t("requests.heading")}</h2>
-            <p>{t("requests.subtitle")}</p>
-          </div>
-        </div>
-        {data?.state === "complete" && !query.error && (
-          <span className="requests-included">{t("requests.included")}</span>
-        )}
-      </header>
-      <QueryNotice loading={query.isPending} error={query.error} onReset={pager.reset} compact />
-      {data && !query.error && (
-        <>
-          {data.state !== "complete" ? (
-            <div className="block-consensus-notice" role="status">
-              <strong>{t(`consensus.states.${data.state}`)}</strong>
-              {data.code && (
-                <p>
-                  {t(`consensus.codes.${data.code}`, { defaultValue: t("requests.unavailable") })}
-                </p>
-              )}
+    <Card asChild>
+      <section
+        className="panel transaction-tab-panel requests-panel"
+        role="tabpanel"
+        aria-label={t("blockTabs.requests")}
+      >
+        <header className="requests-heading">
+          <div className="requests-heading-title">
+            <span className="requests-heading-icon" aria-hidden="true">
+              <UIIcon icon={Layers} size={24} />
+            </span>
+            <div>
+              <h2>{t("requests.heading")}</h2>
+              <p>{t("requests.subtitle")}</p>
             </div>
-          ) : (
-            <>
-              <div className="requests-toolbar">
-                <RequestTypeFilter
-                  value={type}
-                  counts={data.counts}
-                  total={data.total}
-                  onChange={setType}
-                />
-                <span className="requests-total">
-                  {t("requests.total", { count: formatInteger(data.total, locale) })}
-                </span>
-              </div>
-              <p className="requests-context">
-                <UIIcon icon={Info} size={16} />
-                {t("requests.description")}
-              </p>
-              {data.items.length === 0 ? (
-                <div className="requests-empty">
-                  <UIIcon icon={Layers} size={24} />
-                  <p>{t("requests.empty")}</p>
-                </div>
-              ) : (
-                <div className="request-list">
-                  {data.items.map((item) => (
-                    <RequestDetails
-                      key={`${hash}:${item.request_type}:${item.sequence_index}`}
-                      item={item}
-                      locale={locale}
-                    />
-                  ))}
-                </div>
-              )}
-              <CursorPagination
-                busy={query.isFetching}
-                hasNext={Boolean(query.data?.meta.next_cursor)}
-                hasPrevious={pager.hasPrevious}
-                label={t("blockTabs.requests")}
-                onNext={() => pager.next(query.data?.meta.next_cursor)}
-                onPrevious={pager.previous}
-                page={pager.page}
-              />
-              <details className="block-consensus-details requests-technical">
-                <summary>
-                  <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
-                  {t("consensus.technicalDetails")}
-                </summary>
-                <dl className="block-consensus-detail-list">
-                  <Detail
-                    label={t("requests.hash")}
-                    value={<code className="mono-wrap">{data.requests_hash}</code>}
-                  />
-                  <Detail
-                    label={t("consensus.root")}
-                    value={<code className="mono-wrap">{data.beacon_root}</code>}
-                  />
-                </dl>
-              </details>
-            </>
+          </div>
+          {data?.state === "complete" && !query.error && (
+            <span className="requests-included">{t("requests.included")}</span>
           )}
-        </>
-      )}
-    </section>
+        </header>
+        <QueryNotice loading={query.isPending} error={query.error} onReset={pager.reset} compact />
+        {data && !query.error && (
+          <>
+            {data.state !== "complete" ? (
+              <div className="block-consensus-notice" role="status">
+                <strong>{t(`consensus.states.${data.state}`)}</strong>
+                {data.code && (
+                  <p>
+                    {t(`consensus.codes.${data.code}`, { defaultValue: t("requests.unavailable") })}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="requests-toolbar">
+                  <RequestTypeFilter
+                    value={type}
+                    counts={data.counts}
+                    total={data.total}
+                    onChange={setType}
+                  />
+                  <span className="requests-total">
+                    {t("requests.total", { count: formatInteger(data.total, locale) })}
+                  </span>
+                </div>
+                <p className="requests-context">
+                  <UIIcon icon={Info} size={16} />
+                  {t("requests.description")}
+                </p>
+                {data.items.length === 0 ? (
+                  <div className="requests-empty">
+                    <UIIcon icon={Layers} size={24} />
+                    <p>{t("requests.empty")}</p>
+                  </div>
+                ) : (
+                  <div className="request-list">
+                    {data.items.map((item) => (
+                      <RequestDetails
+                        key={`${hash}:${item.request_type}:${item.sequence_index}`}
+                        item={item}
+                        locale={locale}
+                      />
+                    ))}
+                  </div>
+                )}
+                <CursorPagination
+                  busy={query.isFetching}
+                  hasNext={Boolean(query.data?.meta.next_cursor)}
+                  hasPrevious={pager.hasPrevious}
+                  label={t("blockTabs.requests")}
+                  onNext={() => pager.next(query.data?.meta.next_cursor)}
+                  onPrevious={pager.previous}
+                  page={pager.page}
+                />
+                <details className="block-consensus-details requests-technical">
+                  <summary>
+                    <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+                    {t("consensus.technicalDetails")}
+                  </summary>
+                  <dl className="block-consensus-detail-list">
+                    <Detail
+                      label={t("requests.hash")}
+                      value={<code className="mono-wrap">{data.requests_hash}</code>}
+                    />
+                    <Detail
+                      label={t("consensus.root")}
+                      value={<code className="mono-wrap">{data.beacon_root}</code>}
+                    />
+                  </dl>
+                </details>
+              </>
+            )}
+          </>
+        )}
+      </section>
+    </Card>
   );
 }

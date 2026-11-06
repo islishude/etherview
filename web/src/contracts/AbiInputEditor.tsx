@@ -1,3 +1,7 @@
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 import type { AbiParameter, Address } from "viem";
 import { SelectControl } from "@/components/SelectControl";
@@ -29,7 +33,7 @@ export function AbiInputEditor({
   const inputID = `${formID}-${path.join("-")}`;
   if (node.kind === "scalar") {
     return (
-      <label className="abi-scalar-input" htmlFor={inputID}>
+      <Label className="abi-scalar-input" htmlFor={inputID}>
         <span className="abi-input-heading">
           <span>{label}</span>
           <small>{parameter.type}</small>
@@ -46,7 +50,7 @@ export function AbiInputEditor({
             <option value="false">false</option>
           </SelectControl>
         ) : parameter.type === "string" || parameter.type === "bytes" ? (
-          <textarea
+          <Textarea
             disabled={disabled}
             id={inputID}
             maxLength={
@@ -59,7 +63,7 @@ export function AbiInputEditor({
           />
         ) : parameter.type === "address" ? (
           <div className="abi-address-control">
-            <input
+            <Input
               disabled={disabled}
               id={inputID}
               maxLength={42}
@@ -68,7 +72,9 @@ export function AbiInputEditor({
               value={node.value}
             />
             {walletShortcut && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
                 aria-label={t("contracts.functions.useSelf")}
                 className="abi-self-button"
                 disabled={disabled || !selfAddress}
@@ -79,11 +85,11 @@ export function AbiInputEditor({
                 type="button"
               >
                 {t("contracts.functions.self")}
-              </button>
+              </Button>
             )}
           </div>
         ) : (
-          <input
+          <Input
             disabled={disabled}
             id={inputID}
             maxLength={parameter.type === "address" ? 42 : 160}
@@ -92,7 +98,7 @@ export function AbiInputEditor({
             value={node.value}
           />
         )}
-      </label>
+      </Label>
     );
   }
   if (node.kind === "tuple") {
@@ -150,7 +156,8 @@ export function AbiInputEditor({
             walletShortcut={walletShortcut}
           />
           {node.fixedLength === null ? (
-            <button
+            <Button
+              variant="ghost"
               className="button tertiary"
               disabled={disabled}
               onClick={() =>
@@ -162,12 +169,13 @@ export function AbiInputEditor({
               type="button"
             >
               {t("contracts.functions.removeArrayItem")}
-            </button>
+            </Button>
           ) : null}
         </div>
       ))}
       {node.fixedLength === null && node.items.length < ABI_LIMITS.dynamicArrayLength ? (
-        <button
+        <Button
+          variant="outline"
           className="button secondary"
           disabled={disabled}
           onClick={() => {
@@ -183,7 +191,7 @@ export function AbiInputEditor({
           type="button"
         >
           {t("contracts.functions.addArrayItem")}
-        </button>
+        </Button>
       ) : null}
     </fieldset>
   );

@@ -1,3 +1,17 @@
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { Alert } from "@/components/ui/alert";
+import { Pagination } from "@/components/ui/pagination";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useBrowsingInvalidated } from "@/api/browsingHooks";
 import NameCoverageNotice from "@/ens/NameCoverageNotice";
 import { expirationText } from "@/ens/nameDetails";
@@ -74,7 +88,11 @@ export function NFTTokenIDLink({
 
 export function FinalityBadge({ finality }: { finality: string }) {
   const { t } = useTranslation();
-  return <span className={`finality-badge ${finality}`}>{finalityLabel(finality, t)}</span>;
+  return (
+    <Badge variant="status" className={`finality-badge ${finality}`}>
+      {finalityLabel(finality, t)}
+    </Badge>
+  );
 }
 
 export function BlocksPage() {
@@ -92,38 +110,40 @@ export function BlocksPage() {
       )}
       {blocks.data && blocks.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.blocks")}>
-          <table className="blocks-table">
-            <caption className="sr-only">{t("context.canonicalBlocksOnly")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.block")}</th>
-                <th>{t("table.age")}</th>
-                <th className="numeric">{t("table.transactions")}</th>
-                <th className="numeric">{t("table.gas")}</th>
-                <th>{t("table.finality")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="blocks-table">
+            <TableCaption className="sr-only">{t("context.canonicalBlocksOnly")}</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("table.block")}</TableHead>
+                <TableHead>{t("table.age")}</TableHead>
+                <TableHead className="numeric">{t("table.transactions")}</TableHead>
+                <TableHead className="numeric">{t("table.gas")}</TableHead>
+                <TableHead className="text-right">{t("table.finality")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {blocks.data.items.map((block) => (
-                <tr key={block.hash}>
-                  <td>
+                <TableRow key={block.hash}>
+                  <TableCell>
                     <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
                       {formatInteger(block.number, locale)}
                     </Link>
                     <code className="table-secondary" title={block.hash}>
                       {shorten(block.hash)}
                     </code>
-                  </td>
-                  <td>{formatTimestamp(block.timestamp, locale)}</td>
-                  <td className="numeric">{formatInteger(block.transaction_count, locale)}</td>
-                  <td className="numeric">{formatInteger(block.gas_used, locale)}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{formatTimestamp(block.timestamp, locale)}</TableCell>
+                  <TableCell className="numeric">
+                    {formatInteger(block.transaction_count, locale)}
+                  </TableCell>
+                  <TableCell className="numeric">{formatInteger(block.gas_used, locale)}</TableCell>
+                  <TableCell className="text-right">
                     <FinalityBadge finality={block.finality} />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       {blocks.data && (
@@ -151,9 +171,11 @@ export function GenesisPage() {
   const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page title={t("page.genesis")} description={t("page.genesisDescription")}>
-      <p className="context-note" role="note">
-        {t("context.genesisAuthenticated")}
-      </p>
+      <Alert asChild>
+        <p className="context-note" role="note">
+          {t("context.genesisAuthenticated")}
+        </p>
+      </Alert>
       <QueryNotice loading={accounts.isPending} error={accounts.error} onReset={pager.reset} />
       {accounts.data?.items.length === 0 && (
         <p className="empty-result" role="status">
@@ -162,39 +184,41 @@ export function GenesisPage() {
       )}
       {accounts.data && accounts.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.genesis")}>
-          <table>
-            <caption className="sr-only">{t("context.genesisAuthenticated")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.address")}</th>
-                <th>{t("detail.type")}</th>
-                <th className="numeric">{t("table.balance", { symbol: nativeSymbol })}</th>
-                <th className="numeric">{t("detail.nonce")}</th>
-                <th>{t("detail.codeHash")}</th>
-                <th>{t("detail.storageRoot")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableCaption className="sr-only">{t("context.genesisAuthenticated")}</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("table.address")}</TableHead>
+                <TableHead>{t("detail.type")}</TableHead>
+                <TableHead className="numeric">
+                  {t("table.balance", { symbol: nativeSymbol })}
+                </TableHead>
+                <TableHead className="numeric">{t("detail.nonce")}</TableHead>
+                <TableHead>{t("detail.codeHash")}</TableHead>
+                <TableHead>{t("detail.storageRoot")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {accounts.data.items.map((account) => (
-                <tr key={account.address}>
-                  <td>
+                <TableRow key={account.address}>
+                  <TableCell>
                     <AddressIdentity address={account.address} />
-                  </td>
-                  <td>{t(`accountType.${account.type}`)}</td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell>{t(`accountType.${account.type}`)}</TableCell>
+                  <TableCell className="numeric">
                     {formatNativeAmount(account.balance, locale, nativeDecimals)}
-                  </td>
-                  <td className="numeric">{formatInteger(account.nonce, locale)}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell className="numeric">{formatInteger(account.nonce, locale)}</TableCell>
+                  <TableCell>
                     <code title={account.code_hash}>{shorten(account.code_hash)}</code>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <code title={account.storage_root}>{shorten(account.storage_root)}</code>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       {accounts.data && (
@@ -234,24 +258,28 @@ export function TransactionsPage() {
       )}
       {transactions.data && transactions.data.items.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("page.transactions")}>
-          <table>
-            <caption className="sr-only">{t("context.canonicalTransactionsOnly")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.hash")}</th>
-                <th>{t("table.method")}</th>
-                <th className="numeric">{t("table.block")}</th>
-                <th>{t("table.status")}</th>
-                <th>{t("table.from")}</th>
-                <th>{t("table.to")}</th>
-                <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
-                <th>{t("table.finality")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableCaption className="sr-only">
+              {t("context.canonicalTransactionsOnly")}
+            </TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("table.hash")}</TableHead>
+                <TableHead>{t("table.method")}</TableHead>
+                <TableHead className="numeric">{t("table.block")}</TableHead>
+                <TableHead>{t("table.status")}</TableHead>
+                <TableHead>{t("table.from")}</TableHead>
+                <TableHead>{t("table.to")}</TableHead>
+                <TableHead className="numeric">
+                  {t("table.value", { symbol: nativeSymbol })}
+                </TableHead>
+                <TableHead>{t("table.finality")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {transactions.data.items.map((transaction) => (
-                <tr key={transaction.hash}>
-                  <td>
+                <TableRow key={transaction.hash}>
+                  <TableCell>
                     <Link
                       to="/tx/$hash"
                       params={{ hash: transaction.hash }}
@@ -259,12 +287,12 @@ export function TransactionsPage() {
                     >
                       {shorten(transaction.hash)}
                     </Link>
-                  </td>
+                  </TableCell>
                   <TransactionMethodCell
                     method={transaction.method}
                     signature={transaction.method_signature}
                   />
-                  <td className="numeric">
+                  <TableCell className="numeric">
                     {transaction.block_hash ? (
                       <Link to="/blocks/$blockID" params={{ blockID: transaction.block_hash }}>
                         {formatInteger(transaction.block_number, locale)}
@@ -272,30 +300,30 @@ export function TransactionsPage() {
                     ) : (
                       "—"
                     )}
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <IncludedTransactionStatus transaction={transaction} />
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <AddressIdentity nameOnly address={transaction.from} />
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     {transaction.to ? (
                       <AddressIdentity nameOnly address={transaction.to} />
                     ) : (
                       t("common.contractCreation")
                     )}
-                  </td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell className="numeric">
                     <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <FinalityBadge finality={transaction.finality} />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       {transactions.data && (
@@ -330,21 +358,21 @@ export function TokensPage() {
         )}
         {tokens.data && tokens.data.items.length > 0 && (
           <div className="table-scroll" tabIndex={0} aria-label={t("page.tokens")}>
-            <table>
-              <caption className="sr-only">{t("page.tokensDescription")}</caption>
-              <thead>
-                <tr>
-                  <th>{t("table.token")}</th>
-                  <th>{t("table.standard")}</th>
-                  <th>{t("table.confidence")}</th>
-                  <th className="numeric">{t("table.supply")}</th>
-                  <th>{t("table.metadata")}</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableCaption className="sr-only">{t("page.tokensDescription")}</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("table.token")}</TableHead>
+                  <TableHead>{t("table.standard")}</TableHead>
+                  <TableHead>{t("table.confidence")}</TableHead>
+                  <TableHead className="numeric">{t("table.supply")}</TableHead>
+                  <TableHead>{t("table.metadata")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {tokens.data.items.map((token) => (
-                  <tr key={token.address}>
-                    <td>
+                  <TableRow key={token.address}>
+                    <TableCell>
                       <span className="table-primary">
                         <Link to="/token/$address" params={{ address: token.address }}>
                           {token.name ?? token.symbol ?? shorten(token.address)}
@@ -357,19 +385,21 @@ export function TokensPage() {
                           <code>{shorten(token.address)}</code>
                         </Link>
                       </span>
-                    </td>
-                    <td>
-                      <span className="result-kind">{tokenStandardLabel(token.standard, t)}</span>
-                    </td>
-                    <td>{confidenceLabel(token.confidence, t)}</td>
-                    <td className="numeric">
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="status" className="result-kind">
+                        {tokenStandardLabel(token.standard, t)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{confidenceLabel(token.confidence, t)}</TableCell>
+                    <TableCell className="numeric">
                       <code>{formatInteger(token.total_supply, locale)}</code>
-                    </td>
-                    <td>{stageStateLabel(token.metadata_state, t)}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell>{stageStateLabel(token.metadata_state, t)}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
         {tokens.data && (
@@ -427,34 +457,38 @@ export function CursorPagination({
   const { i18n, t } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <nav className="cursor-pagination" aria-busy={busy} aria-label={label}>
-      <button
+    <Pagination className="cursor-pagination" aria-busy={busy} aria-label={label}>
+      <Button
+        variant="outline"
         className="button secondary"
         disabled={!hasPrevious || busy || invalid}
         onClick={onPrevious}
         type="button"
       >
         {t("pagination.previous")}
-      </button>
+      </Button>
       <span aria-live="polite">{t("pagination.page", { page: formatInteger(page, locale) })}</span>
-      <button
+      <Button
+        variant="outline"
         className="button secondary"
         disabled={!hasNext || busy || invalid}
         onClick={onNext}
         type="button"
       >
         {t("pagination.next")}
-      </button>
-    </nav>
+      </Button>
+    </Pagination>
   );
 }
 
 export function DetailList({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <section className="panel detail-card" aria-label={label}>
-      <h2>{label}</h2>
-      <dl className="detail-grid">{children}</dl>
-    </section>
+    <Card asChild>
+      <section className="panel detail-card" aria-label={label}>
+        <h2>{label}</h2>
+        <dl className="detail-grid">{children}</dl>
+      </section>
+    </Card>
   );
 }
 
@@ -480,15 +514,17 @@ export function Detail({
 export function CapabilityDegraded({ stage, state }: { stage: string; state: string }) {
   const { t } = useTranslation();
   return (
-    <div className="query-notice degraded" role="status">
-      <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
-      <span>
-        <strong>{t("state.stageUnavailable", { stage: stageLabel(stage, t) })}</strong>
-        <small>
-          {t("state.stageUnavailableDetail", { state: stageStateLabel(state, t), block: "" })}
-        </small>
-      </span>
-    </div>
+    <Alert asChild>
+      <div className="query-notice degraded" role="status">
+        <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
+        <span>
+          <strong>{t("state.stageUnavailable", { stage: stageLabel(stage, t) })}</strong>
+          <small>
+            {t("state.stageUnavailableDetail", { state: stageStateLabel(state, t), block: "" })}
+          </small>
+        </span>
+      </div>
+    </Alert>
   );
 }
 
@@ -756,94 +792,109 @@ export function StatusPage() {
       />
       {status.data && (
         <div className="status-layout">
-          <section className="panel status-card" aria-labelledby="sync-status-title">
-            <span>{publicConfig.data?.chain_name ?? t("app.tagline")}</span>
-            <strong id="sync-status-title">
-              {t("common.chain")} {formatInteger(status.data.chain_id, locale)}
-            </strong>
-            <dl>
-              <div>
-                <dt>{t("context.coreReadiness")}</dt>
-                <dd>
-                  <span className={status.data.core_ready ? "availability yes" : "availability no"}>
-                    {status.data.core_ready ? t("context.coreReady") : t("context.coreNotReady")}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt>{t("home.indexed")}</dt>
-                <dd>{formatInteger(status.data.indexed_block, locale)}</dd>
-              </div>
-              <div>
-                <dt>{t("home.highestCovered")}</dt>
-                <dd>{formatInteger(status.data.highest_covered_block, locale)}</dd>
-              </div>
-              <div>
-                <dt>{t("home.networkHead")}</dt>
-                <dd>{formatInteger(status.data.latest_block, locale)}</dd>
-              </div>
-              <div>
-                <dt>{t("home.lagBlocks")}</dt>
-                <dd>{formatInteger(status.data.lag, locale)}</dd>
-              </div>
-              <div>
-                <dt>{t("context.safeBlock")}</dt>
-                <dd>{formatInteger(status.data.safe_block, locale)}</dd>
-              </div>
-              <div>
-                <dt>{t("home.finality")}</dt>
-                <dd>{formatInteger(status.data.finalized_block, locale)}</dd>
-              </div>
-              <div>
-                <dt>{t("context.coverageBounds")}</dt>
-                <dd>
-                  {formatInteger(status.data.coverage_start, locale)} –{" "}
-                  {formatInteger(status.data.coverage_end, locale)}
-                </dd>
-              </div>
-              <div>
-                <dt>{t("home.backfill")}</dt>
-                <dd>
-                  {status.data.backfill_complete
-                    ? t("home.backfillComplete")
-                    : t("home.backfillIncomplete")}
-                </dd>
-              </div>
-            </dl>
-          </section>
-          <div className="status-capabilities-stack">
-            <section className="panel capability-list" aria-labelledby="data-capabilities-title">
-              <h2 id="data-capabilities-title">{t("status.dataCapabilities")}</h2>
-              <ul>
-                {Object.entries(status.data.completeness).map(([name, state]) => (
-                  <li key={name}>
-                    <code>{stageLabel(name, t)}</code>
-                    <span className={state === "complete" ? "availability yes" : "availability no"}>
-                      {stageStateLabel(state, t)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+          <Card asChild>
+            <section className="panel status-card" aria-labelledby="sync-status-title">
+              <span>{publicConfig.data?.chain_name ?? t("app.tagline")}</span>
+              <strong id="sync-status-title">
+                {t("common.chain")} {formatInteger(status.data.chain_id, locale)}
+              </strong>
+              <dl>
+                <div>
+                  <dt>{t("context.coreReadiness")}</dt>
+                  <dd>
+                    <Badge
+                      variant="status"
+                      className={status.data.core_ready ? "availability yes" : "availability no"}
+                    >
+                      {status.data.core_ready ? t("context.coreReady") : t("context.coreNotReady")}
+                    </Badge>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t("home.indexed")}</dt>
+                  <dd>{formatInteger(status.data.indexed_block, locale)}</dd>
+                </div>
+                <div>
+                  <dt>{t("home.highestCovered")}</dt>
+                  <dd>{formatInteger(status.data.highest_covered_block, locale)}</dd>
+                </div>
+                <div>
+                  <dt>{t("home.networkHead")}</dt>
+                  <dd>{formatInteger(status.data.latest_block, locale)}</dd>
+                </div>
+                <div>
+                  <dt>{t("home.lagBlocks")}</dt>
+                  <dd>{formatInteger(status.data.lag, locale)}</dd>
+                </div>
+                <div>
+                  <dt>{t("context.safeBlock")}</dt>
+                  <dd>{formatInteger(status.data.safe_block, locale)}</dd>
+                </div>
+                <div>
+                  <dt>{t("home.finality")}</dt>
+                  <dd>{formatInteger(status.data.finalized_block, locale)}</dd>
+                </div>
+                <div>
+                  <dt>{t("context.coverageBounds")}</dt>
+                  <dd>
+                    {formatInteger(status.data.coverage_start, locale)} –{" "}
+                    {formatInteger(status.data.coverage_end, locale)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{t("home.backfill")}</dt>
+                  <dd>
+                    {status.data.backfill_complete
+                      ? t("home.backfillComplete")
+                      : t("home.backfillIncomplete")}
+                  </dd>
+                </div>
+              </dl>
             </section>
-            {publicConfig.data && (
-              <section
-                className="panel capability-list"
-                aria-labelledby="configured-features-title"
-              >
-                <h2 id="configured-features-title">{t("status.configuredFeatures")}</h2>
+          </Card>
+          <div className="status-capabilities-stack">
+            <Card asChild>
+              <section className="panel capability-list" aria-labelledby="data-capabilities-title">
+                <h2 id="data-capabilities-title">{t("status.dataCapabilities")}</h2>
                 <ul>
-                  {Object.entries(publicConfig.data.features)
-                    .sort(([left], [right]) => left.localeCompare(right))
-                    .map(([name, enabled]) => (
-                      <li key={name}>
-                        <code>{featureLabel(name, t)}</code>
-                        <span className={enabled ? "availability yes" : "availability no"}>
-                          {enabled ? t("status.enabled") : t("status.disabled")}
-                        </span>
-                      </li>
-                    ))}
+                  {Object.entries(status.data.completeness).map(([name, state]) => (
+                    <li key={name}>
+                      <code>{stageLabel(name, t)}</code>
+                      <Badge
+                        variant="status"
+                        className={state === "complete" ? "availability yes" : "availability no"}
+                      >
+                        {stageStateLabel(state, t)}
+                      </Badge>
+                    </li>
+                  ))}
                 </ul>
               </section>
+            </Card>
+            {publicConfig.data && (
+              <Card asChild>
+                <section
+                  className="panel capability-list"
+                  aria-labelledby="configured-features-title"
+                >
+                  <h2 id="configured-features-title">{t("status.configuredFeatures")}</h2>
+                  <ul>
+                    {Object.entries(publicConfig.data.features)
+                      .sort(([left], [right]) => left.localeCompare(right))
+                      .map(([name, enabled]) => (
+                        <li key={name}>
+                          <code>{featureLabel(name, t)}</code>
+                          <Badge
+                            variant="status"
+                            className={enabled ? "availability yes" : "availability no"}
+                          >
+                            {enabled ? t("status.enabled") : t("status.disabled")}
+                          </Badge>
+                        </li>
+                      ))}
+                  </ul>
+                </section>
+              </Card>
             )}
           </div>
         </div>
@@ -866,19 +917,25 @@ export function SearchPage({ query }: { query: string }) {
   ]);
   return (
     <Page title={t("page.search")} description={query} mono>
-      {normalizedQuery.length === 0 && <p className="context-note">{t("search.prompt")}</p>}
+      {normalizedQuery.length === 0 && (
+        <Alert asChild>
+          <p className="context-note">{t("search.prompt")}</p>
+        </Alert>
+      )}
       <QueryNotice
         loading={search.isPending && normalizedQuery.length > 0}
         error={search.error}
         onReset={pager.reset}
       />
       {names.withdrawn && (
-        <p className="context-note" role="status">
-          {t("state.nameExpired")}{" "}
-          <button type="button" onClick={pager.reset}>
-            {t("actions.restartPagination")}
-          </button>
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="status">
+            {t("state.nameExpired")}{" "}
+            <Button variant="outline" type="button" onClick={pager.reset}>
+              {t("actions.restartPagination")}
+            </Button>
+          </p>
+        </Alert>
       )}
       {!search.error && search.data && search.data.items.length === 0 && (
         <p className="empty-result" role="status">
@@ -910,7 +967,9 @@ function SearchResultLink({ result }: { result: SearchResult }) {
   const { t, i18n } = useTranslation();
   const content = (
     <>
-      <span className="result-kind">{searchKindLabel(result.kind, t)}</span>
+      <Badge variant="status" className="result-kind">
+        {searchKindLabel(result.kind, t)}
+      </Badge>
       <span>
         <strong>
           <bdi>{result.label}</bdi>
@@ -919,9 +978,12 @@ function SearchResultLink({ result }: { result: SearchResult }) {
       </span>
       <span className="search-result-tail">
         {result.canonical !== undefined && (
-          <span className={result.canonical ? "availability yes" : "orphan-label"}>
+          <Badge
+            variant="status"
+            className={result.canonical ? "availability yes" : "orphan-label"}
+          >
             {result.canonical ? t("common.canonical") : t("common.orphan")}
-          </span>
+          </Badge>
         )}
         <UIIcon icon={ArrowRight} />
       </span>
@@ -1222,9 +1284,11 @@ export function NotFoundPage() {
   return (
     <Page title="404 ·" description={t("page.notFound")}>
       <p>{t("page.notFoundDescription")}</p>
-      <Link className="button primary inline-button" to="/">
-        {t("nav.home")}
-      </Link>
+      <Button asChild variant="default">
+        <Link className="button primary inline-button" to="/">
+          {t("nav.home")}
+        </Link>
+      </Button>
     </Page>
   );
 }

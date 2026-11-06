@@ -1,3 +1,17 @@
+import "@/styles/verification.css";
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Alert } from "@/components/ui/alert";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { useCursorHistory } from "@/api/pagination";
 import {
   lazy,
@@ -175,80 +189,85 @@ export function DelegatedAccountPanel({
 
   return (
     <div className="contract-detail-stack">
-      <nav
+      <NavigationTabs
         aria-label={t("delegation.sections")}
         aria-orientation="horizontal"
         className="contract-tabs"
         role="tablist"
       >
         {tabs.map((tab) => (
-          <button
-            aria-controls={`delegated-panel-${tab.id}`}
-            aria-selected={activeTab === tab.id}
-            className={activeTab === tab.id ? "contract-tab active" : "contract-tab"}
-            id={`delegated-tab-${tab.id}`}
-            key={tab.id}
-            onClick={() => selectTab(tab.id)}
-            onKeyDown={(event) => navigateTabs(event, tab.id)}
-            role="tab"
-            tabIndex={activeTab === tab.id ? 0 : -1}
-            type="button"
-          >
-            {tab.label}
-          </button>
+          <NavigationTab key={tab.id}>
+            <Button
+              variant="ghost"
+              aria-controls={`delegated-panel-${tab.id}`}
+              aria-selected={activeTab === tab.id}
+              className={activeTab === tab.id ? "contract-tab active" : "contract-tab"}
+              id={`delegated-tab-${tab.id}`}
+
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={(event) => navigateTabs(event, tab.id)}
+              role="tab"
+              tabIndex={activeTab === tab.id ? 0 : -1}
+              type="button"
+            >
+              {tab.label}
+            </Button>
+          </NavigationTab>
         ))}
-      </nav>
+      </NavigationTabs>
 
       {tabs.map((tab) => (
-        <section
-          aria-labelledby={`delegated-tab-${tab.id}`}
-          className="panel contract-tab-panel"
-          hidden={activeTab !== tab.id}
-          id={`delegated-panel-${tab.id}`}
-          key={tab.id}
-          role="tabpanel"
-        >
-          {activeTab === tab.id ? (
-            <>
-              {activeTab === "code" ? (
-                <DelegatedCodePanel
-                  artifact={artifact.data}
-                  artifactError={artifact.error}
-                  artifactLoading={artifactPending}
-                  binding={binding.data}
-                  bindingError={binding.error}
-                  bindingLoading={binding.isPending}
-                  delegatedView={delegatedView}
-                />
-              ) : null}
-              {activeTab === "read-contract" || activeTab === "write-contract" ? (
-                <DelegatedInteractionPanel
-                  abi={artifact.data?.abi}
-                  artifactError={artifact.error}
-                  artifactLoading={artifactPending}
-                  artifactMatches={artifactMatches}
-                  bindingError={binding.error}
-                  bindingLoading={binding.isPending}
-                  mode={activeTab === "read-contract" ? "read" : "write"}
-                  onBindingChanged={() => void binding.refetch()}
-                  targets={targets}
-                />
-              ) : null}
-              {activeTab === "history" ? (
-                <DelegationHistory
-                  data={history.data}
-                  error={history.error}
-                  loading={history.isPending}
-                  busy={history.isFetching}
-                  hasPrevious={historyPager.hasPrevious}
-                  onNext={historyPager.next}
-                  onPrevious={historyPager.previous}
-                  onReset={historyPager.reset}
-                />
-              ) : null}
-            </>
-          ) : null}
-        </section>
+        <Card key={tab.id} asChild>
+          <section
+            aria-labelledby={`delegated-tab-${tab.id}`}
+            className="panel contract-tab-panel"
+            hidden={activeTab !== tab.id}
+            id={`delegated-panel-${tab.id}`}
+
+            role="tabpanel"
+          >
+            {activeTab === tab.id ? (
+              <>
+                {activeTab === "code" ? (
+                  <DelegatedCodePanel
+                    artifact={artifact.data}
+                    artifactError={artifact.error}
+                    artifactLoading={artifactPending}
+                    binding={binding.data}
+                    bindingError={binding.error}
+                    bindingLoading={binding.isPending}
+                    delegatedView={delegatedView}
+                  />
+                ) : null}
+                {activeTab === "read-contract" || activeTab === "write-contract" ? (
+                  <DelegatedInteractionPanel
+                    abi={artifact.data?.abi}
+                    artifactError={artifact.error}
+                    artifactLoading={artifactPending}
+                    artifactMatches={artifactMatches}
+                    bindingError={binding.error}
+                    bindingLoading={binding.isPending}
+                    mode={activeTab === "read-contract" ? "read" : "write"}
+                    onBindingChanged={() => void binding.refetch()}
+                    targets={targets}
+                  />
+                ) : null}
+                {activeTab === "history" ? (
+                  <DelegationHistory
+                    data={history.data}
+                    error={history.error}
+                    loading={history.isPending}
+                    busy={history.isFetching}
+                    hasPrevious={historyPager.hasPrevious}
+                    onNext={historyPager.next}
+                    onPrevious={historyPager.previous}
+                    onReset={historyPager.reset}
+                  />
+                ) : null}
+              </>
+            ) : null}
+          </section>
+        </Card>
       ))}
     </div>
   );
@@ -276,95 +295,103 @@ function DelegatedCodePanel({
   const statusOnly = binding !== undefined && !delegated;
   return (
     <div className="delegated-code-stack">
-      <section className="panel detail-card" aria-labelledby="delegation-binding-title">
-        <h2 id="delegation-binding-title">
-          {delegatedView ? t("delegation.currentBinding") : t("delegation.statusTitle")}
-        </h2>
-        <QueryNotice loading={bindingLoading} error={bindingError} />
-        {delegated ? (
-          <>
-            <p className="capability-panel context-note" role="note">
-              {t("delegation.securityWarning")}
-            </p>
-            <dl className="detail-grid">
-              <div className="detail-item">
-                <dt>{t("delegation.authority")}</dt>
-                <dd>
-                  <AddressIdentity address={binding.authority} compact={false} link={false} />
-                </dd>
-              </div>
-              <div className="detail-item">
-                <dt>{t("delegation.status")}</dt>
-                <dd>{t(`delegation.statuses.${binding.status}`)}</dd>
-              </div>
-              <div className="detail-item">
-                <dt>{t("delegation.delegate")}</dt>
-                <dd>
-                  {binding.delegate ? (
-                    <AddressIdentity address={binding.delegate} activity compact={false} />
-                  ) : (
-                    "—"
-                  )}
-                </dd>
-              </div>
-              <div className="detail-item">
-                <dt>{t("delegation.codeHash")}</dt>
-                <dd>
-                  <code>{binding.delegate_code_hash ?? "—"}</code>
-                </dd>
-              </div>
-              <div className="detail-item wide">
-                <dt>{t("delegation.snapshot")}</dt>
-                <dd>
-                  <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}>
-                    <code>{binding.block_number}</code>
-                  </Link>
-                </dd>
-              </div>
-            </dl>
-          </>
-        ) : null}
-        {statusOnly ? (
-          <>
-            <p className="capability-panel context-note" role="note">
-              {binding.status === "not_delegated"
-                ? t("delegation.clearedDescription")
-                : t("delegation.unavailableDescription")}
-            </p>
-            <dl className="detail-grid">
-              <div className="detail-item">
-                <dt>{t("delegation.authority")}</dt>
-                <dd>
-                  <code>{binding.authority}</code>
-                </dd>
-              </div>
-              <div className="detail-item">
-                <dt>{t("delegation.status")}</dt>
-                <dd>{t(`delegation.statuses.${binding.status}`)}</dd>
-              </div>
-              <div className="detail-item wide">
-                <dt>{t("delegation.snapshot")}</dt>
-                <dd>
-                  <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}>
-                    <code>{binding.block_number}</code>
-                  </Link>
-                </dd>
-              </div>
-            </dl>
-          </>
-        ) : null}
-      </section>
-      {delegated ? (
-        <section className="panel detail-card" aria-labelledby="delegation-artifact-title">
-          <h2 id="delegation-artifact-title">{t("contracts.verifiedArtifact")}</h2>
-          <p className="quiet">{t("contracts.readIndependent")}</p>
-          <QueryNotice loading={artifactLoading} error={artifactError} />
-          {artifact ? (
-            <Suspense fallback={<QueryNotice loading error={null} />}>
-              <ContractArtifactPanel artifact={artifact} />
-            </Suspense>
+      <Card asChild>
+        <section className="panel detail-card" aria-labelledby="delegation-binding-title">
+          <h2 id="delegation-binding-title">
+            {delegatedView ? t("delegation.currentBinding") : t("delegation.statusTitle")}
+          </h2>
+          <QueryNotice loading={bindingLoading} error={bindingError} />
+          {delegated ? (
+            <>
+              <Alert asChild>
+                <p className="capability-panel context-note" role="note">
+                  {t("delegation.securityWarning")}
+                </p>
+              </Alert>
+              <dl className="detail-grid">
+                <div className="detail-item">
+                  <dt>{t("delegation.authority")}</dt>
+                  <dd>
+                    <AddressIdentity address={binding.authority} compact={false} link={false} />
+                  </dd>
+                </div>
+                <div className="detail-item">
+                  <dt>{t("delegation.status")}</dt>
+                  <dd>{t(`delegation.statuses.${binding.status}`)}</dd>
+                </div>
+                <div className="detail-item">
+                  <dt>{t("delegation.delegate")}</dt>
+                  <dd>
+                    {binding.delegate ? (
+                      <AddressIdentity address={binding.delegate} activity compact={false} />
+                    ) : (
+                      "—"
+                    )}
+                  </dd>
+                </div>
+                <div className="detail-item">
+                  <dt>{t("delegation.codeHash")}</dt>
+                  <dd>
+                    <code>{binding.delegate_code_hash ?? "—"}</code>
+                  </dd>
+                </div>
+                <div className="detail-item wide">
+                  <dt>{t("delegation.snapshot")}</dt>
+                  <dd>
+                    <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}>
+                      <code>{binding.block_number}</code>
+                    </Link>
+                  </dd>
+                </div>
+              </dl>
+            </>
+          ) : null}
+          {statusOnly ? (
+            <>
+              <Alert asChild>
+                <p className="capability-panel context-note" role="note">
+                  {binding.status === "not_delegated"
+                    ? t("delegation.clearedDescription")
+                    : t("delegation.unavailableDescription")}
+                </p>
+              </Alert>
+              <dl className="detail-grid">
+                <div className="detail-item">
+                  <dt>{t("delegation.authority")}</dt>
+                  <dd>
+                    <code>{binding.authority}</code>
+                  </dd>
+                </div>
+                <div className="detail-item">
+                  <dt>{t("delegation.status")}</dt>
+                  <dd>{t(`delegation.statuses.${binding.status}`)}</dd>
+                </div>
+                <div className="detail-item wide">
+                  <dt>{t("delegation.snapshot")}</dt>
+                  <dd>
+                    <Link to="/blocks/$blockID" params={{ blockID: binding.block_hash }}>
+                      <code>{binding.block_number}</code>
+                    </Link>
+                  </dd>
+                </div>
+              </dl>
+            </>
           ) : null}
         </section>
+      </Card>
+      {delegated ? (
+        <Card asChild>
+          <section className="panel detail-card" aria-labelledby="delegation-artifact-title">
+            <h2 id="delegation-artifact-title">{t("contracts.verifiedArtifact")}</h2>
+            <p className="quiet">{t("contracts.readIndependent")}</p>
+            <QueryNotice loading={artifactLoading} error={artifactError} />
+            {artifact ? (
+              <Suspense fallback={<QueryNotice loading error={null} />}>
+                <ContractArtifactPanel artifact={artifact} />
+              </Suspense>
+            ) : null}
+          </section>
+        </Card>
       ) : null}
     </div>
   );
@@ -442,23 +469,25 @@ function DelegationHistory({
       ) : null}
       {data && data.items.length > 0 ? (
         <div className="table-scroll" tabIndex={0}>
-          <table>
-            <thead>
-              <tr>
-                <th>{t("delegation.kind")}</th>
-                <th>{t("delegation.delegate")}</th>
-                <th>{t("table.transaction")}</th>
-                <th>{t("table.block")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("delegation.kind")}</TableHead>
+                <TableHead>{t("delegation.delegate")}</TableHead>
+                <TableHead>{t("table.transaction")}</TableHead>
+                <TableHead>{t("table.block")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.items.map((item) => (
-                <tr key={`${item.block_hash}:${item.transaction_hash}:${item.authorization_index}`}>
-                  <td>{t(`delegation.kinds.${item.kind}`)}</td>
-                  <td>
+                <TableRow
+                  key={`${item.block_hash}:${item.transaction_hash}:${item.authorization_index}`}
+                >
+                  <TableCell>{t(`delegation.kinds.${item.kind}`)}</TableCell>
+                  <TableCell>
                     <code>{item.delegate}</code>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <Link
                       to="/tx/$hash"
                       params={{ hash: item.transaction_hash }}
@@ -466,37 +495,39 @@ function DelegationHistory({
                     >
                       <code>{item.transaction_hash}</code>
                     </Link>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <Link to="/blocks/$blockID" params={{ blockID: item.block_hash }}>
                       <code>{item.block_number}</code>
                     </Link>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : null}
       {data ? (
-        <nav className="cursor-pagination" aria-label={t("delegation.history")}>
-          <button
+        <Pagination className="cursor-pagination" aria-label={t("delegation.history")}>
+          <Button
+            variant="outline"
             className="button secondary"
             disabled={!hasPrevious || busy}
             onClick={onPrevious}
             type="button"
           >
             {t("pagination.previous")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
             className="button secondary"
             disabled={!data.nextCursor || busy}
             onClick={() => data.nextCursor && onNext(data.nextCursor)}
             type="button"
           >
             {t("pagination.next")}
-          </button>
-        </nav>
+          </Button>
+        </Pagination>
       ) : null}
     </section>
   );

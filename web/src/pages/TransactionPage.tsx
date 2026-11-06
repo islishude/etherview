@@ -1,3 +1,5 @@
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
 import { ArrowRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
@@ -228,50 +230,52 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
               nativeSymbol={nativeSymbol}
             />
           )}
-          <nav
+          <NavigationTabs
             className="transaction-tabs"
             role="tablist"
             aria-label={t("detail.transactionSections")}
           >
             {transactionTabs.map((tabID) => (
-              <Link
-                aria-selected={activeTab === tabID}
-                className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
-                key={tabID}
-                onKeyDown={(event) => {
-                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                  event.preventDefault();
-                  const currentIndex = transactionTabs.indexOf(tabID);
-                  const nextIndex =
-                    event.key === "Home"
-                      ? 0
-                      : event.key === "End"
-                        ? transactionTabs.length - 1
-                        : event.key === "ArrowLeft"
-                          ? (currentIndex - 1 + transactionTabs.length) % transactionTabs.length
-                          : (currentIndex + 1) % transactionTabs.length;
-                  const nextTab = transactionTabs[nextIndex];
-                  if (!nextTab) return;
-                  const tabList = event.currentTarget.parentElement;
-                  void navigate({
-                    to: "/tx/$hash",
-                    params: { hash },
-                    search: { tab: nextTab },
-                  }).then(() => {
-                    const tabs = tabList?.querySelectorAll<HTMLElement>('[role="tab"]');
-                    tabs?.[nextIndex]?.focus();
-                  });
-                }}
-                params={{ hash }}
-                role="tab"
-                search={{ tab: tabID }}
-                tabIndex={activeTab === tabID ? 0 : -1}
-                to="/tx/$hash"
-              >
-                {t(`transactionTabs.${tabID}`)}
-              </Link>
+              <NavigationTab key={tabID}>
+                <Link
+                  aria-selected={activeTab === tabID}
+                  className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+
+                  onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    event.preventDefault();
+                    const currentIndex = transactionTabs.indexOf(tabID);
+                    const nextIndex =
+                      event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? transactionTabs.length - 1
+                          : event.key === "ArrowLeft"
+                            ? (currentIndex - 1 + transactionTabs.length) % transactionTabs.length
+                            : (currentIndex + 1) % transactionTabs.length;
+                    const nextTab = transactionTabs[nextIndex];
+                    if (!nextTab) return;
+                    const tabList = event.currentTarget.parentElement;
+                    void navigate({
+                      to: "/tx/$hash",
+                      params: { hash },
+                      search: { tab: nextTab },
+                    }).then(() => {
+                      const tabs = tabList?.querySelectorAll<HTMLElement>('[role="tab"]');
+                      tabs?.[nextIndex]?.focus();
+                    });
+                  }}
+                  params={{ hash }}
+                  role="tab"
+                  search={{ tab: tabID }}
+                  tabIndex={activeTab === tabID ? 0 : -1}
+                  to="/tx/$hash"
+                >
+                  {t(`transactionTabs.${tabID}`)}
+                </Link>
+              </NavigationTab>
             ))}
-          </nav>
+          </NavigationTabs>
 
           {activeTab === "overview" && (
             <TransactionOverviewPanel
@@ -335,33 +339,35 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           )}
 
           {activeTab === "logs" && (
-            <section className="panel transaction-tab-panel" role="tabpanel">
-              <QueryNotice loading={logs.isPending} error={logs.error} />
-              {logs.data && !logIdentityCurrent && (
-                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
-              )}
-              {logIdentityCurrent && logs.data?.items.length === 0 && (
-                <p className="empty-result">{t("state.noTransactionLogs")}</p>
-              )}
-              {logIdentityCurrent && logs.data && logs.data.items.length > 0 && (
-                <div className="transaction-log-list">
-                  {logs.data.items.map((log) => (
-                    <TransactionLogCard key={log.log_index} log={log} locale={locale} />
-                  ))}
-                </div>
-              )}
-              {logIdentityCurrent && logs.data && (
-                <CursorPagination
-                  busy={logs.isFetching}
-                  hasNext={Boolean(logs.data.next_cursor)}
-                  hasPrevious={logPager.hasPrevious}
-                  label={t("transactionTabs.logs")}
-                  onNext={() => logPager.next(logs.data?.next_cursor)}
-                  onPrevious={logPager.previous}
-                  page={logPager.page}
-                />
-              )}
-            </section>
+            <Card asChild>
+              <section className="panel transaction-tab-panel" role="tabpanel">
+                <QueryNotice loading={logs.isPending} error={logs.error} />
+                {logs.data && !logIdentityCurrent && (
+                  <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+                )}
+                {logIdentityCurrent && logs.data?.items.length === 0 && (
+                  <p className="empty-result">{t("state.noTransactionLogs")}</p>
+                )}
+                {logIdentityCurrent && logs.data && logs.data.items.length > 0 && (
+                  <div className="transaction-log-list">
+                    {logs.data.items.map((log) => (
+                      <TransactionLogCard key={log.log_index} log={log} locale={locale} />
+                    ))}
+                  </div>
+                )}
+                {logIdentityCurrent && logs.data && (
+                  <CursorPagination
+                    busy={logs.isFetching}
+                    hasNext={Boolean(logs.data.next_cursor)}
+                    hasPrevious={logPager.hasPrevious}
+                    label={t("transactionTabs.logs")}
+                    onNext={() => logPager.next(logs.data?.next_cursor)}
+                    onPrevious={logPager.previous}
+                    page={logPager.page}
+                  />
+                )}
+              </section>
+            </Card>
           )}
 
           {activeTab === "trace" && (
@@ -376,57 +382,61 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           )}
 
           {activeTab === "state-changes" && (
-            <section className="panel transaction-tab-panel" role="tabpanel">
-              <QueryNotice loading={stateChanges.isPending} error={stateChanges.error} />
-              {stateChanges.data && !stateIdentityCurrent && (
-                <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
-              )}
-              {stateIdentityCurrent &&
-                stateChanges.data?.state !== "complete" &&
-                stateChanges.data && (
-                  <CapabilityDegraded stage="state_diff" state={stateChanges.data.state} />
+            <Card asChild>
+              <section className="panel transaction-tab-panel" role="tabpanel">
+                <QueryNotice loading={stateChanges.isPending} error={stateChanges.error} />
+                {stateChanges.data && !stateIdentityCurrent && (
+                  <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
                 )}
-              {stateIdentityCurrent &&
-                stateChanges.data?.state === "complete" &&
-                stateGroups.length === 0 && (
-                  <p className="empty-result">{t("state.noTransactionStateChanges")}</p>
+                {stateIdentityCurrent &&
+                  stateChanges.data?.state !== "complete" &&
+                  stateChanges.data && (
+                    <CapabilityDegraded stage="state_diff" state={stateChanges.data.state} />
+                  )}
+                {stateIdentityCurrent &&
+                  stateChanges.data?.state === "complete" &&
+                  stateGroups.length === 0 && (
+                    <p className="empty-result">{t("state.noTransactionStateChanges")}</p>
+                  )}
+                {stateIdentityCurrent &&
+                  stateChanges.data?.state === "complete" &&
+                  stateGroups.map(([address, changes]) => (
+                    <article className="transaction-state-account" key={address}>
+                      <header>
+                        <AddressIdentity nameOnly address={address} compact={false} />
+                      </header>
+                      <dl>
+                        {changes.map((change) => (
+                          <div key={`${change.kind}:${change.storage_key ?? ""}`}>
+                            <dt>
+                              {change.kind}
+                              {change.storage_key ? (
+                                <code>{shorten(change.storage_key)}</code>
+                              ) : null}
+                            </dt>
+                            <dd>
+                              <code>{change.before ?? "∅"}</code>
+                              <UIIcon icon={ArrowRight} />
+                              <code>{change.after ?? "∅"}</code>
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </article>
+                  ))}
+                {stateIdentityCurrent && stateChanges.data && (
+                  <CursorPagination
+                    busy={stateChanges.isFetching}
+                    hasNext={Boolean(stateChanges.data.next_cursor)}
+                    hasPrevious={statePager.hasPrevious}
+                    label={t("transactionTabs.state-changes")}
+                    onNext={() => statePager.next(stateChanges.data?.next_cursor)}
+                    onPrevious={statePager.previous}
+                    page={statePager.page}
+                  />
                 )}
-              {stateIdentityCurrent &&
-                stateChanges.data?.state === "complete" &&
-                stateGroups.map(([address, changes]) => (
-                  <article className="transaction-state-account" key={address}>
-                    <header>
-                      <AddressIdentity nameOnly address={address} compact={false} />
-                    </header>
-                    <dl>
-                      {changes.map((change) => (
-                        <div key={`${change.kind}:${change.storage_key ?? ""}`}>
-                          <dt>
-                            {change.kind}
-                            {change.storage_key ? <code>{shorten(change.storage_key)}</code> : null}
-                          </dt>
-                          <dd>
-                            <code>{change.before ?? "∅"}</code>
-                            <UIIcon icon={ArrowRight} />
-                            <code>{change.after ?? "∅"}</code>
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </article>
-                ))}
-              {stateIdentityCurrent && stateChanges.data && (
-                <CursorPagination
-                  busy={stateChanges.isFetching}
-                  hasNext={Boolean(stateChanges.data.next_cursor)}
-                  hasPrevious={statePager.hasPrevious}
-                  label={t("transactionTabs.state-changes")}
-                  onNext={() => statePager.next(stateChanges.data?.next_cursor)}
-                  onPrevious={statePager.previous}
-                  page={statePager.page}
-                />
-              )}
-            </section>
+              </section>
+            </Card>
           )}
         </>
       )}

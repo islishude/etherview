@@ -1,3 +1,5 @@
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -41,9 +43,11 @@ export function NameHistory({ name }: { name: string }) {
       {data && (
         <>
           {data.coverage.state !== "complete" && (
-            <p className="context-note" role="status">
-              {t(`names.history.coverage.${data.coverage.state}`)}
-            </p>
+            <Alert asChild>
+              <p className="context-note" role="status">
+                {t(`names.history.coverage.${data.coverage.state}`)}
+              </p>
+            </Alert>
           )}
           {data.items.length === 0 && (
             <p className="name-history-empty">
@@ -118,7 +122,9 @@ function HistoryRow({
   return (
     <article className={`name-history-row${open ? " is-open" : ""}`}>
       <div className="name-history-summary">
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           className="name-history-toggle"
           aria-expanded={open}
@@ -133,7 +139,7 @@ function HistoryRow({
             </span>
             <time dateTime={item.timestamp}>{timestamp}</time>
           </span>
-        </button>
+        </Button>
         <span className="name-history-transaction">
           <Link
             to="/tx/$hash"

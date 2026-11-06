@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { ArrowRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { Link } from "@tanstack/react-router";
@@ -51,73 +52,75 @@ export function BlobsPanel({
     (item) => !transaction || item.transaction_hash.toLowerCase() === transaction.toLowerCase(),
   );
   return (
-    <section
-      className={transaction ? "blob-archive" : "panel transaction-tab-panel blob-archive"}
-      role={transaction ? undefined : "tabpanel"}
-      aria-label={t("consensus.blobs")}
-    >
-      <QueryNotice loading={query.isPending} error={query.error} compact />
-      <BlobArchiveNotice data={query.data} />
-      <div className="blob-list-heading">
-        {!transaction && items && (
-          <span>
-            {t("consensus.blobCount", {
-              count: items.length,
-              total: formatInteger(items.length, locale),
-            })}
-          </span>
+    <Card asChild>
+      <section
+        className={transaction ? "blob-archive" : "panel transaction-tab-panel blob-archive"}
+        role={transaction ? undefined : "tabpanel"}
+        aria-label={t("consensus.blobs")}
+      >
+        <QueryNotice loading={query.isPending} error={query.error} compact />
+        <BlobArchiveNotice data={query.data} />
+        <div className="blob-list-heading">
+          {!transaction && items && (
+            <span>
+              {t("consensus.blobCount", {
+                count: items.length,
+                total: formatInteger(items.length, locale),
+              })}
+            </span>
+          )}
+          {transaction && (
+            <Link
+              className="blob-block-link"
+              to="/blocks/$blockID"
+              params={{ blockID: hash }}
+              search={{ tab: "blobs" }}
+            >
+              {t("consensus.blockBlobs")} <UIIcon icon={ArrowRight} />
+            </Link>
+          )}
+        </div>
+        {query.data?.state === "complete" && items?.length === 0 && !hashes?.length && (
+          <p className="quiet">{t("consensus.noBlobs")}</p>
         )}
-        {transaction && (
-          <Link
-            className="blob-block-link"
-            to="/blocks/$blockID"
-            params={{ blockID: hash }}
-            search={{ tab: "blobs" }}
-          >
-            {t("consensus.blockBlobs")} <UIIcon icon={ArrowRight} />
-          </Link>
-        )}
-      </div>
-      {query.data?.state === "complete" && items?.length === 0 && !hashes?.length && (
-        <p className="quiet">{t("consensus.noBlobs")}</p>
-      )}
-      {Boolean(items?.length) && (
-        <ul className="blob-list">
-          {items?.map((item) => (
-            <li className="blob-list-row" key={`${hash}:${item.index}`}>
-              <Link
-                className="blob-detail-link"
-                to="/blocks/$blockHash/blobs/$index"
-                params={{ blockHash: hash, index: item.index }}
-                aria-label={t("consensus.viewBlob", { index: item.index })}
-              >
-                <strong>
-                  {t("consensus.blobIndex", { index: formatInteger(item.index, locale) })}
-                </strong>
-                <code title={item.versioned_hash}>{shorten(item.versioned_hash, 12, 8)}</code>
-                <span className="blob-list-size">
-                  {item.size !== undefined &&
-                    t("consensus.sizeBytes", { size: formatInteger(item.size, locale) })}
-                </span>
-                <UIIcon icon={ArrowRight} />
-              </Link>
-              {!transaction && (
+        {Boolean(items?.length) && (
+          <ul className="blob-list">
+            {items?.map((item) => (
+              <li className="blob-list-row" key={`${hash}:${item.index}`}>
                 <Link
-                  className="blob-transaction-link"
-                  to="/tx/$hash"
-                  params={{ hash: item.transaction_hash }}
-                  search={{ tab: "blob" }}
-                  title={item.transaction_hash}
+                  className="blob-detail-link"
+                  to="/blocks/$blockHash/blobs/$index"
+                  params={{ blockHash: hash, index: item.index }}
+                  aria-label={t("consensus.viewBlob", { index: item.index })}
                 >
-                  <span>{t("consensus.transaction")}</span>
-                  <code>{shorten(item.transaction_hash)}</code>
+                  <strong>
+                    {t("consensus.blobIndex", { index: formatInteger(item.index, locale) })}
+                  </strong>
+                  <code title={item.versioned_hash}>{shorten(item.versioned_hash, 12, 8)}</code>
+                  <span className="blob-list-size">
+                    {item.size !== undefined &&
+                      t("consensus.sizeBytes", { size: formatInteger(item.size, locale) })}
+                  </span>
+                  <UIIcon icon={ArrowRight} />
                 </Link>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {!items?.length && hashes && <BlobHashList hashes={hashes} />}
-    </section>
+                {!transaction && (
+                  <Link
+                    className="blob-transaction-link"
+                    to="/tx/$hash"
+                    params={{ hash: item.transaction_hash }}
+                    search={{ tab: "blob" }}
+                    title={item.transaction_hash}
+                  >
+                    <span>{t("consensus.transaction")}</span>
+                    <code>{shorten(item.transaction_hash)}</code>
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {!items?.length && hashes && <BlobHashList hashes={hashes} />}
+      </section>
+    </Card>
   );
 }

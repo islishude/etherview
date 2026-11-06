@@ -1,3 +1,5 @@
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -48,13 +50,20 @@ export function NamePage({ name }: { name: string }) {
           <BrowsingRefreshControl />
         </div>
         {detail?.state === "indexed" && (
-          <span className={`name-status name-status-${detail.registration_state}`}>
+          <Badge
+            variant="status"
+            className={`name-status name-status-${detail.registration_state}`}
+          >
             {t(`names.${detail.registration_state}`)}
-          </span>
+          </Badge>
         )}
       </header>
       <QueryNotice loading={query.isPending} error={query.error} />
-      {detail?.state === "not_indexed" && <p className="context-note">{t("names.notIndexed")}</p>}
+      {detail?.state === "not_indexed" && (
+        <Alert asChild>
+          <p className="context-note">{t("names.notIndexed")}</p>
+        </Alert>
+      )}
       {detail?.state === "indexed" && (
         <section className="name-overview" aria-label={t("names.title")}>
           <dl className="name-facts">

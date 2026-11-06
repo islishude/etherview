@@ -1,3 +1,10 @@
+import { Badge } from "@/components/ui/badge";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { BillingTransactionHash } from "./BillingTransactionHash";
 import {
   fundingBalanceBlocked,
@@ -342,115 +349,106 @@ export function PersonalBilling() {
 
   return (
     <div className="personal-billing">
-      <section className="panel billing-balance" aria-label={t("billing.workspace.balance")}>
-        {account.isPending && <p role="status">{t("billing.workspace.loadingBalance")}</p>}
-        {account.error && (
-          <BillingError
-            title={t("billing.workspace.balanceFailed")}
-            retry={() => void account.refetch()}
-          />
-        )}
-        {account.data && !account.error && (
-          <BalanceSummary account={account.data} config={config.data} />
-        )}
-      </section>
+      <BillingBalancePanel account={account} config={config.data} />
       {notification && <Message type="error">{notification}</Message>}
       <BillingTabs view={view} setView={setView} />
       <div id="billing-view" role="tabpanel" aria-labelledby={`billing-tab-${view}`}>
         {view === "payment" && (
-          <section className="panel billing-payment" aria-labelledby="billing-payment-title">
-            <h2 id="billing-payment-title">{t("billing.workspace.paymentTitle")}</h2>
-            {panelState !== "form" ? (
-              <TopupStatus
-                state={panelState}
-                detail={notice ?? error ?? t(`billing.topup.progress.${stage}`)}
-                transactionHash={transaction?.hash}
-                transactionNetwork={transaction?.network}
-                approvalNetwork={approvalNetwork}
-                progress={{ ...progress, stage }}
-                approvalRequired={approvalRequired}
-                finishing={submitting}
-                queryFailed={waiting && Boolean(pending.error)}
-                retry={() => void pending.refetch()}
-                continueTopup={() => {
-                  setNotice(undefined);
-                  setError(undefined);
-                  setAmount("");
-                  resetProgress();
-                  setFocusAmount(true);
-                }}
-                showHistory={() => {
-                  setHistoryRevision((value) => value + 1);
-                  setView("history");
-                  document.getElementById("billing-tab-history")?.focus();
-                }}
-              />
-            ) : (
-              <>
-                {config.isPending && <p role="status">{t("billing.workspace.loadingPayment")}</p>}
-                {config.error && (
-                  <BillingError
-                    title={t("billing.workspace.configFailed")}
-                    retry={() => void config.refetch()}
-                  />
-                )}
-                {config.data &&
-                  !config.error &&
-                  (config.data.x402_topups_enabled && payment ? (
-                    <>
-                      {recovery.error && (
-                        <BillingError
-                          title={t("billing.workspace.recoveryFailed")}
-                          retry={() => void recovery.refetch()}
+          <Card asChild>
+            <section className="panel billing-payment" aria-labelledby="billing-payment-title">
+              <h2 id="billing-payment-title">{t("billing.workspace.paymentTitle")}</h2>
+              {panelState !== "form" ? (
+                <TopupStatus
+                  state={panelState}
+                  detail={notice ?? error ?? t(`billing.topup.progress.${stage}`)}
+                  transactionHash={transaction?.hash}
+                  transactionNetwork={transaction?.network}
+                  approvalNetwork={approvalNetwork}
+                  progress={{ ...progress, stage }}
+                  approvalRequired={approvalRequired}
+                  finishing={submitting}
+                  queryFailed={waiting && Boolean(pending.error)}
+                  retry={() => void pending.refetch()}
+                  continueTopup={() => {
+                    setNotice(undefined);
+                    setError(undefined);
+                    setAmount("");
+                    resetProgress();
+                    setFocusAmount(true);
+                  }}
+                  showHistory={() => {
+                    setHistoryRevision((value) => value + 1);
+                    setView("history");
+                    document.getElementById("billing-tab-history")?.focus();
+                  }}
+                />
+              ) : (
+                <>
+                  {config.isPending && <p role="status">{t("billing.workspace.loadingPayment")}</p>}
+                  {config.error && (
+                    <BillingError
+                      title={t("billing.workspace.configFailed")}
+                      retry={() => void config.refetch()}
+                    />
+                  )}
+                  {config.data &&
+                    !config.error &&
+                    (config.data.x402_topups_enabled && payment ? (
+                      <>
+                        {recovery.error && (
+                          <BillingError
+                            title={t("billing.workspace.recoveryFailed")}
+                            retry={() => void recovery.refetch()}
+                          />
+                        )}
+                        <BillingSteps active={0} complete={false} failed={false} />
+                        <PaymentSelectors
+                          config={config.data}
+                          network={paymentChain!.network}
+                          optionID={paymentOption!.id}
+                          networkError={networkError}
+                          blocked={blocked}
+                          onChange={selectPayment}
                         />
-                      )}
-                      <BillingSteps active={0} complete={false} failed={false} />
-                      <PaymentSelectors
-                        config={config.data}
-                        network={paymentChain!.network}
-                        optionID={paymentOption!.id}
-                        networkError={networkError}
-                        blocked={blocked}
-                        onChange={selectPayment}
-                      />
-                      <TopupForm
-                        config={payment}
-                        amount={amount}
-                        method={method}
-                        balance={
-                          wallet.active && (
-                            <WalletBalance
-                              ready={walletReady}
-                              busy={checkingBalance || balance.isFetching}
-                              disabled={submitting}
-                              failed={balanceError || Boolean(networkError)}
-                              value={balance.data}
-                              amount={atomicAmount}
-                              payment={payment}
-                              refresh={refreshBalance}
-                            />
-                          )
-                        }
-                        payer={wallet.active?.account}
-                        balanceBlocked={balanceBlocked}
-                        onAmount={(value) => {
-                          setAmount(value);
-                          setNotice(undefined);
-                          setError(undefined);
-                        }}
-                        onMethod={setMethod}
-                        blocked={blocked}
-                        busy={submitting || waiting}
-                        walletReady={walletReady}
-                        onSubmit={submit}
-                      />
-                    </>
-                  ) : (
-                    <FundingDisabled />
-                  ))}
-              </>
-            )}
-          </section>
+                        <TopupForm
+                          config={payment}
+                          amount={amount}
+                          method={method}
+                          balance={
+                            wallet.active && (
+                              <WalletBalance
+                                ready={walletReady}
+                                busy={checkingBalance || balance.isFetching}
+                                disabled={submitting}
+                                failed={balanceError || Boolean(networkError)}
+                                value={balance.data}
+                                amount={atomicAmount}
+                                payment={payment}
+                                refresh={refreshBalance}
+                              />
+                            )
+                          }
+                          payer={wallet.active?.account}
+                          balanceBlocked={balanceBlocked}
+                          onAmount={(value) => {
+                            setAmount(value);
+                            setNotice(undefined);
+                            setError(undefined);
+                          }}
+                          onMethod={setMethod}
+                          blocked={blocked}
+                          busy={submitting || waiting}
+                          walletReady={walletReady}
+                          onSubmit={submit}
+                        />
+                      </>
+                    ) : (
+                      <FundingDisabled />
+                    ))}
+                </>
+              )}
+            </section>
+          </Card>
         )}
         <PersonalHistory key={historyRevision} visible={view === "history"} config={config.data} />
         {view === "prices" &&
@@ -657,20 +655,51 @@ function TopupStatus({
       {queryFailed && <BillingError title={t("billing.workspace.pendingFailed")} retry={retry} />}
       {!busy && (
         <div className="billing-result-actions">
-          <button
+          <Button
             type="button"
             className="button primary"
             onClick={continueTopup}
             disabled={finishing}
           >
             {t("billing.result.continue")}
-          </button>
-          <button type="button" className="button secondary" onClick={showHistory}>
+          </Button>
+          <Button
+            variant="outline"
+            type="button"
+            className="button secondary"
+            onClick={showHistory}
+          >
             {t("billing.result.history")}
-          </button>
+          </Button>
         </div>
       )}
     </div>
+  );
+}
+
+function BillingBalancePanel({
+  account,
+  config,
+}: {
+  account: UseQueryResult<BillingAccount, Error>;
+  config: BillingConfig | undefined;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Card asChild>
+      <section className="panel billing-balance" aria-label={t("billing.workspace.balance")}>
+        {account.isPending && <p role="status">{t("billing.workspace.loadingBalance")}</p>}
+        {account.error && (
+          <BillingError
+            title={t("billing.workspace.balanceFailed")}
+            retry={() => void account.refetch()}
+          />
+        )}
+        {account.data && !account.error && (
+          <BalanceSummary account={account.data} config={config} />
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -683,45 +712,25 @@ function BillingTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="billing-view-switch"
-      role="tablist"
-      aria-label={t("billing.workspace.sections")}
+    <Tabs
+      value={view}
+      onValueChange={(value) => {
+        if (value === "payment" || value === "history" || value === "prices") setView(value);
+      }}
     >
-      {(["payment", "history", "prices"] as const).map((value) => (
-        <button
-          key={value}
-          type="button"
-          role="tab"
-          id={`billing-tab-${value}`}
-          aria-selected={view === value}
-          tabIndex={view === value ? 0 : -1}
-          onKeyDown={(event) => {
-            const tabs = ["payment", "history", "prices"] as const;
-            const index = tabs.indexOf(value);
-            const next =
-              event.key === "ArrowRight"
-                ? tabs[(index + 1) % 3]
-                : event.key === "ArrowLeft"
-                  ? tabs[(index + 2) % 3]
-                  : event.key === "Home"
-                    ? tabs[0]
-                    : event.key === "End"
-                      ? tabs[2]
-                      : undefined;
-            if (next) {
-              event.preventDefault();
-              setView(next);
-              document.getElementById(`billing-tab-${next}`)?.focus();
-            }
-          }}
-          aria-controls="billing-view"
-          onClick={() => setView(value)}
-        >
-          {t(`billing.workspace.${value}`)}
-        </button>
-      ))}
-    </div>
+      <TabsList className="billing-view-switch" aria-label={t("billing.workspace.sections")}>
+        {(["payment", "history", "prices"] as const).map((value) => (
+          <TabsTrigger
+            key={value}
+            value={value}
+            id={`billing-tab-${value}`}
+            aria-controls="billing-view"
+          >
+            {t(`billing.workspace.${value}`)}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -757,7 +766,9 @@ function WalletBalance({
             : value !== undefined
               ? displayBillingAmount(value.toString(), payment)
               : t("billing.guide.balanceUnavailable")}
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         type="button"
         className="billing-balance-refresh"
         aria-label={t("billing.guide.refresh")}
@@ -766,7 +777,7 @@ function WalletBalance({
         onClick={() => void refresh()}
       >
         <UIIcon icon={RefreshCw} size={14} className={busy ? "query-loading-spinner" : undefined} />
-      </button>
+      </Button>
       {ready && !busy && !failed && value !== undefined && amount && value < BigInt(amount) && (
         <p>
           {t("billing.guide.shortfall", {
@@ -842,8 +853,8 @@ function TopupForm({
       }}
     >
       <div className="field-control">
-        <label htmlFor="billing-topup-amount">{t("billing.topup.amount")}</label>
-        <input
+        <Label htmlFor="billing-topup-amount">{t("billing.topup.amount")}</Label>
+        <Input
           id="billing-topup-amount"
           inputMode="decimal"
           maxLength={amountInputLength(config.asset_decimals ?? 0)}
@@ -874,7 +885,7 @@ function TopupForm({
         </small>
       </div>
       {config.asset_transfer_methods.length > 1 ? (
-        <label className="field-control">
+        <Label className="field-control">
           <span>{t("billing.topup.method")}</span>
           <SelectControl
             value={method}
@@ -887,7 +898,7 @@ function TopupForm({
               </option>
             ))}
           </SelectControl>
-        </label>
+        </Label>
       ) : (
         <p className="billing-method">
           {t("billing.topup.method")}{" "}
@@ -909,7 +920,7 @@ function TopupForm({
           </p>
         )
       )}
-      <button
+      <Button
         className="button primary"
         aria-busy={busy}
         disabled={
@@ -923,7 +934,7 @@ function TopupForm({
       >
         {busy && <UIIcon icon={LoaderCircle} className="query-loading-spinner" />}
         {t("billing.guide.confirm")}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -949,70 +960,76 @@ function PersonalHistory({ visible, config }: { visible: boolean; config?: Billi
   const query = kind === "topups" ? topups : payments;
   if (!visible) return null;
   return (
-    <section
-      className="panel billing-history-section personal-billing-history"
-      aria-labelledby="personal-billing-title"
-    >
-      <div className="billing-history-toolbar">
-        <h2 id="personal-billing-title">{t("billing.workspace.history")}</h2>
-        <div className="billing-history-controls">
-          <label className="field-control">
-            <span className="sr-only">{t("billing.workspace.historyType")}</span>
-            <SelectControl
-              value={kind}
-              onChange={(event) => setKind(event.target.value as HistoryKind)}
+    <Card asChild>
+      <section
+        className="panel billing-history-section personal-billing-history"
+        aria-labelledby="personal-billing-title"
+      >
+        <div className="billing-history-toolbar">
+          <h2 id="personal-billing-title">{t("billing.workspace.history")}</h2>
+          <div className="billing-history-controls">
+            <Label className="field-control">
+              <span className="sr-only">{t("billing.workspace.historyType")}</span>
+              <SelectControl
+                value={kind}
+                onChange={(event) => setKind(event.target.value as HistoryKind)}
+              >
+                <option value="topups">{t("billing.topup.history")}</option>
+                <option value="payments">{t("billing.personal.title")}</option>
+              </SelectControl>
+            </Label>
+            <Button
+              variant="outline"
+              type="button"
+              className="button secondary"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
             >
-              <option value="topups">{t("billing.topup.history")}</option>
-              <option value="payments">{t("billing.personal.title")}</option>
-            </SelectControl>
-          </label>
-          <button
-            type="button"
-            className="button secondary"
-            disabled={query.isFetching}
-            onClick={() => void query.refetch()}
-          >
-            {t("billing.actions.refresh")}
-          </button>
+              {t("billing.actions.refresh")}
+            </Button>
+          </div>
         </div>
-      </div>
-      {query.isPending && <p role="status">{t("billing.personal.loading")}</p>}
-      {query.error && (
-        <BillingError title={t("billing.personal.loadFailed")} retry={() => void query.refetch()} />
-      )}
-      {query.data && !query.error && (
-        <>
-          {query.data.data.length === 0 ? (
-            <p className="billing-empty" role="status">
-              {t("billing.workspace.empty")}
-            </p>
-          ) : (
-            <ul
-              className="billing-records"
-              aria-label={
-                kind === "topups" ? t("billing.topup.history") : t("billing.personal.tableLabel")
-              }
-            >
-              {query.data.data.map((record) => (
-                <HistoryRecord
-                  key={`${kind}:${record.id}`}
-                  record={record}
-                  config={matchingAssetConfig(record, config)}
-                  locale={i18n.resolvedLanguage ?? "en"}
-                />
-              ))}
-            </ul>
-          )}
-          <BillingPagination
-            busy={query.isFetching}
-            cursors={kind === "topups" ? topupCursors : paymentCursors}
-            onChange={kind === "topups" ? setTopupCursors : setPaymentCursors}
-            nextCursor={query.data.meta.next_cursor}
-            label={t("billing.personal.pagination")}
+        {query.isPending && <p role="status">{t("billing.personal.loading")}</p>}
+        {query.error && (
+          <BillingError
+            title={t("billing.personal.loadFailed")}
+            retry={() => void query.refetch()}
           />
-        </>
-      )}
-    </section>
+        )}
+        {query.data && !query.error && (
+          <>
+            {query.data.data.length === 0 ? (
+              <p className="billing-empty" role="status">
+                {t("billing.workspace.empty")}
+              </p>
+            ) : (
+              <ul
+                className="billing-records"
+                aria-label={
+                  kind === "topups" ? t("billing.topup.history") : t("billing.personal.tableLabel")
+                }
+              >
+                {query.data.data.map((record) => (
+                  <HistoryRecord
+                    key={`${kind}:${record.id}`}
+                    record={record}
+                    config={matchingAssetConfig(record, config)}
+                    locale={i18n.resolvedLanguage ?? "en"}
+                  />
+                ))}
+              </ul>
+            )}
+            <BillingPagination
+              busy={query.isFetching}
+              cursors={kind === "topups" ? topupCursors : paymentCursors}
+              onChange={kind === "topups" ? setTopupCursors : setPaymentCursors}
+              nextCursor={query.data.meta.next_cursor}
+              label={t("billing.personal.pagination")}
+            />
+          </>
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -1040,7 +1057,9 @@ function HistoryRecord({
             {config?.asset_decimals !== undefined && t("billing.workspace.tokenAmount")}
           </small>
         </span>
-        <span className={`billing-state ${state}`}>{t(`billing.states.${state}`)}</span>
+        <Badge variant="status" className={`billing-state ${state}`}>
+          {t(`billing.states.${state}`)}
+        </Badge>
       </div>
       <details className="billing-record-details">
         <summary>{t("billing.workspace.details")}</summary>
@@ -1126,7 +1145,7 @@ function PaymentSelectors({
   const chain = config.payment_chains.find((value) => value.network === network);
   return (
     <div className="field-control">
-      <label htmlFor="billing-payment-network">{t("billing.fields.network")}</label>
+      <Label htmlFor="billing-payment-network">{t("billing.fields.network")}</Label>
       <SelectControl
         id="billing-payment-network"
         aria-invalid={Boolean(networkError)}
@@ -1146,7 +1165,7 @@ function PaymentSelectors({
           {networkError}
         </p>
       )}
-      <label htmlFor="billing-payment-token">{t("billing.fields.asset")}</label>
+      <Label htmlFor="billing-payment-token">{t("billing.fields.asset")}</Label>
       <SelectControl
         id="billing-payment-token"
         disabled={blocked}

@@ -1,3 +1,6 @@
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { DropdownChevron } from "@/components/DropdownChevron";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
@@ -62,7 +65,8 @@ export function RequestTypeFilter({
         }
       }}
     >
-      <button
+      <Button
+        variant="ghost"
         type="button"
         className="request-filter-trigger"
         ref={trigger}
@@ -78,12 +82,12 @@ export function RequestTypeFilter({
         <span>{label(value)}</span>
         <span className="request-filter-count">{count(value)}</span>
         <DropdownChevron />
-      </button>
+      </Button>
       {open && (
         <div className="request-filter-popover" id={id}>
-          <label className="request-filter-search">
+          <Label className="request-filter-search">
             <UIIcon icon={Search} size={16} />
-            <input
+            <Input
               ref={searchInput}
               type="search"
               value={search}
@@ -91,10 +95,11 @@ export function RequestTypeFilter({
               aria-label={t("requests.searchTypes")}
               placeholder={t("requests.searchTypes")}
             />
-          </label>
+          </Label>
           <div className="request-filter-options" role="group" aria-label={t("requests.filter")}>
             {(["", ...matches] as Selection[]).map((type) => (
-              <button
+              <Button
+                variant="outline"
                 key={type}
                 type="button"
                 aria-pressed={value === type}
@@ -109,7 +114,7 @@ export function RequestTypeFilter({
                 </span>
                 <span>{label(type)}</span> {type && <code>{type}</code>}{" "}
                 <span className="request-filter-count">{count(type)}</span>
-              </button>
+              </Button>
             ))}
             {matches.length === 0 && <p role="status">{t("requests.noTypes")}</p>}
           </div>

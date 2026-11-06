@@ -10,17 +10,19 @@ describe("shared button layout", () => {
   it("loads style modules in documented cascade order", () => {
     const stylesheet = readStylesheet("styles.css");
     const imports = Array.from(
-      stylesheet.matchAll(/@import\s+"\.\/styles\/(?<name>[^"]+)";/gu),
+      stylesheet.matchAll(
+        /@import\s+"\.\/styles\/(?<name>[^"]+)"(?: layer\(components\.[a-z]+\))?;/gu,
+      ),
       (match) => match.groups?.name,
     );
 
     expect(imports).toEqual([
       "foundation.css",
+      "ui-theme.css",
       "explorer.css",
       "wallet.css",
-      "account.css",
       "analytics.css",
-      "verification.css",
+      "forms.css",
       "responsive.css",
     ]);
     expect(readStylesheet("contracts/ContractArtifactPanel.tsx")).toContain(
@@ -55,28 +57,6 @@ describe("shared button layout", () => {
 
     expect(rule?.groups?.body).toMatch(/\bwidth:\s*100%;/u);
     expect(rule?.groups?.body).toMatch(/\bjustify-content:\s*center;/u);
-  });
-
-  it("keeps tabs transparent with a blue underline on the active tab", () => {
-    const stylesheet = readStylesheet("styles/explorer/entities.css");
-    const inactiveRule = stylesheet.match(/\.transaction-tab\s*\{(?<body>[^}]*)\}/u);
-    const activeRule = stylesheet.match(/\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u);
-
-    expect(inactiveRule?.groups?.body).toMatch(/\bbackground:\s*transparent;/u);
-    expect(activeRule?.groups?.body).toMatch(/\bborder-bottom-color:\s*var\(--brand\);/u);
-  });
-
-  it("normalizes address tab entries before applying the active state", () => {
-    const stylesheet = readStylesheet("styles/explorer/entities.css");
-    const addressRule = stylesheet.match(
-      /\.transaction-tabs\s*>\s*\.transaction-tab\s*\{(?<body>[^}]*)\}/u,
-    );
-    const addressActiveRule = stylesheet.match(
-      /\.transaction-tabs\s*>\s*\.transaction-tab\.active\s*\{(?<body>[^}]*)\}/u,
-    );
-
-    expect(addressRule?.groups?.body).toMatch(/\bmargin-inline-start:\s*0;/u);
-    expect(addressActiveRule?.groups?.body).toMatch(/\bborder-bottom-color:\s*var\(--brand\);/u);
   });
 
   it("soft-wraps read-only raw calldata inside its textarea", () => {

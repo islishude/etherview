@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { CircleCheck, CircleDot } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -120,7 +121,8 @@ export function WalletMenu() {
               >
                 <code>{wallet.active.account}</code>
               </Link>
-              <button
+              <Button
+                variant="outline"
                 className="button secondary full"
                 type="button"
                 onClick={() => {
@@ -129,12 +131,13 @@ export function WalletMenu() {
                 }}
               >
                 {t("actions.disconnect")}
-              </button>
+              </Button>
             </>
           ) : wallet.providers.length > 0 ? (
             <div className="wallet-list" aria-label={t("wallet.choose")} role="group">
               {wallet.providers.map((provider) => (
-                <button
+                <Button
+                  variant="ghost"
                   className="wallet-option"
                   disabled={wallet.connecting}
                   key={provider.uuid}
@@ -153,16 +156,21 @@ export function WalletMenu() {
                     <strong>{provider.name}</strong>
                     <small>{provider.rdns}</small>
                   </span>
-                </button>
+                </Button>
               ))}
             </div>
           ) : (
             <div className="empty-wallet">
               <strong>{t("wallet.none")}</strong>
               <small>{t("wallet.installHint")}</small>
-              <button className="button secondary full" type="button" onClick={wallet.discover}>
+              <Button
+                variant="outline"
+                className="button secondary full"
+                type="button"
+                onClick={wallet.discover}
+              >
                 {t("actions.retry")}
-              </button>
+              </Button>
             </div>
           )}
           {wallet.connecting && <p role="status">{t("actions.connecting")}</p>}
@@ -198,25 +206,30 @@ export function WalletMenu() {
                       <small>{t(`auth.role.${auth.session.user.role}`)}</small>
                     </span>
                   </Link>
-                  <Link className="button secondary inline-button full" to="/account">
-                    {t("auth.account.open")}
-                  </Link>
-                  <button
+                  <Button asChild variant="outline">
+                    <Link className="button secondary inline-button full" to="/account">
+                      {t("auth.account.open")}
+                    </Link>
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="button secondary full"
                     disabled={auth.pending}
                     onClick={() => void auth.logout()}
                     type="button"
                   >
                     {t("auth.sessionActions.logout")}
-                  </button>
+                  </Button>
                 </>
               ) : (
                 <>
                   <p className="quiet">{t("auth.menu.walletIsNotLogin")}</p>
                   <SIWELoginControl full />
-                  <Link className="button secondary inline-button full" to="/account">
-                    {t("auth.account.open")}
-                  </Link>
+                  <Button asChild variant="outline">
+                    <Link className="button secondary inline-button full" to="/account">
+                      {t("auth.account.open")}
+                    </Link>
+                  </Button>
                 </>
               )}
             </section>

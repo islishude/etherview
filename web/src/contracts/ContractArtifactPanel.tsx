@@ -1,3 +1,14 @@
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import "@/styles/artifacts.css";
 import { ChevronDown, ChevronRight, FileCode2 } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -298,35 +309,41 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
   return (
     <div className="contract-code-view">
       {verificationOrigin === "eth_bytecode_db" ? (
-        <p className="context-note" role="status">
-          {t("contracts.artifact.bytecodeDBOrigin")}
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="status">
+            {t("contracts.artifact.bytecodeDBOrigin")}
+          </p>
+        </Alert>
       ) : null}
       {artifact.resolution === "exact_address" && artifact.derived_from ? (
-        <p className="context-note" role="status">
-          {t(
-            verificationOrigin === "factory_derived"
-              ? "contracts.artifact.autoVerifiedFromFactory"
-              : "contracts.artifact.creationProvenanceFromFactory",
-          )}{" "}
-          <AddressIdentity
-            address={artifact.derived_from.creator_address}
-            compact={false}
-            contract
-          />
-          {" · "}
-          {artifact.derived_from.call_type}
-          {" · "}
-          <a href={`/tx/${artifact.derived_from.transaction_hash}`}>
-            {t("contracts.artifact.creationTransaction")}
-          </a>
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="status">
+            {t(
+              verificationOrigin === "factory_derived"
+                ? "contracts.artifact.autoVerifiedFromFactory"
+                : "contracts.artifact.creationProvenanceFromFactory",
+            )}{" "}
+            <AddressIdentity
+              address={artifact.derived_from.creator_address}
+              compact={false}
+              contract
+            />
+            {" · "}
+            {artifact.derived_from.call_type}
+            {" · "}
+            <a href={`/tx/${artifact.derived_from.transaction_hash}`}>
+              {t("contracts.artifact.creationTransaction")}
+            </a>
+          </p>
+        </Alert>
       ) : null}
       {artifact.resolution === "code_hash" ? (
-        <p className="context-note" role="status">
-          {t("contracts.artifact.similarMatch")}{" "}
-          <AddressIdentity address={artifact.source.address} compact={false} contract />
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="status">
+            {t("contracts.artifact.similarMatch")}{" "}
+            <AddressIdentity address={artifact.source.address} compact={false} contract />
+          </p>
+        </Alert>
       ) : null}
       <header className="artifact-hero">
         <div>
@@ -341,13 +358,13 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
           <p className="quiet">{t("contracts.readIndependent")}</p>
         </div>
         <div className="artifact-badges" aria-label={t("contracts.artifact.status")}>
-          <span className="availability yes">
+          <Badge variant="status" className="availability yes">
             {t(
               artifact.resolution === "code_hash"
                 ? "contracts.artifact.verifiedByCodeHash"
                 : "contracts.artifact.verified",
             )}
-          </span>
+          </Badge>
           {verificationOrigin === "factory_derived" ? (
             <span className="artifact-match full">{t("contracts.artifact.autoVerifiedBadge")}</span>
           ) : null}
@@ -404,32 +421,34 @@ export function ContractArtifactPanel({ artifact }: { artifact: VerifiedContract
             tabIndex={0}
             aria-label={t("contracts.artifact.createdContracts")}
           >
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("page.address")}</th>
-                  <th>{t("table.status")}</th>
-                  <th>{t("contracts.artifact.creationTransaction")}</th>
-                  <th>{t("contracts.contractName")}</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("page.address")}</TableHead>
+                  <TableHead>{t("table.status")}</TableHead>
+                  <TableHead>{t("contracts.artifact.creationTransaction")}</TableHead>
+                  <TableHead>{t("contracts.contractName")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {derivedChildren.map((child) => (
-                  <tr key={`${child.block_hash}:${child.transaction_hash}:${child.trace_path}`}>
-                    <td>
+                  <TableRow
+                    key={`${child.block_hash}:${child.transaction_hash}:${child.trace_path}`}
+                  >
+                    <TableCell>
                       <AddressIdentity address={child.address} compact={false} contract />
-                    </td>
-                    <td>{t(`contracts.artifact.derivedStatus.${child.status}`)}</td>
-                    <td>
+                    </TableCell>
+                    <TableCell>{t(`contracts.artifact.derivedStatus.${child.status}`)}</TableCell>
+                    <TableCell>
                       <a href={`/tx/${child.transaction_hash}`}>
                         <code>{child.transaction_hash}</code>
                       </a>
-                    </td>
-                    <td>{child.contract_name ?? "—"}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell>{child.contract_name ?? "—"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </section>
       ) : null}
@@ -715,22 +734,25 @@ function SourceWorkspace({
         <div className="source-editor-toolbar">
           <strong title={selected.name}>{selected.name}</strong>
           <div>
-            <button
+            <Button
+              variant="outline"
               onClick={() => editorRef.current && openSearchPanel(editorRef.current)}
               type="button"
             >
               {t("contracts.artifact.searchCode")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
               aria-pressed={wrap}
               onClick={() => setWrap((current) => !current)}
               type="button"
             >
               {t("contracts.artifact.wrapLines")}
-            </button>
+            </Button>
             <CopyButton className="source-toolbar-copy" value={selected.content} />
             {fullscreenAvailable ? (
-              <button
+              <Button
+                variant="outline"
                 aria-pressed={fullscreen}
                 onClick={() => void toggleFullscreen()}
                 type="button"
@@ -738,7 +760,7 @@ function SourceWorkspace({
                 {fullscreen
                   ? t("contracts.artifact.exitFullscreen")
                   : t("contracts.artifact.fullscreen")}
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -821,7 +843,8 @@ function renderSourceTreeNode({
   const selected = !isDirectory && node.file.name === selectedName;
   return (
     <div className="source-tree-branch" key={node.id} role="none">
-      <button
+      <Button
+        variant="ghost"
         aria-expanded={isDirectory ? isExpanded : undefined}
         aria-level={depth}
         aria-posinset={index + 1}
@@ -845,7 +868,7 @@ function renderSourceTreeNode({
           className={isDirectory ? "source-tree-chevron" : "source-tree-file-icon"}
         />
         <span>{node.name}</span>
-      </button>
+      </Button>
       {isDirectory && isExpanded ? (
         <div className="source-tree-children" role="group">
           {node.children.map((child, childIndex) =>

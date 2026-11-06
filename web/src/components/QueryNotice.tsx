@@ -1,3 +1,5 @@
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { CircleAlert, CircleHelp, LoaderCircle } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useTranslation } from "react-i18next";
@@ -15,10 +17,12 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   const { t } = useTranslation();
   if (loading) {
     return (
-      <div className={compact ? "query-notice compact" : "query-notice"} role="status">
-        <UIIcon icon={LoaderCircle} size={20} className="query-loading-spinner" />
-        <span>{t("state.loading")}</span>
-      </div>
+      <Alert asChild>
+        <div className={compact ? "query-notice compact" : "query-notice"} role="status">
+          <UIIcon icon={LoaderCircle} size={20} className="query-loading-spinner" />
+          <span>{t("state.loading")}</span>
+        </div>
+      </Alert>
     );
   }
   if (!error) return null;
@@ -33,22 +37,26 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
   ) {
     if (detailString(error.details, "capability") === "name") {
       return (
-        <p className="context-note" role="status">
-          {t("state.namePending")}
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="status">
+            {t("state.namePending")}
+          </p>
+        </Alert>
       );
     }
     const state =
       detailString(error.details, "state") ??
       (error.code.toLowerCase() === "capability_unavailable" ? "unavailable" : "pending");
     return (
-      <p className="context-note" role="status">
-        {t(
-          state === "unavailable" || state === "failed"
-            ? "state.browsingUnavailable"
-            : "state.browsingPending",
-        )}
-      </p>
+      <Alert asChild>
+        <p className="context-note" role="status">
+          {t(
+            state === "unavailable" || state === "failed"
+              ? "state.browsingUnavailable"
+              : "state.browsingPending",
+          )}
+        </p>
+      </Alert>
     );
   }
   if (error instanceof ApiError) {
@@ -71,37 +79,47 @@ export function QueryNotice({ loading, error, compact, onReset }: QueryNoticePro
                 : undefined;
     if (typed) {
       return (
-        <div
-          className={compact ? "query-notice degraded compact" : "query-notice degraded"}
-          role="status"
-        >
-          <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
-          <span>
-            <strong>{typed.title}</strong>
-            {!compact && <small>{typed.detail}</small>}
-            {!compact && typed.diagnosticCode && (
-              <small className="notice-diagnostic">
-                {t("state.diagnosticCode")}: <code>{typed.diagnosticCode}</code>
-              </small>
-            )}
-            {!compact && code === "invalid_cursor" && onReset && (
-              <button className="notice-action" onClick={onReset} type="button">
-                {t("actions.restartPagination")}
-              </button>
-            )}
-          </span>
-        </div>
+        <Alert asChild variant="warning">
+          <div
+            className={compact ? "query-notice degraded compact" : "query-notice degraded"}
+            role="status"
+          >
+            <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
+            <span>
+              <strong>{typed.title}</strong>
+              {!compact && <small>{typed.detail}</small>}
+              {!compact && typed.diagnosticCode && (
+                <small className="notice-diagnostic">
+                  {t("state.diagnosticCode")}: <code>{typed.diagnosticCode}</code>
+                </small>
+              )}
+              {!compact && code === "invalid_cursor" && onReset && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="notice-action"
+                  onClick={onReset}
+                  type="button"
+                >
+                  {t("actions.restartPagination")}
+                </Button>
+              )}
+            </span>
+          </div>
+        </Alert>
       );
     }
   }
   return (
-    <div className={compact ? "query-notice compact" : "query-notice"} role="status">
-      <UIIcon icon={CircleHelp} size={14} className="status-icon muted" />
-      <span>
-        <strong>{t("state.apiUnavailable")}</strong>
-        {!compact && <small>{t("state.apiUnavailableDetail")}</small>}
-      </span>
-    </div>
+    <Alert asChild>
+      <div className={compact ? "query-notice compact" : "query-notice"} role="status">
+        <UIIcon icon={CircleHelp} size={14} className="status-icon muted" />
+        <span>
+          <strong>{t("state.apiUnavailable")}</strong>
+          {!compact && <small>{t("state.apiUnavailableDetail")}</small>}
+        </span>
+      </div>
+    </Alert>
   );
 }
 

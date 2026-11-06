@@ -1,3 +1,13 @@
+import { Badge } from "@/components/ui/badge";
+import "@/styles/account.css";
+import { Card } from "@/components/ui/card";
+import { NavigationTabs, NavigationTab, Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Alert } from "@/components/ui/alert";
+import { Pagination } from "@/components/ui/pagination";
 import { Message } from "@/components/Message";
 import { CircleCheck, CircleDot, X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -92,231 +102,254 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
       ) : (
         <>
           <section className="identity-grid" aria-label={t("auth.account.identityStatus")}>
-            <article className="panel identity-card">
-              <div className="identity-card-heading">
-                <UIIcon
-                  icon={wallet.active ? CircleCheck : CircleDot}
-                  size={14}
-                  className={wallet.active ? "status-icon success" : "status-icon"}
-                />
-                <h2>{t("auth.walletState.title")}</h2>
-              </div>
-              <strong>
-                {wallet.active
-                  ? t("auth.walletState.connected")
-                  : t("auth.walletState.disconnected")}
-              </strong>
-              {wallet.active ? (
-                <>
-                  <Link
-                    className="account-address"
-                    to="/address/$address"
-                    params={{ address: wallet.active.account }}
-                  >
-                    <code>{wallet.active.account}</code>
-                  </Link>
-                  <p>
-                    {walletOnChain
-                      ? t("auth.walletState.correctChain", {
-                          chain: wallet.active.chainID,
-                        })
-                      : t("auth.walletState.wrongChain", {
-                          expected: expectedChainID ?? "—",
-                          actual: wallet.active.chainID,
-                        })}
-                  </p>
-                </>
-              ) : (
-                <p>{t("auth.walletState.connectHint")}</p>
-              )}
-            </article>
+            <Card asChild>
+              <article className="panel identity-card">
+                <div className="identity-card-heading">
+                  <UIIcon
+                    icon={wallet.active ? CircleCheck : CircleDot}
+                    size={14}
+                    className={wallet.active ? "status-icon success" : "status-icon"}
+                  />
+                  <h2>{t("auth.walletState.title")}</h2>
+                </div>
+                <strong>
+                  {wallet.active
+                    ? t("auth.walletState.connected")
+                    : t("auth.walletState.disconnected")}
+                </strong>
+                {wallet.active ? (
+                  <>
+                    <Link
+                      className="account-address"
+                      to="/address/$address"
+                      params={{ address: wallet.active.account }}
+                    >
+                      <code>{wallet.active.account}</code>
+                    </Link>
+                    <p>
+                      {walletOnChain
+                        ? t("auth.walletState.correctChain", {
+                            chain: wallet.active.chainID,
+                          })
+                        : t("auth.walletState.wrongChain", {
+                            expected: expectedChainID ?? "—",
+                            actual: wallet.active.chainID,
+                          })}
+                    </p>
+                  </>
+                ) : (
+                  <p>{t("auth.walletState.connectHint")}</p>
+                )}
+              </article>
+            </Card>
 
-            <article className="panel identity-card">
-              <div className="identity-card-heading">
-                <UIIcon
-                  icon={auth.session.authenticated ? CircleCheck : CircleDot}
-                  size={14}
-                  className={auth.session.authenticated ? "status-icon success" : "status-icon"}
-                />
-                <h2>{t("auth.sessionState.title")}</h2>
-              </div>
-              <strong>
-                {auth.loading
-                  ? t("auth.sessionState.checking")
-                  : auth.session.authenticated
-                    ? t("auth.sessionState.authenticated")
-                    : t("auth.sessionState.anonymous")}
-              </strong>
-              {auth.session.authenticated && sessionUser ? (
-                <>
-                  <Link
-                    className="account-address"
-                    to="/address/$address"
-                    params={{ address: sessionUser.address }}
-                  >
-                    <code>{sessionUser.address}</code>
-                  </Link>
-                  <p>
-                    {walletMatchesUser
-                      ? t("auth.sessionState.walletMatches")
-                      : t("auth.sessionState.independent")}
-                  </p>
-                </>
-              ) : (
-                <p>{t("auth.sessionState.loginHint")}</p>
-              )}
-            </article>
+            <Card asChild>
+              <article className="panel identity-card">
+                <div className="identity-card-heading">
+                  <UIIcon
+                    icon={auth.session.authenticated ? CircleCheck : CircleDot}
+                    size={14}
+                    className={auth.session.authenticated ? "status-icon success" : "status-icon"}
+                  />
+                  <h2>{t("auth.sessionState.title")}</h2>
+                </div>
+                <strong>
+                  {auth.loading
+                    ? t("auth.sessionState.checking")
+                    : auth.session.authenticated
+                      ? t("auth.sessionState.authenticated")
+                      : t("auth.sessionState.anonymous")}
+                </strong>
+                {auth.session.authenticated && sessionUser ? (
+                  <>
+                    <Link
+                      className="account-address"
+                      to="/address/$address"
+                      params={{ address: sessionUser.address }}
+                    >
+                      <code>{sessionUser.address}</code>
+                    </Link>
+                    <p>
+                      {walletMatchesUser
+                        ? t("auth.sessionState.walletMatches")
+                        : t("auth.sessionState.independent")}
+                    </p>
+                  </>
+                ) : (
+                  <p>{t("auth.sessionState.loginHint")}</p>
+                )}
+              </article>
+            </Card>
           </section>
 
           {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
 
           {!auth.loading && !auth.session.authenticated && (
-            <section className="panel auth-action-panel" aria-labelledby="sign-in-title">
-              <div>
-                <span className="eyebrow">{t("auth.signIn.eyebrow")}</span>
-                <h2 id="sign-in-title">{t("auth.signIn.title")}</h2>
-                <p>{t("auth.signIn.description")}</p>
-              </div>
-              <SIWELoginControl />
-            </section>
+            <Card asChild>
+              <section className="panel auth-action-panel" aria-labelledby="sign-in-title">
+                <div>
+                  <span className="eyebrow">{t("auth.signIn.eyebrow")}</span>
+                  <h2 id="sign-in-title">{t("auth.signIn.title")}</h2>
+                  <p>{t("auth.signIn.description")}</p>
+                </div>
+                <SIWELoginControl />
+              </section>
+            </Card>
           )}
 
           {auth.session.authenticated && sessionUser && (
-            <nav className="account-tabs" aria-label={t("auth.account.sections")}>
-              <Link
-                aria-current={activeTab === "overview" ? "page" : undefined}
-                search={{ tab: "overview" }}
-                to="/account"
-              >
-                {t("auth.account.tabs.overview")}
-              </Link>
-              <Link
-                to="/account"
-                search={{ tab: "watchlist" }}
-                aria-current={activeTab === "watchlist" ? "page" : undefined}
-              >
-                {t("watchlist.title")}
-              </Link>
-              <Link
-                aria-current={activeTab === "api-keys" ? "page" : undefined}
-                search={{ tab: "api-keys" }}
-                to="/account"
-              >
-                {t("auth.account.tabs.apiKeys")}
-              </Link>
-              {billingEnabled && (
+            <NavigationTabs className="account-tabs" aria-label={t("auth.account.sections")}>
+              <NavigationTab>
                 <Link
-                  aria-current={activeTab === "billing" ? "page" : undefined}
-                  search={{ tab: "billing" }}
+                  aria-current={activeTab === "overview" ? "page" : undefined}
+                  search={{ tab: "overview" }}
                   to="/account"
                 >
-                  {t("auth.account.tabs.billing")}
+                  {t("auth.account.tabs.overview")}
                 </Link>
+              </NavigationTab>
+              <NavigationTab>
+                <Link
+                  to="/account"
+                  search={{ tab: "watchlist" }}
+                  aria-current={activeTab === "watchlist" ? "page" : undefined}
+                >
+                  {t("watchlist.title")}
+                </Link>
+              </NavigationTab>
+              <NavigationTab>
+                <Link
+                  aria-current={activeTab === "api-keys" ? "page" : undefined}
+                  search={{ tab: "api-keys" }}
+                  to="/account"
+                >
+                  {t("auth.account.tabs.apiKeys")}
+                </Link>
+              </NavigationTab>
+              {billingEnabled && (
+                <NavigationTab>
+                  <Link
+                    aria-current={activeTab === "billing" ? "page" : undefined}
+                    search={{ tab: "billing" }}
+                    to="/account"
+                  >
+                    {t("auth.account.tabs.billing")}
+                  </Link>
+                </NavigationTab>
               )}
-            </nav>
+            </NavigationTabs>
           )}
 
           {privateIdentity && activeTab === "watchlist" && <WatchlistPanel key={privateIdentity} />}
           {auth.session.authenticated && sessionUser && activeTab === "overview" && (
             <div className="account-layout" data-account-tab="overview">
-              <section className="panel profile-panel" aria-labelledby="profile-title">
-                <div className="panel-heading">
-                  <h2 id="profile-title">{t("auth.profile.title")}</h2>
-                  <span className={`user-state ${sessionUser.status}`}>
-                    {t(`auth.status.${sessionUser.status}`)}
-                  </span>
-                </div>
-                <dl className="profile-details">
-                  <div>
-                    <dt>{t("auth.fields.address")}</dt>
-                    <dd>
-                      <Link
-                        className="account-address"
-                        to="/address/$address"
-                        params={{ address: sessionUser.address }}
-                      >
-                        <code>{sessionUser.address}</code>
-                      </Link>
-                    </dd>
+              <Card asChild>
+                <section className="panel profile-panel" aria-labelledby="profile-title">
+                  <div className="panel-heading">
+                    <h2 id="profile-title">{t("auth.profile.title")}</h2>
+                    <Badge variant="status" className={`user-state ${sessionUser.status}`}>
+                      {t(`auth.status.${sessionUser.status}`)}
+                    </Badge>
                   </div>
-                  <div>
-                    <dt>{t("auth.fields.role")}</dt>
-                    <dd>{t(`auth.role.${sessionUser.role}`)}</dd>
-                  </div>
-                  <div>
-                    <dt>{t("auth.fields.expiresAt")}</dt>
-                    <dd>
-                      <time dateTime={auth.session.expires_at}>
-                        {formatTimestamp(auth.session.expires_at ?? "", locale)}
-                      </time>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t("auth.fields.lastLogin")}</dt>
-                    <dd>
-                      {sessionUser.last_login_at ? (
-                        <time dateTime={sessionUser.last_login_at}>
-                          {formatTimestamp(sessionUser.last_login_at, locale)}
+                  <dl className="profile-details">
+                    <div>
+                      <dt>{t("auth.fields.address")}</dt>
+                      <dd>
+                        <Link
+                          className="account-address"
+                          to="/address/$address"
+                          params={{ address: sessionUser.address }}
+                        >
+                          <code>{sessionUser.address}</code>
+                        </Link>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("auth.fields.role")}</dt>
+                      <dd>{t(`auth.role.${sessionUser.role}`)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t("auth.fields.expiresAt")}</dt>
+                      <dd>
+                        <time dateTime={auth.session.expires_at}>
+                          {formatTimestamp(auth.session.expires_at ?? "", locale)}
                         </time>
-                      ) : (
-                        "—"
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-                <form className="profile-form" onSubmit={submitProfile}>
-                  <div className="field-control">
-                    <label htmlFor="auth-display-name">{t("auth.profile.displayName")}</label>
-                    <input
-                      aria-describedby="display-name-hint"
-                      autoComplete="nickname"
-                      id="auth-display-name"
-                      maxLength={256}
-                      onChange={(event) => {
-                        setDisplayName(event.target.value);
-                        setProfileError(undefined);
-                        setProfileSaved(false);
-                      }}
-                      value={displayName}
-                    />
-                    <small id="display-name-hint">{t("auth.profile.displayNameHint")}</small>
-                  </div>
-                  {profileError && (
-                    <p className="form-error" role="alert">
-                      {profileError}
-                    </p>
-                  )}
-                  {profileSaved && <Message type="success">{t("auth.profile.saved")}</Message>}
-                  <button className="button primary" disabled={auth.pending} type="submit">
-                    {t("auth.profile.save")}
-                  </button>
-                </form>
-              </section>
-
-              <aside className="panel session-panel" aria-labelledby="session-actions-title">
-                <h2 id="session-actions-title">{t("auth.sessionActions.title")}</h2>
-                <p>{t("auth.sessionActions.description")}</p>
-                {sessionUser.role === "admin" && (
-                  <>
-                    <Link className="button secondary inline-button" to="/admin/users">
-                      {t("auth.admin.openUsers")}
-                    </Link>
-                    {billingEnabled && (
-                      <Link className="button secondary inline-button" to="/admin/billing">
-                        {t("billing.admin.openBilling")}
-                      </Link>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("auth.fields.lastLogin")}</dt>
+                      <dd>
+                        {sessionUser.last_login_at ? (
+                          <time dateTime={sessionUser.last_login_at}>
+                            {formatTimestamp(sessionUser.last_login_at, locale)}
+                          </time>
+                        ) : (
+                          "—"
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                  <form className="profile-form" onSubmit={submitProfile}>
+                    <div className="field-control">
+                      <Label htmlFor="auth-display-name">{t("auth.profile.displayName")}</Label>
+                      <Input
+                        aria-describedby="display-name-hint"
+                        autoComplete="nickname"
+                        id="auth-display-name"
+                        maxLength={256}
+                        onChange={(event) => {
+                          setDisplayName(event.target.value);
+                          setProfileError(undefined);
+                          setProfileSaved(false);
+                        }}
+                        value={displayName}
+                      />
+                      <small id="display-name-hint">{t("auth.profile.displayNameHint")}</small>
+                    </div>
+                    {profileError && (
+                      <p className="form-error" role="alert">
+                        {profileError}
+                      </p>
                     )}
-                  </>
-                )}
-                <button
-                  className="button secondary"
-                  disabled={auth.pending}
-                  onClick={() => void auth.logout()}
-                  type="button"
-                >
-                  {t("auth.sessionActions.logout")}
-                </button>
-              </aside>
+                    {profileSaved && <Message type="success">{t("auth.profile.saved")}</Message>}
+                    <Button className="button primary" disabled={auth.pending} type="submit">
+                      {t("auth.profile.save")}
+                    </Button>
+                  </form>
+                </section>
+              </Card>
+
+              <Card asChild>
+                <aside className="panel session-panel" aria-labelledby="session-actions-title">
+                  <h2 id="session-actions-title">{t("auth.sessionActions.title")}</h2>
+                  <p>{t("auth.sessionActions.description")}</p>
+                  {sessionUser.role === "admin" && (
+                    <>
+                      <Button asChild variant="outline">
+                        <Link className="button secondary inline-button" to="/admin/users">
+                          {t("auth.admin.openUsers")}
+                        </Link>
+                      </Button>
+                      {billingEnabled && (
+                        <Button asChild variant="outline">
+                          <Link className="button secondary inline-button" to="/admin/billing">
+                            {t("billing.admin.openBilling")}
+                          </Link>
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="button secondary"
+                    disabled={auth.pending}
+                    onClick={() => void auth.logout()}
+                    type="button"
+                  >
+                    {t("auth.sessionActions.logout")}
+                  </Button>
+                </aside>
+              </Card>
             </div>
           )}
           {auth.session.authenticated &&
@@ -325,10 +358,12 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
             (apiKeysEnabled ? (
               <UserAPIKeysPanel key={privateIdentity} locale={locale} />
             ) : (
-              <section className="panel auth-gate" aria-labelledby="api-keys-unavailable-title">
-                <h2 id="api-keys-unavailable-title">{t("auth.apiKeys.unavailableTitle")}</h2>
-                <p>{t("auth.apiKeys.unavailableDescription")}</p>
-              </section>
+              <Card asChild>
+                <section className="panel auth-gate" aria-labelledby="api-keys-unavailable-title">
+                  <h2 id="api-keys-unavailable-title">{t("auth.apiKeys.unavailableTitle")}</h2>
+                  <p>{t("auth.apiKeys.unavailableDescription")}</p>
+                </section>
+              </Card>
             ))}
           {billingEnabled &&
             auth.session.authenticated &&
@@ -351,33 +386,21 @@ function APIKeyTabs({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="contract-tabs" role="tablist" aria-label={t("auth.apiKeys.title")}>
-      {([false, true] as const).map((create) => (
-        <button
-          key={String(create)}
-          id={`api-key-tab-${create}`}
-          role="tab"
-          aria-selected={creating === create}
-          aria-controls="api-key-panel"
-          tabIndex={creating === create ? 0 : -1}
-          type="button"
-          className={`contract-tab${creating === create ? " active" : ""}`}
-          disabled={disabled}
-          onClick={() => {
-            onChange(create);
-          }}
-          onKeyDown={(event) => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-            event.preventDefault();
-            const next = event.key === "Home" ? false : event.key === "End" ? true : !creating;
-            onChange(next);
-            document.getElementById(`api-key-tab-${next}`)?.focus();
-          }}
-        >
-          {t(create ? "auth.apiKeys.createTab" : "auth.apiKeys.listTab")}
-        </button>
-      ))}
-    </div>
+    <Tabs value={String(creating)} onValueChange={(value) => onChange(value === "true")}>
+      <TabsList className="contract-tabs" aria-label={t("auth.apiKeys.title")}>
+        {([false, true] as const).map((create) => (
+          <TabsTrigger
+            key={String(create)}
+            value={String(create)}
+            id={`api-key-tab-${create}`}
+            aria-controls="api-key-panel"
+            disabled={disabled}
+          >
+            {t(create ? "auth.apiKeys.createTab" : "auth.apiKeys.listTab")}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 
@@ -385,28 +408,30 @@ function APIKeyPolicyCard({ policy }: { policy: UserAPIKeyPage["policy"] | undef
   const { t } = useTranslation();
   return (
     <div className="api-key-summary-grid">
-      <article className="panel api-key-policy-card">
-        <span className="eyebrow">{t("auth.apiKeys.eyebrow")}</span>
-        <p>{t("auth.apiKeys.description")}</p>
-        {policy && (
-          <dl>
-            <div>
-              <dt>{t("auth.apiKeys.active")}</dt>
-              <dd>
-                {policy.active_count} / {policy.maximum_active}
-              </dd>
-            </div>
-            <div>
-              <dt>{t("auth.apiKeys.rate")}</dt>
-              <dd>{policy.rate_per_second} /s</dd>
-            </div>
-            <div>
-              <dt>{t("auth.apiKeys.burst")}</dt>
-              <dd>{policy.burst}</dd>
-            </div>
-          </dl>
-        )}
-      </article>
+      <Card asChild>
+        <article className="panel api-key-policy-card">
+          <span className="eyebrow">{t("auth.apiKeys.eyebrow")}</span>
+          <p>{t("auth.apiKeys.description")}</p>
+          {policy && (
+            <dl>
+              <div>
+                <dt>{t("auth.apiKeys.active")}</dt>
+                <dd>
+                  {policy.active_count} / {policy.maximum_active}
+                </dd>
+              </div>
+              <div>
+                <dt>{t("auth.apiKeys.rate")}</dt>
+                <dd>{policy.rate_per_second} /s</dd>
+              </div>
+              <div>
+                <dt>{t("auth.apiKeys.burst")}</dt>
+                <dd>{policy.burst}</dd>
+              </div>
+            </dl>
+          )}
+        </article>
+      </Card>
     </div>
   );
 }
@@ -571,83 +596,89 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         {creating && <APIKeyPolicyCard policy={policy} />}
 
         {creating && (
-          <form className="panel api-key-create-form account-create-form" onSubmit={createKey}>
-            <h2>{t("auth.apiKeys.createTitle")}</h2>
-            <label className="field-control" htmlFor="api-key-name">
-              <span>{t("auth.apiKeys.name")}</span>
-              <input
-                id="api-key-name"
-                maxLength={128}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setFormError(undefined);
-                }}
-                placeholder={t("auth.apiKeys.namePlaceholder")}
-                value={name}
-              />
-            </label>
-            <fieldset className="api-key-scopes">
-              <legend>{t("auth.apiKeys.scopes")}</legend>
-              {(["api:read", "contract:verify"] as APIKeyScope[]).map((scope) => (
-                <label key={scope}>
-                  <input
-                    checked={scopes.includes(scope)}
-                    onChange={() => toggleScope(scope)}
-                    type="checkbox"
-                  />
-                  <span>
-                    <strong>
-                      {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}
-                    </strong>
-                    <small>
-                      {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}
-                    </small>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <div className="account-form-actions">
-              <button
-                className="button primary"
-                disabled={
-                  Boolean(pendingPrefix) ||
-                  !policy ||
-                  policy.active_count >= policy.maximum_active ||
-                  !name.trim() ||
-                  scopes.length === 0
-                }
-                type="submit"
-              >
-                {t("auth.apiKeys.create")}
-              </button>
-              <button
-                className="button secondary"
-                type="button"
-                disabled={Boolean(pendingPrefix)}
-                onClick={() => {
-                  setCreating(false);
-                  setFormError(undefined);
-                }}
-              >
-                {t("auth.apiKeys.cancel")}
-              </button>
-            </div>
-          </form>
+          <Card asChild>
+            <form className="panel api-key-create-form account-create-form" onSubmit={createKey}>
+              <h2>{t("auth.apiKeys.createTitle")}</h2>
+              <Label className="field-control" htmlFor="api-key-name">
+                <span>{t("auth.apiKeys.name")}</span>
+                <Input
+                  id="api-key-name"
+                  maxLength={128}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setFormError(undefined);
+                  }}
+                  placeholder={t("auth.apiKeys.namePlaceholder")}
+                  value={name}
+                />
+              </Label>
+              <fieldset className="api-key-scopes">
+                <legend>{t("auth.apiKeys.scopes")}</legend>
+                {(["api:read", "contract:verify"] as APIKeyScope[]).map((scope) => (
+                  <Label key={scope}>
+                    <Checkbox
+                      checked={scopes.includes(scope)}
+                      onChange={() => toggleScope(scope)}
+                    />
+                    <span>
+                      <strong>
+                        {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.title`)}
+                      </strong>
+                      <small>
+                        {t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.description`)}
+                      </small>
+                    </span>
+                  </Label>
+                ))}
+              </fieldset>
+              <div className="account-form-actions">
+                <Button
+                  className="button primary"
+                  disabled={
+                    Boolean(pendingPrefix) ||
+                    !policy ||
+                    policy.active_count >= policy.maximum_active ||
+                    !name.trim() ||
+                    scopes.length === 0
+                  }
+                  type="submit"
+                >
+                  {t("auth.apiKeys.create")}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="button secondary"
+                  type="button"
+                  disabled={Boolean(pendingPrefix)}
+                  onClick={() => {
+                    setCreating(false);
+                    setFormError(undefined);
+                  }}
+                >
+                  {t("auth.apiKeys.cancel")}
+                </Button>
+              </div>
+            </form>
+          </Card>
         )}
 
         {formError && <Message type="error">{formError}</Message>}
         {keys.isPending && (
-          <p className="query-notice" role="status">
-            {t("auth.apiKeys.loading")}
-          </p>
+          <Alert asChild>
+            <p className="query-notice" role="status">
+              {t("auth.apiKeys.loading")}
+            </p>
+          </Alert>
         )}
         {keys.error && (
-          <div className="query-notice degraded" role="alert">
-            <span>
-              <strong>{t("auth.apiKeys.loadFailed")}</strong>
-              <small>{t("auth.apiKeys.loadFailedDescription")}</small>
-            </span>
-          </div>
+          <Alert asChild>
+            <div className="query-notice degraded" role="alert">
+              <span>
+                <strong>{t("auth.apiKeys.loadFailed")}</strong>
+                <small>{t("auth.apiKeys.loadFailedDescription")}</small>
+              </span>
+            </div>
+          </Alert>
         )}
         {!creating && keys.data?.data.items.length === 0 && (
           <p className="empty-result" role="status">
@@ -657,91 +688,97 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         {!creating && keys.data && keys.data.data.items.length > 0 && (
           <div className="api-key-list" aria-label={t("auth.apiKeys.listLabel")}>
             {keys.data.data.items.map((key) => (
-              <article className="panel api-key-card" key={key.prefix}>
-                <div className="api-key-card-heading">
-                  <div>
-                    <h3>{key.name}</h3>
-                    <code>{key.prefix}</code>
-                  </div>
-                  <span className={`user-state ${key.status}`}>
-                    {t(`auth.apiKeys.status.${key.status}`)}
-                  </span>
-                </div>
-                <dl>
-                  <div>
-                    <dt>{t("auth.apiKeys.scopes")}</dt>
-                    <dd>
-                      {key.scopes
-                        .map((scope) =>
-                          t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`),
-                        )
-                        .join(", ")}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t("auth.apiKeys.quota")}</dt>
-                    <dd>
-                      {key.rate_per_second}/s · {key.burst}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{t("auth.apiKeys.created")}</dt>
-                    <dd>
-                      <time dateTime={key.created_at}>
-                        {formatTimestamp(key.created_at, locale)}
-                      </time>
-                    </dd>
-                  </div>
-                  {key.revoked_at && (
+              <Card key={key.prefix} asChild>
+                <article className="panel api-key-card">
+                  <div className="api-key-card-heading">
                     <div>
-                      <dt>{t("auth.apiKeys.revoked")}</dt>
+                      <h3>{key.name}</h3>
+                      <code>{key.prefix}</code>
+                    </div>
+                    <Badge variant="status" className={`user-state ${key.status}`}>
+                      {t(`auth.apiKeys.status.${key.status}`)}
+                    </Badge>
+                  </div>
+                  <dl>
+                    <div>
+                      <dt>{t("auth.apiKeys.scopes")}</dt>
                       <dd>
-                        <time dateTime={key.revoked_at}>
-                          {formatTimestamp(key.revoked_at, locale)}
+                        {key.scopes
+                          .map((scope) =>
+                            t(`auth.apiKeys.scope.${apiKeyScopeTranslationKey(scope)}.short`),
+                          )
+                          .join(", ")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("auth.apiKeys.quota")}</dt>
+                      <dd>
+                        {key.rate_per_second}/s · {key.burst}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("auth.apiKeys.created")}</dt>
+                      <dd>
+                        <time dateTime={key.created_at}>
+                          {formatTimestamp(key.created_at, locale)}
                         </time>
                       </dd>
                     </div>
+                    {key.revoked_at && (
+                      <div>
+                        <dt>{t("auth.apiKeys.revoked")}</dt>
+                        <dd>
+                          <time dateTime={key.revoked_at}>
+                            {formatTimestamp(key.revoked_at, locale)}
+                          </time>
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                  {key.status === "revoked" && (
+                    <div className="api-key-actions">
+                      <Button
+                        variant="destructive"
+                        className="button danger"
+                        disabled={Boolean(pendingPrefix)}
+                        onClick={() => void deleteKey(key)}
+                        type="button"
+                      >
+                        {t("auth.apiKeys.delete")}
+                      </Button>
+                    </div>
                   )}
-                </dl>
-                {key.status === "revoked" && (
-                  <div className="api-key-actions">
-                    <button
-                      className="button danger"
-                      disabled={Boolean(pendingPrefix)}
-                      onClick={() => void deleteKey(key)}
-                      type="button"
-                    >
-                      {t("auth.apiKeys.delete")}
-                    </button>
-                  </div>
-                )}
-                {key.status === "active" && (
-                  <div className="api-key-actions">
-                    <button
-                      className="button secondary"
-                      disabled={Boolean(pendingPrefix)}
-                      onClick={() => void rotateKey(key)}
-                      type="button"
-                    >
-                      {t("auth.apiKeys.rotate")}
-                    </button>
-                    <button
-                      className="button danger"
-                      disabled={Boolean(pendingPrefix)}
-                      onClick={() => void revokeKey(key)}
-                      type="button"
-                    >
-                      {t("auth.apiKeys.revoke")}
-                    </button>
-                  </div>
-                )}
-              </article>
+                  {key.status === "active" && (
+                    <div className="api-key-actions">
+                      <Button
+                        variant="outline"
+                        className="button secondary"
+                        disabled={Boolean(pendingPrefix)}
+                        onClick={() => void rotateKey(key)}
+                        type="button"
+                      >
+                        {t("auth.apiKeys.rotate")}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        className="button danger"
+                        disabled={Boolean(pendingPrefix)}
+                        onClick={() => void revokeKey(key)}
+                        type="button"
+                      >
+                        {t("auth.apiKeys.revoke")}
+                      </Button>
+                    </div>
+                  )}
+                </article>
+              </Card>
             ))}
           </div>
         )}
         {!creating && keys.data && (
-          <nav className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
-            <button
+          <Pagination className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
+            <Button
+              variant="outline"
               className="button secondary"
               disabled={Boolean(pendingPrefix) || keys.isFetching || cursors.length === 1}
               onClick={() =>
@@ -750,9 +787,10 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
               type="button"
             >
               {t("pagination.previous")}
-            </button>
+            </Button>
             <span>{t("pagination.page", { page: cursors.length })}</span>
-            <button
+            <Button
+              variant="outline"
               className="button secondary"
               disabled={Boolean(pendingPrefix) || keys.isFetching || !keys.data.meta.next_cursor}
               onClick={() => {
@@ -762,8 +800,8 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
               type="button"
             >
               {t("pagination.next")}
-            </button>
-          </nav>
+            </Button>
+          </Pagination>
         )}
       </div>
 
@@ -783,23 +821,21 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                 <span className="eyebrow">{t("auth.apiKeys.issuedEyebrow")}</span>
                 <h2 id="api-key-issued-title">{t("auth.apiKeys.issuedTitle")}</h2>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("auth.apiKeys.closeIssued")}
                 className="dialog-close"
                 onClick={() => setIssued(undefined)}
                 type="button"
               >
                 <UIIcon icon={X} />
-              </button>
+              </Button>
             </div>
-            <p>{t("auth.apiKeys.issuedWarning")}</p>
-            <div className="api-key-token">
-              <code>{issued.token}</code>
-              <CopyButton value={issued.token} />
-            </div>
-            <button className="button primary" onClick={() => setIssued(undefined)} type="button">
+            <IssuedToken token={issued.token} />
+            <Button className="button primary" onClick={() => setIssued(undefined)} type="button">
               {t("auth.apiKeys.savedToken")}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -842,9 +878,11 @@ export function AdminUsersPage() {
       {!auth.enabled && !auth.loading ? (
         <UnavailablePanel />
       ) : auth.loading ? (
-        <p className="query-notice" role="status">
-          {t("auth.sessionState.checking")}
-        </p>
+        <Alert asChild>
+          <p className="query-notice" role="status">
+            {t("auth.sessionState.checking")}
+          </p>
+        </Alert>
       ) : !auth.session.authenticated ? (
         <AuthGate
           detail={t("auth.admin.authenticationRequired")}
@@ -858,18 +896,21 @@ export function AdminUsersPage() {
             <p>{t("auth.admin.page", { page: cursors.length })}</p>
             <div className="admin-toolbar-actions">
               {billingEnabled && (
-                <Link className="button secondary" to="/admin/billing">
-                  {t("billing.admin.openBilling")}
-                </Link>
+                <Button asChild variant="outline">
+                  <Link className="button secondary" to="/admin/billing">
+                    {t("billing.admin.openBilling")}
+                  </Link>
+                </Button>
               )}
-              <button
+              <Button
+                variant="outline"
                 className="button secondary"
                 disabled={users.isFetching}
                 onClick={() => void users.refetch()}
                 type="button"
               >
                 {t("auth.admin.refresh")}
-              </button>
+              </Button>
             </div>
           </div>
           {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
@@ -879,17 +920,21 @@ export function AdminUsersPage() {
             </Message>
           )}
           {users.isPending && (
-            <p className="query-notice" role="status">
-              {t("auth.admin.loading")}
-            </p>
+            <Alert asChild>
+              <p className="query-notice" role="status">
+                {t("auth.admin.loading")}
+              </p>
+            </Alert>
           )}
           {users.error && (
-            <div className="query-notice degraded" role="alert">
-              <span>
-                <strong>{t("auth.admin.loadFailed")}</strong>
-                <small>{t("auth.admin.loadFailedDetail")}</small>
-              </span>
-            </div>
+            <Alert asChild>
+              <div className="query-notice degraded" role="alert">
+                <span>
+                  <strong>{t("auth.admin.loadFailed")}</strong>
+                  <small>{t("auth.admin.loadFailedDetail")}</small>
+                </span>
+              </div>
+            </Alert>
           )}
           {users.data?.data.length === 0 && (
             <p className="empty-result" role="status">
@@ -910,8 +955,9 @@ export function AdminUsersPage() {
             </div>
           )}
           {users.data && (
-            <nav className="cursor-pagination" aria-label={t("auth.admin.pagination")}>
-              <button
+            <Pagination className="cursor-pagination" aria-label={t("auth.admin.pagination")}>
+              <Button
+                variant="outline"
                 className="button secondary"
                 disabled={users.isFetching || cursors.length === 1}
                 onClick={() => {
@@ -921,9 +967,10 @@ export function AdminUsersPage() {
                 type="button"
               >
                 {t("pagination.previous")}
-              </button>
+              </Button>
               <span>{t("pagination.page", { page: cursors.length })}</span>
-              <button
+              <Button
+                variant="outline"
                 className="button secondary"
                 disabled={users.isFetching || !users.data.meta.next_cursor}
                 onClick={() => {
@@ -935,8 +982,8 @@ export function AdminUsersPage() {
                 type="button"
               >
                 {t("pagination.next")}
-              </button>
-            </nav>
+              </Button>
+            </Pagination>
           )}
         </>
       )}
@@ -994,94 +1041,101 @@ function AdminUserCard({
   };
 
   return (
-    <article className="panel admin-user-card">
-      <header>
-        <div>
-          <strong>{user.display_name ?? t("auth.profile.noDisplayName")}</strong>
-          {user.id === currentUserID && (
-            <span className="current-user-label">{t("auth.admin.you")}</span>
-          )}
-        </div>
-        <code title={user.address}>{user.address}</code>
-      </header>
-      <dl>
-        <div>
-          <dt>{t("auth.fields.lastLogin")}</dt>
-          <dd>
-            {user.last_login_at ? (
-              <time dateTime={user.last_login_at}>
-                {formatTimestamp(user.last_login_at, locale)}
-              </time>
-            ) : (
-              "—"
+    <Card asChild>
+      <article className="panel admin-user-card">
+        <header>
+          <div>
+            <strong>{user.display_name ?? t("auth.profile.noDisplayName")}</strong>
+            {user.id === currentUserID && (
+              <span className="current-user-label">{t("auth.admin.you")}</span>
             )}
-          </dd>
+          </div>
+          <code title={user.address}>{user.address}</code>
+        </header>
+        <dl>
+          <div>
+            <dt>{t("auth.fields.lastLogin")}</dt>
+            <dd>
+              {user.last_login_at ? (
+                <time dateTime={user.last_login_at}>
+                  {formatTimestamp(user.last_login_at, locale)}
+                </time>
+              ) : (
+                "—"
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt>{t("auth.fields.createdAt")}</dt>
+            <dd>
+              <time dateTime={user.created_at}>{formatTimestamp(user.created_at, locale)}</time>
+            </dd>
+          </div>
+        </dl>
+        <div className="admin-user-controls">
+          <Label className="field-control">
+            <span>{t("auth.fields.role")}</span>
+            <SelectControl
+              aria-label={t("auth.admin.roleFor", { address: user.address })}
+              disabled={auth.pending}
+              onChange={(event) => setRole(event.target.value as User["role"])}
+              value={role}
+            >
+              <option value="user">{t("auth.role.user")}</option>
+              <option value="admin">{t("auth.role.admin")}</option>
+            </SelectControl>
+          </Label>
+          <Label className="field-control">
+            <span>{t("auth.fields.status")}</span>
+            <SelectControl
+              aria-label={t("auth.admin.statusFor", { address: user.address })}
+              disabled={auth.pending}
+              onChange={(event) => setStatus(event.target.value as User["status"])}
+              value={status}
+            >
+              <option value="active">{t("auth.status.active")}</option>
+              <option value="disabled">{t("auth.status.disabled")}</option>
+            </SelectControl>
+          </Label>
         </div>
-        <div>
-          <dt>{t("auth.fields.createdAt")}</dt>
-          <dd>
-            <time dateTime={user.created_at}>{formatTimestamp(user.created_at, locale)}</time>
-          </dd>
+        <div className="admin-user-actions">
+          <Button
+            className="button primary"
+            disabled={auth.pending || !changed}
+            onClick={() => void save()}
+            type="button"
+          >
+            {t("auth.admin.saveUser")}
+          </Button>
+          <Button
+            variant="outline"
+            className="button secondary"
+            disabled={auth.pending}
+            onClick={() => void revoke()}
+            type="button"
+          >
+            {t("auth.admin.revokeSessions")}
+          </Button>
         </div>
-      </dl>
-      <div className="admin-user-controls">
-        <label className="field-control">
-          <span>{t("auth.fields.role")}</span>
-          <SelectControl
-            aria-label={t("auth.admin.roleFor", { address: user.address })}
-            disabled={auth.pending}
-            onChange={(event) => setRole(event.target.value as User["role"])}
-            value={role}
-          >
-            <option value="user">{t("auth.role.user")}</option>
-            <option value="admin">{t("auth.role.admin")}</option>
-          </SelectControl>
-        </label>
-        <label className="field-control">
-          <span>{t("auth.fields.status")}</span>
-          <SelectControl
-            aria-label={t("auth.admin.statusFor", { address: user.address })}
-            disabled={auth.pending}
-            onChange={(event) => setStatus(event.target.value as User["status"])}
-            value={status}
-          >
-            <option value="active">{t("auth.status.active")}</option>
-            <option value="disabled">{t("auth.status.disabled")}</option>
-          </SelectControl>
-        </label>
-      </div>
-      <div className="admin-user-actions">
-        <button
-          className="button primary"
-          disabled={auth.pending || !changed}
-          onClick={() => void save()}
-          type="button"
-        >
-          {t("auth.admin.saveUser")}
-        </button>
-        <button
-          className="button secondary"
-          disabled={auth.pending}
-          onClick={() => void revoke()}
-          type="button"
-        >
-          {t("auth.admin.revokeSessions")}
-        </button>
-      </div>
-    </article>
+      </article>
+    </Card>
   );
 }
 
 function AuthGate({ detail, title }: { detail: string; title: string }) {
   const { t } = useTranslation();
   return (
-    <section className="panel auth-gate" aria-labelledby="auth-gate-title">
-      <h2 id="auth-gate-title">{title}</h2>
-      <p>{detail}</p>
-      <Link className="button primary inline-button" to="/account">
-        {t("auth.account.open")}
-      </Link>
-    </section>
+    <Card asChild>
+      <section className="panel auth-gate" aria-labelledby="auth-gate-title">
+        <h2 id="auth-gate-title">{title}</h2>
+        <p>{detail}</p>
+        <Button asChild variant="default">
+          <Link className="button primary inline-button" to="/account">
+            {t("auth.account.open")}
+          </Link>
+        </Button>
+      </section>
+    </Card>
   );
 }
 
@@ -1092,10 +1146,12 @@ function apiKeyScopeTranslationKey(scope: APIKeyScope): "read" | "verify" {
 function UnavailablePanel() {
   const { t } = useTranslation();
   return (
-    <section className="panel auth-gate" aria-labelledby="auth-unavailable-title">
-      <h2 id="auth-unavailable-title">{t("auth.unavailable.title")}</h2>
-      <p>{t("auth.unavailable.description")}</p>
-    </section>
+    <Card asChild>
+      <section className="panel auth-gate" aria-labelledby="auth-unavailable-title">
+        <h2 id="auth-unavailable-title">{t("auth.unavailable.title")}</h2>
+        <p>{t("auth.unavailable.description")}</p>
+      </section>
+    </Card>
   );
 }
 
@@ -1121,4 +1177,17 @@ function addressesMatch(left: string | undefined, right: string | undefined): bo
   } catch {
     return false;
   }
+}
+
+function IssuedToken({ token }: { token: string }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <p>{t("auth.apiKeys.issuedWarning")}</p>
+      <div className="api-key-token">
+        <code>{token}</code>
+        <CopyButton value={token} />
+      </div>
+    </>
+  );
 }

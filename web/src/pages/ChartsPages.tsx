@@ -1,3 +1,19 @@
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 import { Activity, ArrowDown, ArrowRight, ArrowUp, CircleDot } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
@@ -212,56 +228,66 @@ export function ChartMetricPage({
         <span aria-hidden="true">/</span>
         <span aria-current="page">{label}</span>
       </nav>
-      <section className="panel chart-controls" aria-label={t("charts.controls")}>
-        <div className="chart-presets" role="group" aria-label={t("charts.range")}>
-          {(["24h", "7d", "30d", "90d", "1y", "all"] as const).map((preset) => (
-            <button
-              aria-pressed={search.range === preset}
-              className={search.range === preset ? "active" : undefined}
-              key={preset}
-              onClick={() => choosePreset(preset)}
-              type="button"
-            >
-              {t(`charts.presets.${preset}`)}
-            </button>
-          ))}
-        </div>
-        <form className="chart-custom-range" onSubmit={submitCustom}>
-          <label>
-            <span>{t("charts.fromDate")} · UTC</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>{t("charts.toDate")} · UTC</span>
-            <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-          </label>
-          <button className="button" type="submit">
-            {t("charts.apply")}
-          </button>
-        </form>
-        <label className="chart-interval">
-          <span>{t("charts.intervalControl")}</span>
-          <SelectControl
-            value={search.interval}
-            onChange={(event) =>
-              updateSearch({
-                ...search,
-                interval: event.target.value as ChartInterval,
-              })
-            }
-          >
-            {(["auto", "hour", "day", "week", "month"] as const).map((interval) => (
-              <option key={interval} value={interval}>
-                {t(`charts.intervals.${interval}`)}
-              </option>
+      <Card asChild>
+        <section className="panel chart-controls" aria-label={t("charts.controls")}>
+          <div className="chart-presets" role="group" aria-label={t("charts.range")}>
+            {(["24h", "7d", "30d", "90d", "1y", "all"] as const).map((preset) => (
+              <Button
+                variant="ghost"
+                aria-pressed={search.range === preset}
+                className={cn(
+                  "hover:border-ui-brand hover:bg-ui-brand-soft hover:text-primary focus-visible:border-ui-brand focus-visible:bg-ui-brand-soft focus-visible:text-primary",
+                  search.range === preset && "active border-ui-brand bg-ui-brand-soft text-primary",
+                )}
+                key={preset}
+                onClick={() => choosePreset(preset)}
+                type="button"
+              >
+                {t(`charts.presets.${preset}`)}
+              </Button>
             ))}
-          </SelectControl>
-        </label>
-      </section>
+          </div>
+          <form className="chart-custom-range" onSubmit={submitCustom}>
+            <Label>
+              <span>{t("charts.fromDate")} · UTC</span>
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)}
+              />
+            </Label>
+            <Label>
+              <span>{t("charts.toDate")} · UTC</span>
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(event) => setToDate(event.target.value)}
+              />
+            </Label>
+            <Button className="button" type="submit">
+              {t("charts.apply")}
+            </Button>
+          </form>
+          <Label className="chart-interval">
+            <span>{t("charts.intervalControl")}</span>
+            <SelectControl
+              value={search.interval}
+              onChange={(event) =>
+                updateSearch({
+                  ...search,
+                  interval: event.target.value as ChartInterval,
+                })
+              }
+            >
+              {(["auto", "hour", "day", "week", "month"] as const).map((interval) => (
+                <option key={interval} value={interval}>
+                  {t(`charts.intervals.${interval}`)}
+                </option>
+              ))}
+            </SelectControl>
+          </Label>
+        </section>
+      </Card>
       <QueryNotice
         loading={series.isPending || overview.isPending}
         error={series.error ?? overview.error}
@@ -283,46 +309,47 @@ export function ChartMetricPage({
               </article>
             ))}
           </section>
-          <section className="panel chart-detail-panel" aria-labelledby="chart-detail-title">
-            <div className="charts-section-heading">
-              <div>
-                <span className="eyebrow">{t("charts.utcHistory")}</span>
-                <h2 id="chart-detail-title">{label}</h2>
+          <Card asChild>
+            <section className="panel chart-detail-panel" aria-labelledby="chart-detail-title">
+              <div className="charts-section-heading">
+                <div>
+                  <span className="eyebrow">{t("charts.utcHistory")}</span>
+                  <h2 id="chart-detail-title">{label}</h2>
+                </div>
+                <div className="chart-actions">
+                  <Button
+                    variant="ghost"
+                    className="button"
+                    onClick={() => setResetKey((value) => value + 1)}
+                    type="button"
+                  >
+                    {t("charts.resetZoom")}
+                  </Button>
+                  <Button
+                    className="button primary"
+                    onClick={() => downloadCSV(series.data)}
+                    type="button"
+                  >
+                    {t("charts.downloadCSV")}
+                  </Button>
+                </div>
               </div>
-              <div className="chart-actions">
-                <button
-                  className="button"
-                  onClick={() => setResetKey((value) => value + 1)}
-                  type="button"
-                >
-                  {t("charts.resetZoom")}
-                </button>
-                <button
-                  className="button primary"
-                  onClick={() => downloadCSV(series.data)}
-                  type="button"
-                >
-                  {t("charts.downloadCSV")}
-                </button>
-              </div>
-            </div>
-            <Suspense
-              fallback={<div className="metric-detail-chart chart-loading" aria-hidden="true" />}
-            >
-              <MetricChart
-                data={series.data.points}
+              <Suspense fallback={<Skeleton className="metric-detail-chart" aria-hidden="true" />}>
+                <MetricChart
+                  data={series.data.points}
+                  label={label}
+                  locale={locale}
+                  resetKey={resetKey}
+                />
+              </Suspense>
+              <ExactChartTable
+                display={display}
                 label={label}
                 locale={locale}
-                resetKey={resetKey}
+                points={series.data.points}
               />
-            </Suspense>
-            <ExactChartTable
-              display={display}
-              label={label}
-              locale={locale}
-              points={series.data.points}
-            />
-          </section>
+            </section>
+          </Card>
           <div className="chart-detail-meta">
             <span>
               {t("charts.intervalControl")}: <code>{series.data.interval}</code>
@@ -409,12 +436,15 @@ function Change({ value }: { value?: string }) {
 function CoverageBadge({ coverage }: { coverage: ChartOverview["coverage"] }) {
   const { t } = useTranslation();
   return (
-    <span className={`coverage-badge ${coverage.complete ? "complete" : "pending"}`}>
+    <Badge
+      variant="status"
+      className={`coverage-badge ${coverage.complete ? "complete" : "pending"}`}
+    >
       <UIIcon icon={CircleDot} size={14} className="status-icon" />
       {coverage.complete
         ? t("charts.backfillComplete")
         : `${t("charts.backfillInProgress")} · ${coverage.backfill_progress}%`}
-    </span>
+    </Badge>
   );
 }
 
@@ -436,43 +466,43 @@ function ExactChartTable({
       tabIndex={0}
       aria-label={t("charts.exactTable")}
     >
-      <table>
-        <caption>{t("charts.exactTableCaption")}</caption>
-        <thead>
-          <tr>
-            <th>{t("charts.bucketStart")}</th>
-            <th>{t("charts.bucketEnd")}</th>
-            <th className="numeric">{label}</th>
-            <th className="numeric">{t("charts.exactValue")}</th>
-            <th>{t("charts.partial")}</th>
-            <th>{t("charts.blockRange")}</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableCaption>{t("charts.exactTableCaption")}</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("charts.bucketStart")}</TableHead>
+            <TableHead>{t("charts.bucketEnd")}</TableHead>
+            <TableHead className="numeric">{label}</TableHead>
+            <TableHead className="numeric">{t("charts.exactValue")}</TableHead>
+            <TableHead>{t("charts.partial")}</TableHead>
+            <TableHead>{t("charts.blockRange")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {points.map((point) => (
-            <tr key={point.bucket_start}>
-              <td>
+            <TableRow key={point.bucket_start}>
+              <TableCell>
                 <time dateTime={point.bucket_start}>
                   {formatTimestamp(point.bucket_start, locale)}
                 </time>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <time dateTime={point.bucket_end}>{formatTimestamp(point.bucket_end, locale)}</time>
-              </td>
-              <td className="numeric">{display(point.value)}</td>
-              <td className="numeric">
+              </TableCell>
+              <TableCell className="numeric">{display(point.value)}</TableCell>
+              <TableCell className="numeric">
                 <code>{point.value}</code>
-              </td>
-              <td>{point.partial ? t("common.yes") : t("common.no")}</td>
-              <td>
+              </TableCell>
+              <TableCell>{point.partial ? t("common.yes") : t("common.no")}</TableCell>
+              <TableCell>
                 <code>
                   {point.from_block} – {point.to_block}
                 </code>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

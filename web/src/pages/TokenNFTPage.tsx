@@ -1,3 +1,17 @@
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { Alert } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import "@/i18n/resources/tokenPage";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { CircleAlert, X } from "lucide-react";
@@ -119,7 +133,7 @@ export function TokenDetailPage({
           )}
         </DetailList>
       )}
-      <nav className="transaction-tabs" aria-label={t("tokenPage.sections")}>
+      <NavigationTabs className="transaction-tabs" aria-label={t("tokenPage.sections")}>
         {(
           [
             ["transfers", t("tokenPage.transfers")],
@@ -129,19 +143,20 @@ export function TokenDetailPage({
             ["details", t("tokenPage.details")],
           ] as const
         ).map(([tabID, label]) => (
-          <Link
-            key={tabID}
-            to="/token/$address"
-            params={{ address }}
-            search={{ tab: tabID }}
-            activeProps={{ className: "" }}
-            className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
-            aria-current={activeTab === tabID ? "page" : undefined}
-          >
-            {label}
-          </Link>
+          <NavigationTab key={tabID}>
+            <Link
+              to="/token/$address"
+              params={{ address }}
+              search={{ tab: tabID }}
+              activeProps={{ className: "" }}
+              className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+              aria-current={activeTab === tabID ? "page" : undefined}
+            >
+              {label}
+            </Link>
+          </NavigationTab>
         ))}
-      </nav>
+      </NavigationTabs>
       {activeTab === "details" && token.data && (
         <DetailList label={t("detail.tokenMetadata")}>
           <Detail label={t("table.confidence")} value={confidenceLabel(token.data.confidence, t)} />
@@ -272,31 +287,33 @@ function TokenHolders({
       )}
       {holders && holders.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("tokenHolder.title")}>
-          <table>
-            <caption className="sr-only">{t("tokenHolder.caption")}</caption>
-            <thead>
-              <tr>
-                <th>{t("tokenHolder.address")}</th>
-                <th className="numeric">{t("detail.amount")}</th>
-                <th className="numeric">{t("detail.observedBlock")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableCaption className="sr-only">{t("tokenHolder.caption")}</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("tokenHolder.address")}</TableHead>
+                <TableHead className="numeric">{t("detail.amount")}</TableHead>
+                <TableHead className="numeric">{t("detail.observedBlock")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {holders.map((holder) => (
-                <tr key={holder.holder_address}>
-                  <td>
+                <TableRow key={holder.holder_address}>
+                  <TableCell>
                     <AddressIdentity address={holder.holder_address} />
-                  </td>
-                  <td className="numeric">{formatTokenAmount(holder.balance, decimals, locale)}</td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell className="numeric">
+                    {formatTokenAmount(holder.balance, decimals, locale)}
+                  </TableCell>
+                  <TableCell className="numeric">
                     <Link to="/blocks/$blockID" params={{ blockID: holder.observed_block_hash }}>
                       {formatInteger(holder.observed_block_number, locale)}
                     </Link>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       <CursorPagination
@@ -349,34 +366,34 @@ function TokenTransfers({
       )}
       {events && events.length > 0 && (
         <div className="table-scroll" tabIndex={0} aria-label={t("detail.tokenEvents")}>
-          <table>
-            <caption className="sr-only">{t("detail.tokenEventHistory")}</caption>
-            <thead>
-              <tr>
-                <th className="numeric">{t("table.block")}</th>
-                <th>{t("table.hash")}</th>
-                <th>{t("detail.event")}</th>
-                <th>{t("table.from")}</th>
-                <th>{t("table.to")}</th>
-                <th>{t("detail.operator")}</th>
-                <th>{t("detail.tokenID")}</th>
-                <th className="numeric">{t("detail.amount")}</th>
-                <th>{t("table.standard")}</th>
-                <th>{t("table.confidence")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableCaption className="sr-only">{t("detail.tokenEventHistory")}</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="numeric">{t("table.block")}</TableHead>
+                <TableHead>{t("table.hash")}</TableHead>
+                <TableHead>{t("detail.event")}</TableHead>
+                <TableHead>{t("table.from")}</TableHead>
+                <TableHead>{t("table.to")}</TableHead>
+                <TableHead>{t("detail.operator")}</TableHead>
+                <TableHead>{t("detail.tokenID")}</TableHead>
+                <TableHead className="numeric">{t("detail.amount")}</TableHead>
+                <TableHead>{t("table.standard")}</TableHead>
+                <TableHead>{t("table.confidence")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {events.map((event) => (
-                <tr key={`${event.block_hash}:${event.log_index}:${event.sub_index}`}>
-                  <td className="numeric">
+                <TableRow key={`${event.block_hash}:${event.log_index}:${event.sub_index}`}>
+                  <TableCell className="numeric">
                     <span className="table-primary">
                       <Link to="/blocks/$blockID" params={{ blockID: event.block_hash }}>
                         {formatInteger(event.block_number, locale)}
                       </Link>
                       <code title={event.block_hash}>{shorten(event.block_hash)}</code>
                     </span>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell>
                     <Link
                       to="/tx/$hash"
                       params={{ hash: event.transaction_hash }}
@@ -384,12 +401,16 @@ function TokenTransfers({
                     >
                       {shorten(event.transaction_hash)}
                     </Link>
-                  </td>
-                  <td>{tokenEventKindLabel(event.kind, t)}</td>
-                  <td>{event.from ? <AddressIdentity address={event.from} /> : "—"}</td>
-                  <td>{event.to ? <AddressIdentity address={event.to} /> : "—"}</td>
-                  <td>{event.operator ? <AddressIdentity address={event.operator} /> : "—"}</td>
-                  <td>
+                  </TableCell>
+                  <TableCell>{tokenEventKindLabel(event.kind, t)}</TableCell>
+                  <TableCell>
+                    {event.from ? <AddressIdentity address={event.from} /> : "—"}
+                  </TableCell>
+                  <TableCell>{event.to ? <AddressIdentity address={event.to} /> : "—"}</TableCell>
+                  <TableCell>
+                    {event.operator ? <AddressIdentity address={event.operator} /> : "—"}
+                  </TableCell>
+                  <TableCell>
                     {event.token_id && isNFTStandard(event.standard) ? (
                       <Link
                         to="/nft/$address/$tokenID"
@@ -400,16 +421,16 @@ function TokenTransfers({
                     ) : (
                       <code>{event.token_id ?? "—"}</code>
                     )}
-                  </td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell className="numeric">
                     <code>{formatTokenEventAmount(event, locale)}</code>
-                  </td>
-                  <td>{tokenStandardLabel(event.standard, t)}</td>
-                  <td>{confidenceLabel(event.confidence, t)}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell>{tokenStandardLabel(event.standard, t)}</TableCell>
+                  <TableCell>{confidenceLabel(event.confidence, t)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
       {events && (
@@ -460,12 +481,14 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
         </DetailList>
       ) : null}
       {token.data && !isNFTStandard(token.data.standard) ? (
-        <div className="query-notice degraded" role="status">
-          <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
-          <span>
-            <strong>{t("nftMetadata.notNFT")}</strong>
-          </span>
-        </div>
+        <Alert asChild>
+          <div className="query-notice degraded" role="status">
+            <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
+            <span>
+              <strong>{t("nftMetadata.notNFT")}</strong>
+            </span>
+          </div>
+        </Alert>
       ) : null}
       {isERC721 ? <QueryNotice loading={ownership.isPending} error={ownership.error} /> : null}
       {isERC721 && ownership.data ? (
@@ -495,12 +518,16 @@ export function NFTDetailPage({ address, tokenID }: { address: string; tokenID: 
         </DetailList>
       ) : null}
       {token.data?.standard === "erc1155" ? (
-        <section className="panel detail-card" aria-label={t("detail.nftOwnership")}>
-          <h2>{t("detail.nftOwnership")}</h2>
-          <p className="context-note" role="note">
-            {t("nftMetadata.erc1155Ownership")}
-          </p>
-        </section>
+        <Card asChild>
+          <section className="panel detail-card" aria-label={t("detail.nftOwnership")}>
+            <h2>{t("detail.nftOwnership")}</h2>
+            <Alert asChild>
+              <p className="context-note" role="note">
+                {t("nftMetadata.erc1155Ownership")}
+              </p>
+            </Alert>
+          </section>
+        </Card>
       ) : null}
       <NFTMetadataPanel
         data={nftMetadata.data}
@@ -526,128 +553,136 @@ function NFTMetadataPanel({
   const { t } = useTranslation();
   const contentAvailable = Boolean(data?.content_observation);
   return (
-    <section className="panel detail-card nft-metadata-card" aria-labelledby="nft-metadata-title">
-      <h2 id="nft-metadata-title">{t("nftMetadata.title")}</h2>
-      <NFTMetadataQueryNotice error={error} loading={loading} />
-      {data ? (
-        <>
-          {data.content_stale && data.content_observation ? (
-            <div className="query-notice degraded compact" role="status">
-              <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
-              <span>
-                <strong>{t("nftMetadata.staleTitle")}</strong>
-                <small>
-                  {t("nftMetadata.staleDetail", {
-                    state: nftMetadataStateLabel(data.state, t),
-                    latest: formatInteger(data.observation.block_number, locale),
-                    content: formatInteger(data.content_observation.block_number, locale),
-                  })}
-                </small>
-              </span>
-            </div>
-          ) : data.state !== "available" ? (
-            <div className="query-notice degraded compact" role="status">
-              <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
-              <span>
-                <strong>{nftMetadataStateLabel(data.state, t)}</strong>
-                <small>{t("nftMetadata.stateDetail")}</small>
-              </span>
-            </div>
-          ) : null}
-          <dl className="detail-grid">
-            <Detail label={t("table.status")} value={nftMetadataStateLabel(data.state, t)} />
-            <Detail
-              label={t("detail.observedBlock")}
-              value={formatInteger(data.observation.block_number, locale)}
-            />
-            <Detail
-              label={t("detail.observedBlockHash")}
-              mono
-              value={
-                <Link to="/blocks/$blockID" params={{ blockID: data.observation.block_hash }}>
-                  {data.observation.block_hash}
-                </Link>
-              }
-            />
+    <Card asChild>
+      <section className="panel detail-card nft-metadata-card" aria-labelledby="nft-metadata-title">
+        <h2 id="nft-metadata-title">{t("nftMetadata.title")}</h2>
+        <NFTMetadataQueryNotice error={error} loading={loading} />
+        {data ? (
+          <>
             {data.content_stale && data.content_observation ? (
-              <>
-                <Detail
-                  label={t("nftMetadata.contentBlock")}
-                  value={formatInteger(data.content_observation.block_number, locale)}
-                />
-                <Detail
-                  label={t("nftMetadata.contentBlockHash")}
-                  mono
-                  value={
-                    <Link
-                      to="/blocks/$blockID"
-                      params={{ blockID: data.content_observation.block_hash }}
-                    >
-                      {data.content_observation.block_hash}
-                    </Link>
-                  }
-                />
-              </>
+              <Alert asChild>
+                <div className="query-notice degraded compact" role="status">
+                  <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
+                  <span>
+                    <strong>{t("nftMetadata.staleTitle")}</strong>
+                    <small>
+                      {t("nftMetadata.staleDetail", {
+                        state: nftMetadataStateLabel(data.state, t),
+                        latest: formatInteger(data.observation.block_number, locale),
+                        content: formatInteger(data.content_observation.block_number, locale),
+                      })}
+                    </small>
+                  </span>
+                </div>
+              </Alert>
+            ) : data.state !== "available" ? (
+              <Alert asChild>
+                <div className="query-notice degraded compact" role="status">
+                  <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
+                  <span>
+                    <strong>{nftMetadataStateLabel(data.state, t)}</strong>
+                    <small>{t("nftMetadata.stateDetail")}</small>
+                  </span>
+                </div>
+              </Alert>
             ) : null}
-            {contentAvailable ? (
-              <>
-                <Detail
-                  label={t("detail.name")}
-                  value={<MetadataText value={data.name} truncated={data.name_truncated} />}
-                />
-                <Detail
-                  label={t("nftMetadata.description")}
-                  wide
-                  value={
-                    <MetadataText
-                      description
-                      value={data.description}
-                      truncated={data.description_truncated}
-                    />
-                  }
-                />
-                <Detail
-                  label={t("nftMetadata.imageLink")}
-                  wide
-                  value={
-                    data.image.state === "available" && data.image.url ? (
-                      <NFTExternalImageLink url={data.image.url} />
-                    ) : (
-                      nftMetadataImageStateLabel(data.image.state, t)
-                    )
-                  }
-                />
-              </>
-            ) : null}
-          </dl>
-          {contentAvailable ? (
-            <div className="nft-traits">
-              <h3>{t("nftMetadata.traits")}</h3>
-              {data.attributes.length > 0 ? (
-                <dl className="nft-traits-grid">
-                  {data.attributes.map((attribute, index) => (
-                    <div className="nft-trait" key={`${attribute.trait_type}:${index}`}>
-                      <dt>{attribute.trait_type}</dt>
-                      <dd>
-                        {attribute.value}
-                        {attribute.display_type ? <small>{attribute.display_type}</small> : null}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <p className="empty-result">{t("nftMetadata.noTraits")}</p>
-              )}
-              {data.omitted_attribute_count > 0 ? (
-                <p className="context-note" role="note">
-                  {t("nftMetadata.omittedTraits", { count: data.omitted_attribute_count })}
-                </p>
+            <dl className="detail-grid">
+              <Detail label={t("table.status")} value={nftMetadataStateLabel(data.state, t)} />
+              <Detail
+                label={t("detail.observedBlock")}
+                value={formatInteger(data.observation.block_number, locale)}
+              />
+              <Detail
+                label={t("detail.observedBlockHash")}
+                mono
+                value={
+                  <Link to="/blocks/$blockID" params={{ blockID: data.observation.block_hash }}>
+                    {data.observation.block_hash}
+                  </Link>
+                }
+              />
+              {data.content_stale && data.content_observation ? (
+                <>
+                  <Detail
+                    label={t("nftMetadata.contentBlock")}
+                    value={formatInteger(data.content_observation.block_number, locale)}
+                  />
+                  <Detail
+                    label={t("nftMetadata.contentBlockHash")}
+                    mono
+                    value={
+                      <Link
+                        to="/blocks/$blockID"
+                        params={{ blockID: data.content_observation.block_hash }}
+                      >
+                        {data.content_observation.block_hash}
+                      </Link>
+                    }
+                  />
+                </>
               ) : null}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-    </section>
+              {contentAvailable ? (
+                <>
+                  <Detail
+                    label={t("detail.name")}
+                    value={<MetadataText value={data.name} truncated={data.name_truncated} />}
+                  />
+                  <Detail
+                    label={t("nftMetadata.description")}
+                    wide
+                    value={
+                      <MetadataText
+                        description
+                        value={data.description}
+                        truncated={data.description_truncated}
+                      />
+                    }
+                  />
+                  <Detail
+                    label={t("nftMetadata.imageLink")}
+                    wide
+                    value={
+                      data.image.state === "available" && data.image.url ? (
+                        <NFTExternalImageLink url={data.image.url} />
+                      ) : (
+                        nftMetadataImageStateLabel(data.image.state, t)
+                      )
+                    }
+                  />
+                </>
+              ) : null}
+            </dl>
+            {contentAvailable ? (
+              <div className="nft-traits">
+                <h3>{t("nftMetadata.traits")}</h3>
+                {data.attributes.length > 0 ? (
+                  <dl className="nft-traits-grid">
+                    {data.attributes.map((attribute, index) => (
+                      <div className="nft-trait" key={`${attribute.trait_type}:${index}`}>
+                        <dt>{attribute.trait_type}</dt>
+                        <dd>
+                          {attribute.value}
+                          {attribute.display_type ? <small>{attribute.display_type}</small> : null}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="empty-result">{t("nftMetadata.noTraits")}</p>
+                )}
+                {data.omitted_attribute_count > 0 ? (
+                  <Alert asChild>
+                    <p className="context-note" role="note">
+                      {t("nftMetadata.omittedTraits", { count: data.omitted_attribute_count })}
+                    </p>
+                  </Alert>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </section>
+    </Card>
   );
 }
 
@@ -690,12 +725,14 @@ function NFTMetadataQueryNotice({ error, loading }: { error: unknown; loading: b
   })();
   if (!message) return <QueryNotice compact error={error} />;
   return (
-    <div className="query-notice degraded compact" role="status">
-      <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
-      <span>
-        <strong>{message}</strong>
-      </span>
-    </div>
+    <Alert asChild>
+      <div className="query-notice degraded compact" role="status">
+        <UIIcon icon={CircleAlert} size={14} className="status-icon warning" />
+        <span>
+          <strong>{message}</strong>
+        </span>
+      </div>
+    </Alert>
   );
 }
 
@@ -725,7 +762,8 @@ function NFTExternalImageLink({ url }: { url: string }) {
   return (
     <>
       <span className="nft-external-link">
-        <button
+        <Button
+          variant="ghost"
           aria-haspopup="dialog"
           aria-label={t("nftMetadata.reviewImageLink", { target: url })}
           className="nft-image-link"
@@ -735,9 +773,11 @@ function NFTExternalImageLink({ url }: { url: string }) {
           type="button"
         >
           {label}
-        </button>
+        </Button>
         <CopyButton value={url} />
-        <span className="result-kind warning">{t("nftMetadata.unverifiedLink")}</span>
+        <Badge variant="status" className="result-kind warning">
+          {t("nftMetadata.unverifiedLink")}
+        </Badge>
       </span>
       {open ? (
         <div
@@ -759,14 +799,16 @@ function NFTExternalImageLink({ url }: { url: string }) {
           >
             <div className="qr-dialog-heading">
               <h2 id="nft-external-link-title">{t("nftMetadata.dialogTitle")}</h2>
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("common.close")}
                 className="dialog-close"
                 onClick={() => setOpen(false)}
                 type="button"
               >
                 <UIIcon icon={X} />
-              </button>
+              </Button>
             </div>
             <p className="external-link-warning" id="nft-external-link-warning" role="alert">
               {t("nftMetadata.externalWarning")}
@@ -777,19 +819,26 @@ function NFTExternalImageLink({ url }: { url: string }) {
               <CopyButton value={url} />
             </div>
             <div className="external-link-dialog-actions">
-              <button className="button secondary" onClick={() => setOpen(false)} type="button">
-                {t("nftMetadata.cancel")}
-              </button>
-              <a
-                className="button"
-                href={url}
+              <Button
+                variant="outline"
+                className="button secondary"
                 onClick={() => setOpen(false)}
-                referrerPolicy="no-referrer"
-                rel="external noopener noreferrer"
-                target="_blank"
+                type="button"
               >
-                {t("nftMetadata.openExternal")}
-              </a>
+                {t("nftMetadata.cancel")}
+              </Button>
+              <Button asChild>
+                <a
+                  className="button"
+                  href={url}
+                  onClick={() => setOpen(false)}
+                  referrerPolicy="no-referrer"
+                  rel="external noopener noreferrer"
+                  target="_blank"
+                >
+                  {t("nftMetadata.openExternal")}
+                </a>
+              </Button>
             </div>
           </div>
         </div>

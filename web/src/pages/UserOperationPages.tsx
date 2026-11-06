@@ -1,3 +1,5 @@
+import { Alert } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import { useQueryWithdrawn } from "@/api/browsingHooks";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { CircleAlert } from "lucide-react";
@@ -30,12 +32,14 @@ export function UserOperationsPage() {
           onReset={pager.reset}
         />
         {operations.data?.meta.coverage_start && operations.data.meta.coverage_end ? (
-          <p className="context-note" role="note">
-            {t("userOperation.coverage", {
-              start: formatInteger(operations.data.meta.coverage_start, locale),
-              end: formatInteger(operations.data.meta.coverage_end, locale),
-            })}
-          </p>
+          <Alert asChild>
+            <p className="context-note" role="note">
+              {t("userOperation.coverage", {
+                start: formatInteger(operations.data.meta.coverage_start, locale),
+                end: formatInteger(operations.data.meta.coverage_end, locale),
+              })}
+            </p>
+          </Alert>
         ) : null}
         {operations.data?.items.length === 0 ? (
           <p className="empty-result" role="status">
@@ -289,44 +293,53 @@ function UserOperationEvents({ operation }: { operation: UserOperationDetail }) 
   const { i18n, t } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <section className="panel detail-card" aria-labelledby="user-operation-events-title">
-      <h2 id="user-operation-events-title">{t("userOperation.events")}</h2>
-      {operation.events.length === 0 ? (
-        <p className="empty-result">{t("userOperation.noEvents")}</p>
-      ) : null}
-      <div className="transaction-event-list">
-        {operation.events.map((event) => (
-          <article className="transaction-log" key={`${event.log_index}:${event.kind}`}>
-            <h3>{t(`userOperation.eventKind.${event.kind}`)}</h3>
-            <dl className="detail-grid compact-grid">
-              <Detail
-                label={t("userOperation.logIndex")}
-                value={formatInteger(event.log_index, locale)}
-              />
-              <Detail
-                label={t("userOperation.sender")}
-                value={<AddressIdentity address={event.sender} />}
-              />
-              <Detail label={t("userOperation.nonce")} value={formatInteger(event.nonce, locale)} />
-              <Detail
-                label={t("detail.address")}
-                value={
-                  event.related_address ? <AddressIdentity address={event.related_address} /> : "—"
-                }
-              />
-              <Detail
-                label={t("userOperation.paymaster")}
-                value={event.paymaster ? <AddressIdentity address={event.paymaster} /> : "—"}
-              />
-              {event.reason ? (
-                <Detail label={t("userOperation.reason")} value={event.reason} wide />
-              ) : null}
-              <RawDetail label={t("userOperation.rawData")} value={event.raw_data} />
-            </dl>
-          </article>
-        ))}
-      </div>
-    </section>
+    <Card asChild>
+      <section className="panel detail-card" aria-labelledby="user-operation-events-title">
+        <h2 id="user-operation-events-title">{t("userOperation.events")}</h2>
+        {operation.events.length === 0 ? (
+          <p className="empty-result">{t("userOperation.noEvents")}</p>
+        ) : null}
+        <div className="transaction-event-list">
+          {operation.events.map((event) => (
+            <article className="transaction-log" key={`${event.log_index}:${event.kind}`}>
+              <h3>{t(`userOperation.eventKind.${event.kind}`)}</h3>
+              <dl className="detail-grid compact-grid">
+                <Detail
+                  label={t("userOperation.logIndex")}
+                  value={formatInteger(event.log_index, locale)}
+                />
+                <Detail
+                  label={t("userOperation.sender")}
+                  value={<AddressIdentity address={event.sender} />}
+                />
+                <Detail
+                  label={t("userOperation.nonce")}
+                  value={formatInteger(event.nonce, locale)}
+                />
+                <Detail
+                  label={t("detail.address")}
+                  value={
+                    event.related_address ? (
+                      <AddressIdentity address={event.related_address} />
+                    ) : (
+                      "—"
+                    )
+                  }
+                />
+                <Detail
+                  label={t("userOperation.paymaster")}
+                  value={event.paymaster ? <AddressIdentity address={event.paymaster} /> : "—"}
+                />
+                {event.reason ? (
+                  <Detail label={t("userOperation.reason")} value={event.reason} wide />
+                ) : null}
+                <RawDetail label={t("userOperation.rawData")} value={event.raw_data} />
+              </dl>
+            </article>
+          ))}
+        </div>
+      </section>
+    </Card>
   );
 }
 

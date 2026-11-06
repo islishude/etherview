@@ -1,3 +1,8 @@
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { SelectControl } from "@/components/SelectControl";
 import { useEffect, useState, type SubmitEvent } from "react";
@@ -127,143 +132,144 @@ export function SourcifyVerificationForm({
 
   return (
     <div className="verification-layout">
-      <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
-        <h2>{t("verification.sourcifyProvider")}</h2>
-        <p className="chain-warning" id="sourcify-publication-notice">
-          {t("sourcify.publicationNotice")}
-        </p>
-        <p className="quiet">{t("sourcify.localBoundary")}</p>
-        <div className="form-grid">
-          <label className="field-control" htmlFor="sourcify-mode">
-            <span>{t("sourcify.method")}</span>
-            <SelectControl
-              id="sourcify-mode"
-              disabled={busy}
-              value={mode}
-              onChange={(event) => {
-                setMode(event.target.value as typeof mode);
-                setEtherscanAPIKey("");
-                setConsent(false);
-                setFormError(undefined);
-              }}
-            >
-              <option value="sources">{t("sourcify.sources")}</option>
-              <option value="etherscan">{t("sourcify.etherscan")}</option>
-            </SelectControl>
-          </label>
-          <label className="field-control" htmlFor="sourcify-chain">
-            <span>{t("sourcify.chainID")}</span>
-            <input id="sourcify-chain" value={chainID} readOnly />
-          </label>
-          <label className="field-control wide" htmlFor="sourcify-address">
-            <span>{t("page.address")}</span>
-            <input
-              id="sourcify-address"
-              disabled={busy}
-              value={address}
-              spellCheck={false}
-              onChange={(event) => {
-                setAddress(event.target.value);
-                onAddressChange?.(event.target.value);
-                setConsent(false);
-              }}
-            />
-          </label>
-          {mode === "sources" ? (
-            <>
-              <div className="sourcify-uploads wide">
-                <VerificationFileUpload
-                  id="sourcify-upload-sources"
-                  label={t("sourcify.selectSources")}
-                  files={sources.files}
-                  extensions={sourceExtensions.sourcify}
-                  editablePaths
-                  disabled={busy}
-                  onSelect={(selected) => {
-                    void sources.select(
-                      selected,
-                      metadata.files.map((file) => ({ ...file, path: "metadata.json" })),
-                    );
-                  }}
-                  onRemove={sources.remove}
-                  onRename={sources.rename}
-                />
-                <VerificationFileUpload
-                  id="sourcify-upload-metadata"
-                  label={t("sourcify.selectMetadata")}
-                  files={metadata.files}
-                  extensions={[".json"]}
-                  single
-                  disabled={busy}
-                  onSelect={(selected) => {
-                    void metadata.select(selected, sources.files);
-                  }}
-                  onRemove={metadata.remove}
-                />
-              </div>
-              <small className="wide">{t("sourcify.filesHelp")}</small>
-            </>
-          ) : (
-            <>
-              <p className="quiet wide">{t("sourcify.etherscanHelp")}</p>
-              <label className="field-control wide" htmlFor="sourcify-etherscan-api-key">
-                <span>{t("sourcify.etherscanAPIKey")}</span>
-                <input
-                  id="sourcify-etherscan-api-key"
-                  type="password"
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={busy}
-                  maxLength={256}
-                  value={etherscanAPIKey}
-                  onChange={(event) => {
-                    setEtherscanAPIKey(event.target.value);
-                    setConsent(false);
-                  }}
-                />
-                <small>{t("sourcify.etherscanKeyNotice")}</small>
-              </label>
-            </>
-          )}
-
-          <label className="checkbox-control wide">
-            <input
-              type="checkbox"
-              checked={consent}
-              disabled={busy}
-              aria-describedby="sourcify-publication-notice"
-              onChange={(event) => setConsent(event.target.checked)}
-            />
-            <span>{t("sourcify.consent")}</span>
-          </label>
-        </div>
-        {(uploadError || formError) && (
-          <p className="form-error" role="alert">
-            {uploadError || formError}
+      <Card asChild>
+        <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
+          <h2>{t("verification.sourcifyProvider")}</h2>
+          <p className="chain-warning" id="sourcify-publication-notice">
+            {t("sourcify.publicationNotice")}
           </p>
-        )}
-        {submission.error && (
-          <Message type="error">
-            {errorMessage(submission.error, t("verification.submitFailed"))}
-          </Message>
-        )}
-        {active && submission.challenge}
-        <button
-          className="button primary"
-          type="submit"
-          disabled={
-            !submission.ready || busy || !consent || !auth.enabled || !auth.session.authenticated
-          }
-        >
-          {reading
-            ? t("sourcify.reading")
-            : submission.isPending
-              ? t("verification.submitting")
-              : mode === "sources"
-                ? t("sourcify.submitSources")
-                : t("sourcify.submitEtherscan")}
-        </button>
-      </form>
+          <p className="quiet">{t("sourcify.localBoundary")}</p>
+          <div className="form-grid">
+            <Label className="field-control" htmlFor="sourcify-mode">
+              <span>{t("sourcify.method")}</span>
+              <SelectControl
+                id="sourcify-mode"
+                disabled={busy}
+                value={mode}
+                onChange={(event) => {
+                  setMode(event.target.value as typeof mode);
+                  setEtherscanAPIKey("");
+                  setConsent(false);
+                  setFormError(undefined);
+                }}
+              >
+                <option value="sources">{t("sourcify.sources")}</option>
+                <option value="etherscan">{t("sourcify.etherscan")}</option>
+              </SelectControl>
+            </Label>
+            <Label className="field-control" htmlFor="sourcify-chain">
+              <span>{t("sourcify.chainID")}</span>
+              <Input id="sourcify-chain" value={chainID} readOnly />
+            </Label>
+            <Label className="field-control wide" htmlFor="sourcify-address">
+              <span>{t("page.address")}</span>
+              <Input
+                id="sourcify-address"
+                disabled={busy}
+                value={address}
+                spellCheck={false}
+                onChange={(event) => {
+                  setAddress(event.target.value);
+                  onAddressChange?.(event.target.value);
+                  setConsent(false);
+                }}
+              />
+            </Label>
+            {mode === "sources" ? (
+              <>
+                <div className="sourcify-uploads wide">
+                  <VerificationFileUpload
+                    id="sourcify-upload-sources"
+                    label={t("sourcify.selectSources")}
+                    files={sources.files}
+                    extensions={sourceExtensions.sourcify}
+                    editablePaths
+                    disabled={busy}
+                    onSelect={(selected) => {
+                      void sources.select(
+                        selected,
+                        metadata.files.map((file) => ({ ...file, path: "metadata.json" })),
+                      );
+                    }}
+                    onRemove={sources.remove}
+                    onRename={sources.rename}
+                  />
+                  <VerificationFileUpload
+                    id="sourcify-upload-metadata"
+                    label={t("sourcify.selectMetadata")}
+                    files={metadata.files}
+                    extensions={[".json"]}
+                    single
+                    disabled={busy}
+                    onSelect={(selected) => {
+                      void metadata.select(selected, sources.files);
+                    }}
+                    onRemove={metadata.remove}
+                  />
+                </div>
+                <small className="wide">{t("sourcify.filesHelp")}</small>
+              </>
+            ) : (
+              <>
+                <p className="quiet wide">{t("sourcify.etherscanHelp")}</p>
+                <Label className="field-control wide" htmlFor="sourcify-etherscan-api-key">
+                  <span>{t("sourcify.etherscanAPIKey")}</span>
+                  <Input
+                    id="sourcify-etherscan-api-key"
+                    type="password"
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={busy}
+                    maxLength={256}
+                    value={etherscanAPIKey}
+                    onChange={(event) => {
+                      setEtherscanAPIKey(event.target.value);
+                      setConsent(false);
+                    }}
+                  />
+                  <small>{t("sourcify.etherscanKeyNotice")}</small>
+                </Label>
+              </>
+            )}
+
+            <Label className="checkbox-control wide">
+              <Checkbox
+                checked={consent}
+                disabled={busy}
+                aria-describedby="sourcify-publication-notice"
+                onChange={(event) => setConsent(event.target.checked)}
+              />
+              <span>{t("sourcify.consent")}</span>
+            </Label>
+          </div>
+          {(uploadError || formError) && (
+            <p className="form-error" role="alert">
+              {uploadError || formError}
+            </p>
+          )}
+          {submission.error && (
+            <Message type="error">
+              {errorMessage(submission.error, t("verification.submitFailed"))}
+            </Message>
+          )}
+          {active && submission.challenge}
+          <Button
+            className="button primary"
+            type="submit"
+            disabled={
+              !submission.ready || busy || !consent || !auth.enabled || !auth.session.authenticated
+            }
+          >
+            {reading
+              ? t("sourcify.reading")
+              : submission.isPending
+                ? t("verification.submitting")
+                : mode === "sources"
+                  ? t("sourcify.submitSources")
+                  : t("sourcify.submitEtherscan")}
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAddressLogDefinition, type AddressLogRange } from "@/api/addressLogs";
@@ -111,7 +112,8 @@ export function AddressLogFilters({
       ))}
       <div className="address-log-add-condition">
         {remaining.length > 0 && (
-          <button
+          <Button
+            variant="outline"
             ref={add}
             type="button"
             onClick={() => {
@@ -136,7 +138,7 @@ export function AddressLogFilters({
             }}
           >
             {t("addressLogs.addCondition")}
-          </button>
+          </Button>
         )}
       </div>
       {error && (

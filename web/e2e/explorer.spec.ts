@@ -1087,7 +1087,10 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   expect(calldataRequests).toEqual([]);
   await page.goto(`/address/${address}#read-contract`);
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveClass(/\bactive\b/);
+  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
   await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
@@ -1095,7 +1098,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByRole("columnheader", { name: "Finality" })).toHaveCount(0);
   expect(addressWithdrawalRequests).toEqual([]);
   const contractTab = page.getByRole("link", { name: "Contract", exact: true });
-  await expect(contractTab).not.toHaveClass(/\bactive\b/);
+  await expect(contractTab).not.toHaveAttribute("aria-current", "page");
   const [contractStyle, ordinaryTabStyle] = await Promise.all([
     contractTab.evaluate((element) => {
       const style = getComputedStyle(element);

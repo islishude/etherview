@@ -1,3 +1,4 @@
+import { Alert } from "@/components/ui/alert";
 import type { ChainStatus } from "@/api/types";
 import i18n from "@/i18n";
 import { useTranslation } from "react-i18next";
@@ -19,8 +20,10 @@ export default function NameCoverageNotice({
   const source = names?.[0];
   if (!enabled || !source || source.coverage === "complete") return null;
   return (
-    <p className="context-note" role="status">
-      {t("coveragePending")}
-    </p>
+    <Alert asChild>
+      <p className="context-note" role="status">
+        {t("coveragePending")}
+      </p>
+    </Alert>
   );
 }

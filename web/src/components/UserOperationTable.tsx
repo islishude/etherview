@@ -1,3 +1,13 @@
+import {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
@@ -13,24 +23,24 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
   const nativeDecimals = config.data?.native_decimals ?? 18;
   return (
     <div className="table-scroll" tabIndex={0} aria-label={t("page.userOperations")}>
-      <table>
-        <caption className="sr-only">{t("page.userOperationsDescription")}</caption>
-        <thead>
-          <tr>
-            <th>{t("userOperation.hash")}</th>
-            <th>{t("table.status")}</th>
-            <th>{t("userOperation.sender")}</th>
-            <th className="numeric">{t("table.block")}</th>
-            <th>{t("userOperation.bundler")}</th>
-            <th>{t("userOperation.paymaster")}</th>
-            <th className="numeric">{t("userOperation.gasCost")}</th>
-            <th>{t("table.finality")}</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableCaption className="sr-only">{t("page.userOperationsDescription")}</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("userOperation.hash")}</TableHead>
+            <TableHead>{t("table.status")}</TableHead>
+            <TableHead>{t("userOperation.sender")}</TableHead>
+            <TableHead className="numeric">{t("table.block")}</TableHead>
+            <TableHead>{t("userOperation.bundler")}</TableHead>
+            <TableHead>{t("userOperation.paymaster")}</TableHead>
+            <TableHead className="numeric">{t("userOperation.gasCost")}</TableHead>
+            <TableHead>{t("table.finality")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {items.map((operation) => (
-            <tr key={operation.hash}>
-              <td>
+            <TableRow key={operation.hash}>
+              <TableCell>
                 <Link to="/user-op/$hash" params={{ hash: operation.hash }}>
                   {shorten(operation.hash)}
                 </Link>
@@ -38,11 +48,11 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
                   v{operation.entry_point_version} · #{operation.operation_index} ·{" "}
                   {t("userOperation.eventShort")} #{operation.event_log_index}
                 </small>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <UserOperationStatus success={operation.success} />
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <AddressIdentity address={operation.sender} />
                 {operation.participating_roles?.length ? (
                   <small className="table-secondary">
@@ -51,28 +61,28 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
                       .join(", ")}
                   </small>
                 ) : null}
-              </td>
-              <td className="numeric">
+              </TableCell>
+              <TableCell className="numeric">
                 <Link to="/blocks/$blockID" params={{ blockID: operation.block_hash }}>
                   {formatInteger(operation.block_number, locale)}
                 </Link>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <AddressIdentity address={operation.bundler} />
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 {operation.paymaster ? <AddressIdentity address={operation.paymaster} /> : "—"}
-              </td>
-              <td className="numeric">
+              </TableCell>
+              <TableCell className="numeric">
                 <code>{formatNativeAmount(operation.actual_gas_cost, locale, nativeDecimals)}</code>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <UserOperationFinality finality={operation.finality} />
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -80,9 +90,9 @@ export function UserOperationTable({ items }: { items: UserOperationSummary[] })
 export function UserOperationStatus({ success }: { success: boolean }) {
   const { t } = useTranslation();
   return (
-    <span className={success ? "availability yes" : "availability no"}>
+    <Badge variant="status" className={success ? "availability yes" : "availability no"}>
       {success ? t("userOperation.success") : t("userOperation.failed")}
-    </span>
+    </Badge>
   );
 }
 

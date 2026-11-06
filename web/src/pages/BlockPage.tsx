@@ -1,3 +1,15 @@
+import { Card } from "@/components/ui/card";
+import {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import { Alert } from "@/components/ui/alert";
 import { useCursorHistory } from "@/api/pagination";
 import { RequestsPanel } from "./RequestsPanel";
 import { ConsensusPanel } from "./ConsensusPanels";
@@ -58,44 +70,46 @@ function BlockWithdrawalsPanel({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="panel transaction-tab-panel" aria-labelledby="block-withdrawals-title">
-      <h2 id="block-withdrawals-title">{t("detail.withdrawals")}</h2>
-      {withdrawals.length === 0 ? (
-        <p className="empty-result">{t("state.noWithdrawals")}</p>
-      ) : (
-        <div className="table-scroll" tabIndex={0}>
-          <table>
-            <caption className="sr-only">{t("detail.withdrawals")}</caption>
-            <thead>
-              <tr>
-                <th className="numeric">{t("detail.withdrawalIndex")}</th>
-                <th className="numeric">{t("detail.validatorIndex")}</th>
-                <th>{t("table.address")}</th>
-                <th className="numeric">{t("detail.withdrawalAmount")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {withdrawals.map((withdrawal) => (
-                <tr key={withdrawal.index}>
-                  <td className="numeric">
-                    <code>{formatInteger(withdrawal.index, locale)}</code>
-                  </td>
-                  <td className="numeric">
-                    <code>{formatInteger(withdrawal.validator_index, locale)}</code>
-                  </td>
-                  <td>
-                    <AddressIdentity address={withdrawal.address} compact={false} />
-                  </td>
-                  <td className="numeric">
-                    <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
+    <Card asChild>
+      <section className="panel transaction-tab-panel" aria-labelledby="block-withdrawals-title">
+        <h2 id="block-withdrawals-title">{t("detail.withdrawals")}</h2>
+        {withdrawals.length === 0 ? (
+          <p className="empty-result">{t("state.noWithdrawals")}</p>
+        ) : (
+          <div className="table-scroll" tabIndex={0}>
+            <Table>
+              <TableCaption className="sr-only">{t("detail.withdrawals")}</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="numeric">{t("detail.withdrawalIndex")}</TableHead>
+                  <TableHead className="numeric">{t("detail.validatorIndex")}</TableHead>
+                  <TableHead>{t("table.address")}</TableHead>
+                  <TableHead className="numeric">{t("detail.withdrawalAmount")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {withdrawals.map((withdrawal) => (
+                  <TableRow key={withdrawal.index}>
+                    <TableCell className="numeric">
+                      <code>{formatInteger(withdrawal.index, locale)}</code>
+                    </TableCell>
+                    <TableCell className="numeric">
+                      <code>{formatInteger(withdrawal.validator_index, locale)}</code>
+                    </TableCell>
+                    <TableCell>
+                      <AddressIdentity address={withdrawal.address} compact={false} />
+                    </TableCell>
+                    <TableCell className="numeric">
+                      <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -132,92 +146,96 @@ function BlockTransactionsPanel({
 }) {
   const { t } = useTranslation();
   return (
-    <section
-      className="panel transaction-tab-panel"
-      role="tabpanel"
-      aria-label={t("blockTabs.transactions")}
-    >
-      <QueryNotice loading={loading} error={error} onReset={onReset} />
-      {items?.length === 0 ? <p className="empty-result">{t("state.noTransactions")}</p> : null}
-      {items && items.length > 0 ? (
-        <div className="table-scroll" tabIndex={0} aria-label={t("blockTabs.transactions")}>
-          <table>
-            <caption className="sr-only">{t("blockTabs.transactions")}</caption>
-            <thead>
-              <tr>
-                <th>{t("table.hash")}</th>
-                <th>{t("detail.transactionIndex")}</th>
-                <th>{t("table.status")}</th>
-                <th>{t("table.from")}</th>
-                <th>{t("table.to")}</th>
-                <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
-                <th>{t("detail.gasUsed")}</th>
-                <th>{t("table.finality")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((transaction) => (
-                <tr
-                  key={`${blockHash}:${transaction.transaction_index ?? transaction.hash}:${transaction.hash}`}
-                >
-                  <td>
-                    <Link
-                      to="/tx/$hash"
-                      params={{ hash: transaction.hash }}
-                      search={{ tab: "overview" }}
-                    >
-                      <code>{shorten(transaction.hash)}</code>
-                    </Link>
-                  </td>
-                  <td className="numeric">
-                    <code>
-                      {transaction.transaction_index == null
-                        ? "—"
-                        : formatInteger(String(transaction.transaction_index), locale)}
-                    </code>
-                  </td>
-                  <td>
-                    <TransactionStatusBadge transaction={transaction} />
-                  </td>
-                  <td>
-                    <AddressIdentity address={transaction.from} />
-                  </td>
-                  <td>
-                    {transaction.to ? (
-                      <AddressIdentity address={transaction.to} />
-                    ) : (
-                      t("common.contractCreation")
-                    )}
-                  </td>
-                  <td className="numeric">
-                    <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
-                  </td>
-                  <td className="numeric">
-                    <code>
-                      {transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}
-                    </code>
-                  </td>
-                  <td>
-                    <FinalityBadge finality={transaction.finality} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      {items ? (
-        <CursorPagination
-          busy={busy}
-          hasNext={hasNext}
-          hasPrevious={hasPrevious}
-          label={t("pagination.blockTransactions")}
-          onNext={onNext}
-          onPrevious={onPrevious}
-          page={page}
-        />
-      ) : null}
-    </section>
+    <Card asChild>
+      <section
+        className="panel transaction-tab-panel"
+        role="tabpanel"
+        aria-label={t("blockTabs.transactions")}
+      >
+        <QueryNotice loading={loading} error={error} onReset={onReset} />
+        {items?.length === 0 ? <p className="empty-result">{t("state.noTransactions")}</p> : null}
+        {items && items.length > 0 ? (
+          <div className="table-scroll" tabIndex={0} aria-label={t("blockTabs.transactions")}>
+            <Table>
+              <TableCaption className="sr-only">{t("blockTabs.transactions")}</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("table.hash")}</TableHead>
+                  <TableHead>{t("detail.transactionIndex")}</TableHead>
+                  <TableHead>{t("table.status")}</TableHead>
+                  <TableHead>{t("table.from")}</TableHead>
+                  <TableHead>{t("table.to")}</TableHead>
+                  <TableHead className="numeric">
+                    {t("table.value", { symbol: nativeSymbol })}
+                  </TableHead>
+                  <TableHead>{t("detail.gasUsed")}</TableHead>
+                  <TableHead>{t("table.finality")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((transaction) => (
+                  <TableRow
+                    key={`${blockHash}:${transaction.transaction_index ?? transaction.hash}:${transaction.hash}`}
+                  >
+                    <TableCell>
+                      <Link
+                        to="/tx/$hash"
+                        params={{ hash: transaction.hash }}
+                        search={{ tab: "overview" }}
+                      >
+                        <code>{shorten(transaction.hash)}</code>
+                      </Link>
+                    </TableCell>
+                    <TableCell className="numeric">
+                      <code>
+                        {transaction.transaction_index == null
+                          ? "—"
+                          : formatInteger(String(transaction.transaction_index), locale)}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      <TransactionStatusBadge transaction={transaction} />
+                    </TableCell>
+                    <TableCell>
+                      <AddressIdentity address={transaction.from} />
+                    </TableCell>
+                    <TableCell>
+                      {transaction.to ? (
+                        <AddressIdentity address={transaction.to} />
+                      ) : (
+                        t("common.contractCreation")
+                      )}
+                    </TableCell>
+                    <TableCell className="numeric">
+                      <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
+                    </TableCell>
+                    <TableCell className="numeric">
+                      <code>
+                        {transaction.gas_used ? formatInteger(transaction.gas_used, locale) : "—"}
+                      </code>
+                    </TableCell>
+                    <TableCell>
+                      <FinalityBadge finality={transaction.finality} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null}
+        {items ? (
+          <CursorPagination
+            busy={busy}
+            hasNext={hasNext}
+            hasPrevious={hasPrevious}
+            label={t("pagination.blockTransactions")}
+            onNext={onNext}
+            onPrevious={onPrevious}
+            page={page}
+          />
+        ) : null}
+      </section>
+    </Card>
   );
 }
 
@@ -248,47 +266,53 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
       {block.data && (
         <>
           {!block.data.canonical && <ReorgContext kind="block" hash={block.data.hash} />}
-          <nav className="transaction-tabs" role="tablist" aria-label={t("detail.blockSections")}>
+          <NavigationTabs
+            className="transaction-tabs"
+            role="tablist"
+            aria-label={t("detail.blockSections")}
+          >
             {blockTabs.map((tabID) => (
-              <Link
-                aria-selected={activeTab === tabID}
-                className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
-                key={tabID}
-                onKeyDown={(event) => {
-                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-                  event.preventDefault();
-                  const currentIndex = blockTabs.indexOf(tabID);
-                  const nextIndex =
-                    event.key === "Home"
-                      ? 0
-                      : event.key === "End"
-                        ? blockTabs.length - 1
-                        : event.key === "ArrowLeft"
-                          ? (currentIndex - 1 + blockTabs.length) % blockTabs.length
-                          : (currentIndex + 1) % blockTabs.length;
-                  const nextTab = blockTabs[nextIndex]!;
-                  void navigate({
-                    to: "/blocks/$blockID",
-                    params: { blockID: identifier },
-                    search: { tab: nextTab },
-                  }).then(() => {
-                    const tabs =
-                      event.currentTarget.parentElement?.querySelectorAll<HTMLElement>(
-                        '[role="tab"]',
-                      );
-                    tabs?.[nextIndex]?.focus();
-                  });
-                }}
-                params={{ blockID: identifier }}
-                role="tab"
-                search={{ tab: tabID }}
-                tabIndex={activeTab === tabID ? 0 : -1}
-                to="/blocks/$blockID"
-              >
-                {t(`blockTabs.${tabID}`)}
-              </Link>
+              <NavigationTab key={tabID}>
+                <Link
+                  aria-selected={activeTab === tabID}
+                  className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+
+                  onKeyDown={(event) => {
+                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    event.preventDefault();
+                    const currentIndex = blockTabs.indexOf(tabID);
+                    const nextIndex =
+                      event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? blockTabs.length - 1
+                          : event.key === "ArrowLeft"
+                            ? (currentIndex - 1 + blockTabs.length) % blockTabs.length
+                            : (currentIndex + 1) % blockTabs.length;
+                    const nextTab = blockTabs[nextIndex]!;
+                    void navigate({
+                      to: "/blocks/$blockID",
+                      params: { blockID: identifier },
+                      search: { tab: nextTab },
+                    }).then(() => {
+                      const tabs =
+                        event.currentTarget.parentElement?.querySelectorAll<HTMLElement>(
+                          '[role="tab"]',
+                        );
+                      tabs?.[nextIndex]?.focus();
+                    });
+                  }}
+                  params={{ blockID: identifier }}
+                  role="tab"
+                  search={{ tab: tabID }}
+                  tabIndex={activeTab === tabID ? 0 : -1}
+                  to="/blocks/$blockID"
+                >
+                  {t(`blockTabs.${tabID}`)}
+                </Link>
+              </NavigationTab>
             ))}
-          </nav>
+          </NavigationTabs>
           {activeTab === "overview" && (
             <>
               <DetailList label={t("detail.blockSummary")}>
@@ -349,9 +373,11 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
                 <Detail label={t("table.finality")} value={finalityLabel(block.data.finality, t)} />
               </DetailList>
               {block.data.number === "0" && block.data.canonical && (
-                <p className="context-note">
-                  <Link to="/genesis">{t("actions.viewGenesisAccounts")}</Link>
-                </p>
+                <Alert asChild>
+                  <p className="context-note">
+                    <Link to="/genesis">{t("actions.viewGenesisAccounts")}</Link>
+                  </p>
+                </Alert>
               )}
             </>
           )}

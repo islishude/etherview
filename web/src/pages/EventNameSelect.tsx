@@ -1,3 +1,6 @@
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import type { AddressLogEvent } from "@/api/heyapi/types.gen";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useRef, useState } from "react";
@@ -56,7 +59,8 @@ export function EventNameSelect({
       }}
     >
       <span className="address-log-field-label">{t("addressLogs.event")}</span>
-      <button
+      <Button
+        variant="ghost"
         className="event-name-trigger"
         ref={trigger}
         type="button"
@@ -68,7 +72,7 @@ export function EventNameSelect({
       >
         <span>{label || t("addressLogs.all")}</span>
         <UIIcon icon={ChevronDown} size={16} />
-      </button>
+      </Button>
       {open && !disabled && (
         <EventOptions
           key={JSON.stringify([address, range])}
@@ -142,9 +146,9 @@ function EventOptions({
   }, [selected]);
   return (
     <div className="event-name-popup">
-      <label className="event-name-search">
+      <Label className="event-name-search">
         <UIIcon icon={Search} size={16} />
-        <input
+        <Input
           ref={input}
           role="combobox"
           aria-expanded="true"
@@ -176,7 +180,7 @@ function EventOptions({
             }
           }}
         />
-      </label>
+      </Label>
       <BrowsingScope status={events.data?.pages[0]?.meta.browsing}>
         <QueryNotice loading={events.isPending} error={events.error} onReset={reset} />
         <div
@@ -187,7 +191,8 @@ function EventOptions({
           aria-label={t("addressLogs.event")}
         >
           {options.map((option, index) => (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               role="option"
               id={`${id}-${index}`}
@@ -214,19 +219,20 @@ function EventOptions({
                 {option.anonymous && <code>anonymous</code>}
               </span>
               {value === option.event_id && <UIIcon icon={Check} size={16} />}
-            </button>
+            </Button>
           ))}
         </div>
         {!events.isPending && !events.error && options.length === 1 && (
           <p role="status">{t("addressLogs.noNames")}</p>
         )}
         {events.error && (
-          <button type="button" onClick={reset}>
+          <Button variant="outline" type="button" onClick={reset}>
             {t("addressLogs.retry")}
-          </button>
+          </Button>
         )}
         {events.hasNextPage && (
-          <button
+          <Button
+            variant="ghost"
             className="event-name-more"
             type="button"
             disabled={events.isFetchingNextPage || pager.invalid}
@@ -236,7 +242,7 @@ function EventOptions({
             }}
           >
             {t(events.isFetchingNextPage ? "addressLogs.loading" : "addressLogs.loadMore")}
-          </button>
+          </Button>
         )}
         <p className="event-name-note">{t("addressLogs.directoryNote")}</p>
       </BrowsingScope>

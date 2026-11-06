@@ -1,25 +1,5 @@
 /* Theme tokens, document defaults, accessibility helpers, and application chrome. */
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
-@theme inline {
-  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --color-ui-canvas: var(--background);
-  --color-ui-surface: var(--surface);
-  --color-ui-surface-raised: var(--surface-raised);
-  --color-ui-text: var(--text);
-  --color-ui-text-soft: var(--text-soft);
-  --color-ui-line: var(--line);
-  --color-ui-line-strong: var(--line-strong);
-  --color-ui-brand: var(--brand);
-  --color-ui-brand-strong: var(--brand-strong);
-  --color-ui-brand-soft: var(--brand-soft);
-  --radius-ui-sm: var(--radius-sm);
-  --radius-ui-md: var(--radius-md);
-  --radius-ui-lg: var(--radius-lg);
-}
-
 :root {
   font-family:
     ui-sans-serif,
@@ -321,11 +301,6 @@ code {
   border-color: var(--line-strong);
 }
 
-.control[aria-pressed="true"] {
-  color: var(--brand);
-  border-color: var(--brand);
-}
-
 .icon-control {
   width: 2.35rem;
   padding: 0;
@@ -384,13 +359,6 @@ code {
 }
 .navigation-disclosure {
   position: relative;
-}
-.navigation-disclosure:has(a.active) > .navigation-trigger {
-  color: var(--brand);
-  border-bottom-color: var(--brand);
-}
-.navigation-trigger[aria-expanded="true"] {
-  color: var(--brand);
 }
 .navigation-popover {
   position: absolute;

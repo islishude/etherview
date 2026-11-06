@@ -1,3 +1,8 @@
+import "@/styles/verification.css";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Message } from "@/components/Message";
 import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -208,183 +213,193 @@ export function VerifyPage({
         )}
         {submissionEnabled && !showSourcify && (
           <div className="verification-layout">
-            <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
-              <h2>{t("verification.request")}</h2>
-              <p className="quiet">{t("verification.securityNotice")}</p>
-              <div className="form-grid">
-                <FormField
-                  id="verification-address"
-                  label={t("page.address")}
-                  value={address}
-                  onChange={setAddress}
-                />
-                <label className="field-control" htmlFor="verification-language">
-                  <span>{t("verification.language")}</span>
-                  <SelectControl
-                    id="verification-language"
-                    value={language}
-                    onChange={(event) => {
-                      const nextLanguage = event.target.value as VerificationSubmission["language"];
-                      upload.clear();
-                      setCompilerVersion("");
-                      setLanguage(nextLanguage);
-                      setInputKind((current) =>
-                        nextLanguage === "geas"
-                          ? "geas_sources"
-                          : current === "geas_sources"
-                            ? "standard_json"
-                            : current,
-                      );
-                    }}
-                  >
-                    <option value="solidity">{t("verificationLanguage.solidity")}</option>
-                    <option value="yul">{t("verificationLanguage.yul")}</option>
-                    <option value="geas">{t("verificationLanguage.geas")}</option>
-                    <option value="vyper">{t("verificationLanguage.vyper")}</option>
-                  </SelectControl>
-                </label>
-                <label className="field-control" htmlFor="verification-input-kind">
-                  <span>{t("verification.inputKind")}</span>
-                  <SelectControl
-                    disabled={language === "geas"}
-                    id="verification-input-kind"
-                    value={inputKind}
-                    onChange={(event) => {
-                      upload.clear();
-                      setInputKind(event.target.value as VerificationSubmission["input_kind"]);
-                    }}
-                  >
-                    {language === "geas" ? (
-                      <option value="geas_sources">{t("verification.geasSources")}</option>
-                    ) : (
-                      <>
-                        <option value="standard_json">{t("verification.standardJSON")}</option>
-                        <option value="multipart">{t("verification.multipart")}</option>
-                      </>
-                    )}
-                  </SelectControl>
-                </label>
-                <div className="field-control">
-                  <label htmlFor="verification-compiler">{t("verification.compilerVersion")}</label>
-                  {language === "geas" ? (
-                    <SelectControl
-                      disabled={compilerCatalog.isPending || !compilerCatalog.data}
-                      id="verification-compiler"
-                      onChange={(event) => setCompilerVersion(event.target.value)}
-                      value={compilerVersion}
-                    >
-                      {compilerVersions.map((version) => (
-                        <option key={version} value={version}>
-                          {version}
-                        </option>
-                      ))}
-                    </SelectControl>
-                  ) : (
-                    <CompilerVersionSelect
-                      key={language}
-                      id="verification-compiler"
-                      versions={compilerVersions}
-                      value={compilerVersion}
-                      onChange={setCompilerVersion}
-                      disabled={compilerCatalog.isPending || !compilerVersions.length}
-                    />
-                  )}
-                  <QueryNotice loading={compilerCatalog.isPending} error={compilerCatalog.error} />
-                </div>
-                {language === "vyper" && (
-                  <>
-                    <FormField
-                      id="verification-target-file"
-                      label={t("verification.targetFile")}
-                      value={targetFile}
-                      onChange={setTargetFile}
-                    />
-                    {inputKind === "multipart" && (
-                      <label className="field-control" htmlFor="verification-optimization-mode">
-                        <span>{t("verification.optimizationMode")}</span>
-                        <SelectControl
-                          id="verification-optimization-mode"
-                          value={optimizationMode}
-                          onChange={(event) =>
-                            setOptimizationMode(
-                              event.target.value as "" | "none" | "gas" | "codesize",
-                            )
-                          }
-                        >
-                          <option value="">{t("verification.compilerDefault")}</option>
-                          {optimizationModes.map((mode) => (
-                            <option key={mode} value={mode}>
-                              {mode}
-                            </option>
-                          ))}
-                        </SelectControl>
-                      </label>
-                    )}
-                  </>
-                )}
-                {language === "geas" ? (
-                  <>
-                    <FormField
-                      id="verification-runtime-entrypoint"
-                      label={t("verification.runtimeEntrypoint")}
-                      onChange={setRuntimeEntrypoint}
-                      value={runtimeEntrypoint}
-                    />
-                    <FormField
-                      id="verification-creation-entrypoint"
-                      label={t("verification.creationEntrypoint")}
-                      onChange={setCreationEntrypoint}
-                      value={creationEntrypoint}
-                    />
-                    <FormField
-                      id="verification-contract-name"
-                      label={t("verification.contractName")}
-                      onChange={setContractName}
-                      value={contractName}
-                    />
-                  </>
-                ) : null}
-                <div className="wide">
-                  <VerificationFileUpload
-                    id="verification-input"
-                    label={t(verificationInputLabel(language, standardInput))}
-                    files={upload.files}
-                    extensions={extensions}
-                    single={standardInput}
-                    editablePaths={!standardInput}
-                    disabled={busy}
-                    onSelect={(files) => {
-                      void upload.select(files);
-                    }}
-                    onRemove={upload.remove}
-                    onRename={upload.rename}
+            <Card asChild>
+              <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
+                <h2>{t("verification.request")}</h2>
+                <p className="quiet">{t("verification.securityNotice")}</p>
+                <div className="form-grid">
+                  <FormField
+                    id="verification-address"
+                    label={t("page.address")}
+                    value={address}
+                    onChange={setAddress}
                   />
-                  <small>{t("verificationUpload.help")}</small>
+                  <Label className="field-control" htmlFor="verification-language">
+                    <span>{t("verification.language")}</span>
+                    <SelectControl
+                      id="verification-language"
+                      value={language}
+                      onChange={(event) => {
+                        const nextLanguage = event.target
+                          .value as VerificationSubmission["language"];
+                        upload.clear();
+                        setCompilerVersion("");
+                        setLanguage(nextLanguage);
+                        setInputKind((current) =>
+                          nextLanguage === "geas"
+                            ? "geas_sources"
+                            : current === "geas_sources"
+                              ? "standard_json"
+                              : current,
+                        );
+                      }}
+                    >
+                      <option value="solidity">{t("verificationLanguage.solidity")}</option>
+                      <option value="yul">{t("verificationLanguage.yul")}</option>
+                      <option value="geas">{t("verificationLanguage.geas")}</option>
+                      <option value="vyper">{t("verificationLanguage.vyper")}</option>
+                    </SelectControl>
+                  </Label>
+                  <Label className="field-control" htmlFor="verification-input-kind">
+                    <span>{t("verification.inputKind")}</span>
+                    <SelectControl
+                      disabled={language === "geas"}
+                      id="verification-input-kind"
+                      value={inputKind}
+                      onChange={(event) => {
+                        upload.clear();
+                        setInputKind(event.target.value as VerificationSubmission["input_kind"]);
+                      }}
+                    >
+                      {language === "geas" ? (
+                        <option value="geas_sources">{t("verification.geasSources")}</option>
+                      ) : (
+                        <>
+                          <option value="standard_json">{t("verification.standardJSON")}</option>
+                          <option value="multipart">{t("verification.multipart")}</option>
+                        </>
+                      )}
+                    </SelectControl>
+                  </Label>
+                  <div className="field-control">
+                    <Label htmlFor="verification-compiler">
+                      {t("verification.compilerVersion")}
+                    </Label>
+                    {language === "geas" ? (
+                      <SelectControl
+                        disabled={compilerCatalog.isPending || !compilerCatalog.data}
+                        id="verification-compiler"
+                        onChange={(event) => setCompilerVersion(event.target.value)}
+                        value={compilerVersion}
+                      >
+                        {compilerVersions.map((version) => (
+                          <option key={version} value={version}>
+                            {version}
+                          </option>
+                        ))}
+                      </SelectControl>
+                    ) : (
+                      <CompilerVersionSelect
+                        key={language}
+                        id="verification-compiler"
+                        versions={compilerVersions}
+                        value={compilerVersion}
+                        onChange={setCompilerVersion}
+                        disabled={compilerCatalog.isPending || !compilerVersions.length}
+                      />
+                    )}
+                    <QueryNotice
+                      loading={compilerCatalog.isPending}
+                      error={compilerCatalog.error}
+                    />
+                  </div>
+                  {language === "vyper" && (
+                    <>
+                      <FormField
+                        id="verification-target-file"
+                        label={t("verification.targetFile")}
+                        value={targetFile}
+                        onChange={setTargetFile}
+                      />
+                      {inputKind === "multipart" && (
+                        <Label className="field-control" htmlFor="verification-optimization-mode">
+                          <span>{t("verification.optimizationMode")}</span>
+                          <SelectControl
+                            id="verification-optimization-mode"
+                            value={optimizationMode}
+                            onChange={(event) =>
+                              setOptimizationMode(
+                                event.target.value as "" | "none" | "gas" | "codesize",
+                              )
+                            }
+                          >
+                            <option value="">{t("verification.compilerDefault")}</option>
+                            {optimizationModes.map((mode) => (
+                              <option key={mode} value={mode}>
+                                {mode}
+                              </option>
+                            ))}
+                          </SelectControl>
+                        </Label>
+                      )}
+                    </>
+                  )}
+                  {language === "geas" ? (
+                    <>
+                      <FormField
+                        id="verification-runtime-entrypoint"
+                        label={t("verification.runtimeEntrypoint")}
+                        onChange={setRuntimeEntrypoint}
+                        value={runtimeEntrypoint}
+                      />
+                      <FormField
+                        id="verification-creation-entrypoint"
+                        label={t("verification.creationEntrypoint")}
+                        onChange={setCreationEntrypoint}
+                        value={creationEntrypoint}
+                      />
+                      <FormField
+                        id="verification-contract-name"
+                        label={t("verification.contractName")}
+                        onChange={setContractName}
+                        value={contractName}
+                      />
+                    </>
+                  ) : null}
+                  <div className="wide">
+                    <VerificationFileUpload
+                      id="verification-input"
+                      label={t(verificationInputLabel(language, standardInput))}
+                      files={upload.files}
+                      extensions={extensions}
+                      single={standardInput}
+                      editablePaths={!standardInput}
+                      disabled={busy}
+                      onSelect={(files) => {
+                        void upload.select(files);
+                      }}
+                      onRemove={upload.remove}
+                      onRename={upload.rename}
+                    />
+                    <small>{t("verificationUpload.help")}</small>
+                  </div>
                 </div>
-              </div>
-              {(upload.error || formError) && (
-                <p className="form-error" role="alert">
-                  {upload.error || formError}
-                </p>
-              )}
-              {submission.error && (
-                <Message type="error">
-                  {errorMessage(submission.error, t("verification.submitFailed"))}
-                </Message>
-              )}
-              {!jobID && submission.challenge}
-              <button
-                className="button primary"
-                disabled={!submission.ready || busy || !auth.enabled || !auth.session.authenticated}
-                type="submit"
-              >
-                {upload.reading
-                  ? t("sourcify.reading")
-                  : submission.isPending
-                    ? t("verification.submitting")
-                    : t("verification.submit")}
-              </button>
-            </form>
+                {(upload.error || formError) && (
+                  <p className="form-error" role="alert">
+                    {upload.error || formError}
+                  </p>
+                )}
+                {submission.error && (
+                  <Message type="error">
+                    {errorMessage(submission.error, t("verification.submitFailed"))}
+                  </Message>
+                )}
+                {!jobID && submission.challenge}
+                <Button
+                  className="button primary"
+                  disabled={
+                    !submission.ready || busy || !auth.enabled || !auth.session.authenticated
+                  }
+                  type="submit"
+                >
+                  {upload.reading
+                    ? t("sourcify.reading")
+                    : submission.isPending
+                      ? t("verification.submitting")
+                      : t("verification.submit")}
+                </Button>
+              </form>
+            </Card>
           </div>
         )}
       </div>
@@ -409,15 +424,15 @@ function FormField({
   wide?: boolean;
 }) {
   return (
-    <label className={wide ? "field-control wide" : "field-control"} htmlFor={id}>
+    <Label className={wide ? "field-control wide" : "field-control"} htmlFor={id}>
       <span>{label}</span>
-      <input
+      <Input
         id={id}
         onChange={(event) => onChange(event.target.value)}
         spellCheck={false}
         value={value}
       />
-    </label>
+    </Label>
   );
 }
 

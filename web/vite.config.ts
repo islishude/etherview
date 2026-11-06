@@ -55,6 +55,19 @@ export default defineConfig({
           includeDependenciesRecursively: true,
           groups: [
             {
+              // Shell styling must not pull route-only Radix tabs or QR rendering.
+              name: "ui-utils",
+              test: /node_modules[\\/](?:class-variance-authority|clsx|tailwind-merge|@radix-ui[\\/](?:react-slot|react-compose-refs))(?:[\\/]|$)/,
+              priority: 55,
+              includeDependenciesRecursively: false,
+            },
+            {
+              name: "ui-tabs",
+              test: /node_modules[\\/]@radix-ui[\\/]/,
+              priority: 54,
+              includeDependenciesRecursively: false,
+            },
+            {
               // Keep the Viem/Ox normalization wrappers and tables behind ENS search.
               name: "ens-normalize",
               test: /node_modules[\\/](?:@adraffy[\\/]ens-normalize|viem[\\/]_esm[\\/]utils[\\/]ens[\\/]normalize\.js|ox[\\/]_esm[\\/]core[\\/]Ens\.js)/,

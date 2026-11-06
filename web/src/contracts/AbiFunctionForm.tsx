@@ -1,3 +1,8 @@
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
@@ -405,9 +410,11 @@ function AbiFunctionCard({
           </p>
         ) : null}
         {target.kind === "uups_implementation_direct" ? (
-          <p className="context-note" role="note">
-            {t("contracts.functions.uupsDirect")}
-          </p>
+          <Alert asChild>
+            <p className="context-note" role="note">
+              {t("contracts.functions.uupsDirect")}
+            </p>
+          </Alert>
         ) : null}
         {inputState.limitError ? (
           <p className="form-error" role="alert">
@@ -428,12 +435,12 @@ function AbiFunctionCard({
           />
         ))}
         {entry.payable ? (
-          <label className="abi-scalar-input" htmlFor={`${formID}-value`}>
+          <Label className="abi-scalar-input" htmlFor={`${formID}-value`}>
             <span className="abi-input-heading">
               <span>{t("contracts.functions.nativeValue")}</span>
               <small>uint256 · wei</small>
             </span>
-            <input
+            <Input
               disabled={pending}
               id={`${formID}-value`}
               inputMode="numeric"
@@ -442,7 +449,7 @@ function AbiFunctionCard({
               pattern="[0-9]*"
               value={value}
             />
-          </label>
+          </Label>
         ) : null}
         <div className="abi-function-actions">
           <span
@@ -465,7 +472,8 @@ function AbiFunctionCard({
             ref={actionTooltipRef}
             tabIndex={actionDisabledReason ? 0 : undefined}
           >
-            <button
+            <Button
+              variant={highRisk ? "destructive" : "default"}
               className={highRisk ? "button danger" : "button primary"}
               disabled={!ready || pending}
               type="submit"
@@ -475,14 +483,15 @@ function AbiFunctionCard({
                 : entry.fn.stateMutability === "view" || entry.fn.stateMutability === "pure"
                   ? t("actions.read")
                   : t("actions.write")}
-            </button>
+            </Button>
             {actionDisabledReason && actionHintVisible ? (
               <span className="abi-action-tooltip-text" id={`${formID}-action-hint`} role="tooltip">
                 {actionDisabledReason}
               </span>
             ) : null}
           </span>
-          <button
+          <Button
+            variant="outline"
             aria-label={calldataCopied ? t("common.copied") : t("contracts.functions.copyCalldata")}
             className="button secondary"
             disabled={copyingCalldata}
@@ -490,7 +499,7 @@ function AbiFunctionCard({
             type="button"
           >
             {calldataCopied ? t("common.copied") : t("contracts.functions.copyCalldata")}
-          </button>
+          </Button>
         </div>
       </form>
       {visibleError ? (
@@ -535,7 +544,9 @@ function FunctionSummary({ entry }: { entry: AbiFunctionEntry }) {
   return (
     <summary>
       <code>{entry.signature}</code>
-      <span className="function-mutability">{entry.fn.stateMutability}</span>
+      <Badge variant="status" className="function-mutability border-0">
+        {entry.fn.stateMutability}
+      </Badge>
       <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
     </summary>
   );

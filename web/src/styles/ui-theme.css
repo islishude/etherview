@@ -1,0 +1,60 @@
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --color-ui-canvas: var(--background);
+  --color-ui-surface: var(--surface);
+  --color-ui-surface-raised: var(--surface-raised);
+  --color-ui-text: var(--text);
+  --color-ui-text-soft: var(--text-soft);
+  --color-ui-line: var(--line);
+  --color-ui-line-strong: var(--line-strong);
+  --color-ui-brand: var(--brand);
+  --color-ui-brand-strong: var(--brand-strong);
+  --color-ui-brand-soft: var(--brand-soft);
+  --radius-ui-sm: var(--radius-sm);
+  --radius-ui-md: var(--radius-md);
+  --radius-ui-lg: var(--radius-lg);
+}
+
+/* shadcn semantics reuse Etherview tokens. Legacy --muted is a foreground,
+   and legacy radius names are lengths: never redefine them or form cycles. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--brand-strong);
+  --color-primary-foreground: var(--on-brand);
+  --color-secondary: var(--surface-raised);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-raised);
+  --color-muted-foreground: var(--text-soft);
+  --color-accent: var(--surface-strong);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-border: var(--line);
+  --color-input: var(--line-strong);
+  --color-ring: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+}
+
+@layer components.foundation {
+  :where([data-slot="table"]) {
+    min-width: 760px;
+  }
+}
+
+@layer components {
+  :where([data-slot="button"]) {
+    cursor: pointer;
+    text-decoration: none;
+  }
+  :where([data-slot="card"][hidden]) {
+    display: none;
+  }
+}

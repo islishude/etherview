@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ShellIcon } from "./DesignPrimitives";
@@ -24,7 +25,8 @@ export function AppNavigation() {
           }
         }}
       >
-        <button
+        <Button
+          variant="ghost"
           className="control mobile-navigation-trigger"
           type="button"
           aria-expanded={expanded}
@@ -34,7 +36,7 @@ export function AppNavigation() {
         >
           <ShellIcon name={expanded ? "close" : "menu"} />
           {t("nav.explore")}
-        </button>
+        </Button>
         <div
           className="navigation-links"
           id="explorer-navigation-links"

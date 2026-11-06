@@ -33,6 +33,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P50-T89 delivers repository-owned shadcn/ui primitives across the shared UI,
+retaining the explorer brand, native interaction boundaries and strict CSP.
+Its child plan records completed local frontend and embedded-browser acceptance.
+
 P30-T155 delivers database-wide deadlock acceptance for managed integration and
 both production runtime layouts, with bounded diagnostics and cross-domain
 concurrency. Its child plan records completed local acceptance.

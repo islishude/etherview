@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge";
 import { UIIcon } from "@/components/UIIcon";
 import {
   ArrowRightLeft,
@@ -35,9 +36,9 @@ export function TransactionStatus({
 }) {
   const Icon = statusIcons[status];
   return (
-    <span className={`transaction-status ${status}`} data-status={status}>
+    <Badge variant="status" className={`transaction-status ${status}`} data-status={status}>
       <UIIcon icon={Icon} className="transaction-status-icon" size={14} />
       <span>{label}</span>
-    </span>
+    </Badge>
   );
 }
