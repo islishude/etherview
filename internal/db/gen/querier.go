@@ -776,6 +776,8 @@ type Querier interface {
 	StoreSetDerivedCanonicalBatch(ctx context.Context, canonical bool, chainID pgtype.Numeric, blockHashes []byte) error
 	SummarizeBillingAccounts(ctx context.Context, chainID pgtype.Numeric) (SummarizeBillingAccountsRow, error)
 	SummarizeBillingPayments(ctx context.Context, arg SummarizeBillingPaymentsParams) ([]SummarizeBillingPaymentsRow, error)
+	TestDeadlockSessions(ctx context.Context) ([]TestDeadlockSessionsRow, error)
+	TestDeadlockSnapshot(ctx context.Context) (TestDeadlockSnapshotRow, error)
 	TouchActiveUserSession(ctx context.Context, observedAt pgtype.Timestamptz, iD pgtype.UUID, touchBefore pgtype.Timestamptz) error
 	TryRuntimeSessionLock(ctx context.Context, lockName string) (bool, error)
 	TrySearchCatalogMaintenanceLock(ctx context.Context, chainID string) (bool, error)

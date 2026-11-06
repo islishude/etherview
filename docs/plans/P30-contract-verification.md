@@ -98,8 +98,13 @@ availability does not gate core readiness.
 | P30-T152 | done   | P30-T144, P30-T150                                            | Preview manual scenarios, resumable transaction journal, reports, proxy families and EIP-7702 lifecycle controls                                                                                                        | Tool regressions, isolated split/all Preview CLI and browser acceptance                                                                                                 |
 | P30-T153 | done   | P30-T10, P30-T141                                             | Independent verification role, optional NATS wake and PostgreSQL claims, fully asynchronous Sourcify import                                                                                                             | Multi-instance lease/recovery, immutable import input, all/split parity and production deployment gates                                                                 |
 | P30-T154 | done   | P30-T153                                                      | Session-owned polling and publication for live sync, maintenance, NFT source discovery, mempool and compiler catalogs; safe concurrent compiler-cache startup                                                           | PostgreSQL contention, lost-session takeover, stale-write and Docker cold-start regressions, common and production parity gates                                         |
+| P30-T155 | done   | P30-T154                                                      | Database-wide deadlock gates for managed integration and both runtime layouts, bounded diagnostics and cross-domain concurrency regressions                                                                             | Detector self-tests, PostgreSQL/race, runtime parity and generated/source/documentation gates                                                                           |
 
 ## Acceptance
+
+- [x] Managed PostgreSQL integration and both runtime layouts reject new database
+      deadlocks even when retries succeed, retain bounded diagnostics and reject
+      incomplete shutdown; cross-domain concurrency and detector self-tests pass.
 
 - [x] Multi-instance observation and publication reject stale owners after session
       loss; concurrent NFT admission and fresh compiler-cache startup pass real
@@ -152,6 +157,17 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P70 release gates remain independent.
 
 ## Evidence
+
+P30-T155 local acceptance completed on 2026-11-06 in the worktree based on
+`66fd3974`. `make test-integration`, the [focused PostgreSQL race command](../testing/integration.md#database-wide-deadlock-gate),
+and `make test-runtime-e2e-prebuilt` passed with the locally rebuilt production
+image. Shared consumers passed `make test-hardhat3-e2e-prebuilt`,
+`make test-foundry-e2e-prebuilt` and `make test-vyper-e2e-prebuilt` in both layouts.
+`make lint-go`, `make generate-check`, `make docs-check`, `make plan-check`,
+`make compose-check` and `make test-workflow-scripts` passed. Real deadlock,
+synthetic abort, statistics reset, bounded borrower cleanup and swallowed-error
+runner regressions establish the gate independently of business success.
+This covers executed schedules, not exhaustive lock-order proof or P70 soak.
 
 P30-T154 local acceptance passed on 2026-11-03 in the worktree based on
 `4197eb3adb047770ba64a38e3a1343c11b52f4e0`. Real PostgreSQL 18 race regressions

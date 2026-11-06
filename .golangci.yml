@@ -54,6 +54,13 @@ linters:
           deny:
             - pkg: github.com/islishude/etherview/internal/testpgx$
               desc: production code must not import database test fixtures
+        database-test-guard:
+          files:
+            - "!$test"
+            - "!${base-path}/e2e/cmd/testintegration/**"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/testdbguard$
+              desc: database acceptance tooling must not enter application packages
         public-readers:
           files:
             - "${base-path}/internal/query/**"

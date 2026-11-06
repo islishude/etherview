@@ -44,6 +44,11 @@ See [operator procedures](../operations/observability.md) and
   claim after expiry clears the previous exact result, journal, and ABI output
   in the same transaction before it exposes the new-generation lease.
 
+- Proxy interaction coverage refreshes run as deferred constraint triggers at
+  commit, after publication and replay have acquired their per-job locks. This
+  keeps coverage atomic with its source rows without holding the chain coverage
+  lock while a batch replay waits for another publisher's job lock.
+
 - `published_block_stage_results` is the only readiness relation. It excludes
   direct fixture rows, mismatched or superseded generations, active leases,
   result mismatches, and `stale_canonical_skipped` audit rows. A same-hash

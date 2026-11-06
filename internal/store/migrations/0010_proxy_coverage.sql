@@ -668,10 +668,14 @@ CREATE TRIGGER durable_jobs_proxy_history_epoch AFTER INSERT OR UPDATE ON durabl
 
 CREATE TRIGGER proxy_history_epochs_append_only BEFORE DELETE OR UPDATE ON proxy_history_epochs FOR EACH ROW EXECUTE FUNCTION reject_proxy_history_epoch_mutation();
 
-CREATE TRIGGER proxy_interaction_coverage_canonical_trigger AFTER INSERT OR DELETE OR UPDATE ON canonical_blocks FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_canonical();
+-- Refresh the derived coverage only after the transaction has acquired all job
+-- publication locks. Immediate refresh can hold the chain coverage lock while
+-- batch replay waits for a job whose publisher is waiting for that coverage lock.
+-- Deferred triggers still publish coverage atomically with the authoritative rows.
+CREATE CONSTRAINT TRIGGER proxy_interaction_coverage_canonical_trigger AFTER INSERT OR DELETE OR UPDATE ON canonical_blocks DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_canonical();
 
-CREATE TRIGGER proxy_interaction_coverage_job_trigger AFTER INSERT OR DELETE OR UPDATE ON durable_jobs FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_job();
+CREATE CONSTRAINT TRIGGER proxy_interaction_coverage_job_trigger AFTER INSERT OR DELETE OR UPDATE ON durable_jobs DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_job();
 
-CREATE TRIGGER proxy_interaction_coverage_outbox_trigger AFTER INSERT OR DELETE OR UPDATE ON transactional_outbox FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_outbox();
+CREATE CONSTRAINT TRIGGER proxy_interaction_coverage_outbox_trigger AFTER INSERT OR DELETE OR UPDATE ON transactional_outbox DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION refresh_proxy_interaction_coverage_from_outbox();
 
 CREATE TRIGGER proxy_replay_targets_immutable BEFORE DELETE OR UPDATE ON proxy_replay_targets FOR EACH ROW EXECUTE FUNCTION reject_proxy_evidence_mutation();

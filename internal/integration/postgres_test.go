@@ -335,7 +335,7 @@ func newIsolatedPostgres(t testing.TB) *pgxpool.Pool {
 
 	testConfig := adminConfig.Copy()
 	testConfig.RuntimeParams = cloneRuntimeParams(testConfig.RuntimeParams)
-	testConfig.RuntimeParams["application_name"] = "etherview-integration-test"
+	testConfig.RuntimeParams["application_name"] = "it:" + t.Name()
 	testConfig.RuntimeParams["search_path"] = schema
 	db := testpgx.Pool(t, testConfig, int32(6))
 	if err := db.Ping(ctx); err != nil {

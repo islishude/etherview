@@ -436,7 +436,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.fixture.orphanDelegationHash = h.sendSetCodeTransaction(ctx, []types.SetCodeAuthorization{
 			h.signAuthorization(h.fixture.authorityKey, common.HexToAddress(h.fixture.delegateA), 0),
 		}, common.FromHex("0x3fa4f245"))
-		h.mine(ctx, h.baseTimestamp+2)
+		h.mineWithConcurrentReplay(ctx, h.baseTimestamp+2)
 		h.fixture.orphanHash = h.latestBlock(ctx).Hash
 		h.waitCanonical(ctx, 2, h.fixture.orphanHash)
 		h.waitIncludedTransaction(ctx, h.fixture.pendingReplacementHash)
@@ -779,6 +779,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 }
 
 func (h *harness) startTopology(ctx context.Context) {
+	h.startDeadlockGuard(ctx)
 	if h.mode == "distributed" {
 		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "api")
 		h.connectDatabase(ctx)
@@ -2340,6 +2341,7 @@ func diagnosticError(err error) string {
 // cleanup reports whether the test and Compose teardown succeeded. Callers that
 // publish acceptance must check this after retaining diagnostics.
 func (h *harness) cleanup() bool {
+	h.finishDeadlockGuard()
 	if h.rpc != nil {
 		h.rpc.Close()
 	}
