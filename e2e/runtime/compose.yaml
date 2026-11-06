@@ -50,7 +50,16 @@ services:
   postgres:
     # Distributed acceptance starts 13 application processes with 20 writer
     # connections each. Reserve additional slots for the harness and probes.
-    command: ["postgres", "-c", "max_connections=400", "-c", "log_lock_waits=on", "-c", "log_line_prefix=%m [%p] %d %a %e "]
+    command:
+      [
+        "postgres",
+        "-c",
+        "max_connections=400",
+        "-c",
+        "log_lock_waits=on",
+        "-c",
+        "log_line_prefix=%m [%p] %d %a %e ",
+      ]
     ports:
       - target: 5432
         published: "0"
