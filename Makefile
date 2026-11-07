@@ -538,7 +538,7 @@ preview-cert-check:
 
 preview-network-check:
 	$(GO) test ./tools/genesis-verify
-	$(NODE) --test preview/scripts/compiler-cache.test.mjs preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/verify.test.mjs
+	$(NODE) --test preview/scripts/compiler-cache.test.mjs preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/verify.test.mjs preview/contracts/admin.test.mjs
 
 preview-env:
 	$(NODE) preview/scripts/env.mjs "$(PREVIEW_ENV_FILE)"
@@ -570,6 +570,7 @@ start-preview: preview-env preview-cert-ensure docker-build preview-images
 		up --no-build --wait --wait-timeout 180 --remove-orphans
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/contracts/admin.mjs
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/verify.mjs
 	@printf '\nPreview: https://app.etherview.localhost (HTTPS port %s)\n' "$${PREVIEW_HTTPS_PORT:-443}"
 
@@ -585,6 +586,7 @@ recreate-preview: preview-env preview-cert-check preview-network-runtime docker-
 		up -d --no-build --wait --wait-timeout 180 --remove-orphans $(PREVIEW_RUNTIME_SERVICES)
 	DOCKER="$(DOCKER)" $(COMPOSE) -f compose.yaml run --rm archive-init
 	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/scripts/ready.mjs
+	DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(NODE) preview/contracts/admin.mjs
 
 .PHONY: clean-preview-compiler-cache
 clean-preview-compiler-cache:

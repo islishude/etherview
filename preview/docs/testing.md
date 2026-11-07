@@ -107,6 +107,10 @@ private-network results do not prove public historical retention, production
 backup/restore, or native CI execution.
 
 Preview lifecycle helpers and their unit tests live in `preview/scripts/`.
+The administrator helper in `preview/contracts/admin.mjs` uses the installed
+pnpm workspace. `make preview-network-check` also checks its real development-wallet
+signatures, login-before-promotion ordering, wrong origin/chain rejection,
+failure propagation, temporary-session cleanup, and both Make lifecycle hooks.
 `make preview-network-check` exercises immutable reuse, incomplete material,
 configuration drift, tampering, symlinks and rejected single-file overrides.
 It also checks Preview env creation, key-pair reuse and validation, operator-setting
