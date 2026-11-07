@@ -1416,7 +1416,7 @@ paths:
         - $ref: "#/components/parameters/Limit"
       responses:
         "200":
-          description: Discovered token contracts at a stable canonical snapshot.
+          description: Discovered token contracts at a stable canonical snapshot, ordered by latest published canonical observation block number descending, then contract address ascending. API pagination has no total item cap.
           content:
             application/json:
               schema:

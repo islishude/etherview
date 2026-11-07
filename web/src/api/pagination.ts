@@ -11,28 +11,37 @@ export const firstPage: CursorRequest = { refreshGeneration: 0 };
 let nextRefreshGeneration = 0;
 export const useBrowsingCursorHistory = useCursorHistory;
 
-export function useCursorHistory(identity: string) {
-  const [state, setState] = useState({ identity, cursors: [""], refreshGeneration: 0 });
+export function useCursorHistory(identity: string, maxItems = Infinity) {
+  const [state, setState] = useState({
+    identity,
+    cursors: [{ cursor: "", offset: 0 }],
+    refreshGeneration: 0,
+  });
   // Commit identity changes immediately so A -> B -> A cannot resurrect A's old cursor.
   if (state.identity !== identity) {
-    setState({ identity, cursors: [""], refreshGeneration: 0 });
+    setState({ identity, cursors: [{ cursor: "", offset: 0 }], refreshGeneration: 0 });
   }
-  const cursors = state.identity === identity ? state.cursors : [""];
+  const cursors = state.identity === identity ? state.cursors : [{ cursor: "", offset: 0 }];
   const refreshGeneration = state.identity === identity ? state.refreshGeneration : 0;
   const next = useCallback(
-    (cursor: string | undefined) => {
+    (cursor: string | undefined, itemCount = 0) => {
       if (!cursor) return;
-      setState((current) => ({
-        identity,
-        cursors: [...(current.identity === identity ? current.cursors : [""]), cursor],
-        refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
-      }));
+      setState((current) => {
+        const prior = current.identity === identity ? current.cursors : [{ cursor: "", offset: 0 }];
+        const offset = (prior.at(-1)?.offset ?? 0) + itemCount;
+        if (offset >= maxItems) return current;
+        return {
+          identity,
+          cursors: [...prior, { cursor, offset }],
+          refreshGeneration: current.identity === identity ? current.refreshGeneration : 0,
+        };
+      });
     },
-    [identity],
+    [identity, maxItems],
   );
   const previous = useCallback(() => {
     setState((current) => {
-      const prior = current.identity === identity ? current.cursors : [""];
+      const prior = current.identity === identity ? current.cursors : [{ cursor: "", offset: 0 }];
       return {
         identity,
         cursors: prior.length > 1 ? prior.slice(0, -1) : prior,
@@ -46,17 +55,18 @@ export function useCursorHistory(identity: string) {
     const refreshGeneration = ++nextRefreshGeneration;
     setState({
       identity,
-      cursors: [""],
+      cursors: [{ cursor: "", offset: 0 }],
       refreshGeneration,
     });
   }, [identity]);
   const invalid = useRefreshPager(identity, reset);
   return {
     request: {
-      cursor: cursors.at(-1) || undefined,
+      cursor: cursors.at(-1)?.cursor || undefined,
       refreshGeneration,
       identity,
     } satisfies CursorRequest,
+    remaining: Math.max(0, maxItems - (cursors.at(-1)?.offset ?? 0)),
     page: cursors.length,
     invalid,
     hasPrevious: !invalid && cursors.length > 1,

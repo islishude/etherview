@@ -47,7 +47,6 @@ JOIN published_block_stage_results AS published
      AND cb.block_hash = tc.observed_block_hash
     WHERE tc.chain_id = sqlc.arg('chain_id')::numeric
       AND tc.observed_block_number <= sqlc.arg('max_observed_block_number')::numeric
-      AND (sqlc.arg('has_cursor')::boolean = false OR tc.address > sqlc.arg('address'))
     ORDER BY tc.address, tc.observed_block_number DESC, tc.code_hash DESC
 )
 SELECT
@@ -65,5 +64,8 @@ observed_block_number::text AS observed_block_number,
 observed_block_hash AS observed_block_hash,
 updated_at AS updated_at
 FROM current_tokens
-ORDER BY address
+WHERE sqlc.arg('has_cursor')::boolean = false
+   OR observed_block_number::numeric < sqlc.arg('before_observed_block_number')::numeric
+   OR (observed_block_number::numeric = sqlc.arg('before_observed_block_number')::numeric AND address > sqlc.arg('address'))
+ORDER BY observed_block_number::numeric DESC, address ASC
 LIMIT sqlc.arg('limit');

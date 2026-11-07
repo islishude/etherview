@@ -116,6 +116,7 @@ export const shellResources = {
       close: "Close",
     },
     page: {
+      recentListLimit: "Only the latest {{count}} records are shown.",
       blocks: "Blocks",
       blocksDescription:
         "Canonical blocks from a stable indexed snapshot; retained orphans remain available by exact hash.",
@@ -315,6 +316,7 @@ export const shellResources = {
       close: "关闭",
     },
     page: {
+      recentListLimit: "仅展示最近 {{count}} 条记录。",
       blocks: "区块",
       blocksDescription: "稳定索引快照中的规范区块；保留的孤块可通过精确哈希访问。",
       genesis: "创世账户",

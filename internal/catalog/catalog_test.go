@@ -219,7 +219,7 @@ func TestTokenContractsUseCanonicalSnapshotAndOpaqueCursor(t *testing.T) {
 			contains: "WITH current_tokens AS",
 			rows:     catalogRows(13, tokenRow(addresses[0], "erc20", "98"), tokenRow(addresses[1], "erc721", "99"), tokenRow(addresses[2], "erc1155", "100")),
 			check: func(arguments []any) error {
-				if len(arguments) != 5 || arguments[3] != false || arguments[0] != int32(3) {
+				if len(arguments) != 6 || arguments[0] != false || arguments[3] != int32(3) {
 					return fmt.Errorf("unexpected token list arguments: %v", arguments)
 				}
 				return nil
@@ -240,13 +240,13 @@ func TestTokenContractsUseCanonicalSnapshotAndOpaqueCursor(t *testing.T) {
 	backend.mu.Lock()
 	query := backend.queries[len(backend.queries)-1]
 	backend.mu.Unlock()
-	if !strings.Contains(query, "JOIN canonical_blocks") || !strings.Contains(query, "observed_block_number <= $3") {
+	if !strings.Contains(query, "JOIN canonical_blocks") || !strings.Contains(query, "observed_block_number <= $6") {
 		t.Fatalf("token list is not canonical/snapshot bound: %s", query)
 	}
 	assertCatalogConsumed(t, backend)
 
 	var decoded tokenListCursor
-	if err := decodeCursor(page.NextCursor, &decoded); err != nil || decoded.AfterAddress != "0x"+strings.Repeat("22", 20) {
+	if err := decodeCursor(page.NextCursor, &decoded); err != nil || decoded.AfterAddress != "0x"+strings.Repeat("22", 20) || decoded.BeforeObservedBlockNumber != "99" || decoded.Version != tokenListCursorVersion {
 		t.Fatalf("cursor=%+v err=%v", decoded, err)
 	}
 }
@@ -785,4 +785,29 @@ func TestTransactionTraceDecodesSelectorlessReceiveFromExactHistoricalABI(t *tes
 
 func browsingStep(state string) catalogQueryStep {
 	return catalogQueryStep{contains: "BrowsingStatus", rows: catalogRows(3, []any{"0", "1", state})}
+}
+
+func TestTokenListRejectsObsoleteAndInvalidOrderingCursors(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		version int
+		number  string
+	}{
+		{"old version", cursorVersion, "99"},
+		{"missing boundary", tokenListCursorVersion, ""},
+		{"noncanonical number", tokenListCursorVersion, "099"},
+		{"above snapshot", tokenListCursorVersion, "101"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reader, backend := openCatalog(t)
+			cursor, err := encodeCursor(tokenListCursor{Version: tc.version, ChainID: "1", SnapshotNumber: "100", SnapshotHash: "0x" + strings.Repeat("aa", 32), BeforeObservedBlockNumber: tc.number, AfterAddress: "0x" + strings.Repeat("11", 20)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reader.TokenContracts(context.Background(), TokenListRequest{ChainID: "1", Cursor: cursor, Limit: 2}); !errors.Is(err, ErrInvalidCursor) {
+				t.Fatalf("error=%v", err)
+			}
+			assertCatalogConsumed(t, backend)
+		})
+	}
 }

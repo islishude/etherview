@@ -317,3 +317,13 @@ entirely beyond that snapshot is empty with pending coverage, not complete histo
 The cursor binds the requested bounds; coverage and publication revisions use the
 actual interval. New heads and publications outside the interval do not expand
 frozen results. The canonical snapshot anchor must still remain valid.
+
+### Global list ordering and browser limits
+
+The token directory selects each address's latest published canonical observation
+at the frozen snapshot, ordered by numeric observation block descending and
+address ascending. Its versioned cursor binds both ordering keys plus chain,
+snapshot hash and publication revision; obsolete cursors require a restart.
+The browser shows at most 1,000 blocks, 1,000 transactions, 1,000 UserOperations
+and 150 token/NFT contracts, in pages of 25. These display limits do not cap API traversal or
+other lists. Refresh starts a new browsing window.

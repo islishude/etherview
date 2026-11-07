@@ -20,11 +20,14 @@ import { CORE_PAGE_SIZE, CursorPagination, Detail, DetailList, FinalityBadge, Pa
 
 export function UserOperationsPage() {
   const { i18n, t } = useTranslation();
-  const pager = useBrowsingCursorHistory("user-operations");
+  const pager = useBrowsingCursorHistory("user-operations", 1000);
   const operations = useUserOperations(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <Page title={t("page.userOperations")} description={t("page.userOperationsDescription")}>
+    <Page
+      title={t("page.userOperations")}
+      description={`${t("page.userOperationsDescription")} ${t("page.recentListLimit", { count: 1000 })}`}
+    >
       <BrowsingScope status={operations.data?.meta.browsing}>
         <QueryNotice
           loading={operations.isPending}
@@ -47,17 +50,19 @@ export function UserOperationsPage() {
           </p>
         ) : null}
         {operations.data && operations.data.items.length > 0 ? (
-          <UserOperationTable items={operations.data.items} />
+          <UserOperationTable items={operations.data.items.slice(0, pager.remaining)} />
         ) : null}
         {operations.data ? (
           <CursorPagination
             itemCount={operations.data?.items.length ?? 0}
             onReset={pager.reset}
             busy={operations.isFetching}
-            hasNext={Boolean(operations.data.next_cursor)}
+            hasNext={
+              Boolean(operations.data.next_cursor) && operations.data.items.length < pager.remaining
+            }
             hasPrevious={pager.hasPrevious}
             label={t("pagination.userOperations")}
-            onNext={() => pager.next(operations.data?.next_cursor)}
+            onNext={() => pager.next(operations.data?.next_cursor, operations.data?.items.length)}
             onPrevious={pager.previous}
             page={pager.page}
           />

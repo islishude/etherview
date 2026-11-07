@@ -95,11 +95,14 @@ export function FinalityBadge({ finality }: { finality: string }) {
 
 export function BlocksPage() {
   const { i18n, t } = useTranslation();
-  const pager = useCursorHistory("blocks");
+  const pager = useCursorHistory("blocks", 1000);
   const blocks = useBlocks(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <Page title={t("page.blocks")} description={t("page.blocksDescription")}>
+    <Page
+      title={t("page.blocks")}
+      description={`${t("page.blocksDescription")} ${t("page.recentListLimit", { count: 1000 })}`}
+    >
       <QueryNotice loading={blocks.isPending} error={blocks.error} onReset={pager.reset} />
       {blocks.data?.items.length === 0 && (
         <p className="empty-result" role="status">
@@ -120,7 +123,7 @@ export function BlocksPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {blocks.data.items.map((block) => (
+              {blocks.data.items.slice(0, pager.remaining).map((block) => (
                 <TableRow key={block.hash}>
                   <TableCell>
                     <Link to="/blocks/$blockID" params={{ blockID: block.hash }}>
@@ -149,10 +152,10 @@ export function BlocksPage() {
           itemCount={blocks.data?.items.length ?? 0}
           onReset={pager.reset}
           busy={blocks.isFetching}
-          hasNext={Boolean(blocks.data.next_cursor)}
+          hasNext={Boolean(blocks.data.next_cursor) && blocks.data.items.length < pager.remaining}
           hasPrevious={pager.hasPrevious}
           label={t("pagination.blocks")}
-          onNext={() => pager.next(blocks.data?.next_cursor)}
+          onNext={() => pager.next(blocks.data?.next_cursor, blocks.data?.items.length)}
           onPrevious={pager.previous}
           page={pager.page}
         />
@@ -243,11 +246,14 @@ export function TransactionsPage() {
   const publicConfig = usePublicConfig();
   const nativeDecimals = publicConfig.data?.native_decimals ?? 18;
   const nativeSymbol = publicConfig.data?.native_symbol ?? "";
-  const pager = useCursorHistory("transactions");
+  const pager = useCursorHistory("transactions", 1000);
   const transactions = useTransactions(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <Page title={t("page.transactions")} description={t("page.transactionsDescription")}>
+    <Page
+      title={t("page.transactions")}
+      description={`${t("page.transactionsDescription")} ${t("page.recentListLimit", { count: 1000 })}`}
+    >
       <QueryNotice
         loading={transactions.isPending}
         error={transactions.error}
@@ -279,7 +285,7 @@ export function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transactions.data.items.map((transaction) => (
+              {transactions.data.items.slice(0, pager.remaining).map((transaction) => (
                 <TableRow key={transaction.hash}>
                   <TableCell>
                     <Link
@@ -333,10 +339,13 @@ export function TransactionsPage() {
           itemCount={transactions.data?.items.length ?? 0}
           onReset={pager.reset}
           busy={transactions.isFetching}
-          hasNext={Boolean(transactions.data.next_cursor)}
+          hasNext={
+            Boolean(transactions.data.next_cursor) &&
+            transactions.data.items.length < pager.remaining
+          }
           hasPrevious={pager.hasPrevious}
           label={t("pagination.transactions")}
-          onNext={() => pager.next(transactions.data?.next_cursor)}
+          onNext={() => pager.next(transactions.data?.next_cursor, transactions.data?.items.length)}
           onPrevious={pager.previous}
           page={pager.page}
         />
@@ -347,12 +356,15 @@ export function TransactionsPage() {
 
 export function TokensPage() {
   const { i18n, t } = useTranslation();
-  const pager = useBrowsingCursorHistory("tokens");
+  const pager = useBrowsingCursorHistory("tokens", 150);
   const tokens = useTokens(pager.request, CORE_PAGE_SIZE);
   const locale = i18n.resolvedLanguage ?? "en";
 
   return (
-    <Page title={t("page.tokens")} description={t("page.tokensDescription")}>
+    <Page
+      title={t("page.tokens")}
+      description={`${t("page.tokensDescription")} ${t("page.recentListLimit", { count: 150 })}`}
+    >
       <BrowsingScope status={tokens.data?.meta.browsing}>
         <QueryNotice loading={tokens.isPending} error={tokens.error} onReset={pager.reset} />
         {tokens.data && tokens.data.items.length === 0 && (
@@ -374,7 +386,7 @@ export function TokensPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tokens.data.items.map((token) => (
+                {tokens.data.items.slice(0, pager.remaining).map((token) => (
                   <TableRow key={token.address}>
                     <TableCell>
                       <span className="table-primary">
@@ -411,10 +423,10 @@ export function TokensPage() {
             itemCount={tokens.data?.items.length ?? 0}
             onReset={pager.reset}
             busy={tokens.isFetching}
-            hasNext={Boolean(tokens.data.next_cursor)}
+            hasNext={Boolean(tokens.data.next_cursor) && tokens.data.items.length < pager.remaining}
             hasPrevious={pager.hasPrevious}
             label={t("pagination.tokens")}
-            onNext={() => pager.next(tokens.data?.next_cursor)}
+            onNext={() => pager.next(tokens.data?.next_cursor, tokens.data?.items.length)}
             onPrevious={pager.previous}
             page={pager.page}
           />

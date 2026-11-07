@@ -4943,7 +4943,7 @@ export type ListTokensError = ListTokensErrors[keyof ListTokensErrors];
 
 export type ListTokensResponses = {
     /**
-     * Discovered token contracts at a stable canonical snapshot.
+     * Discovered token contracts at a stable canonical snapshot, ordered by latest published canonical observation block number descending, then contract address ascending. API pagination has no total item cap.
      */
     200: TokenListResponse;
 };
