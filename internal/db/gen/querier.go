@@ -188,6 +188,7 @@ type Querier interface {
 	DerivedVerifyLoadCompilationCandidates(ctx context.Context, compilationID pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
 	DerivedVerifyLockTarget(ctx context.Context, chainID pgtype.Numeric, address []byte) error
 	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
+	DerivedVerifyPublicationChainIdentity(ctx context.Context, compilationID pgtype.UUID) (string, error)
 	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) (DerivedVerifyPublicationEvidenceRow, error)
 	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) (string, error)
 	DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) (int64, error)
@@ -824,6 +825,7 @@ type Querier interface {
 	VerifyLegacyVerificationProxyReplayTarget(ctx context.Context, arg VerifyLegacyVerificationProxyReplayTargetParams) error
 	VerifyLockClaimGate(ctx context.Context) error
 	VerifyLockPublication(ctx context.Context, chainID string, address []byte) error
+	VerifyPublicationBlockIdentity(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (string, error)
 	VerifyResolveTarget(ctx context.Context, address []byte, chainID pgtype.Numeric, contractAddressHex string) (VerifyResolveTargetRow, error)
 	VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) (VerifyV2ClaimRunnableRow, error)
 	VerifyV2FindActiveJobByDigest(ctx context.Context, requestDigest []byte) (VerifyV2FindActiveJobByDigestRow, error)

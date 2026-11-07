@@ -536,7 +536,7 @@ preview-cert-check:
 		exit 1; \
 	}
 
-preview-network-check:
+preview-network-check: pnpm-install
 	$(GO) test ./tools/genesis-verify
 	$(NODE) --test preview/scripts/compiler-cache.test.mjs preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/verify.test.mjs preview/contracts/admin.test.mjs
 

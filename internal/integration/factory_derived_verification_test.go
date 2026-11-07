@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +21,12 @@ import (
 )
 
 func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("verification_first=%t", reverse), func(t *testing.T) { testFactoryVerificationBackfill(t, reverse) })
+	}
+}
+
+func testFactoryVerificationBackfill(t *testing.T, reverse bool) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
@@ -143,10 +150,18 @@ func TestFactoryVerificationBackfillsUniquelyMatchedCreatedContract(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	processed, err := worker.ProcessOne(ctx)
-	if err != nil || !processed {
-		t.Fatalf("process historical derived scan: processed=%t error=%v", processed, err)
-	}
+	verificationPublicationLockOrder(t, ctx, db, factoryBlock.Block.Hash(), 1, reverse, func(lockedRepository *verify.PostgresRepository) error {
+		lockedWorker, err := derivedverify.NewWorker(db, lockedRepository, derivedverify.Options{
+			WorkerID: "derived-history-lock-order", LeaseDuration: time.Minute,
+			PollInterval: time.Millisecond, MaxTraces: 10, PublishMatches: true,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = lockedWorker.ProcessOne(ctx)
+		return err
+	})
+	var processed bool
 	assertRowCount(t, ctx, db, `
 		SELECT count(*)
 		FROM verified_contracts AS verified

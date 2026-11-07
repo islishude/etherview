@@ -708,3 +708,9 @@ INSERT INTO proxy_replay_targets (
     'verification_publication', sqlc.arg('source_verification_job_id')::uuid
 )
 ON CONFLICT DO NOTHING;
+
+-- name: VerifyPublicationBlockIdentity :one
+SELECT block.number::text AS block_number
+FROM blocks AS block
+WHERE block.chain_id = sqlc.arg('chain_id')::numeric
+  AND block.hash = sqlc.arg('block_hash');

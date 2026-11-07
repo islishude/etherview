@@ -1058,6 +1058,20 @@ func (q *Queries) DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVeri
 	return err
 }
 
+const derivedVerifyPublicationChainIdentity = `-- name: DerivedVerifyPublicationChainIdentity :one
+SELECT job.chain_id::text AS chain_id
+FROM verification_compilation_units AS unit
+JOIN verification_jobs AS job ON job.id = unit.source_job_id
+WHERE unit.id = $1::uuid
+`
+
+func (q *Queries) DerivedVerifyPublicationChainIdentity(ctx context.Context, compilationID pgtype.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, derivedVerifyPublicationChainIdentity, compilationID)
+	var chain_id string
+	err := row.Scan(&chain_id)
+	return chain_id, err
+}
+
 const derivedVerifyPublicationEvidence = `-- name: DerivedVerifyPublicationEvidence :one
 SELECT trace.chain_id::text, trace.block_number::text, trace.block_hash,
        trace.transaction_hash, trace.trace_path, trace.call_type,
