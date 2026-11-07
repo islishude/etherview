@@ -99,9 +99,6 @@
   .navigation-bar {
     position: relative;
   }
-  .mobile-navigation-trigger {
-    display: inline-flex;
-  }
   .navigation-links {
     display: none;
   }

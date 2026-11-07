@@ -1,6 +1,27 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("explorer navigation switches between disclosure and links at 1024px", async ({ page }) => {
+  await page.goto("/");
+  const trigger = page.locator('button[aria-controls="explorer-navigation-links"]');
+  const links = page.locator("#explorer-navigation-links");
+  for (const width of [1440, 1024, 1023, 768, 390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    if (width >= 1024) {
+      await expect(trigger).toBeHidden();
+      await expect(links).toBeVisible();
+    } else {
+      await expect(trigger).toBeVisible();
+      await expect(links).toBeHidden();
+      await trigger.click();
+      await expect(links).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+      await expect(links).toBeHidden();
+    }
+  }
+});
+
 test("grouped navigation supports keyboard, responsive disclosure and capability gating", async ({
   page,
 }) => {

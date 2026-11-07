@@ -27,7 +27,7 @@ export function AppNavigation() {
       >
         <Button
           variant="ghost"
-          className="control mobile-navigation-trigger"
+          className="control min-[1024px]:hidden"
           type="button"
           aria-expanded={expanded}
           aria-controls="explorer-navigation-links"

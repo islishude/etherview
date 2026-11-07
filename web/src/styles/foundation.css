@@ -389,9 +389,6 @@ code {
   left: auto;
   right: 0;
 }
-.mobile-navigation-trigger {
-  display: none;
-}
 [hidden] {
   display: none !important;
 }
