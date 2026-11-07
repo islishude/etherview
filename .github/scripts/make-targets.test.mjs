@@ -425,3 +425,29 @@ cpSync("expected", "generated", { recursive: true });
     }
   });
 }
+
+test("Preview network checks install locked dependencies before tests and stop on install failure", (t) => {
+  const f = fixture(t);
+  const result = f.run("preview-network-check", {}, ["NODE=stub-go"]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.deepEqual(result.commands[0], {
+    command: "pnpm",
+    args: ["install", "--frozen-lockfile"],
+  });
+  assert.deepEqual(result.commands[1].args, ["test", "./tools/genesis-verify"]);
+  assert.ok(result.commands[2].args.includes("preview/contracts/admin.test.mjs"));
+  const failed = f.run("preview-network-check", { FAIL_COMMAND: "pnpm" }, ["NODE=stub-go"]);
+  assert.notEqual(failed.status, 0);
+  assert.deepEqual(
+    failed.commands.map(({ command }) => command),
+    ["pnpm"],
+  );
+});
+
+test("deployment CI sets up the repository toolchains before invoking Make", () => {
+  const workflow = readFileSync(new URL("../workflows/ci-checks.yml", import.meta.url), "utf8");
+  const deployment = workflow.slice(workflow.indexOf("  deployment:"));
+  const setup = deployment.indexOf("uses: ./.github/actions/setup-toolchain");
+  assert.ok(setup >= 0);
+  assert.ok(setup < deployment.indexOf("run: make deployment-check"));
+});

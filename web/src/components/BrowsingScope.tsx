@@ -1,3 +1,4 @@
+import { Alert } from "@/components/ui/alert";
 import { createContext, useContext, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { ApiMeta } from "@/api/types";
@@ -10,9 +11,11 @@ export function BrowsingScope({ status, children }: { status?: Status; children:
   return (
     <BrowsingContext.Provider value={status}>
       {status?.state === "partial" && (
-        <p className="context-note" role="status">
-          {t("state.browsingPartial")}
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="status">
+            {t("state.browsingPartial")}
+          </p>
+        </Alert>
       )}
       {children}
     </BrowsingContext.Provider>

@@ -61,7 +61,7 @@ func TestLoadEnvironmentDefaultsParseTypedValuesAndJSONPaths(t *testing.T) {
 	t.Parallel()
 	values := map[string]string{
 		"ETHERVIEW_LOAD_BASE_URL":             "https://explorer.example.test",
-		"ETHERVIEW_LOAD_PATHS":                `["/api/v1/blocks?limit=20&sort=desc","/api/v1/status"]`,
+		"ETHERVIEW_LOAD_PATHS":                `["/api/v1/blocks?limit=20&sort=desc","/api/v1/home"]`,
 		"ETHERVIEW_LOAD_RATE":                 "500",
 		"ETHERVIEW_LOAD_DURATION":             "30m",
 		"ETHERVIEW_LOAD_CONCURRENCY":          "256",
@@ -90,7 +90,7 @@ func TestLoadEnvironmentDefaultsParseTypedValuesAndJSONPaths(t *testing.T) {
 	}
 	wantPaths := pathsFlag{
 		"/api/v1/blocks?limit=20&sort=desc",
-		"/api/v1/status",
+		"/api/v1/home",
 	}
 	if !reflect.DeepEqual(defaults.paths, wantPaths) {
 		t.Fatalf("paths = %#v, want %#v", defaults.paths, wantPaths)
@@ -114,9 +114,9 @@ func TestLoadEnvironmentDefaultsRejectMalformedValuesWithoutEchoingThem(t *testi
 		{
 			name: "paths",
 			values: map[string]string{
-				"ETHERVIEW_LOAD_PATHS": `["/api/v1/status",secret]`,
+				"ETHERVIEW_LOAD_PATHS": `["/api/v1/home",secret]`,
 			},
-			secret: `["/api/v1/status",secret]`,
+			secret: `["/api/v1/home",secret]`,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

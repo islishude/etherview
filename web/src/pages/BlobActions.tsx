@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/CopyButton";
 import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
@@ -85,7 +86,8 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
   return (
     <div className="blob-actions">
       <div className="blob-action-buttons" aria-busy={Boolean(busy)}>
-        <button
+        <Button
+          variant="outline"
           className="button secondary blob-action-button"
           type="button"
           disabled={busy}
@@ -101,7 +103,7 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
                 ? "consensus.hidePreview"
                 : "consensus.preview",
           )}
-        </button>
+        </Button>
       </div>
       {failed && <Message type="error">{t(failed)}</Message>}
       <div id={previewID} hidden={!hexContent} className="blob-preview">
@@ -111,8 +113,15 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
         </pre>
         {hexContent && (
           <div className="blob-preview-actions">
-            <CopyButton value={hexContent} className="button secondary blob-action-button" />
-            <button
+            <CopyButton
+              value={hexContent}
+              variant="outline"
+              size="icon"
+              className="blob-action-button"
+            />
+            <Button
+              variant="outline"
+              size="icon"
               className="button secondary blob-action-button"
               type="button"
               aria-label={t("consensus.download")}
@@ -120,7 +129,7 @@ function AuthenticatedBlobActions({ hash, index }: { hash: string; index: string
               onClick={download}
             >
               <UIIcon icon={Download} size={16} />
-            </button>
+            </Button>
           </div>
         )}
       </div>

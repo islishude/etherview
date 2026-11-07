@@ -1,3 +1,5 @@
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import { Alert } from "@/components/ui/alert";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
@@ -37,31 +39,34 @@ export function AddressAssets({ address, asset }: { address: string; asset: Addr
 
   return (
     <div className="address-assets">
-      <nav className="address-asset-tabs" aria-label={t("addressAssets.navigation")}>
+      <NavigationTabs className="address-asset-tabs" aria-label={t("addressAssets.navigation")}>
         {(["tokens", "nfts"] as const).map((kind) => (
-          <Link
-            key={kind}
-            to="/address/$address"
-            params={{ address }}
-            search={{ tab: "assets", asset: kind }}
-            hash=""
-            activeProps={{ className: "" }}
-            className="address-asset-tab"
-            aria-current={asset === kind ? "page" : undefined}
-          >
-            {t(`addressAssets.${kind}`)}
-          </Link>
+          <NavigationTab key={kind}>
+            <Link
+              to="/address/$address"
+              params={{ address }}
+              search={{ tab: "assets", asset: kind }}
+              hash=""
+              activeProps={{ className: "" }}
+              className="address-asset-tab"
+              aria-current={asset === kind ? "page" : undefined}
+            >
+              {t(`addressAssets.${kind}`)}
+            </Link>
+          </NavigationTab>
         ))}
-      </nav>
+      </NavigationTabs>
       <section className="address-asset-content" aria-label={title}>
         <h2 className="sr-only">{title}</h2>
         <BrowsingScope status={data?.meta.browsing}>
           {data?.meta.coverage_end && (
-            <p className="context-note address-asset-snapshot" role="note">
-              {t(asset === "tokens" ? "detail.assetSnapshot" : "detail.nftSnapshot", {
-                block: formatInteger(data.meta.coverage_end, locale),
-              })}
-            </p>
+            <Alert asChild>
+              <p className="context-note address-asset-snapshot" role="note">
+                {t(asset === "tokens" ? "detail.assetSnapshot" : "detail.nftSnapshot", {
+                  block: formatInteger(data.meta.coverage_end, locale),
+                })}
+              </p>
+            </Alert>
           )}
           <QueryNotice loading={query.isPending} error={query.error} onReset={pager.reset} />
           {data?.items.length === 0 && (
@@ -77,17 +82,21 @@ export function AddressAssets({ address, asset }: { address: string; asset: Addr
           {asset === "nfts" && !nfts.error && nfts.data && nfts.data.items.length > 0 && (
             <NFTHoldings balances={nfts.data.items} locale={locale} />
           )}
-          {data && (data.items.length > 0 || pager.hasPrevious || data.next_cursor) && (
-            <CursorPagination
-              busy={query.isFetching}
-              hasNext={Boolean(data.next_cursor)}
-              hasPrevious={pager.hasPrevious}
-              label={t(asset === "tokens" ? "pagination.erc20Balances" : "pagination.nfts")}
-              onNext={() => pager.next(data.next_cursor)}
-              onPrevious={pager.previous}
-              page={pager.page}
-            />
-          )}
+          {data &&
+            !query.error &&
+            (data.items.length > 0 || pager.hasPrevious || data.next_cursor) && (
+              <CursorPagination
+                itemCount={data.items.length}
+                onReset={pager.reset}
+                busy={query.isFetching}
+                hasNext={Boolean(data.next_cursor)}
+                hasPrevious={pager.hasPrevious}
+                label={t(asset === "tokens" ? "pagination.erc20Balances" : "pagination.nfts")}
+                onNext={() => pager.next(data.next_cursor)}
+                onPrevious={pager.previous}
+                page={pager.page}
+              />
+            )}
         </BrowsingScope>
       </section>
     </div>

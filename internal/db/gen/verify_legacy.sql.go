@@ -886,3 +886,17 @@ func (q *Queries) VerifyLegacyVerificationProxyReplayTarget(ctx context.Context,
 	)
 	return err
 }
+
+const verifyPublicationBlockIdentity = `-- name: VerifyPublicationBlockIdentity :one
+SELECT block.number::text AS block_number
+FROM blocks AS block
+WHERE block.chain_id = $1::numeric
+  AND block.hash = $2
+`
+
+func (q *Queries) VerifyPublicationBlockIdentity(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (string, error) {
+	row := q.db.QueryRow(ctx, verifyPublicationBlockIdentity, chainID, blockHash)
+	var block_number string
+	err := row.Scan(&block_number)
+	return block_number, err
+}

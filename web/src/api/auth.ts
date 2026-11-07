@@ -34,21 +34,15 @@ export async function logoutAuthSession(csrfToken: string): Promise<void> {
   );
 }
 
-export async function updateCurrentUser(
-  csrfToken: string,
-  displayName: string | null,
-): Promise<User> {
+export async function listAdminUsers(
+  limit: number,
+  cursor?: string,
+  q?: string,
+  signal?: AbortSignal,
+) {
   return requireEnvelope(
-    await sdk.updateCurrentUser({
-      client: apiClient,
-      headers: { "X-CSRF-Token": csrfToken },
-      body: { display_name: displayName },
-    }),
-  ).data;
-}
-
-export async function listAdminUsers(limit: number, cursor?: string) {
-  return requireEnvelope(await sdk.listAdminUsers({ client: apiClient, query: { limit, cursor } }));
+    await sdk.listAdminUsers({ client: apiClient, query: { limit, cursor, q }, signal }),
+  );
 }
 
 export async function updateAdminUser(
@@ -74,4 +68,8 @@ export async function revokeAdminUserSessions(csrfToken: string, id: string): Pr
       headers: { "X-CSRF-Token": csrfToken },
     }),
   ).data.revoked_sessions;
+}
+
+export async function getAdminOverview(signal?: AbortSignal) {
+  return requireEnvelope(await sdk.getAdminOverview({ client: apiClient, signal })).data;
 }

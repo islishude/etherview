@@ -797,3 +797,9 @@ INSERT INTO derived_verification_backfill_requests (
 SELECT sqlc.arg('chain_id')::numeric, sqlc.arg('creator_address'), sqlc.arg('reason'), count(*)::integer
 FROM corrected
 RETURNING id, scan_count, requested_at;
+
+-- name: DerivedVerifyPublicationChainIdentity :one
+SELECT job.chain_id::text AS chain_id
+FROM verification_compilation_units AS unit
+JOIN verification_jobs AS job ON job.id = unit.source_job_id
+WHERE unit.id = sqlc.arg('compilation_id')::uuid;

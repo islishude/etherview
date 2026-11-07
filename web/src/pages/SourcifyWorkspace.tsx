@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { UIIcon } from "@/components/UIIcon";
 import type { BrowserVerificationJob } from "@/api/types";
 import { useState } from "react";
@@ -24,14 +25,24 @@ export function SourcifyWorkspace({
   return (
     <div className="verification-workspace">
       <div className="verification-actions" role="group" aria-label={t("sourcify.workflow")}>
-        <button type="button" aria-pressed={mode === "import"} onClick={() => setMode("import")}>
+        <Button
+          variant="outline"
+          type="button"
+          aria-pressed={mode === "import"}
+          onClick={() => setMode("import")}
+        >
           <UIIcon icon={Download} />
           {t("sourcify.importTab")}
-        </button>
-        <button type="button" aria-pressed={mode === "publish"} onClick={() => setMode("publish")}>
+        </Button>
+        <Button
+          variant="outline"
+          type="button"
+          aria-pressed={mode === "publish"}
+          onClick={() => setMode("publish")}
+        >
           <UIIcon icon={Upload} />
           {t("sourcify.publishTab")}
-        </button>
+        </Button>
       </div>
       {mode === "import" ? (
         <SourcifyImportForm

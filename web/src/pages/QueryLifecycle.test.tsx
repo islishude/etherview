@@ -179,7 +179,8 @@ it("restarts invalid block cursors with a fresh first page even while its cache 
   await user.click(await screen.findByRole("button", { name: "Next page" }));
   await user.click(await screen.findByRole("button", { name: "Restart from the first page" }));
   await waitFor(() => expect(firstPages).toBe(2));
-  expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Page 1")).not.toBeInTheDocument();
 });
 
 function blockResponse() {

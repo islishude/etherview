@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import "@/i18n/resources/addressActions";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
@@ -102,7 +103,8 @@ function WatchButton({
   }
   return (
     <>
-      <button
+      <Button
+        variant="ghost"
         type="button"
         ref={trigger}
         className="address-qr-button address-watch-button"
@@ -120,7 +122,7 @@ function WatchButton({
           className={busy ? "query-loading-spinner" : undefined}
           size={16}
         />
-      </button>
+      </Button>
       {action.error && <AccountActionError code={action.error} />}
       {action.success && <Message type="success">{action.success}</Message>}
       {(query.isError || limit) && (
@@ -130,14 +132,16 @@ function WatchButton({
             code={query.isError ? "activity_unavailable" : "watchlist_limit"}
           />
           {query.isError && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               className="address-action"
               disabled={query.isFetching}
               onClick={() => void query.refetch()}
             >
               {t("watchlist.retry")}
-            </button>
+            </Button>
           )}
         </span>
       )}
@@ -201,14 +205,16 @@ function WatchLoginDialog({
     >
       <div className="qr-dialog-heading">
         <h2 id="watch-login-title">{t("watchlist.add")}</h2>
-        <button
+        <Button
+          variant="ghost"
+          size="icon-sm"
           type="button"
           className="dialog-close"
           aria-label={t("common.close")}
           onClick={onClose}
         >
           <UIIcon icon={X} size={16} />
-        </button>
+        </Button>
       </div>
       <SIWELoginControl full label={t("watchlist.watchSignIn")} />
       {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}

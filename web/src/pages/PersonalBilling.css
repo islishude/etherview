@@ -47,34 +47,6 @@
   line-height: 1.6;
 }
 
-.billing-view-switch {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  width: fit-content;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-
-.billing-view-switch button {
-  min-height: 2.5rem;
-  min-width: 6rem;
-  padding: 0.5rem 1rem;
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius-sm) - 4px);
-  background: transparent;
-  color: var(--text-soft);
-  cursor: pointer;
-}
-
-.billing-view-switch button[aria-selected="true"] {
-  border-color: var(--line-strong);
-  background: var(--surface-raised);
-  color: var(--text);
-  font-weight: 650;
-}
-
 .billing-prices h2,
 .billing-payment h2,
 .personal-billing-history h2 {

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import {
   useCallback,
   useId,
@@ -89,7 +90,8 @@ export function BrowsingRefreshProvider({
                   {t("refresh.changed")}
                 </span>
               )}
-              <button
+              <Button
+                variant="ghost"
                 className="browsing-refresh-button"
                 type="button"
                 aria-label={t(busy ? "refresh.loading" : "refresh.action")}
@@ -99,7 +101,7 @@ export function BrowsingRefreshProvider({
                 onClick={() => void refresh()}
               >
                 <UIIcon icon={RotateCw} />
-              </button>
+              </Button>
               <span className="browsing-refresh-hint" id={hintID} role="tooltip">
                 {t(stale ? "refresh.stale" : "refresh.action")}
               </span>

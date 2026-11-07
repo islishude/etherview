@@ -1,4 +1,5 @@
 @layer theme, base, components, utilities;
+@layer components.foundation, components.explorer, components.wallet, components.account, components.analytics, components.verification, components.responsive;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
@@ -7,10 +8,10 @@
  * responsive overrides. Keep this order stable so the existing cascade remains
  * explicit and predictable.
  */
-@import "./styles/foundation.css";
-@import "./styles/explorer.css";
-@import "./styles/wallet.css";
-@import "./styles/account.css";
-@import "./styles/analytics.css";
-@import "./styles/verification.css";
-@import "./styles/responsive.css";
+@import "./styles/foundation.css" layer(components.foundation);
+@import "./styles/ui-theme.css";
+@import "./styles/explorer.css" layer(components.explorer);
+@import "./styles/wallet.css" layer(components.wallet);
+@import "./styles/analytics.css" layer(components.analytics);
+@import "./styles/forms.css" layer(components.verification);
+@import "./styles/responsive.css" layer(components.responsive);

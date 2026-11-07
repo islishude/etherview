@@ -150,6 +150,7 @@ type Querier interface {
 	ContractArtifactCurrentTarget(ctx context.Context, chainID pgtype.Numeric, address []byte) (ContractArtifactCurrentTargetRow, error)
 	ContractArtifactTargetAtBlock(ctx context.Context, arg ContractArtifactTargetAtBlockParams) (ContractArtifactTargetAtBlockRow, error)
 	CountActiveUserAPIKeys(ctx context.Context, userID pgtype.UUID) (int64, error)
+	CountAdminUsers(ctx context.Context, chainID pgtype.Numeric) (int64, error)
 	CountCurrentBeaconProxies(ctx context.Context, beaconAddress []byte, chainID pgtype.Numeric, snapshotHash []byte) (string, error)
 	CountDirtyAnalyticsHours(ctx context.Context, arg CountDirtyAnalyticsHoursParams) (string, error)
 	CountMissingAnalyticsRollups(ctx context.Context, arg CountMissingAnalyticsRollupsParams) (string, error)
@@ -187,6 +188,7 @@ type Querier interface {
 	DerivedVerifyLoadCompilationCandidates(ctx context.Context, compilationID pgtype.UUID) ([]DerivedVerifyLoadCompilationCandidatesRow, error)
 	DerivedVerifyLockTarget(ctx context.Context, chainID pgtype.Numeric, address []byte) error
 	DerivedVerifyMatchAttempt(ctx context.Context, arg DerivedVerifyMatchAttemptParams) error
+	DerivedVerifyPublicationChainIdentity(ctx context.Context, compilationID pgtype.UUID) (string, error)
 	DerivedVerifyPublicationEvidence(ctx context.Context, arg DerivedVerifyPublicationEvidenceParams) (DerivedVerifyPublicationEvidenceRow, error)
 	DerivedVerifyRecordAttempt(ctx context.Context, arg DerivedVerifyRecordAttemptParams) (string, error)
 	DerivedVerifyRenewForwardEvent(ctx context.Context, arg DerivedVerifyRenewForwardEventParams) (int64, error)
@@ -782,7 +784,6 @@ type Querier interface {
 	TryRuntimeSessionLock(ctx context.Context, lockName string) (bool, error)
 	TrySearchCatalogMaintenanceLock(ctx context.Context, chainID string) (bool, error)
 	UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams) (User, error)
-	UpdateCurrentUserDisplayName(ctx context.Context, displayName *string, updatedAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	UpsertOperatorLabel(ctx context.Context, arg UpsertOperatorLabelParams) (UpsertOperatorLabelRow, error)
 	ValidateAddressWithdrawalCursor(ctx context.Context, arg ValidateAddressWithdrawalCursorParams) (*bool, error)
 	ValidateBlockCursor(ctx context.Context, arg ValidateBlockCursorParams) (*bool, error)
@@ -824,6 +825,7 @@ type Querier interface {
 	VerifyLegacyVerificationProxyReplayTarget(ctx context.Context, arg VerifyLegacyVerificationProxyReplayTargetParams) error
 	VerifyLockClaimGate(ctx context.Context) error
 	VerifyLockPublication(ctx context.Context, chainID string, address []byte) error
+	VerifyPublicationBlockIdentity(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (string, error)
 	VerifyResolveTarget(ctx context.Context, address []byte, chainID pgtype.Numeric, contractAddressHex string) (VerifyResolveTargetRow, error)
 	VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) (VerifyV2ClaimRunnableRow, error)
 	VerifyV2FindActiveJobByDigest(ctx context.Context, requestDigest []byte) (VerifyV2FindActiveJobByDigestRow, error)

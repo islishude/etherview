@@ -123,7 +123,7 @@ describe("pending transaction route", () => {
     expect(
       screen.queryByRole("heading", { name: "Pending transaction snapshot is unavailable" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
   });
 
   it("does not call the pending endpoint when the feature is disabled and localizes the state", async () => {

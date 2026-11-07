@@ -283,12 +283,36 @@ func (repository *PostgresRepository) CompleteDerived(
 		return "", err
 	}
 	defer dbaccess.Rollback(ctx, tx)
+	var compilationID pgtype.UUID
+	if err := compilationID.Scan(identity.CompilationID); err != nil {
+		return "", err
+	}
+	chainIDForLock, err := dbgen.New(tx).DerivedVerifyPublicationChainIdentity(ctx, compilationID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrDerivedEvidenceStale
+	}
+	if err != nil {
+		return "", err
+	}
+	preparedPublication, blockNumberForLock, err := repository.prepareVerificationProxyPublicationTx(ctx, tx, chainIDForLock, identity.BlockHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrDerivedEvidenceStale
+	}
+	if err != nil {
+		return "", err
+	}
+	if blockNumberForLock != identity.BlockNumber {
+		return "", ErrDerivedEvidenceStale
+	}
 	evidence, err := loadDerivedPublicationEvidence(ctx, tx, identity)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", ErrDerivedEvidenceStale
 	}
 	if err != nil {
 		return "", err
+	}
+	if evidence.ChainID != chainIDForLock {
+		return "", ErrDerivedEvidenceStale
 	}
 	if sha256.Sum256(evidence.CreationCode) != prepared.creationHash ||
 		sha256.Sum256(evidence.RuntimeCode) != prepared.runtimeHash ||
@@ -430,6 +454,7 @@ func (repository *PostgresRepository) CompleteDerived(
 		Job: job, Fields: fields, BlockNumber: evidence.BlockNumber,
 		Address: evidence.CreatedAddress, CodeHash: evidence.RuntimeCodeHash,
 		Target: target, AuthenticatedArtifact: authenticatedArtifact,
+		Prepared: preparedPublication,
 	}); err != nil {
 		return "", err
 	}

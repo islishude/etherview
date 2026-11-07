@@ -86,10 +86,10 @@ describe("ERC-4337 UserOperation pages", () => {
 
     renderExplorer("/user-operations");
     expect(await screen.findByRole("heading", { name: "UserOperations" })).toBeVisible();
-    expect(await screen.findByText("UserOperation coverage 10–42")).toBeVisible();
-    const table = screen.getByRole("table", {
+    const table = await screen.findByRole("table", {
       name: "Canonical ERC-4337 operations from one continuous indexed snapshot.",
     });
+    expect(screen.queryByText(/UserOperation coverage/u)).not.toBeInTheDocument();
     expect(within(table).getByText("Succeeded")).toBeVisible();
     expect(within(table).getByText("v0.9 · #0 · event #2")).toBeVisible();
     expect(within(table).getByText("0.000000000000001")).toBeVisible();

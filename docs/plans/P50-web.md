@@ -63,6 +63,7 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T86 | done   | P40-T33, P50-T10                   | Bilingual contract event log tab with mutually exclusive historical-name and positioned-topic filters                                                                                                  | Generated client, bilingual URL/filter/page, keyboard/mobile and production runtime checks                          |
 | P50-T87 | done   | P40-T34, P50-T86                   | Compact event browsing with searchable dropdown, draft range filters and expandable logs                                                                                                               | 992 frontend tests, 235 browser tests, keyboard/IME and real Preview range checks                                   |
 | P50-T88 | done   | P40-T35, P50-T87                   | Dynamic indexed-field filters with browser-side indexed event encoding and shared recursive ABI inputs                                                                                                 | Typed encoding, historical identity, pagination, database/browser and all/split acceptance                          |
+| P50-T89 | done   | P50-T01, P50-T05                   | Repository-owned shadcn/ui primitives across explorer, contract, account and administration surfaces; existing brand, native boundaries and business behavior retained                                 | 1012 frontend tests, 41 tooling tests, 241 browser scenarios; asset/CSP, generation and license gates               |
 
 ## Acceptance
 
@@ -93,6 +94,10 @@ protect browser verification and CSV downloads; address actions use a compact to
       AND conditions, URL restoration, explicit refresh, bounded pagination and
       visible coverage. Original values use shared recursive ABI inputs and
       browser-side topic encoding; shared log cards preserve decoding provenance.
+
+- [x] Repository-owned shadcn/ui primitives unify common controls across explorer,
+      contract, account and administration pages while retaining native form/link
+      semantics, controlled tab keyboard behavior, themes and strict CSP.
 
 ## Current Blockers
 
@@ -163,3 +168,13 @@ conditions/focus, draft submission and hash-only URL restoration passed.
 English/Chinese, light/dark and 390px/desktop screenshots were reviewed.
 Common, PostgreSQL, schema and all/split gates are recorded under P40-T35;
 local acceptance does not close P70 release gates.
+
+P50-T89 passed on the working tree based on `1b7304ed` (2026-11-06, macOS,
+installed Chrome): `make web-lint web-test generate-check`, `CI=1 make test-e2e`
+(1012 frontend tests, 41 tooling tests and 241 browser scenarios), and
+`make license-check docs-check plan-check`. English/Chinese, light/dark and
+390/768/1440px views retain keyboard access, native forms/links, wallet fences
+and CSP; representative screenshots were reviewed. The unchanged initial asset
+budgets pass at 991967 raw / 297250 gzip bytes. Shared source ownership, local
+adaptations and upstream MIT notice are documented; this UI acceptance does
+not extend live-chain coverage or close P70 release gates.

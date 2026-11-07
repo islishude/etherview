@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CircleCheck, CircleX, Info, TriangleAlert, X } from "lucide-react";
@@ -104,7 +105,9 @@ function MessageInstance({ type, text }: { type: MessageType; text: string }) {
             >
               {text}
             </span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon-sm"
               type="button"
               className="message-close"
               aria-label={t("common.close")}
@@ -117,7 +120,7 @@ function MessageInstance({ type, text }: { type: MessageType; text: string }) {
               }}
             >
               <UIIcon icon={X} size={16} />
-            </button>
+            </Button>
           </div>,
           host,
         )}

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -23,6 +24,12 @@ import (
 )
 
 func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testing.T) {
+	for _, reverse := range []bool{false, true} {
+		t.Run(fmt.Sprintf("verification_first=%t", reverse), func(t *testing.T) { testVerifierV2CanonicalPublication(t, reverse) })
+	}
+}
+
+func testVerifierV2CanonicalPublication(t *testing.T, reverse bool) {
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -83,11 +90,9 @@ func TestVerifierV2PublishesOnlyCanonicalRuntimeAndKeepsResultImmutable(t *testi
 			CreationCodeArtifacts: json.RawMessage(`{}`), RuntimeCodeArtifacts: json.RawMessage(`{}`),
 		}},
 	}
-	if err := repository.CompleteV2(
-		ctx, lease, "verification_success", outcome, compilation,
-	); err != nil {
-		t.Fatalf("complete verifier-v2 job: %v", err)
-	}
+	verificationPublicationLockOrder(t, ctx, db, block.Block.Hash(), 1, reverse, func(lockedRepository *verify.PostgresRepository) error {
+		return lockedRepository.CompleteV2(ctx, lease, "verification_success", outcome, compilation)
+	})
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verification_results`, 1)
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM verified_contracts`, 1)
 	assertRowCount(t, ctx, db, `
@@ -263,11 +268,10 @@ func TestVerifierV2PublishesAuthenticatedGenesisRuntimeOnlyTarget(t *testing.T) 
 	); err == nil {
 		t.Fatal("Genesis publication accepted a creation match")
 	}
-	if err := repository.CompleteV2(
-		ctx, lease, "verification_success", verifierV2GenesisSuccessOutcome(t, "full"),
-	); err != nil {
-		t.Fatalf("complete Genesis verifier-v2 job: %v", err)
-	}
+	genesisOutcome := verifierV2GenesisSuccessOutcome(t, "full")
+	verificationWaitsBeforeEvidence(t, ctx, db, genesis.Block.Hash(), 0, func(lockedRepository *verify.PostgresRepository) error {
+		return lockedRepository.CompleteV2(ctx, lease, "verification_success", genesisOutcome)
+	})
 	assertRowCount(t, ctx, db, `
 		SELECT count(*) FROM verification_results
 		WHERE job_id = $1::uuid AND constructor_arguments IS NULL

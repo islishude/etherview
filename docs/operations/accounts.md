@@ -228,3 +228,32 @@ Turning either flag off and restarting API/all rolls back that guard without
 schema changes. Public site keys are not secrets, but live secret rotation must
 be coordinated with Cloudflare. Automated mock transport/widget tests do not
 establish live widget/domain correctness or remote provider availability.
+
+## Administration pages
+
+Open Account by selecting the signed-in identity in the wallet menu. The connected
+wallet address still opens its explorer address page. Wallet connection and login identity remain
+in that menu; Account omits those status panels. An active administrator can open Account’s
+**Admin** tab for Overview, Users, Billing (when enabled), and Sync Status. These views use
+`/account?tab=admin&section=overview|users|billing|status`; the former `/admin/users`,
+`/admin/billing`, and `/status` URLs redirect to their corresponding account view.
+
+Users supports submitted address substring searches across the configured
+chain, with settings and session revocation in a user drawer. Billing separates
+Overview from Payments; advanced filters, grouped breakdowns, and payment
+details are disclosed on demand. Amounts remain exact and grouped by network
+and asset rather than combined across currencies.
+
+`/status` and `GET /api/v1/status` require an administrator Cookie session.
+API keys cannot authorize this endpoint. Anonymous requests return 401,
+ordinary users return 403, and disabled user authentication returns the existing
+503 `user_auth_unavailable` error. Use the operational health listener for probes
+and public `/api/v1/home` for anonymous load workloads. Home block progress and
+public browsing event notifications remain available.
+
+Admin opens Overview by default: the current-chain user total includes disabled
+users and administrators. Billing Summary shows the last 24 hours when billing
+is enabled; full filters and payment records remain in Billing. Users are
+identified and searched by wallet address; custom display names are not stored
+or editable. Empty lists hide pagination; an empty later page offers a separate
+return-to-first-page action.

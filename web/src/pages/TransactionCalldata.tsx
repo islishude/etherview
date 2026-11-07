@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -381,13 +383,15 @@ export function TransactionCalldata({
             {t("detail.rawCalldata")}
           </h3>
           <div className="transaction-calldata-raw-actions">
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               className="transaction-calldata-mode-link"
               onClick={toggleRawMode}
               type="button"
             >
               {t(rawMode === "hex" ? "detail.rawViewAsUtf8" : "detail.rawViewAsHex")}
-            </button>
+            </Button>
             <CopyButton value={input} />
           </div>
         </header>
@@ -396,7 +400,7 @@ export function TransactionCalldata({
             {t("detail.rawUtf8Unavailable")}
           </p>
         )}
-        <textarea
+        <Textarea
           aria-label={t("detail.rawCalldataValue", {
             mode: t(rawMode === "hex" ? "detail.rawHex" : "detail.rawUtf8"),
           })}

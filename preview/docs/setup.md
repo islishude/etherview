@@ -181,3 +181,27 @@ file containing the matching internal PostgreSQL URL. Updated standard
 Permit2/proxy genesis allocations require a fresh disposable network; existing
 volumes deliberately fail the fingerprint check rather than accepting changed
 chain state.
+
+## Default Preview administrator
+
+After chain readiness, `make start-preview` and `make recreate-preview` sign in
+with the public development wallet
+`0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` through ordinary SIWE, then promote
+that user through the container's writer-backed `admin user set-role` command.
+This also works with a fresh database. The helper logs out its temporary session
+without revoking existing browser sessions. A disabled account or failed login
+fails initialization; the helper does not re-enable disabled accounts.
+
+Sign in with this wallet in the Web UI and visit `/admin/users` or
+`/admin/billing`. Repeated startup restores its administrator role. This is only
+part of the Make-managed disposable Preview lifecycle; direct Compose startup
+and production deployments do not provision an administrator automatically.
+To rerun against an already running Preview:
+
+```sh
+COMPOSE_ENV_FILES=.local/preview.env node preview/contracts/admin.mjs
+```
+
+The helper uses the mapped loopback gateway port and verifies TLS with
+`.local/preview-tls/rootCA.pem`. It expects the standard Preview public origin
+`https://app.etherview.localhost` and chain ID 48815.

@@ -1,6 +1,27 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+test("explorer navigation switches between disclosure and links at 1024px", async ({ page }) => {
+  await page.goto("/");
+  const trigger = page.locator('button[aria-controls="explorer-navigation-links"]');
+  const links = page.locator("#explorer-navigation-links");
+  for (const width of [1440, 1024, 1023, 768, 390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    if (width >= 1024) {
+      await expect(trigger).toBeHidden();
+      await expect(links).toBeVisible();
+    } else {
+      await expect(trigger).toBeVisible();
+      await expect(links).toBeHidden();
+      await trigger.click();
+      await expect(links).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+      await expect(links).toBeHidden();
+    }
+  }
+});
+
 test("grouped navigation supports keyboard, responsive disclosure and capability gating", async ({
   page,
 }) => {
@@ -10,6 +31,8 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
   await expect(page.getByRole("link", { name: "Pending", exact: true })).toBeHidden();
   await more.focus();
   await page.keyboard.press("Enter");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Charts", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Verify contract", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -29,7 +52,7 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
     await explore.click();
     await more.click();
     await expect(page.getByRole("link", { name: "Verify contract", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Sync status" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Charts", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(more).toBeFocused();
     await page.keyboard.press("Escape");
@@ -37,8 +60,8 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
     await expect(explore).toHaveAttribute("aria-expanded", "false");
     await explore.click();
     await more.click();
-    await page.getByRole("link", { name: "Sync status" }).click();
-    await expect(page).toHaveURL("/status");
+    await page.getByRole("link", { name: "Charts", exact: true }).click();
+    await expect(page).toHaveURL("/charts");
     await expect(explore).toHaveAttribute("aria-expanded", "false");
     await expect(explore).toBeFocused();
     await page.getByRole("button", { name: "Switch color theme" }).click();
@@ -57,7 +80,7 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
   await more.click();
   await expect(page.getByRole("link", { name: "Pending", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "User Ops", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Account", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Account", exact: true })).toHaveCount(0);
   const scan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();

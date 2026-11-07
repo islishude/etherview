@@ -28,8 +28,8 @@ describe("design primitives", () => {
     expect(surface).toHaveClass(
       "rounded-ui-md",
       "border",
-      "border-ui-line",
-      "bg-ui-surface",
+      "border-border",
+      "bg-card",
       "min-h-[180px]",
       "max-[700px]:items-start",
     );

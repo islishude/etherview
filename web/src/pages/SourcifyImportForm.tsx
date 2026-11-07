@@ -1,3 +1,7 @@
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { useState, type SubmitEvent } from "react";
@@ -50,78 +54,80 @@ export function SourcifyImportForm({
   };
   return (
     <div className="verification-layout">
-      <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
-        <div className="verification-flow-heading">
-          <UIIcon icon={Download} />
-          <h2>{t("sourcify.importTitle")}</h2>
-        </div>
-        <p className="quiet">{t("sourcify.importHelp", { chain: chainID })}</p>
-        <div className="verification-flow-steps" aria-label={t("sourcify.importSteps")}>
-          <span>Sourcify</span>
-          <UIIcon icon={ArrowRight} />
-          <span>{t("sourcify.localCheck")}</span>
-          <UIIcon icon={ArrowRight} />
-          <span>Etherview</span>
-        </div>
-        <div className="form-grid">
-          <label className="field-control wide" htmlFor="sourcify-import-chain">
-            <span id="sourcify-import-chain-label">{t("sourcify.sourceChainID")}</span>
-            <input
-              id="sourcify-import-chain"
-              value={sourceChainID}
-              inputMode="numeric"
-              maxLength={20}
-              disabled={submission.isPending}
-              onChange={(event) => setSourceChainID(event.target.value)}
-              aria-describedby="sourcify-import-chain-help"
-              aria-labelledby="sourcify-import-chain-label"
-              spellCheck={false}
-            />
-            <small id="sourcify-import-chain-help">
-              {t("sourcify.sourceChainHelp", { chain: chainID })}
-            </small>
-          </label>
-          <label className="field-control wide" htmlFor="sourcify-import-address">
-            <span>{t("page.address")}</span>
-            <input
-              id="sourcify-import-address"
-              value={address}
-              disabled={submission.isPending}
-              onChange={(event) => onAddressChange(event.target.value)}
-              spellCheck={false}
-            />
-          </label>
-        </div>
-        {formError && (
-          <p className="form-error" role="alert">
-            {formError}
+      <Card asChild>
+        <form className="panel verification-form" autoComplete="off" onSubmit={submit}>
+          <div className="verification-flow-heading">
+            <UIIcon icon={Download} />
+            <h2>{t("sourcify.importTitle")}</h2>
+          </div>
+          <p className="quiet">{t("sourcify.importHelp", { chain: chainID })}</p>
+          <div className="verification-flow-steps" aria-label={t("sourcify.importSteps")}>
+            <span>Sourcify</span>
+            <UIIcon icon={ArrowRight} />
+            <span>{t("sourcify.localCheck")}</span>
+            <UIIcon icon={ArrowRight} />
+            <span>Etherview</span>
+          </div>
+          <div className="form-grid">
+            <Label className="field-control wide" htmlFor="sourcify-import-chain">
+              <span id="sourcify-import-chain-label">{t("sourcify.sourceChainID")}</span>
+              <Input
+                id="sourcify-import-chain"
+                value={sourceChainID}
+                inputMode="numeric"
+                maxLength={20}
+                disabled={submission.isPending}
+                onChange={(event) => setSourceChainID(event.target.value)}
+                aria-describedby="sourcify-import-chain-help"
+                aria-labelledby="sourcify-import-chain-label"
+                spellCheck={false}
+              />
+              <small id="sourcify-import-chain-help">
+                {t("sourcify.sourceChainHelp", { chain: chainID })}
+              </small>
+            </Label>
+            <Label className="field-control wide" htmlFor="sourcify-import-address">
+              <span>{t("page.address")}</span>
+              <Input
+                id="sourcify-import-address"
+                value={address}
+                disabled={submission.isPending}
+                onChange={(event) => onAddressChange(event.target.value)}
+                spellCheck={false}
+              />
+            </Label>
+          </div>
+          {formError && (
+            <p className="form-error" role="alert">
+              {formError}
+            </p>
+          )}
+          {submission.error && (
+            <Message type="error">
+              {errorMessage(submission.error, t("sourcify.importFailed"))}
+            </Message>
+          )}
+          {active && submission.challenge}
+          <Button
+            className="button primary"
+            type="submit"
+            disabled={
+              !submission.ready ||
+              submission.isPending ||
+              !auth.enabled ||
+              !auth.session.authenticated
+            }
+          >
+            {submission.isPending ? t("sourcify.importing") : t("sourcify.importAction")}
+          </Button>
+          <p className="quiet">
+            {t("sourcify.notPublished")}{" "}
+            <Button variant="ghost" type="button" className="button" onClick={onPublish}>
+              {t("sourcify.publishTab")}
+            </Button>
           </p>
-        )}
-        {submission.error && (
-          <Message type="error">
-            {errorMessage(submission.error, t("sourcify.importFailed"))}
-          </Message>
-        )}
-        {active && submission.challenge}
-        <button
-          className="button primary"
-          type="submit"
-          disabled={
-            !submission.ready ||
-            submission.isPending ||
-            !auth.enabled ||
-            !auth.session.authenticated
-          }
-        >
-          {submission.isPending ? t("sourcify.importing") : t("sourcify.importAction")}
-        </button>
-        <p className="quiet">
-          {t("sourcify.notPublished")}{" "}
-          <button type="button" className="button" onClick={onPublish}>
-            {t("sourcify.publishTab")}
-          </button>
-        </p>
-      </form>
+        </form>
+      </Card>
     </div>
   );
 }

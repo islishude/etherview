@@ -1,3 +1,8 @@
+import "@/styles/account.css";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import "@/i18n/resources/addressActions";
 import { type SubmitEvent, type ReactNode, useState } from "react";
@@ -28,11 +33,13 @@ function AddressActionPage({ address, children }: { address: string; children: R
       {auth.loading ? (
         <QueryNotice loading error={null} />
       ) : !auth.enabled || !auth.session.authenticated ? (
-        <section className="panel address-action-login">
-          <p>{t(!auth.enabled ? "watchlist.signInUnavailable" : "watchlist.exportSignIn")}</p>
-          {auth.enabled && <SIWELoginControl label={t("watchlist.signIn")} />}
-          {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
-        </section>
+        <Card asChild>
+          <section className="panel address-action-login">
+            <p>{t(!auth.enabled ? "watchlist.signInUnavailable" : "watchlist.exportSignIn")}</p>
+            {auth.enabled && <SIWELoginControl label={t("watchlist.signIn")} />}
+            {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
+          </section>
+        </Card>
       ) : (
         children
       )}
@@ -91,7 +98,7 @@ function ExportForm({ address }: { address: string }) {
         onSubmit={download}
       >
         <p>{t("watchlist.exportHint")}</p>
-        <label className="field-control">
+        <Label className="field-control">
           <span>{t("watchlist.kinds")}</span>
           <SelectControl
             value={kind}
@@ -102,26 +109,26 @@ function ExportForm({ address }: { address: string }) {
             <option value="erc20">ERC-20</option>
             <option value="nft">NFT (ERC-721 / ERC-1155)</option>
           </SelectControl>
-        </label>
-        <label className="field-control">
+        </Label>
+        <Label className="field-control">
           <span>{t("watchlist.fromUTC")}</span>
-          <input
+          <Input
             required
             type="datetime-local"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
-        </label>
-        <label className="field-control">
+        </Label>
+        <Label className="field-control">
           <span>{t("watchlist.toUTC")}</span>
-          <input
+          <Input
             required
             type="datetime-local"
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />
-        </label>
-        <label className="field-control">
+        </Label>
+        <Label className="field-control">
           <span>{t("watchlist.direction")}</span>
           <SelectControl
             value={direction}
@@ -133,11 +140,11 @@ function ExportForm({ address }: { address: string }) {
               </option>
             ))}
           </SelectControl>
-        </label>
+        </Label>
         {challenge.challenge}
-        <button className="button primary" disabled={action.pending || !challenge.ready}>
+        <Button className="button primary" disabled={action.pending || !challenge.ready}>
           {t(action.pending ? "watchlist.loading" : "watchlist.download")}
-        </button>
+        </Button>
       </form>
 
       <AccountActionError code={action.error} />

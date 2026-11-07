@@ -27,7 +27,7 @@ func TestPercentileUsesNearestRank(t *testing.T) {
 func TestValidateRejectsCredentialedOriginsAndCrossOriginPaths(t *testing.T) {
 	t.Parallel()
 	base := Config{
-		BaseURL: "https://example.test", Paths: []string{"/api/v1/status"},
+		BaseURL: "https://example.test", Paths: []string{"/api/v1/home"},
 		Rate: 1, Duration: time.Second, Concurrency: 1,
 		RequestTimeout: time.Second, MaximumP95: time.Second,
 		MaximumErrorRate: 0.1, MinimumThroughputRatio: 0.5,
@@ -39,7 +39,7 @@ func TestValidateRejectsCredentialedOriginsAndCrossOriginPaths(t *testing.T) {
 		{name: "credentials", mutate: func(cfg *Config) { cfg.BaseURL = "https://user:secret@example.test" }},
 		{name: "protocol relative", mutate: func(cfg *Config) { cfg.Paths = []string{"//other.test/path"} }},
 		{name: "absolute path", mutate: func(cfg *Config) { cfg.Paths = []string{"https://other.test/path"} }},
-		{name: "fragment", mutate: func(cfg *Config) { cfg.Paths = []string{"/api/v1/status#secret"} }},
+		{name: "fragment", mutate: func(cfg *Config) { cfg.Paths = []string{"/api/v1/home#secret"} }},
 		{name: "API key query", mutate: func(cfg *Config) {
 			cfg.Paths = []string{"/v2/api?module=account&%61piKey=top-secret"}
 		}},
@@ -64,9 +64,9 @@ func TestRunReportsBoundedPublicLoadAndLag(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v1/status" {
+		if r.URL.Path == "/api/v1/home" {
 			statusRequests.Add(1)
-			_, _ = w.Write([]byte(`{"data":{"lag":"1","core_ready":true,"backfill_complete":true}}`))
+			_, _ = w.Write([]byte(`{"data":{"status":{"lag":"1","core_ready":true,"backfill_complete":true}}}`))
 			return
 		}
 		_, _ = w.Write([]byte(`{"data":[]}`))
@@ -101,8 +101,8 @@ func TestRunContinuesPastTheResultBuffer(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if r.URL.Path == "/api/v1/status" {
-			_, _ = w.Write([]byte(`{"data":{"lag":"0","core_ready":true,"backfill_complete":true}}`))
+		if r.URL.Path == "/api/v1/home" {
+			_, _ = w.Write([]byte(`{"data":{"status":{"lag":"0","core_ready":true,"backfill_complete":true}}}`))
 			return
 		}
 		_, _ = w.Write([]byte(`{"data":[]}`))
@@ -126,9 +126,9 @@ func TestRunContinuesPastTheResultBuffer(t *testing.T) {
 func TestRunDropsSaturatedAdmissionsAndRemainsWallClockBounded(t *testing.T) {
 	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/status" {
+		if r.URL.Path == "/api/v1/home" {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"lag":"0","core_ready":true,"backfill_complete":true}}`))
+			_, _ = w.Write([]byte(`{"data":{"status":{"lag":"0","core_ready":true,"backfill_complete":true}}}`))
 			return
 		}
 		<-r.Context().Done()
@@ -161,9 +161,9 @@ func TestRunDoesNotFollowRedirectsWithAPIKey(t *testing.T) {
 	}))
 	defer receiver.Close()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/status" {
+		if r.URL.Path == "/api/v1/home" {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"data":{"lag":"0","core_ready":true,"backfill_complete":true}}`))
+			_, _ = w.Write([]byte(`{"data":{"status":{"lag":"0","core_ready":true,"backfill_complete":true}}}`))
 			return
 		}
 		http.Redirect(w, r, receiver.URL, http.StatusFound)
@@ -191,7 +191,7 @@ func TestRunDoesNotFollowRedirectsWithAPIKey(t *testing.T) {
 func TestValidateRejectsProfilesBeyondMemoryBound(t *testing.T) {
 	t.Parallel()
 	cfg := Config{
-		BaseURL: "https://example.test", Paths: []string{"/api/v1/status"},
+		BaseURL: "https://example.test", Paths: []string{"/api/v1/home"},
 		Rate: 100_000, Duration: 11 * time.Second, Concurrency: 1,
 		RequestTimeout: time.Second, MaximumP95: time.Second,
 		MaximumErrorRate: 0.1, MinimumThroughputRatio: 0.5,
@@ -287,27 +287,27 @@ func TestReadRuntimeStatusRejectsUnreadyAndMalformedResponses(t *testing.T) {
 	}{
 		{
 			name:    "core not ready",
-			payload: `{"data":{"lag":"0","core_ready":false,"backfill_complete":true}}`,
+			payload: `{"data":{"status":{"lag":"0","core_ready":false,"backfill_complete":true}}}`,
 			want:    "core is not ready",
 		},
 		{
 			name:    "backfill incomplete",
-			payload: `{"data":{"lag":"0","core_ready":true,"backfill_complete":false}}`,
+			payload: `{"data":{"status":{"lag":"0","core_ready":true,"backfill_complete":false}}}`,
 			want:    "backfill is not complete",
 		},
 		{
 			name:    "null lag",
-			payload: `{"data":{"lag":null,"core_ready":true,"backfill_complete":true}}`,
+			payload: `{"data":{"status":{"lag":null,"core_ready":true,"backfill_complete":true}}}`,
 			want:    "status lag is invalid",
 		},
 		{
 			name:    "numeric lag",
-			payload: `{"data":{"lag":0,"core_ready":true,"backfill_complete":true}}`,
+			payload: `{"data":{"status":{"lag":0,"core_ready":true,"backfill_complete":true}}}`,
 			want:    "status lag is invalid",
 		},
 		{
 			name:    "missing readiness",
-			payload: `{"data":{"lag":"0","core_ready":true}}`,
+			payload: `{"data":{"status":{"lag":"0","core_ready":true}}}`,
 			want:    "status readiness fields are missing",
 		},
 	} {
@@ -315,7 +315,7 @@ func TestReadRuntimeStatusRejectsUnreadyAndMalformedResponses(t *testing.T) {
 			t.Parallel()
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == "/api/v1/status" {
+				if r.URL.Path == "/api/v1/home" {
 					_, _ = w.Write([]byte(test.payload))
 					return
 				}

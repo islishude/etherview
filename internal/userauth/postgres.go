@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
@@ -204,7 +201,7 @@ func (repository *PostgresRepository) completeLoginOnce(
 			return err
 		}
 		user, err := userFromValues(
-			loginRow.ID, loginRow.ChainID, loginRow.Address, loginRow.DisplayName,
+			loginRow.ID, loginRow.ChainID, loginRow.Address,
 			loginRow.Role, loginRow.Status, loginRow.CreatedAt,
 			loginRow.UpdatedAt, loginRow.LastLoginAt,
 		)
@@ -293,7 +290,7 @@ func (repository *PostgresRepository) ActiveSession(
 		return Session{}, fmt.Errorf("authenticate user session: %w", err)
 	}
 	user, err := userFromValues(
-		row.UserID, row.ChainID, row.Address, row.DisplayName,
+		row.UserID, row.ChainID, row.Address,
 		row.Role, row.Status, row.UserCreatedAt, row.UserUpdatedAt, row.LastLoginAt,
 	)
 	if err != nil || user.ChainID != repository.chainID ||
@@ -379,44 +376,11 @@ func (repository *PostgresRepository) UserByAddress(
 	return repository.checkedUser(row)
 }
 
-func (repository *PostgresRepository) UpdateDisplayName(
-	ctx context.Context,
-	userID string,
-	displayName *string,
-	updatedAt time.Time,
-) (User, error) {
-	identifier, err := postgresUUID(userID)
-	if err != nil {
-		return User{}, ErrUserNotFound
-	}
-	displayName, err = normalizeDisplayName(displayName)
-	if err != nil {
-		return User{}, err
-	}
-	var row dbgen.User
-	err = dbaccess.WithTransaction(ctx, repository.db, func(queries *dbgen.Queries) error {
-		if _, queryErr := queries.GetUserByID(ctx, identifier, repository.numeric); queryErr != nil {
-			return queryErr
-		}
-		var queryErr error
-		row, queryErr = queries.UpdateCurrentUserDisplayName(
-			ctx, displayName, postgresTime(updatedAt), identifier,
-		)
-		return queryErr
-	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return User{}, ErrUserNotFound
-	}
-	if err != nil {
-		return User{}, fmt.Errorf("update current user: %w", err)
-	}
-	return repository.checkedUser(row)
-}
-
 func (repository *PostgresRepository) Users(
 	ctx context.Context,
 	after *UserPageAfter,
 	limit int,
+	query string,
 ) ([]User, error) {
 	// HTTP callers may request 100 visible rows and ask for one additional
 	// sentinel row to decide whether to emit next_cursor.
@@ -424,7 +388,7 @@ func (repository *PostgresRepository) Users(
 		return nil, fmt.Errorf("%w: user page limit must be between 1 and 101", ErrInvalidInput)
 	}
 	params := dbgen.ListUsersPageParams{
-		ChainID: repository.numeric, PageLimit: int32(limit),
+		ChainID: repository.numeric, PageLimit: int32(limit), Search: query,
 	}
 	if after != nil {
 		id, err := postgresUUID(after.ID)
@@ -601,23 +565,6 @@ func (repository *PostgresRepository) checkedUser(row dbgen.User) (User, error) 
 	return user, nil
 }
 
-func normalizeDisplayName(value *string) (*string, error) {
-	if value == nil {
-		return nil, nil
-	}
-	normalized := strings.TrimSpace(*value)
-	if normalized == "" || utf8.RuneCountInString(normalized) > 64 ||
-		len(normalized) > 256 {
-		return nil, fmt.Errorf("%w: display name must contain 1 to 64 characters", ErrInvalidInput)
-	}
-	for _, character := range normalized {
-		if unicode.IsControl(character) {
-			return nil, fmt.Errorf("%w: display name contains a control character", ErrInvalidInput)
-		}
-	}
-	return &normalized, nil
-}
-
 func challengeFromRow(row dbgen.AuthChallenge) (Challenge, error) {
 	id, err := uuidString(row.ID)
 	if err != nil {
@@ -652,7 +599,7 @@ func challengeFromRow(row dbgen.AuthChallenge) (Challenge, error) {
 
 func userFromRow(row dbgen.User) (User, error) {
 	return userFromValues(
-		row.ID, row.ChainID, row.Address, row.DisplayName, row.Role, row.Status,
+		row.ID, row.ChainID, row.Address, row.Role, row.Status,
 		row.CreatedAt, row.UpdatedAt, row.LastLoginAt,
 	)
 }
@@ -661,7 +608,6 @@ func userFromValues(
 	id pgtype.UUID,
 	chainID pgtype.Numeric,
 	address []byte,
-	displayName *string,
 	roleValue, statusValue string,
 	createdAt, updatedAt, lastLoginAt pgtype.Timestamptz,
 ) (User, error) {
@@ -687,7 +633,7 @@ func userFromValues(
 	}
 	user := User{
 		ID: identifier, ChainID: chain, Address: common.BytesToAddress(address).Hex(),
-		DisplayName: displayName, Role: role, Status: status,
+		Role: role, Status: status,
 		CreatedAt: created, UpdatedAt: updated,
 	}
 	if lastLoginAt.Valid {
@@ -782,4 +728,21 @@ func uint64Numeric(value pgtype.Numeric) (uint64, error) {
 		return 0, errStoredStateInvalid
 	}
 	return value.Int.Uint64(), nil
+}
+
+// UserCount returns all users on the configured chain from the writer.
+func (repository *PostgresRepository) UserCount(ctx context.Context) (uint64, error) {
+	var count int64
+	err := dbaccess.WithQueries(ctx, repository.db, func(queries *dbgen.Queries) error {
+		var err error
+		count, err = queries.CountAdminUsers(ctx, repository.numeric)
+		return err
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count users: %w", err)
+	}
+	if count < 0 {
+		return 0, errStoredStateInvalid
+	}
+	return uint64(count), nil
 }

@@ -1,3 +1,4 @@
+import { Input } from "@/components/ui/input";
 import { DropdownChevron } from "@/components/DropdownChevron";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -56,7 +57,7 @@ export function CompilerVersionSelect({
 
   return (
     <div className="compiler-version-select" onBlur={close}>
-      <input
+      <Input
         id={id}
         ref={inputRef}
         role="combobox"

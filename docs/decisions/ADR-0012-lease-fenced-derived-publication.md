@@ -78,6 +78,18 @@ immutable block, stage version, result, and replay generation.
   or completed generation; a replay racing confirmation must not turn a
   committed success into a false worker failure.
 
+Verification publication acquires the exact block's proxy job publication
+advisory lock before locking canonical or runtime evidence. A non-locking
+identity lookup is only preparation: submitted and factory-derived verification
+still recheck their complete evidence under the original row locks afterward.
+Preparation does not lock an existing durable job row, so lease heartbeats remain
+independent. A missing job is created in the same transaction; successful
+publication records its first replay source without an extra generation.
+Existing jobs retain idempotent replay and lease fences. Results, provenance,
+selectors and replay requests commit together, and failed evidence validation
+rolls back the prepared job as well. This lock order prevents a verifier holding
+a code-observation SHARE lock from waiting on its concurrent proxy publisher.
+
 ## Consequences
 
 - An expired worker cannot expose partial or terminal-looking output, and

@@ -1,3 +1,6 @@
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useTranslation } from "react-i18next";
 import type { AddressLogEvent } from "@/api/heyapi/types.gen";
 import { SelectControl } from "@/components/SelectControl";
@@ -62,7 +65,7 @@ export function AddressLogCondition({
   return (
     <div className="address-log-condition">
       <div className="address-log-condition-heading">
-        <label>
+        <Label>
           {t(event ? "addressLogs.indexedField" : "addressLogs.position")}
           <SelectControl
             value={condition.position}
@@ -81,9 +84,9 @@ export function AddressLogCondition({
               );
             })}
           </SelectControl>
-        </label>
+        </Label>
         {field && (
-          <label>
+          <Label>
             {t("addressLogs.valueFormat")}
             <SelectControl
               value={condition.format}
@@ -108,21 +111,22 @@ export function AddressLogCondition({
               </option>
               <option value="hash">{t("addressLogs.topic")}</option>
             </SelectControl>
-          </label>
+          </Label>
         )}
-        <button
+        <Button
+          variant="outline"
           type="button"
           data-remove-condition
           aria-label={`${t("addressLogs.removeCondition")} ${field?.name || `topic${condition.position}`}`}
           onClick={onRemove}
         >
           {t("addressLogs.removeCondition")}
-        </button>
+        </Button>
       </div>
       {editor ?? (
-        <label>
+        <Label>
           {t("addressLogs.topic")}
-          <input
+          <Input
             value={condition.hash}
             maxLength={66}
             spellCheck={false}
@@ -130,7 +134,7 @@ export function AddressLogCondition({
             onChange={(e) => onChange({ ...condition, hash: e.target.value })}
             placeholder="0x…"
           />
-        </label>
+        </Label>
       )}
       {error && <p className="address-log-error">{t("addressLogs.invalidValue")}</p>}
     </div>

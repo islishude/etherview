@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { Link } from "@tanstack/react-router";
@@ -20,60 +21,69 @@ export function BlobPage({ hash, index }: { hash: string; index: string }) {
         <UIIcon icon={ArrowLeft} />
         {t("consensus.blockBlobs")}
       </Link>
-      <section className="panel blob-detail-panel" aria-label={t("consensus.blobDetails")}>
-        <QueryNotice loading={query.isPending} error={query.error} compact />
-        <BlobArchiveNotice data={query.data} />
-        {query.data && !item && (
-          <p className="quiet">
-            {t(
-              query.data.state === "complete"
-                ? "consensus.blobNotFound"
-                : "consensus.blobDetailsUnavailable",
-            )}
-          </p>
-        )}
-        {item && (
-          <>
-            <dl className="blob-metadata">
-              <Detail
-                label={t("table.block")}
-                value={
-                  <Link to="/blocks/$blockID" params={{ blockID: hash }} search={{ tab: "blobs" }}>
-                    <code className="mono-wrap">{hash}</code>
-                  </Link>
-                }
-              />
-              <Detail
-                label={t("consensus.transaction")}
-                value={
-                  <Link
-                    to="/tx/$hash"
-                    params={{ hash: item.transaction_hash }}
-                    search={{ tab: "blob" }}
-                  >
-                    <code className="mono-wrap">{item.transaction_hash}</code>
-                  </Link>
-                }
-              />
-              {item.size !== undefined && (
-                <Detail label={t("consensus.size")} value={formatInteger(item.size, locale)} />
+      <Card asChild>
+        <section className="panel blob-detail-panel" aria-label={t("consensus.blobDetails")}>
+          <QueryNotice loading={query.isPending} error={query.error} compact />
+          <BlobArchiveNotice data={query.data} />
+          {query.data && !item && (
+            <p className="quiet">
+              {t(
+                query.data.state === "complete"
+                  ? "consensus.blobNotFound"
+                  : "consensus.blobDetailsUnavailable",
               )}
-              {item.commitment && (
+            </p>
+          )}
+          {item && (
+            <>
+              <dl className="blob-metadata">
                 <Detail
-                  label={t("consensus.commitment")}
-                  value={<code className="mono-wrap">{item.commitment}</code>}
+                  label={t("table.block")}
+                  value={
+                    <Link
+                      to="/blocks/$blockID"
+                      params={{ blockID: hash }}
+                      search={{ tab: "blobs" }}
+                    >
+                      <code className="mono-wrap">{hash}</code>
+                    </Link>
+                  }
                 />
+                <Detail
+                  label={t("consensus.transaction")}
+                  value={
+                    <Link
+                      to="/tx/$hash"
+                      params={{ hash: item.transaction_hash }}
+                      search={{ tab: "blob" }}
+                    >
+                      <code className="mono-wrap">{item.transaction_hash}</code>
+                    </Link>
+                  }
+                />
+                {item.size !== undefined && (
+                  <Detail label={t("consensus.size")} value={formatInteger(item.size, locale)} />
+                )}
+                {item.commitment && (
+                  <Detail
+                    label={t("consensus.commitment")}
+                    value={<code className="mono-wrap">{item.commitment}</code>}
+                  />
+                )}
+                {item.sha256 && (
+                  <Detail
+                    label="SHA-256"
+                    value={<code className="mono-wrap">{item.sha256}</code>}
+                  />
+                )}
+              </dl>
+              {query.data?.state === "complete" && (
+                <BlobActions key={`${hash}:${index}`} hash={hash} index={index} />
               )}
-              {item.sha256 && (
-                <Detail label="SHA-256" value={<code className="mono-wrap">{item.sha256}</code>} />
-              )}
-            </dl>
-            {query.data?.state === "complete" && (
-              <BlobActions key={`${hash}:${index}`} hash={hash} index={index} />
-            )}
-          </>
-        )}
-      </section>
+            </>
+          )}
+        </section>
+      </Card>
     </Page>
   );
 }

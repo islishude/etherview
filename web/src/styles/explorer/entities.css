@@ -125,12 +125,6 @@
     color 0.18s ease;
 }
 
-.copyable-copy-button.copied,
-.copyable-copy-button.copied:hover,
-.copyable-copy-button.copied:focus-visible {
-  color: var(--success);
-}
-
 .copyable-copy-button:hover,
 .copyable-copy-button:focus-visible,
 .address-qr-button:hover,
@@ -183,19 +177,6 @@
   place-items: center;
   padding: 1rem;
   background: rgb(0 0 0 / 0.58);
-}
-
-.external-link-dialog {
-  width: min(28rem, 100%);
-  padding: 1.1rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface-raised);
-  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 0.28);
-}
-
-.external-link-dialog {
-  width: min(36rem, 100%);
 }
 
 .qr-dialog-heading {
@@ -310,16 +291,6 @@
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
-.external-link-warning {
-  padding: 0.8rem;
-  margin: 0;
-  color: var(--warning);
-  background: color-mix(in srgb, var(--warning) 9%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--warning) 32%, var(--line));
-  border-radius: 0.5rem;
-  line-height: 1.55;
-}
-
 .external-link-target {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -337,14 +308,6 @@
 .external-link-target span {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.external-link-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.65rem;
-  margin-top: 1rem;
 }
 
 .detail-item dd {
@@ -380,61 +343,6 @@
 
 .detail-section > h2 {
   margin-bottom: 0;
-}
-
-.account-tabs,
-.contract-tabs,
-.transaction-tabs {
-  display: flex;
-  min-width: 0;
-  gap: 0.75rem;
-  overflow-x: auto;
-  padding: 0.25rem 0;
-  background: transparent;
-  border-bottom: 1px solid var(--line);
-  scrollbar-width: thin;
-}
-
-.account-tabs a,
-.contract-tab,
-.transaction-tab {
-  flex: 0 0 auto;
-  padding: 0.7rem 0.5rem;
-  color: var(--text-soft);
-  background: transparent;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  font: inherit;
-  cursor: pointer;
-  white-space: nowrap;
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.account-tabs a:hover,
-.contract-tab:hover,
-.transaction-tab:hover {
-  color: var(--brand);
-  background: var(--surface-raised);
-}
-
-.account-tabs a[aria-current="page"],
-.contract-tab.active,
-.transaction-tab.active {
-  color: var(--brand);
-  background: transparent;
-  border-bottom-color: var(--brand);
-} /* Address, Contract and Delegation entries share one visual selection state. */
-.transaction-tabs > .transaction-tab {
-  margin-inline-start: 0;
-}
-
-.transaction-tabs > .transaction-tab.active {
-  color: var(--brand);
-  background: transparent;
-  border-bottom-color: var(--brand);
 }
 
 .address-activity {

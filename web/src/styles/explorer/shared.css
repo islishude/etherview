@@ -21,13 +21,6 @@
   line-height: 1.2;
 }
 
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  box-shadow: none;
-}
-
 .finality-badge,
 .transaction-status,
 .orphan-label,

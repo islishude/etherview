@@ -800,7 +800,7 @@ describe("contract proxy route", () => {
     await user.click(next);
 
     expect(await screen.findByText("This page cursor is no longer valid")).toBeVisible();
-    expect(screen.getByText("Page 2")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Restart from the first page" }));
 
     expect(await screen.findByText("Page 1")).toBeVisible();

@@ -61,8 +61,28 @@ zero result. Loading, empty, error, and retry states belong with the affected da
 
 ## Shared components
 
-Reuse `DesignPrimitives` for shared frames and surfaces and existing button,
-control, tab, and select patterns before adding page-specific presentation.
+Use the repository-owned shadcn/ui primitives in `web/src/components/ui` for
+buttons, fields, cards, badges, notices, tables, pagination and tabs.
+`DesignPrimitives` retains the application frame and a semantic section adapter
+for Card. Import components directly from their owning module; no global barrel.
+Use Button variants (`default`, `outline`, `secondary`, `ghost`, `link`,
+`destructive`) and sizes instead of adding another action style. Links use
+`asChild` so hrefs and modified-click navigation remain native. Table containers
+remain focusable and owned by the calling view.
+
+shadcn semantic colors in `styles/ui-theme.css` map to the foundation tokens.
+The existing `--muted` foreground and radius lengths must not be overwritten
+with shadcn defaults. Shared styles use the components cascade layer so explicit
+component utilities win; route-specific rules retain their own lazy imports.
+No Tailwind Preflight reset or external runtime styling is introduced. Keep
+caller-owned selection and feedback states in explicit utility variants when
+shared utilities otherwise override their legacy cascade layer.
+
+Native checkbox/radio and select adapters preserve browser form behavior;
+Radix owns local tab selection and keyboard navigation. Route tabs retain links
+and router-controlled state with the same shared underline treatment. Navigation
+disclosures, searchable business selectors, native dialogs and Message retain
+their established lifecycle, focus and CSP boundaries.
 Do not introduce an alternative treatment for the same kind of action.
 
 Shared page titles use `components/PageHeading`; domain pages retain
@@ -70,7 +90,7 @@ their own identifiers and summary content. Manual refresh occupies the heading a
 slot; its route-loaded styles live in `api/browsingRefresh.css`. Keep stale status
 compact, preserve its accessible description on mobile, and expose the hint on
 keyboard focus with Escape dismissal. The account, contract and transaction
-tab primitives share the underline rules in `explorer/entities.css`. Selected tabs must
+tab primitives share the underline treatment in `components/ui/tabs.tsx`. Selected tabs must
 retain visible text and keyboard focus rather than relying on a filled surface.
 Use `numeric` for right-aligned quantities without rounding source strings.
 
@@ -105,6 +125,12 @@ their message stack so feedback remains in the accessible top layer. Identical
 concurrent messages coalesce, and caller teardown removes feedback and timers.
 Keep read/loading states, field validation and durable transaction/payment
 outcomes in their owning views.
+
+Confirmation actions use the shared `components/ui/alert-dialog` shadcn adaptation
+with native modal hosting. Focus cancellation initially, contain keyboard focus,
+allow Escape cancellation, ignore backdrop clicks, and restore focus on close.
+Only explicit confirmation runs the action; session and target changes discard
+pending confirmation. Keep business checks and translations with the caller.
 
 Support both light and dark themes and English and Chinese in every changed view.
 Use semantic theme tokens rather than page-local color literals. Leave room for

@@ -524,3 +524,72 @@ func assertUserAuthCount(t *testing.T, db *pgxpool.Pool, table string, want int)
 		t.Fatalf("%s count=%d want=%d", table, count, want)
 	}
 }
+
+func TestPostgresUserSearchLiteralSubstringsAndPagination(t *testing.T) {
+	db := newUserAuthPostgres(t)
+	repository, err := NewPostgresRepository(db, 11155111)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := NewService(repository, Options{ChainID: 11155111, PublicURL: "https://explorer.example", ChallengeTTL: 5 * time.Minute, SessionTTL: time.Hour, Pepper: bytes.Repeat([]byte{9}, 32)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, err := repository.UserCount(t.Context()); err != nil || count != 0 {
+		t.Fatalf("empty count=%d err=%v", count, err)
+	}
+	var created []User
+	for range 3 {
+		key, err := ethcrypto.GenerateKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		challenge, err := service.CreateChallenge(t.Context(), ethcrypto.PubkeyToAddress(key.PublicKey).Hex())
+		if err != nil {
+			t.Fatal(err)
+		}
+		login, err := service.VerifyChallenge(t.Context(), challenge.ID, signUserAuthChallenge(t, challenge, key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		created = append(created, login.Session.User)
+	}
+	for _, tc := range []struct {
+		query string
+		count int
+	}{{"alice", 0}, {"用户", 0}, {"%_\\", 0}, {"missing", 0}, {strings.ToLower(created[0].Address), 1}, {strings.ToLower(created[0].Address[2:14]), 1}, {"", 3}} {
+		users, err := repository.Users(t.Context(), nil, 25, tc.query)
+		if err != nil || len(users) != tc.count {
+			t.Fatalf("search %q count=%d err=%v", tc.query, len(users), err)
+		}
+	}
+	first, err := repository.Users(t.Context(), nil, 1, "0x")
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first page: %v", err)
+	}
+	second, err := repository.Users(t.Context(), &UserPageAfter{ID: first[0].ID, CreatedAt: first[0].CreatedAt}, 1, "0x")
+	if err != nil || len(second) != 1 || second[0].ID == first[0].ID {
+		t.Fatalf("second page: %v", err)
+	}
+	other, err := NewPostgresRepository(db, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := repository.UpdateUser(t.Context(), created[0].ID, AdminUserUpdate{Role: new(RoleAdmin)}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.UpdateUser(t.Context(), created[1].ID, AdminUserUpdate{Status: new(StatusDisabled)}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := repository.UserCount(t.Context()); err != nil || count != 3 {
+		t.Fatalf("count=%d err=%v", count, err)
+	}
+	if count, err := other.UserCount(t.Context()); err != nil || count != 0 {
+		t.Fatalf("other count=%d err=%v", count, err)
+	}
+	users, err := other.Users(t.Context(), nil, 25, "0x")
+	if err != nil || len(users) != 0 {
+		t.Fatalf("chain isolation: %v", err)
+	}
+}

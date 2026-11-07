@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useTranslation } from "react-i18next";
@@ -28,70 +29,76 @@ export function ConsensusPanel({ hash }: { hash: string }) {
     (consensusDetailFields.some((key) => data[key] !== undefined) ||
       Object.keys(data.operations ?? {}).length > 0);
   return (
-    <section
-      className="panel transaction-tab-panel block-consensus-panel"
-      role="tabpanel"
-      aria-label={t("consensus.title")}
-    >
-      <QueryNotice loading={query.isPending} error={query.error} compact />
-      {data && (
-        <>
-          {data.state !== "complete" && (
-            <div className="block-consensus-notice" role="status">
-              <strong>{t(`consensus.states.${data.state}`)}</strong>
-              {data.code && <p>{t(`consensus.codes.${data.code}`, { defaultValue: data.code })}</p>}
-            </div>
-          )}
-          {data.slot_conflict && (
-            <p className="block-consensus-notice" role="status">
-              {t("consensus.slotConflict")}
-            </p>
-          )}
-          {hasSummary && (
-            <dl className="block-consensus-summary">
-              {summaryFields.map((key) => (
-                <div key={key}>
-                  <dt>{t(`consensus.${key}`)}</dt>
-                  <dd>{key === "fork" ? (data[key] ?? "—") : formatInteger(data[key], locale)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-          {hasDetails && (
-            <details className="block-consensus-details">
-              <summary>
-                <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
-                {t("consensus.technicalDetails")}
-              </summary>
-              <dl className="block-consensus-detail-list">
-                {consensusDetailFields.map((key) =>
-                  data[key] === undefined ? null : (
-                    <Detail
-                      key={key}
-                      label={t(`consensus.${key}`)}
-                      value={<code className="mono-wrap">{data[key]}</code>}
-                    />
-                  ),
+    <Card asChild>
+      <section
+        className="panel transaction-tab-panel block-consensus-panel"
+        role="tabpanel"
+        aria-label={t("consensus.title")}
+      >
+        <QueryNotice loading={query.isPending} error={query.error} compact />
+        {data && (
+          <>
+            {data.state !== "complete" && (
+              <div className="block-consensus-notice" role="status">
+                <strong>{t(`consensus.states.${data.state}`)}</strong>
+                {data.code && (
+                  <p>{t(`consensus.codes.${data.code}`, { defaultValue: data.code })}</p>
                 )}
-                {data.graffiti && (
-                  <Detail
-                    label={t("consensus.graffitiText")}
-                    value={graffitiText(data.graffiti) || "—"}
-                  />
-                )}
-                {Object.entries(data.operations ?? {}).map(([key, value]) => (
-                  <Detail
-                    key={key}
-                    label={t(`consensus.operations.${key}`)}
-                    value={formatInteger(value, locale)}
-                  />
+              </div>
+            )}
+            {data.slot_conflict && (
+              <p className="block-consensus-notice" role="status">
+                {t("consensus.slotConflict")}
+              </p>
+            )}
+            {hasSummary && (
+              <dl className="block-consensus-summary">
+                {summaryFields.map((key) => (
+                  <div key={key}>
+                    <dt>{t(`consensus.${key}`)}</dt>
+                    <dd>
+                      {key === "fork" ? (data[key] ?? "—") : formatInteger(data[key], locale)}
+                    </dd>
+                  </div>
                 ))}
               </dl>
-            </details>
-          )}
-        </>
-      )}
-    </section>
+            )}
+            {hasDetails && (
+              <details className="block-consensus-details">
+                <summary>
+                  <UIIcon icon={ChevronRight} className="native-disclosure-icon" />
+                  {t("consensus.technicalDetails")}
+                </summary>
+                <dl className="block-consensus-detail-list">
+                  {consensusDetailFields.map((key) =>
+                    data[key] === undefined ? null : (
+                      <Detail
+                        key={key}
+                        label={t(`consensus.${key}`)}
+                        value={<code className="mono-wrap">{data[key]}</code>}
+                      />
+                    ),
+                  )}
+                  {data.graffiti && (
+                    <Detail
+                      label={t("consensus.graffitiText")}
+                      value={graffitiText(data.graffiti) || "—"}
+                    />
+                  )}
+                  {Object.entries(data.operations ?? {}).map(([key, value]) => (
+                    <Detail
+                      key={key}
+                      label={t(`consensus.operations.${key}`)}
+                      value={formatInteger(value, locale)}
+                    />
+                  ))}
+                </dl>
+              </details>
+            )}
+          </>
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -128,39 +135,41 @@ export function ConsensusOverview({
       ].filter(Boolean)
     : [];
   return (
-    <section className="panel consensus-overview" aria-labelledby="consensus-overview-title">
-      <header className="consensus-overview-heading">
-        <h2 id="consensus-overview-title">
-          {t(consensus ? "consensus.overview.title" : "consensus.overview.finalityTitle")}
-        </h2>
-        {notices.length > 0 && <p role="status">{notices.join(" · ")}</p>}
-      </header>
-      <dl className={`consensus-overview-metrics${consensus ? " has-consensus" : ""}`}>
-        <div>
-          <dt>{t("context.safeBlock")}</dt>
-          <dd>{formatInteger(safeBlock, locale)}</dd>
-        </div>
-        <div>
-          <dt>{t("home.finality")}</dt>
-          <dd>{formatInteger(finalizedBlock, locale)}</dd>
-        </div>
-        {consensus && (
-          <>
-            <div>
-              <dt>{t("consensus.overview.slot")}</dt>
-              <dd>{formatInteger(consensus.slot, locale)}</dd>
-            </div>
-            <div>
-              <dt>{t("consensus.overview.epoch")}</dt>
-              <dd>{formatInteger(consensus.epoch, locale)}</dd>
-            </div>
-            <div>
-              <dt>{t("consensus.overview.finalizedEpoch")}</dt>
-              <dd>{formatInteger(consensus.finalized?.epoch, locale)}</dd>
-            </div>
-          </>
-        )}
-      </dl>
-    </section>
+    <Card asChild>
+      <section className="panel consensus-overview" aria-labelledby="consensus-overview-title">
+        <header className="consensus-overview-heading">
+          <h2 id="consensus-overview-title">
+            {t(consensus ? "consensus.overview.title" : "consensus.overview.finalityTitle")}
+          </h2>
+          {notices.length > 0 && <p role="status">{notices.join(" · ")}</p>}
+        </header>
+        <dl className={`consensus-overview-metrics${consensus ? " has-consensus" : ""}`}>
+          <div>
+            <dt>{t("context.safeBlock")}</dt>
+            <dd>{formatInteger(safeBlock, locale)}</dd>
+          </div>
+          <div>
+            <dt>{t("home.finality")}</dt>
+            <dd>{formatInteger(finalizedBlock, locale)}</dd>
+          </div>
+          {consensus && (
+            <>
+              <div>
+                <dt>{t("consensus.overview.slot")}</dt>
+                <dd>{formatInteger(consensus.slot, locale)}</dd>
+              </div>
+              <div>
+                <dt>{t("consensus.overview.epoch")}</dt>
+                <dd>{formatInteger(consensus.epoch, locale)}</dd>
+              </div>
+              <div>
+                <dt>{t("consensus.overview.finalizedEpoch")}</dt>
+                <dd>{formatInteger(consensus.finalized?.epoch, locale)}</dd>
+              </div>
+            </>
+          )}
+        </dl>
+      </section>
+    </Card>
   );
 }

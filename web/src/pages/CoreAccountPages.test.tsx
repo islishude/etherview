@@ -259,7 +259,9 @@ describe("core account and list pages", () => {
     const historyNavigation = await screen.findByRole("navigation", { name: "Delegation history" });
     expect(requestedPaths).toContain(`/api/v1/addresses/${delegatedAddress}/delegations`);
     expect(await screen.findByText("Re-delegated")).toBeVisible();
-    expect(within(historyNavigation).getByRole("button", { name: "Previous page" })).toBeDisabled();
+    expect(
+      within(historyNavigation).queryByRole("button", { name: "Previous page" }),
+    ).not.toBeInTheDocument();
     await user.click(within(historyNavigation).getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Delegated", { exact: true })).toBeVisible();
   });

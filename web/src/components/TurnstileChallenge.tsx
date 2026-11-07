@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePublicConfig } from "@/api/publicConfig";
@@ -176,9 +177,14 @@ function TurnstileChallenge({
       <div ref={container} />
       <p role="status">{t(`turnstile.${status}`)}</p>
       {(status === "failed" || status === "expired") && (
-        <button type="button" className="button secondary" onClick={() => setAttempt((n) => n + 1)}>
+        <Button
+          variant="outline"
+          type="button"
+          className="button secondary"
+          onClick={() => setAttempt((n) => n + 1)}
+        >
           {t("turnstile.retry")}
-        </button>
+        </Button>
       )}
     </div>
   );

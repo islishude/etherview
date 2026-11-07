@@ -17,6 +17,7 @@
     "echarts-vendor",
     "zrender-vendor",
     "x402-vendor",
-    "hooks-"
+    "hooks-",
+    "ui-tabs"
   ]
 }

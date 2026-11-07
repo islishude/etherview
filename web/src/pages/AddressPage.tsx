@@ -1,3 +1,16 @@
+import { Alert } from "@/components/ui/alert";
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  TableRow,
+  TableCell,
+  Table,
+  TableCaption,
+  TableHeader,
+  TableHead,
+  TableBody,
+} from "@/components/ui/table";
 import { AddressLogs } from "./AddressLogs";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import "./AddressQRCode.css";
@@ -190,12 +203,14 @@ export function AddressDetailPage({
             <Detail label={t("detail.nonce")} value={formatInteger(account.data.nonce, locale)} />
             <AddressOriginDetails origin={account.data.origin} />
           </DetailList>
-          <p className="context-note" role="note">
-            {t("context.addressSnapshot")}
-          </p>
+          <Alert asChild>
+            <p className="context-note" role="note">
+              {t("context.addressSnapshot")}
+            </p>
+          </Alert>
         </>
       )}
-      <nav className="transaction-tabs" aria-label={t("detail.addressSections")}>
+      <NavigationTabs className="transaction-tabs" aria-label={t("detail.addressSections")}>
         {(
           [
             ["transactions", t("addressTab.transactions")],
@@ -213,49 +228,54 @@ export function AddressDetailPage({
               : []),
           ] as const
         ).map(([tabID, label]) => (
-          <Link
-            key={tabID}
-            activeOptions={{ exact: true, includeHash: true }}
-            activeProps={{ className: "" }}
-            className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
-            to="/address/$address"
-            params={{ address }}
-            search={{ tab: tabID }}
-            hash={() => ""}
-            aria-current={activeTab === tabID ? "page" : undefined}
-          >
-            {label}
-          </Link>
+          <NavigationTab key={tabID}>
+            <Link
+              activeOptions={{ exact: true, includeHash: true }}
+              activeProps={{ className: "" }}
+              className={activeTab === tabID ? "transaction-tab active" : "transaction-tab"}
+              to="/address/$address"
+              params={{ address }}
+              search={{ tab: tabID }}
+              hash={() => ""}
+              aria-current={activeTab === tabID ? "page" : undefined}
+            >
+              {label}
+            </Link>
+          </NavigationTab>
         ))}
         {contractAvailable ? (
-          <Link
-            activeOptions={{ exact: true, includeHash: true }}
-            activeProps={{ className: "" }}
-            aria-current={activeTab === "contract" ? "page" : undefined}
-            className={activeTab === "contract" ? "transaction-tab active" : "transaction-tab"}
-            hash="code"
-            params={{ address: account.data?.address ?? address }}
-            search={{}}
-            to="/address/$address"
-          >
-            {t("addressTab.contract")}
-          </Link>
+          <NavigationTab>
+            <Link
+              activeOptions={{ exact: true, includeHash: true }}
+              activeProps={{ className: "" }}
+              aria-current={activeTab === "contract" ? "page" : undefined}
+              className={activeTab === "contract" ? "transaction-tab active" : "transaction-tab"}
+              hash="code"
+              params={{ address: account.data?.address ?? address }}
+              search={{}}
+              to="/address/$address"
+            >
+              {t("addressTab.contract")}
+            </Link>
+          </NavigationTab>
         ) : null}
         {delegationAvailable ? (
-          <Link
-            activeOptions={{ exact: true, includeHash: true }}
-            activeProps={{ className: "" }}
-            aria-current={activeTab === "delegation" ? "page" : undefined}
-            className={activeTab === "delegation" ? "transaction-tab active" : "transaction-tab"}
-            hash={currentlyDelegated ? "code" : "history"}
-            params={{ address }}
-            search={{ tab: "delegation" }}
-            to="/address/$address"
-          >
-            {t("addressTab.delegation")}
-          </Link>
+          <NavigationTab>
+            <Link
+              activeOptions={{ exact: true, includeHash: true }}
+              activeProps={{ className: "" }}
+              aria-current={activeTab === "delegation" ? "page" : undefined}
+              className={activeTab === "delegation" ? "transaction-tab active" : "transaction-tab"}
+              hash={currentlyDelegated ? "code" : "history"}
+              params={{ address }}
+              search={{ tab: "delegation" }}
+              to="/address/$address"
+            >
+              {t("addressTab.delegation")}
+            </Link>
+          </NavigationTab>
         ) : null}
-      </nav>
+      </NavigationTabs>
       {activeTab === "transactions" && (
         <AddressTransactions
           address={address}
@@ -354,36 +374,40 @@ export function AddressDetailPage({
       )}
       {activeTab === "user-operations" && (
         <BrowsingScope status={userOperations.data?.meta.browsing}>
-          <section
-            className="panel transaction-tab-panel"
-            aria-labelledby="address-user-operations-title"
-          >
-            <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
-            <QueryNotice
-              loading={userOperations.isPending}
-              error={userOperations.error}
-              onReset={userOperationPager.reset}
-            />
-            {userOperations.data?.items.length === 0 ? (
-              <p className="empty-result">
-                <BrowsingEmpty>{t("state.noUserOperations")}</BrowsingEmpty>
-              </p>
-            ) : null}
-            {userOperations.data && userOperations.data.items.length > 0 ? (
-              <UserOperationTable items={userOperations.data.items} />
-            ) : null}
-            {userOperations.data ? (
-              <CursorPagination
-                busy={userOperations.isFetching}
-                hasNext={Boolean(userOperations.data.next_cursor)}
-                hasPrevious={userOperationPager.hasPrevious}
-                label={t("pagination.userOperations")}
-                onNext={() => userOperationPager.next(userOperations.data?.next_cursor)}
-                onPrevious={userOperationPager.previous}
-                page={userOperationPager.page}
+          <Card asChild>
+            <section
+              className="panel transaction-tab-panel"
+              aria-labelledby="address-user-operations-title"
+            >
+              <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
+              <QueryNotice
+                loading={userOperations.isPending}
+                error={userOperations.error}
+                onReset={userOperationPager.reset}
               />
-            ) : null}
-          </section>
+              {userOperations.data?.items.length === 0 ? (
+                <p className="empty-result">
+                  <BrowsingEmpty>{t("state.noUserOperations")}</BrowsingEmpty>
+                </p>
+              ) : null}
+              {userOperations.data && userOperations.data.items.length > 0 ? (
+                <UserOperationTable items={userOperations.data.items} />
+              ) : null}
+              {userOperations.data ? (
+                <CursorPagination
+                  itemCount={userOperations.data?.items.length ?? 0}
+                  onReset={userOperationPager.reset}
+                  busy={userOperations.isFetching}
+                  hasNext={Boolean(userOperations.data.next_cursor)}
+                  hasPrevious={userOperationPager.hasPrevious}
+                  label={t("pagination.userOperations")}
+                  onNext={() => userOperationPager.next(userOperations.data?.next_cursor)}
+                  onPrevious={userOperationPager.previous}
+                  page={userOperationPager.page}
+                />
+              ) : null}
+            </section>
+          </Card>
         </BrowsingScope>
       )}
       {activeTab === "contract" && contractAvailable ? <ContractPage address={address} /> : null}
@@ -427,7 +451,8 @@ function AddressHeader({ address }: { address: string }) {
           actions={
             isAddress(address) ? (
               <>
-                <button
+                <Button
+                  variant="ghost"
                   aria-label={t("actions.showQRCode")}
                   aria-haspopup="dialog"
                   className="address-qr-button"
@@ -436,7 +461,7 @@ function AddressHeader({ address }: { address: string }) {
                   type="button"
                 >
                   <UIIcon icon={QrCode} size={16} />
-                </button>
+                </Button>
                 <AddressWatchButton address={address} />
               </>
             ) : null
@@ -492,14 +517,16 @@ function AddressHeader({ address }: { address: string }) {
                 </span>
                 <h2 id="address-qr-title">{t("detail.addressQRCode")}</h2>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("common.close")}
                 className="dialog-close"
                 onClick={() => setOpen(false)}
                 type="button"
               >
                 <UIIcon icon={X} />
-              </button>
+              </Button>
             </div>
             <p id="address-qr-description" className="qr-dialog-description">
               {t("detail.addressQRDescription")}
@@ -678,6 +705,7 @@ function AddressTransactions({
       page={page}
       title={t("addressTab.transactions")}
       footer={<AddressExportLink address={address} />}
+      itemCount={items?.length ?? 0}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -692,7 +720,7 @@ function AddressTransactions({
           {items.map((transaction) => {
             const destination = transaction.to ?? transaction.contract_address;
             return (
-              <tr key={`${transaction.block_hash}:${transaction.hash}`}>
+              <TableRow key={`${transaction.block_hash}:${transaction.hash}`}>
                 <ActivityIdentity
                   blockNumber={transaction.block_number}
                   hash={transaction.hash}
@@ -703,9 +731,9 @@ function AddressTransactions({
                     signature: transaction.method_signature,
                   }}
                 />
-                <td>
+                <TableCell>
                   <TransactionStatusBadge showFinality={false} transaction={transaction} />
-                </td>
+                </TableCell>
                 <AddressCell nameOnly address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
@@ -716,13 +744,13 @@ function AddressTransactions({
                   created={!transaction.to && Boolean(destination)}
                   currentAddress={address}
                 />
-                <td className="numeric">
+                <TableCell className="numeric">
                   <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
-                </td>
-                <td>
+                </TableCell>
+                <TableCell>
                   <FinalityBadge finality={transaction.finality} />
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })}
         </AddressActivityTable>
@@ -764,6 +792,7 @@ function AddressInternalTransactions({
       onReset={onReset}
       page={page}
       title={t("addressTab.internalTransactions")}
+      itemCount={items?.length ?? 0}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -775,7 +804,7 @@ function AddressInternalTransactions({
           {items.map((transaction) => {
             const destination = transaction.created_address ?? transaction.to;
             return (
-              <tr
+              <TableRow
                 key={`${transaction.block_hash}:${transaction.transaction_hash}:${transaction.path.join(".")}`}
               >
                 <ActivityIdentity
@@ -784,12 +813,12 @@ function AddressInternalTransactions({
                   timestamp={transaction.block_timestamp}
                   locale={locale}
                 />
-                <td>
+                <TableCell>
                   <span className="table-primary">
                     {transaction.call_type}
                     {transaction.reverted ? <small>{t("activity.reverted")}</small> : null}
                   </span>
-                </td>
+                </TableCell>
                 <AddressCell nameOnly address={transaction.from} currentAddress={address} />
                 <DirectionCell
                   direction={addressDirection(address, transaction.from, destination)}
@@ -799,10 +828,10 @@ function AddressInternalTransactions({
                   created={Boolean(transaction.created_address)}
                   currentAddress={address}
                 />
-                <td className="numeric">
+                <TableCell className="numeric">
                   <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })}
         </AddressActivityTable>
@@ -836,43 +865,47 @@ function AddressWithdrawals({
       ) : null}
       {items && items.length > 0 ? (
         <div className="table-scroll" tabIndex={0} aria-label={title}>
-          <table className="address-activity-table">
-            <caption className="sr-only">{title}</caption>
-            <thead>
-              <tr>
-                <th className="numeric">{t("detail.withdrawalIndex")}</th>
-                <th className="numeric">{t("detail.validatorIndex")}</th>
-                <th className="numeric">{t("table.block")}</th>
-                <th>{t("table.age")}</th>
-                <th className="numeric">{t("detail.withdrawalAmount")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="address-activity-table">
+            <TableCaption className="sr-only">{title}</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="numeric">{t("detail.withdrawalIndex")}</TableHead>
+                <TableHead className="numeric">{t("detail.validatorIndex")}</TableHead>
+                <TableHead className="numeric">{t("table.block")}</TableHead>
+                <TableHead>{t("table.age")}</TableHead>
+                <TableHead className="numeric">{t("detail.withdrawalAmount")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {items.map((withdrawal) => (
-                <tr key={`${withdrawal.block_hash}:${withdrawal.index}`}>
-                  <td className="numeric">
+                <TableRow key={`${withdrawal.block_hash}:${withdrawal.index}`}>
+                  <TableCell className="numeric">
                     <code>{formatInteger(withdrawal.index, locale)}</code>
-                  </td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell className="numeric">
                     <code>{formatInteger(withdrawal.validator_index, locale)}</code>
-                  </td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell className="numeric">
                     <Link to="/blocks/$blockID" params={{ blockID: withdrawal.block_hash }}>
                       {formatInteger(withdrawal.block_number, locale)}
                     </Link>
-                  </td>
-                  <td>{formatRelativeTimestamp(withdrawal.block_timestamp, locale)}</td>
-                  <td className="numeric">
+                  </TableCell>
+                  <TableCell>
+                    {formatRelativeTimestamp(withdrawal.block_timestamp, locale)}
+                  </TableCell>
+                  <TableCell className="numeric">
                     <code>{formatEtherFromGwei(withdrawal.amount, locale)} Ether</code>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       ) : null}
       {!loading && !error ? (
         <CursorPagination
+          itemCount={items?.length ?? 0}
+          onReset={onReset}
           busy={busy}
           hasNext={hasNext}
           hasPrevious={hasPrevious}
@@ -914,12 +947,13 @@ function AddressTokenTransfers({
       onReset={onReset}
       page={page}
       title={title}
+      itemCount={items?.length ?? 0}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
         <AddressActivityTable label={title} token>
           {items.map((transfer) => (
-            <tr
+            <TableRow
               key={`${transfer.block_hash}:${transfer.transaction_hash}:${transfer.log_index}:${transfer.sub_index}`}
             >
               <ActivityIdentity
@@ -928,7 +962,7 @@ function AddressTokenTransfers({
                 timestamp={transfer.block_timestamp}
                 locale={locale}
               />
-              <td>
+              <TableCell>
                 <span className="table-primary">
                   <CopyableField value={transfer.token_address}>
                     {sameAddress(transfer.token_address, address) ? (
@@ -941,11 +975,11 @@ function AddressTokenTransfers({
                   </CopyableField>
                   <small>{tokenStandardLabel(transfer.standard, t)}</small>
                 </span>
-              </td>
+              </TableCell>
               <AddressCell address={transfer.from} currentAddress={address} />
               <DirectionCell direction={addressDirection(address, transfer.from, transfer.to)} />
               <AddressCell address={transfer.to} currentAddress={address} />
-              <td className="numeric">
+              <TableCell className="numeric">
                 <span className="table-primary">
                   {transfer.amount !== undefined ? (
                     <code>{formatTokenEventAmount(transfer, locale)}</code>
@@ -972,8 +1006,8 @@ function AddressTokenTransfers({
                     </small>
                   ) : null}
                 </span>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
         </AddressActivityTable>
       ) : null}
@@ -984,6 +1018,7 @@ function AddressTokenTransfers({
 function AddressActivitySection({
   busy,
   children,
+  itemCount,
   empty,
   footer,
   error,
@@ -998,6 +1033,7 @@ function AddressActivitySection({
 }: Omit<AddressActivityProps, "address" | "locale"> & {
   children: React.ReactNode;
   footer?: React.ReactNode;
+  itemCount: number;
   empty: boolean;
   title: string;
 }) {
@@ -1013,6 +1049,8 @@ function AddressActivitySection({
       {children}
       {!loading && !error ? (
         <CursorPagination
+          itemCount={itemCount}
+          onReset={onReset}
           busy={busy}
           hasNext={hasNext}
           hasPrevious={hasPrevious}
@@ -1051,32 +1089,32 @@ function AddressActivityTable({
   const { t } = useTranslation();
   return (
     <div className="table-scroll" tabIndex={0} aria-label={label}>
-      <table className="address-activity-table">
-        <caption className="sr-only">{label}</caption>
-        <thead>
-          <tr>
-            <th>{t("table.hash")}</th>
-            {method ? <th>{t("table.method")}</th> : null}
-            <th className="numeric">{t("table.block")}</th>
-            <th>{t("table.age")}</th>
-            {status ? <th>{t("table.status")}</th> : null}
-            {action ? <th>{t("table.action")}</th> : null}
-            {token ? <th>{t("table.token")}</th> : null}
-            <th>{t("table.from")}</th>
-            <th>{t("table.direction")}</th>
-            <th>{t("table.to")}</th>
-            <th>
+      <Table className="address-activity-table">
+        <TableCaption className="sr-only">{label}</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("table.hash")}</TableHead>
+            {method ? <TableHead>{t("table.method")}</TableHead> : null}
+            <TableHead className="numeric">{t("table.block")}</TableHead>
+            <TableHead>{t("table.age")}</TableHead>
+            {status ? <TableHead>{t("table.status")}</TableHead> : null}
+            {action ? <TableHead>{t("table.action")}</TableHead> : null}
+            {token ? <TableHead>{t("table.token")}</TableHead> : null}
+            <TableHead>{t("table.from")}</TableHead>
+            <TableHead>{t("table.direction")}</TableHead>
+            <TableHead>{t("table.to")}</TableHead>
+            <TableHead>
               {token
                 ? t("detail.amountOrTokenID")
                 : nativeAmountLabel === "value"
                   ? t("table.value", { symbol: nativeSymbol ?? "" })
                   : t("detail.nativeAmount", { symbol: nativeSymbol ?? "" })}
-            </th>
-            {finality ? <th>{t("table.finality")}</th> : null}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+            </TableHead>
+            {finality ? <TableHead>{t("table.finality")}</TableHead> : null}
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
     </div>
   );
 }
@@ -1096,13 +1134,13 @@ function ActivityIdentity({
 }) {
   return (
     <>
-      <td>
+      <TableCell>
         <Link to="/tx/$hash" params={{ hash }} search={{ tab: "overview" }}>
           <code>{shorten(hash)}</code>
         </Link>
-      </td>
+      </TableCell>
       {method ? <TransactionMethodCell method={method.value} signature={method.signature} /> : null}
-      <td className="numeric">
+      <TableCell className="numeric">
         {blockNumber ? (
           <Link to="/blocks/$blockID" params={{ blockID: blockNumber }}>
             {formatInteger(blockNumber, locale)}
@@ -1110,8 +1148,8 @@ function ActivityIdentity({
         ) : (
           "—"
         )}
-      </td>
-      <td>{timestamp ? formatRelativeTimestamp(timestamp, locale) : "—"}</td>
+      </TableCell>
+      <TableCell>{timestamp ? formatRelativeTimestamp(timestamp, locale) : "—"}</TableCell>
     </>
   );
 }
@@ -1125,11 +1163,11 @@ export function TransactionMethodCell({
 }) {
   const accessibleName = signature ?? method;
   return (
-    <td className="transaction-method-cell">
+    <TableCell className="transaction-method-cell">
       <code aria-label={accessibleName} className="transaction-method" title={accessibleName}>
         {method ?? "—"}
       </code>
-    </td>
+    </TableCell>
   );
 }
 
@@ -1146,9 +1184,9 @@ function AddressCell({
 }) {
   const { t } = useTranslation();
   const primary = usePrimaryName(nameOnly ? (address ?? "") : "");
-  if (!address) return <td>—</td>;
+  if (!address) return <TableCell>—</TableCell>;
   return (
-    <td>
+    <TableCell>
       <span className="table-primary">
         <AddressIdentity
           address={address}
@@ -1159,7 +1197,7 @@ function AddressCell({
         />
         {created ? <small>{t("activity.created")}</small> : null}
       </span>
-    </td>
+    </TableCell>
   );
 }
 
@@ -1170,11 +1208,11 @@ function sameAddress(left: string, right: string): boolean {
 function DirectionCell({ direction }: { direction: "in" | "out" | "self" }) {
   const { t } = useTranslation();
   return (
-    <td>
+    <TableCell>
       <span className={`address-direction ${direction}`}>
         {t(`activity.direction.${direction}`)}
       </span>
-    </td>
+    </TableCell>
   );
 }
 

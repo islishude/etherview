@@ -144,6 +144,16 @@ Vyper 0.2.0 and its embedded source archive are no longer distributed.
 Supported compiler/dependency archives are fetched by application-locked PyPI
 digest; no independently hosted compiler distribution or signing key is required.
 
+## shadcn/ui components
+
+The Web UI includes adapted shadcn/ui new-york-v4 component source from
+https://github.com/shadcn-ui/ui (MIT, Copyright (c) 2023 shadcn).
+The complete license is retained in `licenses/shadcn-ui-MIT.txt` and shipped
+with the production image. Component ownership and local adaptations are
+listed in `web/src/components/ui/README.md`. Radix UI, class-variance-authority,
+clsx and tailwind-merge are pinned in the Web manifest and workspace lock;
+the production dependency license gate includes their transitive dependencies.
+
 ## Hey API generated Fetch runtime
 
 The generated Web SDK bundles runtime support from `@hey-api/openapi-ts@0.99.0`

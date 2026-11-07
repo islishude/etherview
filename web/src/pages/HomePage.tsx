@@ -1,3 +1,4 @@
+import { Card } from "@/components/ui/card";
 import { ArrowRight, ArrowUpRight, Box } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { ConsensusOverview } from "./ConsensusPanels";
@@ -48,28 +49,32 @@ export function HomePage() {
       )}
 
       <div className="activity-grid">
-        <section className="panel activity-panel" aria-labelledby="recent-blocks-title">
-          <PanelHeading id="recent-blocks-title" title={t("home.recentBlocks")} to="/blocks" />
-          {snapshot.data?.blocks.length === 0 && (
-            <p className="empty-result compact-empty">{t("state.noBlocks")}</p>
-          )}
-          {snapshot.data?.blocks.map((block) => (
-            <BlockRow block={block} key={block.hash} locale={locale} now={relativeNow} />
-          ))}
-        </section>
-        <section className="panel activity-panel" aria-labelledby="recent-transactions-title">
-          <PanelHeading
-            id="recent-transactions-title"
-            title={t("home.recentTransactions")}
-            to="/transactions"
-          />
-          {snapshot.data?.transactions.length === 0 && (
-            <p className="empty-result compact-empty">{t("state.noTransactions")}</p>
-          )}
-          {snapshot.data?.transactions.map((transaction) => (
-            <TransactionRow key={transaction.hash} transaction={transaction} />
-          ))}
-        </section>
+        <Card asChild>
+          <section className="panel activity-panel" aria-labelledby="recent-blocks-title">
+            <PanelHeading id="recent-blocks-title" title={t("home.recentBlocks")} to="/blocks" />
+            {snapshot.data?.blocks.length === 0 && (
+              <p className="empty-result compact-empty">{t("state.noBlocks")}</p>
+            )}
+            {snapshot.data?.blocks.map((block) => (
+              <BlockRow block={block} key={block.hash} locale={locale} now={relativeNow} />
+            ))}
+          </section>
+        </Card>
+        <Card asChild>
+          <section className="panel activity-panel" aria-labelledby="recent-transactions-title">
+            <PanelHeading
+              id="recent-transactions-title"
+              title={t("home.recentTransactions")}
+              to="/transactions"
+            />
+            {snapshot.data?.transactions.length === 0 && (
+              <p className="empty-result compact-empty">{t("state.noTransactions")}</p>
+            )}
+            {snapshot.data?.transactions.map((transaction) => (
+              <TransactionRow key={transaction.hash} transaction={transaction} />
+            ))}
+          </section>
+        </Card>
       </div>
       <dl className="home-indexing-summary" aria-label={t("home.metrics")}>
         <div>

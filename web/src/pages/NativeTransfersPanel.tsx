@@ -1,3 +1,13 @@
+import { Card } from "@/components/ui/card";
+import { Alert } from "@/components/ui/alert";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import * as sdk from "../api/heyapi/sdk.gen";
 import { useBrowsingCursorHistory } from "@/api/pagination";
@@ -56,92 +66,102 @@ export function NativeTransfersPanel({
     },
   });
   return (
-    <section className="panel transaction-tab-panel" aria-label={t("nativeTransfer.title")}>
-      <h2>{t("nativeTransfer.title")}</h2>
-      <BrowsingScope status={transfers.data?.meta.browsing}>
-        <QueryNotice loading={transfers.isPending} error={transfers.error} onReset={pager.reset} />
-        {transfers.data && !transfers.error ? (
-          <>
-            {!transfers.data.applicable ? (
-              <p role="status">{t("nativeTransfer.unavailable")}</p>
-            ) : (
-              <>
-                {transfers.data.meta.coverage_start !== undefined && (
-                  <p className="context-note">
-                    {t("nativeTransfer.coverage", {
-                      start: transfers.data.meta.coverage_start,
-                      end: transfers.data.meta.coverage_end,
-                    })}
-                  </p>
-                )}
-                {transfers.data.data.length === 0 ? (
-                  <p role="status">
-                    <BrowsingEmpty>{t("nativeTransfer.empty")}</BrowsingEmpty>
-                  </p>
-                ) : (
-                  <div className="table-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>{t("table.hash")}</th>
-                          <th>{t("table.block")}</th>
-                          <th>{t("table.from")}</th>
-                          <th>{t("table.to")}</th>
-                          <th>{t("nativeTransfer.amount")}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {transfers.data.data.map((item) => (
-                          <tr key={`${item.block_hash}:${item.log_index}`}>
-                            <td>
-                              <Link
-                                to="/tx/$hash"
-                                params={{ hash: item.transaction_hash }}
-                                search={{ tab: "native-transfers" }}
-                              >
-                                {shorten(item.transaction_hash)}
-                              </Link>
-                            </td>
-                            <td>
-                              <Link to="/blocks/$blockID" params={{ blockID: item.block_hash }}>
-                                {formatInteger(item.block_number, locale)}
-                              </Link>
-                            </td>
-                            <td>
-                              <AddressIdentity
-                                nameOnly={kind === "transaction"}
-                                address={item.from}
-                              />
-                            </td>
-                            <td>
-                              <AddressIdentity
-                                nameOnly={kind === "transaction"}
-                                address={item.to}
-                              />
-                            </td>
-                            <td>
-                              <code>{formatInteger(item.amount, locale)}</code>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <CursorPagination
-                  busy={transfers.isFetching}
-                  hasNext={Boolean(transfers.data.meta.next_cursor)}
-                  hasPrevious={pager.hasPrevious}
-                  label={t("nativeTransfer.title")}
-                  onNext={() => pager.next(transfers.data?.meta.next_cursor)}
-                  onPrevious={pager.previous}
-                  page={pager.page}
-                />
-              </>
-            )}
-          </>
-        ) : null}
-      </BrowsingScope>
-    </section>
+    <Card asChild>
+      <section className="panel transaction-tab-panel" aria-label={t("nativeTransfer.title")}>
+        <h2>{t("nativeTransfer.title")}</h2>
+        <BrowsingScope status={transfers.data?.meta.browsing}>
+          <QueryNotice
+            loading={transfers.isPending}
+            error={transfers.error}
+            onReset={pager.reset}
+          />
+          {transfers.data && !transfers.error ? (
+            <>
+              {!transfers.data.applicable ? (
+                <p role="status">{t("nativeTransfer.unavailable")}</p>
+              ) : (
+                <>
+                  {transfers.data.meta.coverage_start !== undefined && (
+                    <Alert asChild>
+                      <p className="context-note">
+                        {t("nativeTransfer.coverage", {
+                          start: transfers.data.meta.coverage_start,
+                          end: transfers.data.meta.coverage_end,
+                        })}
+                      </p>
+                    </Alert>
+                  )}
+                  {transfers.data.data.length === 0 ? (
+                    <p role="status">
+                      <BrowsingEmpty>{t("nativeTransfer.empty")}</BrowsingEmpty>
+                    </p>
+                  ) : (
+                    <div className="table-scroll">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{t("table.hash")}</TableHead>
+                            <TableHead>{t("table.block")}</TableHead>
+                            <TableHead>{t("table.from")}</TableHead>
+                            <TableHead>{t("table.to")}</TableHead>
+                            <TableHead>{t("nativeTransfer.amount")}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {transfers.data.data.map((item) => (
+                            <TableRow key={`${item.block_hash}:${item.log_index}`}>
+                              <TableCell>
+                                <Link
+                                  to="/tx/$hash"
+                                  params={{ hash: item.transaction_hash }}
+                                  search={{ tab: "native-transfers" }}
+                                >
+                                  {shorten(item.transaction_hash)}
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <Link to="/blocks/$blockID" params={{ blockID: item.block_hash }}>
+                                  {formatInteger(item.block_number, locale)}
+                                </Link>
+                              </TableCell>
+                              <TableCell>
+                                <AddressIdentity
+                                  nameOnly={kind === "transaction"}
+                                  address={item.from}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <AddressIdentity
+                                  nameOnly={kind === "transaction"}
+                                  address={item.to}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <code>{formatInteger(item.amount, locale)}</code>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  <CursorPagination
+                    itemCount={transfers.data?.data.length ?? 0}
+                    onReset={pager.reset}
+                    busy={transfers.isFetching}
+                    hasNext={Boolean(transfers.data.meta.next_cursor)}
+                    hasPrevious={pager.hasPrevious}
+                    label={t("nativeTransfer.title")}
+                    onNext={() => pager.next(transfers.data?.meta.next_cursor)}
+                    onPrevious={pager.previous}
+                    page={pager.page}
+                  />
+                </>
+              )}
+            </>
+          ) : null}
+        </BrowsingScope>
+      </section>
+    </Card>
   );
 }

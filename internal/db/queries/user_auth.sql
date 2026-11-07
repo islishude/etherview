@@ -41,14 +41,14 @@ WITH inserted AS (
         sqlc.arg('created_at')
     )
     ON CONFLICT (chain_id, address) DO NOTHING
-    RETURNING id, chain_id, address, display_name, role, status, created_at,
+    RETURNING id, chain_id, address, role, status, created_at,
               updated_at, last_login_at
 )
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM inserted
 UNION ALL
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE chain_id = sqlc.arg('chain_id')::numeric
@@ -61,7 +61,7 @@ SET last_login_at = sqlc.arg('logged_in_at'),
     updated_at = sqlc.arg('logged_in_at')
 WHERE id = sqlc.arg('id')::uuid
   AND status = 'active'
-RETURNING id, chain_id, address, display_name, role, status, created_at,
+RETURNING id, chain_id, address, role, status, created_at,
           updated_at, last_login_at;
 
 -- name: CreateUserSession :one
@@ -89,7 +89,6 @@ SELECT
     s.csrf_digest,
     u.chain_id,
     u.address,
-    u.display_name,
     u.role,
     u.status,
     u.created_at AS user_created_at,
@@ -127,33 +126,26 @@ SELECT count(*)::bigint AS revoked_sessions
 FROM revoked;
 
 -- name: GetUserByID :one
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE id = sqlc.arg('id')::uuid
   AND chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: GetUserByAddress :one
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE chain_id = sqlc.arg('chain_id')::numeric
   AND address = sqlc.arg('address');
 
--- name: UpdateCurrentUserDisplayName :one
-UPDATE users
-SET display_name = sqlc.narg('display_name')::text,
-    updated_at = sqlc.arg('updated_at')
-WHERE id = sqlc.arg('id')::uuid
-  AND status = 'active'
-RETURNING id, chain_id, address, display_name, role, status, created_at,
-          updated_at, last_login_at;
-
 -- name: ListUsersPage :many
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE chain_id = sqlc.arg('chain_id')::numeric
+  AND (sqlc.arg('search')::text = ''
+       OR strpos('0x' || encode(address, 'hex'), sqlc.arg('search')::text) > 0)
   AND (
       sqlc.narg('before_created_at')::timestamptz IS NULL
       OR (created_at, id) < (
@@ -171,7 +163,7 @@ SET role = COALESCE(sqlc.narg('role')::text, role),
     updated_at = sqlc.arg('updated_at')
 WHERE id = sqlc.arg('id')::uuid
   AND chain_id = sqlc.arg('chain_id')::numeric
-RETURNING id, chain_id, address, display_name, role, status, created_at,
+RETURNING id, chain_id, address, role, status, created_at,
           updated_at, last_login_at;
 
 -- name: DeleteExpiredAuthChallenges :execrows
@@ -208,3 +200,6 @@ WITH candidates AS (
 DELETE FROM user_sessions AS session
 USING candidates
 WHERE session.id = candidates.id;
+
+-- name: CountAdminUsers :one
+SELECT count(*) AS user_count FROM users WHERE chain_id = sqlc.arg('chain_id')::numeric;

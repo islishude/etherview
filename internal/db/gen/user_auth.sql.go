@@ -37,6 +37,17 @@ func (q *Queries) ConsumeAuthChallenge(ctx context.Context, consumedAt pgtype.Ti
 	return i, err
 }
 
+const countAdminUsers = `-- name: CountAdminUsers :one
+SELECT count(*) AS user_count FROM users WHERE chain_id = $1::numeric
+`
+
+func (q *Queries) CountAdminUsers(ctx context.Context, chainID pgtype.Numeric) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdminUsers, chainID)
+	var user_count int64
+	err := row.Scan(&user_count)
+	return user_count, err
+}
+
 const createAuthChallenge = `-- name: CreateAuthChallenge :one
 INSERT INTO auth_challenges (
     id, chain_id, address, message, nonce, issued_at, expires_at
@@ -198,7 +209,6 @@ SELECT
     s.csrf_digest,
     u.chain_id,
     u.address,
-    u.display_name,
     u.role,
     u.status,
     u.created_at AS user_created_at,
@@ -220,7 +230,6 @@ type GetActiveUserSessionRow struct {
 	CsrfDigest       []byte             `db:"csrf_digest" json:"csrf_digest"`
 	ChainID          pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Address          []byte             `db:"address" json:"address"`
-	DisplayName      *string            `db:"display_name" json:"display_name"`
 	Role             string             `db:"role" json:"role"`
 	Status           string             `db:"status" json:"status"`
 	UserCreatedAt    pgtype.Timestamptz `db:"user_created_at" json:"user_created_at"`
@@ -240,7 +249,6 @@ func (q *Queries) GetActiveUserSession(ctx context.Context, tokenDigest []byte, 
 		&i.CsrfDigest,
 		&i.ChainID,
 		&i.Address,
-		&i.DisplayName,
 		&i.Role,
 		&i.Status,
 		&i.UserCreatedAt,
@@ -286,14 +294,14 @@ WITH inserted AS (
         $4
     )
     ON CONFLICT (chain_id, address) DO NOTHING
-    RETURNING id, chain_id, address, display_name, role, status, created_at,
+    RETURNING id, chain_id, address, role, status, created_at,
               updated_at, last_login_at
 )
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM inserted
 UNION ALL
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE chain_id = $2::numeric
@@ -312,7 +320,6 @@ type GetOrCreateUserForLoginRow struct {
 	ID          pgtype.UUID        `db:"id" json:"id"`
 	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Address     []byte             `db:"address" json:"address"`
-	DisplayName *string            `db:"display_name" json:"display_name"`
 	Role        string             `db:"role" json:"role"`
 	Status      string             `db:"status" json:"status"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
@@ -332,7 +339,6 @@ func (q *Queries) GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUs
 		&i.ID,
 		&i.ChainID,
 		&i.Address,
-		&i.DisplayName,
 		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
@@ -343,7 +349,7 @@ func (q *Queries) GetOrCreateUserForLogin(ctx context.Context, arg GetOrCreateUs
 }
 
 const getUserByAddress = `-- name: GetUserByAddress :one
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE chain_id = $1::numeric
@@ -357,7 +363,6 @@ func (q *Queries) GetUserByAddress(ctx context.Context, chainID pgtype.Numeric, 
 		&i.ID,
 		&i.ChainID,
 		&i.Address,
-		&i.DisplayName,
 		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
@@ -368,7 +373,7 @@ func (q *Queries) GetUserByAddress(ctx context.Context, chainID pgtype.Numeric, 
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE id = $1::uuid
@@ -382,7 +387,6 @@ func (q *Queries) GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtyp
 		&i.ID,
 		&i.ChainID,
 		&i.Address,
-		&i.DisplayName,
 		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
@@ -393,23 +397,26 @@ func (q *Queries) GetUserByID(ctx context.Context, iD pgtype.UUID, chainID pgtyp
 }
 
 const listUsersPage = `-- name: ListUsersPage :many
-SELECT id, chain_id, address, display_name, role, status, created_at,
+SELECT id, chain_id, address, role, status, created_at,
        updated_at, last_login_at
 FROM users
 WHERE chain_id = $1::numeric
+  AND ($2::text = ''
+       OR strpos('0x' || encode(address, 'hex'), $2::text) > 0)
   AND (
-      $2::timestamptz IS NULL
+      $3::timestamptz IS NULL
       OR (created_at, id) < (
-          $2::timestamptz,
-          $3::uuid
+          $3::timestamptz,
+          $4::uuid
       )
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $4
+LIMIT $5
 `
 
 type ListUsersPageParams struct {
 	ChainID         pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Search          string             `db:"search" json:"search"`
 	BeforeCreatedAt pgtype.Timestamptz `db:"before_created_at" json:"before_created_at"`
 	BeforeID        pgtype.UUID        `db:"before_id" json:"before_id"`
 	PageLimit       int32              `db:"page_limit" json:"page_limit"`
@@ -418,6 +425,7 @@ type ListUsersPageParams struct {
 func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([]User, error) {
 	rows, err := q.db.Query(ctx, listUsersPage,
 		arg.ChainID,
+		arg.Search,
 		arg.BeforeCreatedAt,
 		arg.BeforeID,
 		arg.PageLimit,
@@ -433,7 +441,6 @@ func (q *Queries) ListUsersPage(ctx context.Context, arg ListUsersPageParams) ([
 			&i.ID,
 			&i.ChainID,
 			&i.Address,
-			&i.DisplayName,
 			&i.Role,
 			&i.Status,
 			&i.CreatedAt,
@@ -456,7 +463,7 @@ SET last_login_at = $1,
     updated_at = $1
 WHERE id = $2::uuid
   AND status = 'active'
-RETURNING id, chain_id, address, display_name, role, status, created_at,
+RETURNING id, chain_id, address, role, status, created_at,
           updated_at, last_login_at
 `
 
@@ -467,7 +474,6 @@ func (q *Queries) RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timesta
 		&i.ID,
 		&i.ChainID,
 		&i.Address,
-		&i.DisplayName,
 		&i.Role,
 		&i.Status,
 		&i.CreatedAt,
@@ -532,7 +538,7 @@ SET role = COALESCE($1::text, role),
     updated_at = $3
 WHERE id = $4::uuid
   AND chain_id = $5::numeric
-RETURNING id, chain_id, address, display_name, role, status, created_at,
+RETURNING id, chain_id, address, role, status, created_at,
           updated_at, last_login_at
 `
 
@@ -557,34 +563,6 @@ func (q *Queries) UpdateAdminUser(ctx context.Context, arg UpdateAdminUserParams
 		&i.ID,
 		&i.ChainID,
 		&i.Address,
-		&i.DisplayName,
-		&i.Role,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.LastLoginAt,
-	)
-	return i, err
-}
-
-const updateCurrentUserDisplayName = `-- name: UpdateCurrentUserDisplayName :one
-UPDATE users
-SET display_name = $1::text,
-    updated_at = $2
-WHERE id = $3::uuid
-  AND status = 'active'
-RETURNING id, chain_id, address, display_name, role, status, created_at,
-          updated_at, last_login_at
-`
-
-func (q *Queries) UpdateCurrentUserDisplayName(ctx context.Context, displayName *string, updatedAt pgtype.Timestamptz, iD pgtype.UUID) (User, error) {
-	row := q.db.QueryRow(ctx, updateCurrentUserDisplayName, displayName, updatedAt, iD)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.ChainID,
-		&i.Address,
-		&i.DisplayName,
 		&i.Role,
 		&i.Status,
 		&i.CreatedAt,

@@ -64,6 +64,18 @@ runtime similarity would not prove source provenance.
   default for staged rollout. Metrics and the public API expose only stable,
   bounded labels and provenance fields.
 
+Verification publication acquires the exact block's proxy job publication
+advisory lock before locking canonical or runtime evidence. A non-locking
+identity lookup is only preparation: submitted and factory-derived verification
+still recheck their complete evidence under the original row locks afterward.
+Preparation does not lock an existing durable job row, so lease heartbeats remain
+independent. A missing job is created in the same transaction; successful
+publication records its first replay source without an extra generation.
+Existing jobs retain idempotent replay and lease fences. Results, provenance,
+selectors and replay requests commit together, and failed evidence validation
+rolls back the prepared job as well. This lock order prevents a verifier holding
+a code-observation SHARE lock from waiting on its concurrent proxy publisher.
+
 ## Consequences
 
 Factory-derived verification is an auditable extension of the existing

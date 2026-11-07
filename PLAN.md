@@ -33,6 +33,15 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P60-T31 extends administrator management with a default user-count/billing
+overview, address-only user identity and search, and empty-list pagination.
+Its child plan records completed browser, PostgreSQL and production all/split
+acceptance.
+
+P50-T89 delivers repository-owned shadcn/ui primitives across the shared UI,
+retaining the explorer brand, native interaction boundaries and strict CSP.
+Its child plan records completed local frontend and embedded-browser acceptance.
+
 P30-T155 delivers database-wide deadlock acceptance for managed integration and
 both production runtime layouts, with bounded diagnostics and cross-domain
 concurrency. Its child plan records completed local acceptance.

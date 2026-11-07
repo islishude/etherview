@@ -1,3 +1,5 @@
+import { Label } from "@/components/ui/label";
+import { Radio } from "@/components/ui/checkbox";
 import { UIIcon } from "@/components/UIIcon";
 import { Check, ShieldCheck, CloudDownload } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -28,9 +30,8 @@ export function VerificationProviderPicker({
             Icon: CloudDownload,
           },
         ].map(({ id, title, detail, Icon }) => (
-          <label className="verification-provider-option" key={id}>
-            <input
-              type="radio"
+          <Label className="verification-provider-option" key={id}>
+            <Radio
               name="verification-provider"
               value={id}
               checked={value === id}
@@ -46,7 +47,7 @@ export function VerificationProviderPicker({
             <span className="verification-provider-check" aria-hidden="true">
               {value === id && <UIIcon icon={Check} size={14} />}
             </span>
-          </label>
+          </Label>
         ))}
       </div>
     </fieldset>

@@ -1,3 +1,6 @@
+import "@/styles/verification.css";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,11 +20,13 @@ export function VerificationLogin() {
   if (auth.loading) return <QueryNotice loading error={null} />;
   if (auth.session.authenticated && auth.enabled) return null;
   return (
-    <section className="panel verification-login">
-      <p>{t(auth.enabled ? "verification.signInRequired" : "verification.signInUnavailable")}</p>
-      {auth.enabled && <SIWELoginControl />}
-      {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
-    </section>
+    <Card asChild>
+      <section className="panel verification-login">
+        <p>{t(auth.enabled ? "verification.signInRequired" : "verification.signInUnavailable")}</p>
+        {auth.enabled && <SIWELoginControl />}
+        {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
+      </section>
+    </Card>
   );
 }
 
@@ -72,46 +77,49 @@ export function VerificationResults({
         <>
           <QueryNotice loading={job.isPending} error={job.error} />
           {job.error && (
-            <button
+            <Button
+              variant="outline"
               className="button secondary"
               type="button"
               disabled={job.isFetching}
               onClick={() => void job.refetch()}
             >
               {t("verification.retryRead")}
-            </button>
+            </Button>
           )}
           {external?.owner === identity && external.job.id !== jobID && (
             <VerificationJobPanel job={external.job} loading={false} error={null} />
           )}
           {current && <VerificationJobPanel job={current} loading={false} error={null} />}
           {canImport && (
-            <section className="panel verification-login">
-              <h3>{t("sourcify.importTitle")}</h3>
-              <p>{t("sourcify.afterPublish")}</p>
-              {submission.challenge}
-              <button
-                className="button primary"
-                type="button"
-                disabled={submission.isPending || !submission.ready}
-                onClick={() =>
-                  submission.mutate({ address: current.address!, chainID: current.chain_id! })
-                }
-              >
-                {t(submission.isPending ? "sourcify.importing" : "sourcify.importAction")}
-              </button>
-              {submission.error && (
-                <Message type="error">
-                  {errorMessage(submission.error, t("sourcify.importFailed"))}
-                </Message>
-              )}
-            </section>
+            <Card asChild>
+              <section className="panel verification-login">
+                <h3>{t("sourcify.importTitle")}</h3>
+                <p>{t("sourcify.afterPublish")}</p>
+                {submission.challenge}
+                <Button
+                  className="button primary"
+                  type="button"
+                  disabled={submission.isPending || !submission.ready}
+                  onClick={() =>
+                    submission.mutate({ address: current.address!, chainID: current.chain_id! })
+                  }
+                >
+                  {t(submission.isPending ? "sourcify.importing" : "sourcify.importAction")}
+                </Button>
+                {submission.error && (
+                  <Message type="error">
+                    {errorMessage(submission.error, t("sourcify.importFailed"))}
+                  </Message>
+                )}
+              </section>
+            </Card>
           )}
         </>
       )}
-      <button className="button secondary" type="button" onClick={onBack}>
+      <Button variant="outline" className="button secondary" type="button" onClick={onBack}>
         {t("verification.backToForm")}
-      </button>
+      </Button>
       <p className="quiet">{t("verification.resultLinkHelp")}</p>
     </div>
   );

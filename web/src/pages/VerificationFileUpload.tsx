@@ -1,3 +1,6 @@
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { UIIcon } from "@/components/UIIcon";
 import { FileCode2, FileJson2, Upload, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -30,8 +33,8 @@ export function VerificationFileUpload({
   const Icon = single ? FileJson2 : FileCode2;
   return (
     <div className="verification-upload">
-      <label className="sourcify-upload-card" data-disabled={disabled} htmlFor={id}>
-        <input
+      <Label className="sourcify-upload-card" data-disabled={disabled} htmlFor={id}>
+        <Input
           id={id}
           type="file"
           disabled={disabled}
@@ -65,7 +68,7 @@ export function VerificationFileUpload({
             t("sourcify.noFileSelected")
           )}
         </span>
-      </label>
+      </Label>
       {files.length > 0 && (
         <ul
           className="verification-upload-list"
@@ -74,19 +77,20 @@ export function VerificationFileUpload({
           {files.map((file, index) => (
             <li key={index}>
               {editablePaths ? (
-                <label className="field-control">
+                <Label className="field-control">
                   <span>{t("verificationUpload.path", { name: file.name })}</span>
-                  <input
+                  <Input
                     value={file.path}
                     disabled={disabled}
                     spellCheck={false}
                     onChange={(event) => onRename?.(index, event.target.value)}
                   />
-                </label>
+                </Label>
               ) : (
                 <span className="verification-upload-name">{file.name}</span>
               )}
-              <button
+              <Button
+                variant="ghost"
                 className="button"
                 type="button"
                 disabled={disabled}
@@ -94,7 +98,7 @@ export function VerificationFileUpload({
                 onClick={() => onRemove(index)}
               >
                 {t("verificationUpload.remove")}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

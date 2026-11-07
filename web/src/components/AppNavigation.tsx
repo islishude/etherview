@@ -1,15 +1,14 @@
+import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ShellIcon } from "./DesignPrimitives";
 import { useTranslation } from "react-i18next";
 import { usePublicConfig } from "@/api/publicConfig";
-import { useAuth } from "@/auth/AuthProvider";
 import { NavigationDisclosure } from "./NavigationDisclosure";
 
 export function AppNavigation() {
   const { t } = useTranslation();
   const config = usePublicConfig();
-  const auth = useAuth();
   const [expanded, setExpanded] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   return (
@@ -24,8 +23,9 @@ export function AppNavigation() {
           }
         }}
       >
-        <button
-          className="control mobile-navigation-trigger"
+        <Button
+          variant="ghost"
+          className="control min-[1024px]:hidden"
           type="button"
           aria-expanded={expanded}
           aria-controls="explorer-navigation-links"
@@ -34,7 +34,7 @@ export function AppNavigation() {
         >
           <ShellIcon name={expanded ? "close" : "menu"} />
           {t("nav.explore")}
-        </button>
+        </Button>
         <div
           className="navigation-links"
           id="explorer-navigation-links"
@@ -58,10 +58,11 @@ export function AppNavigation() {
           <Link activeProps={{ className: "active" }} to="/tokens">
             {t("nav.tokens")}
           </Link>
-          <Link activeProps={{ className: "active" }} to="/charts">
-            {t("nav.charts")}
-          </Link>
           <NavigationDisclosure label={t("nav.more")}>
+            <Link activeProps={{ className: "active" }} to="/charts">
+              {t("nav.charts")}
+            </Link>
+
             <Link activeProps={{ className: "active" }} to="/verify">
               {t("page.verify")}
             </Link>
@@ -73,27 +74,9 @@ export function AppNavigation() {
             <Link activeProps={{ className: "active" }} to="/pending">
               {t("nav.pending")}
             </Link>
-            <Link activeProps={{ className: "active" }} to="/status">
-              {t("nav.status")}
-            </Link>
           </NavigationDisclosure>
         </div>
       </nav>
-      <div className="account-navigation">
-        {auth.enabled && (
-          <NavigationDisclosure label={t("nav.account")}>
-            <Link to="/account">{t("nav.accountOverview")}</Link>
-            {auth.session.authenticated && auth.session.user?.role === "admin" && (
-              <>
-                <Link to="/admin/users">{t("nav.adminUsers")}</Link>
-                {config.data?.features.api_billing === true && (
-                  <Link to="/admin/billing">{t("nav.adminBilling")}</Link>
-                )}
-              </>
-            )}
-          </NavigationDisclosure>
-        )}
-      </div>
     </div>
   );
 }

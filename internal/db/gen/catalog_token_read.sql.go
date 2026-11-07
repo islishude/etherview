@@ -96,9 +96,8 @@ JOIN published_block_stage_results AS published
       ON cb.chain_id = tc.chain_id
      AND cb.number = tc.observed_block_number
      AND cb.block_hash = tc.observed_block_hash
-    WHERE tc.chain_id = $2::numeric
-      AND tc.observed_block_number <= $3::numeric
-      AND ($4::boolean = false OR tc.address > $5)
+    WHERE tc.chain_id = $5::numeric
+      AND tc.observed_block_number <= $6::numeric
     ORDER BY tc.address, tc.observed_block_number DESC, tc.code_hash DESC
 )
 SELECT
@@ -116,16 +115,20 @@ observed_block_number::text AS observed_block_number,
 observed_block_hash AS observed_block_hash,
 updated_at AS updated_at
 FROM current_tokens
-ORDER BY address
-LIMIT $1
+WHERE $1::boolean = false
+   OR observed_block_number::numeric < $2::numeric
+   OR (observed_block_number::numeric = $2::numeric AND address > $3)
+ORDER BY observed_block_number::numeric DESC, address ASC
+LIMIT $4
 `
 
 type CatalogTokenContractsParams struct {
-	Limit                  int32          `db:"limit" json:"limit"`
-	ChainID                pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	MaxObservedBlockNumber pgtype.Numeric `db:"max_observed_block_number" json:"max_observed_block_number"`
-	HasCursor              bool           `db:"has_cursor" json:"has_cursor"`
-	Address                []byte         `db:"address" json:"address"`
+	HasCursor                 bool           `db:"has_cursor" json:"has_cursor"`
+	BeforeObservedBlockNumber pgtype.Numeric `db:"before_observed_block_number" json:"before_observed_block_number"`
+	Address                   []byte         `db:"address" json:"address"`
+	Limit                     int32          `db:"limit" json:"limit"`
+	ChainID                   pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	MaxObservedBlockNumber    pgtype.Numeric `db:"max_observed_block_number" json:"max_observed_block_number"`
 }
 
 type CatalogTokenContractsRow struct {
@@ -146,11 +149,12 @@ type CatalogTokenContractsRow struct {
 
 func (q *Queries) CatalogTokenContracts(ctx context.Context, arg CatalogTokenContractsParams) ([]CatalogTokenContractsRow, error) {
 	rows, err := q.db.Query(ctx, catalogTokenContracts,
+		arg.HasCursor,
+		arg.BeforeObservedBlockNumber,
+		arg.Address,
 		arg.Limit,
 		arg.ChainID,
 		arg.MaxObservedBlockNumber,
-		arg.HasCursor,
-		arg.Address,
 	)
 	if err != nil {
 		return nil, err

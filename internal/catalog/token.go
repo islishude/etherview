@@ -81,12 +81,15 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 
 	var snapshot Snapshot
 	afterAddress := make([]byte, 20)
+	beforeNumber := "0"
 	hasAfter := false
 	if request.Cursor == "" {
 		snapshot, err = readCanonicalSnapshot(ctx, tx, request.ChainID)
 	} else {
 		var cursor tokenListCursor
-		if decodeErr := decodeCursor(request.Cursor, &cursor); decodeErr != nil || cursor.Version != cursorVersion || cursor.ChainID != request.ChainID {
+		if decodeErr := decodeCursor(request.Cursor, &cursor); decodeErr != nil || cursor.Version != tokenListCursorVersion || cursor.ChainID != request.ChainID ||
+			!canonicalUint256(cursor.BeforeObservedBlockNumber) || !canonicalUint256(cursor.SnapshotNumber) ||
+			compareUnsignedDecimal(cursor.BeforeObservedBlockNumber, cursor.SnapshotNumber) > 0 {
 			return TokenPage{}, ErrInvalidCursor
 		}
 		snapshot = Snapshot{ChainID: cursor.ChainID, BlockNumber: cursor.SnapshotNumber, BlockHash: cursor.SnapshotHash, Revision: cursor.Revision}
@@ -94,6 +97,7 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 		if err != nil || cursor.AfterAddress != "0x"+hex.EncodeToString(afterAddress) {
 			return TokenPage{}, ErrInvalidCursor
 		}
+		beforeNumber = cursor.BeforeObservedBlockNumber
 		hasAfter = true
 		if err = validateCanonicalSnapshot(ctx, tx, snapshot); err != nil {
 			return TokenPage{}, err
@@ -114,10 +118,14 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 		if err := queryValue1.Scan(snapshot.BlockNumber); err != nil {
 			return nil, err
 		}
+		var beforeObserved pgtype.Numeric
+		if err := beforeObserved.Scan(beforeNumber); err != nil {
+			return nil, err
+		}
 		if limit+1 < -2147483648 || limit+1 > 2147483647 {
 			return nil, errors.New("invalid stored query value")
 		}
-		return dbgen.New(tx).CatalogTokenContracts(ctx, dbgen.CatalogTokenContractsParams{ChainID: queryValue0, MaxObservedBlockNumber: queryValue1, HasCursor: hasAfter, Address: afterAddress, Limit: int32(limit + 1)})
+		return dbgen.New(tx).CatalogTokenContracts(ctx, dbgen.CatalogTokenContractsParams{ChainID: queryValue0, MaxObservedBlockNumber: queryValue1, HasCursor: hasAfter, Address: afterAddress, BeforeObservedBlockNumber: beforeObserved, Limit: int32(limit + 1)})
 	}()
 	if err != nil {
 		return TokenPage{}, fmt.Errorf("list token contracts: %w", err)
@@ -140,8 +148,9 @@ func (catalog *Postgres) TokenContracts(ctx context.Context, request TokenListRe
 			return TokenPage{}, ErrCorruptData
 		}
 		next, err = encodeCursor(tokenListCursor{
-			Version: cursorVersion, ChainID: request.ChainID,
-			SnapshotNumber: snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
+			Version: tokenListCursorVersion, ChainID: request.ChainID,
+			BeforeObservedBlockNumber: items[len(items)-1].ObservedBlockNumber,
+			SnapshotNumber:            snapshot.BlockNumber, SnapshotHash: snapshot.BlockHash, Revision: snapshot.Revision,
 			AfterAddress: "0x" + hex.EncodeToString(lastAddress),
 		})
 		if err != nil {

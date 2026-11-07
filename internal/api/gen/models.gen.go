@@ -4350,6 +4350,18 @@ type AddressWithdrawalListResponse struct {
 	Meta Meta                `json:"meta"`
 }
 
+// AdminOverview defines model for AdminOverview.
+type AdminOverview struct {
+	// UserCount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	UserCount Quantity `json:"user_count"`
+}
+
+// AdminOverviewResponse defines model for AdminOverviewResponse.
+type AdminOverviewResponse struct {
+	Data AdminOverview `json:"data"`
+	Meta Meta          `json:"meta"`
+}
+
 // AdminUserUpdate defines model for AdminUserUpdate.
 type AdminUserUpdate struct {
 	Role   *UserRole   `json:"role,omitempty"`
@@ -7687,7 +7699,6 @@ type User struct {
 	// ChainId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	ChainId     Quantity           `json:"chain_id"`
 	CreatedAt   time.Time          `json:"created_at"`
-	DisplayName *string            `json:"display_name,omitempty"`
 	Id          openapi_types.UUID `json:"id"`
 	LastLoginAt *time.Time         `json:"last_login_at,omitempty"`
 	Role        UserRole           `json:"role"`
@@ -7967,11 +7978,6 @@ type UserOperationSummary struct {
 
 // UserOperationVersion defines model for UserOperationVersion.
 type UserOperationVersion string
-
-// UserProfileUpdate defines model for UserProfileUpdate.
-type UserProfileUpdate struct {
-	DisplayName *string `json:"display_name"`
-}
 
 // UserResponse defines model for UserResponse.
 type UserResponse struct {
@@ -8523,6 +8529,8 @@ type ListAdminBillingUsageParams struct {
 
 // ListAdminUsersParams defines parameters for ListAdminUsers.
 type ListAdminUsersParams struct {
+	// Q Case-insensitive literal substring of address; trimmed, at most 64 characters and 256 UTF-8 bytes, without control characters. Cursors are bound to this search.
+	Q      *string `form:"q,omitempty" json:"q,omitempty"`
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
@@ -8753,11 +8761,6 @@ type ListUserOperationsParams struct {
 	Limit  *Limit  `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// UpdateCurrentUserParams defines parameters for UpdateCurrentUser.
-type UpdateCurrentUserParams struct {
-	XCSRFToken CSRFToken `json:"X-CSRF-Token"`
-}
-
 // ListCurrentUserAPIKeysParams defines parameters for ListCurrentUserAPIKeys.
 type ListCurrentUserAPIKeysParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -8874,9 +8877,6 @@ type SubmitAddressVerificationJSONRequestBody = AddressVerificationSubmission
 
 // ImportSourcifyContractJSONRequestBody defines body for ImportSourcifyContract for application/json ContentType.
 type ImportSourcifyContractJSONRequestBody = SourcifySourceImportRequest
-
-// UpdateCurrentUserJSONRequestBody defines body for UpdateCurrentUser for application/json ContentType.
-type UpdateCurrentUserJSONRequestBody = UserProfileUpdate
 
 // CreateCurrentUserAPIKeyJSONRequestBody defines body for CreateCurrentUserAPIKey for application/json ContentType.
 type CreateCurrentUserAPIKeyJSONRequestBody = UserAPIKeyCreateRequest

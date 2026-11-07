@@ -58,6 +58,29 @@ for (const { width, language, theme } of appearanceCases) {
         }),
       );
       expect(invalidIcons, route.name).toEqual([]);
+      // Shared primitive styles must win over feature CSS without losing selection
+      // or exact numeric alignment when switching themes and viewport widths.
+      const invalidTabs = await page
+        .locator(
+          '[data-slot="tabs-trigger"][aria-selected="true"], [data-slot="tabs-trigger"][aria-current="page"]',
+        )
+        .evaluateAll((tabs) =>
+          tabs.flatMap((tab) => {
+            const style = getComputedStyle(tab);
+            return parseFloat(style.borderBottomWidth) >= 2 &&
+              style.borderBottomColor !== "rgba(0, 0, 0, 0)" &&
+              style.backgroundColor === "rgba(0, 0, 0, 0)"
+              ? []
+              : [tab.outerHTML];
+          }),
+        );
+      expect(invalidTabs, route.name).toEqual([]);
+      const misalignedNumbers = await page
+        .locator('[data-slot="table-head"].numeric, [data-slot="table-cell"].numeric')
+        .evaluateAll(
+          (cells) => cells.filter((cell) => getComputedStyle(cell).textAlign !== "right").length,
+        );
+      expect(misalignedNumbers, route.name).toBe(0);
       const walletButton = page.locator(".wallet-summary");
       const walletBox = await walletButton.boundingBox();
       const walletIcon = await walletButton.locator("svg.ui-icon").boundingBox();

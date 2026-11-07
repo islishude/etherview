@@ -1,3 +1,16 @@
+import { Pagination } from "@/components/ui/pagination";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableCaption,
+  TableHeader,
+  TableRow,
+  TableHead,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
 import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useCursorHistory } from "@/api/pagination";
@@ -112,27 +125,40 @@ export function PendingPage() {
             />
           )}
 
-          <nav className="pending-pagination" aria-label={t("pending.pagination")}>
-            <button
-              className="button secondary"
-              disabled={pager.invalid || !pager.hasPrevious}
-              onClick={pager.previous}
-              type="button"
-            >
-              {t("pending.previousPage")}
-            </button>
+          <Pagination
+            itemCount={snapshot.items.length}
+            onReset={resetPagination}
+            hasPrevious={pager.page > 1}
+            hasNext={!!snapshot.meta.next_cursor}
+            className="pending-pagination"
+            aria-label={t("pending.pagination")}
+          >
+            {pager.hasPrevious && (
+              <Button
+                variant="outline"
+                className="button secondary"
+                disabled={pager.invalid || !pager.hasPrevious}
+                onClick={pager.previous}
+                type="button"
+              >
+                {t("pending.previousPage")}
+              </Button>
+            )}
             <span aria-live="polite">
               {t("pending.pageNumber", { page: formatInteger(pager.page, locale) })}
             </span>
-            <button
-              className="button secondary"
-              disabled={pager.invalid || !snapshot.meta.next_cursor}
-              onClick={() => pager.next(snapshot.meta.next_cursor)}
-              type="button"
-            >
-              {t("pending.nextPage")}
-            </button>
-          </nav>
+            {snapshot.meta.next_cursor && (
+              <Button
+                variant="outline"
+                className="button secondary"
+                disabled={pager.invalid || !snapshot.meta.next_cursor}
+                onClick={() => pager.next(snapshot.meta.next_cursor)}
+                type="button"
+              >
+                {t("pending.nextPage")}
+              </Button>
+            )}
+          </Pagination>
         </>
       )}
     </Page>
@@ -142,38 +168,43 @@ export function PendingPage() {
 function PendingSnapshotSummary({ meta, locale }: { meta: PendingMeta; locale: string }) {
   const { t } = useTranslation();
   return (
-    <section className="panel pending-snapshot" aria-labelledby="pending-snapshot-title">
-      <div className="panel-heading pending-snapshot-heading">
-        <h2 id="pending-snapshot-title">{t("pending.snapshot")}</h2>
-        <span className={`availability ${meta.capability === "complete" ? "yes" : "no"}`}>
-          {pendingStateLabel(meta.capability, t)}
-        </span>
-      </div>
-      <dl className="pending-snapshot-grid">
-        <div>
-          <dt>{t("pending.snapshotTime")}</dt>
-          <dd>
-            <time dateTime={meta.snapshot_at}>{formatTimestamp(meta.snapshot_at, locale)}</time>
-          </dd>
+    <Card asChild>
+      <section className="panel pending-snapshot" aria-labelledby="pending-snapshot-title">
+        <div className="panel-heading pending-snapshot-heading">
+          <h2 id="pending-snapshot-title">{t("pending.snapshot")}</h2>
+          <Badge
+            variant="status"
+            className={`availability ${meta.capability === "complete" ? "yes" : "no"}`}
+          >
+            {pendingStateLabel(meta.capability, t)}
+          </Badge>
         </div>
-        <div>
-          <dt>{t("pending.expiresAt")}</dt>
-          <dd>
-            <time dateTime={meta.expires_at}>{formatTimestamp(meta.expires_at, locale)}</time>
-          </dd>
-        </div>
-        <div>
-          <dt>{t("pending.endpoint")}</dt>
-          <dd>
-            <code>{meta.endpoint}</code>
-          </dd>
-        </div>
-        <div>
-          <dt>{t("pending.total")}</dt>
-          <dd>{formatInteger(meta.transaction_count, locale)}</dd>
-        </div>
-      </dl>
-    </section>
+        <dl className="pending-snapshot-grid">
+          <div>
+            <dt>{t("pending.snapshotTime")}</dt>
+            <dd>
+              <time dateTime={meta.snapshot_at}>{formatTimestamp(meta.snapshot_at, locale)}</time>
+            </dd>
+          </div>
+          <div>
+            <dt>{t("pending.expiresAt")}</dt>
+            <dd>
+              <time dateTime={meta.expires_at}>{formatTimestamp(meta.expires_at, locale)}</time>
+            </dd>
+          </div>
+          <div>
+            <dt>{t("pending.endpoint")}</dt>
+            <dd>
+              <code>{meta.endpoint}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>{t("pending.total")}</dt>
+            <dd>{formatInteger(meta.transaction_count, locale)}</dd>
+          </div>
+        </dl>
+      </section>
+    </Card>
   );
 }
 
@@ -191,25 +222,25 @@ function PendingTable({
   const { t } = useTranslation();
   return (
     <div className="table-scroll pending-table" tabIndex={0} aria-label={t("pending.tableLabel")}>
-      <table>
-        <caption className="sr-only">{t("pending.tableDescription")}</caption>
-        <thead>
-          <tr>
-            <th>{t("table.hash")}</th>
-            <th>{t("table.status")}</th>
-            <th>{t("table.from")}</th>
-            <th>{t("table.to")}</th>
-            <th className="numeric">{t("detail.nonce")}</th>
-            <th className="numeric">{t("table.value", { symbol: nativeSymbol })}</th>
-            <th>{t("pending.fees")}</th>
-            <th>{t("pending.firstSeen")}</th>
-            <th>{t("pending.lastSeen")}</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableCaption className="sr-only">{t("pending.tableDescription")}</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t("table.hash")}</TableHead>
+            <TableHead>{t("table.status")}</TableHead>
+            <TableHead>{t("table.from")}</TableHead>
+            <TableHead>{t("table.to")}</TableHead>
+            <TableHead className="numeric">{t("detail.nonce")}</TableHead>
+            <TableHead className="numeric">{t("table.value", { symbol: nativeSymbol })}</TableHead>
+            <TableHead>{t("pending.fees")}</TableHead>
+            <TableHead>{t("pending.firstSeen")}</TableHead>
+            <TableHead>{t("pending.lastSeen")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {transactions.map((transaction) => (
-            <tr key={transaction.hash}>
-              <td>
+            <TableRow key={transaction.hash}>
+              <TableCell>
                 <Link
                   to="/tx/$hash"
                   params={{ hash: transaction.hash }}
@@ -217,43 +248,43 @@ function PendingTable({
                 >
                   <code title={transaction.hash}>{shorten(transaction.hash)}</code>
                 </Link>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <TransactionStatus label={t("transactionStatus.pending")} status="pending" />
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <AddressIdentity address={transaction.from} />
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 {transaction.to ? (
                   <AddressIdentity address={transaction.to} />
                 ) : (
                   t("common.contractCreation")
                 )}
-              </td>
-              <td className="numeric">
+              </TableCell>
+              <TableCell className="numeric">
                 <code>{formatInteger(transaction.nonce, locale)}</code>
-              </td>
-              <td className="numeric">
+              </TableCell>
+              <TableCell className="numeric">
                 <code>{formatNativeAmount(transaction.value, locale, nativeDecimals)}</code>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <PendingFees transaction={transaction} locale={locale} />
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <time dateTime={transaction.first_seen_at}>
                   {formatTimestamp(transaction.first_seen_at, locale)}
                 </time>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <time dateTime={transaction.last_seen_at}>
                   {formatTimestamp(transaction.last_seen_at, locale)}
                 </time>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

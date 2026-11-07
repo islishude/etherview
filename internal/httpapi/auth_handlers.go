@@ -10,7 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/islishude/etherview/internal/api/gen"
@@ -33,8 +36,8 @@ type UserAuthenticator interface {
 type UserAdministration interface {
 	UserByID(context.Context, string) (userauth.User, error)
 	UserByAddress(context.Context, string) (userauth.User, error)
-	UpdateDisplayName(context.Context, string, *string, time.Time) (userauth.User, error)
-	Users(context.Context, *userauth.UserPageAfter, int) ([]userauth.User, error)
+	UserCount(context.Context) (uint64, error)
+	Users(context.Context, *userauth.UserPageAfter, int, string) ([]userauth.User, error)
 	UpdateUser(context.Context, string, userauth.AdminUserUpdate, time.Time) (userauth.AdminUserUpdateResult, error)
 	RevokeAllSessions(context.Context, string, time.Time) (uint64, error)
 }
@@ -227,47 +230,6 @@ func (h *Handler) logoutAuthSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) updateCurrentUser(w http.ResponseWriter, r *http.Request) {
-	if !h.userAuthAvailable(w, r) || !h.requireAuthOrigin(w, r) {
-		return
-	}
-	authentication, ok := h.requireUserSession(w, r)
-	if !ok || !h.requireCSRF(w, r, authentication) {
-		return
-	}
-	var request struct {
-		DisplayName json.RawMessage `json:"display_name"`
-	}
-	if !decodeAuthJSON(w, r, &request) || len(request.DisplayName) == 0 {
-		if len(request.DisplayName) == 0 {
-			writeError(w, r, http.StatusBadRequest, "invalid_auth_request", "authentication request is invalid", nil)
-		}
-		return
-	}
-	var displayName *string
-	if !bytes.Equal(request.DisplayName, []byte("null")) {
-		var value string
-		if err := json.Unmarshal(request.DisplayName, &value); err != nil {
-			writeError(w, r, http.StatusBadRequest, "invalid_auth_request", "authentication request is invalid", nil)
-			return
-		}
-		displayName = &value
-	}
-	user, err := h.userAdministration.UpdateDisplayName(
-		r.Context(), authentication.Session.User.ID, displayName,
-		h.now().UTC().Truncate(time.Microsecond),
-	)
-	if err != nil {
-		h.handleUserAuthError(w, r, err)
-		return
-	}
-	model, ok := h.userModel(w, r, user)
-	if !ok {
-		return
-	}
-	writeJSON(w, http.StatusOK, gen.UserResponse{Data: model, Meta: h.meta(r)})
-}
-
 func (h *Handler) listAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if !h.userAuthAvailable(w, r) {
 		return
@@ -279,18 +241,24 @@ func (h *Handler) listAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	after, ok := h.decodeUserCursor(w, r)
+	rawQuery := r.URL.Query().Get("q")
+	query := strings.ToLower(strings.TrimSpace(rawQuery))
+	if !utf8.ValidString(rawQuery) || len(query) > 256 || utf8.RuneCountInString(query) > 64 || strings.ContainsFunc(r.URL.Query().Get("q"), unicode.IsControl) {
+		writeError(w, r, http.StatusBadRequest, "invalid_query", "user search is invalid", nil)
+		return
+	}
+	after, ok := h.decodeUserCursor(w, r, query)
 	if !ok {
 		return
 	}
-	users, err := h.userAdministration.Users(r.Context(), after, limit+1)
+	users, err := h.userAdministration.Users(r.Context(), after, limit+1, query)
 	if err != nil {
 		h.handleUserAuthError(w, r, err)
 		return
 	}
 	meta := h.meta(r)
 	if len(users) > limit {
-		cursor, cursorErr := h.encodeUserCursor(users[limit-1])
+		cursor, cursorErr := h.encodeUserCursor(users[limit-1], query)
 		if cursorErr != nil {
 			h.logUserAuthFailure(r, "encode user cursor", cursorErr)
 			h.writeUserAuthUnavailable(w, r)
@@ -494,8 +462,8 @@ func authenticatedSessionModel(
 		Authenticated: true,
 		User: &gen.User{
 			Id: userID, ChainId: strconv.FormatUint(session.User.ChainID, 10),
-			Address: session.User.Address, DisplayName: session.User.DisplayName,
-			Role: gen.UserRole(session.User.Role), Status: gen.UserStatus(session.User.Status),
+			Address: session.User.Address,
+			Role:    gen.UserRole(session.User.Role), Status: gen.UserStatus(session.User.Status),
 			CreatedAt: session.User.CreatedAt, UpdatedAt: session.User.UpdatedAt,
 			LastLoginAt: session.User.LastLoginAt,
 		},
@@ -516,14 +484,15 @@ func (h *Handler) userModel(
 	}
 	return gen.User{
 		Id: identifier, ChainId: strconv.FormatUint(user.ChainID, 10),
-		Address: user.Address, DisplayName: user.DisplayName,
-		Role: gen.UserRole(user.Role), Status: gen.UserStatus(user.Status),
+		Address: user.Address,
+		Role:    gen.UserRole(user.Role), Status: gen.UserStatus(user.Status),
 		CreatedAt: user.CreatedAt, UpdatedAt: user.UpdatedAt,
 		LastLoginAt: user.LastLoginAt,
 	}, true
 }
 
 type userPageCursor struct {
+	Query     string    `json:"q"`
 	ChainID   string    `json:"chain_id"`
 	CreatedAt time.Time `json:"created_at"`
 	ID        string    `json:"id"`
@@ -532,6 +501,7 @@ type userPageCursor struct {
 func (h *Handler) decodeUserCursor(
 	w http.ResponseWriter,
 	r *http.Request,
+	query string,
 ) (*userauth.UserPageAfter, bool) {
 	raw := r.URL.Query().Get("cursor")
 	if raw == "" {
@@ -540,7 +510,7 @@ func (h *Handler) decodeUserCursor(
 	var cursor userPageCursor
 	if DecodeCursor(raw, &cursor) != nil ||
 		cursor.ChainID != strconv.FormatUint(h.cfg.Chain.ID, 10) ||
-		cursor.CreatedAt.IsZero() {
+		cursor.CreatedAt.IsZero() || cursor.Query != query {
 		writeError(w, r, http.StatusBadRequest, "invalid_cursor", "cursor is invalid or stale", nil)
 		return nil, false
 	}
@@ -554,8 +524,9 @@ func (h *Handler) decodeUserCursor(
 	}, true
 }
 
-func (h *Handler) encodeUserCursor(user userauth.User) (string, error) {
+func (h *Handler) encodeUserCursor(user userauth.User, query string) (string, error) {
 	return EncodeCursor(userPageCursor{
+		Query:     query,
 		ChainID:   strconv.FormatUint(h.cfg.Chain.ID, 10),
 		CreatedAt: user.CreatedAt, ID: user.ID,
 	})
@@ -628,4 +599,21 @@ func (h *Handler) logUserAuthFailure(r *http.Request, message string, err error)
 
 func (h *Handler) writeUserAuthUnavailable(w http.ResponseWriter, r *http.Request) {
 	writeError(w, r, http.StatusServiceUnavailable, "user_auth_unavailable", "user authentication is unavailable", nil)
+}
+
+func (h *Handler) adminOverview(w http.ResponseWriter, r *http.Request) {
+	if !h.userAuthAvailable(w, r) {
+		return
+	}
+	if _, ok := h.requireAdminSession(w, r); !ok {
+		return
+	}
+	count, err := h.userAdministration.UserCount(r.Context())
+	if err != nil {
+		h.handleUserAuthError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, gen.AdminOverviewResponse{
+		Data: gen.AdminOverview{UserCount: strconv.FormatUint(count, 10)}, Meta: h.meta(r),
+	})
 }

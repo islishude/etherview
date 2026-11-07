@@ -1,3 +1,4 @@
+import { installAdminSession } from "./adminFixtures";
 import { installVerificationSession } from "./verification-session";
 import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -700,9 +701,9 @@ test("EIP-7702 transaction keeps authorization outcomes lazy and uses transactio
   await expect(applied.getByText(codeHash, { exact: true })).toBeVisible();
 
   const authorizationPagination = page.getByRole("navigation", { name: "Authorizations" });
-  await expect(
-    authorizationPagination.getByRole("button", { name: "Previous page" }),
-  ).toBeDisabled();
+  await expect(authorizationPagination.getByRole("button", { name: "Previous page" })).toHaveCount(
+    0,
+  );
   await activateInView(authorizationPagination.getByRole("button", { name: "Next page" }));
   const skipped = page.locator("article.transaction-log").filter({ hasText: "Authorization #1" });
   await expect(skipped.getByText("skipped", { exact: true })).toBeVisible();
@@ -1087,7 +1088,10 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   expect(calldataRequests).toEqual([]);
   await page.goto(`/address/${address}#read-contract`);
   await expect(page.getByRole("heading", { name: "Contract", level: 1 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveClass(/\bactive\b/);
+  await expect(page.getByRole("link", { name: "Contract", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await activateInView(page.getByRole("link", { name: "Internal Transactions" }));
   await expect(page).toHaveURL(new RegExp(`/address/${address}\\?tab=internal-transactions$`));
   await expect(page.getByText("SELF", { exact: true })).toBeVisible();
@@ -1095,7 +1099,7 @@ test("core explorer keeps canonical cursor pages and retained orphan context exp
   await expect(page.getByRole("columnheader", { name: "Finality" })).toHaveCount(0);
   expect(addressWithdrawalRequests).toEqual([]);
   const contractTab = page.getByRole("link", { name: "Contract", exact: true });
-  await expect(contractTab).not.toHaveClass(/\bactive\b/);
+  await expect(contractTab).not.toHaveAttribute("aria-current", "page");
   const [contractStyle, ordinaryTabStyle] = await Promise.all([
     contractTab.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -1210,7 +1214,7 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
   await expect(page.getByText("Re-delegated", { exact: true })).toBeVisible();
   const historyNavigation = page.getByRole("navigation", { name: "Delegation history" });
-  await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toHaveCount(0);
   await historyNavigation.getByRole("button", { name: "Next page" }).click();
   await expect(page.getByText("Delegated", { exact: true })).toBeVisible();
 
@@ -1285,7 +1289,7 @@ test("allowlisted local NFT navigation still requires confirmation", async ({ pa
   await expect(review).toBeVisible();
   expect(requests).toEqual([]);
   await review.click();
-  const dialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
+  const dialog = page.getByRole("alertdialog", { name: "Open an unverified external link?" });
   await expect(dialog).toBeVisible();
   expect(requests).toEqual([]);
   await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -1348,11 +1352,11 @@ test("capability pages survive the embedded binary boundary in both accessible t
     name: `Review unverified external image target ${nftImageURL}`,
   });
   await activateInView(reviewImage);
-  const warningDialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
+  const warningDialog = page.getByRole("alertdialog", {
+    name: "Open an unverified external link?",
+  });
   await expect(warningDialog).toBeVisible();
-  await expect(warningDialog.getByRole("alert")).toContainText(
-    "connects your browser directly to a third party",
-  );
+  await expect(warningDialog).toContainText("connects your browser directly to a third party");
   expect(externalRequests).toEqual([]);
   await assertA11yAndNoOverflow(page, "NFT external-link warning in English");
   const externalLink = warningDialog.getByRole("link", { name: "Open in new tab" });
@@ -1377,8 +1381,8 @@ test("capability pages survive the embedded binary boundary in both accessible t
       name: `检查未经验证的外部图片目标 ${nftImageURL}`,
     }),
   );
-  const chineseWarning = page.getByRole("dialog", { name: "打开未经验证的外部链接？" });
-  await expect(chineseWarning.getByRole("alert")).toContainText("由浏览器直接连接第三方");
+  const chineseWarning = page.getByRole("alertdialog", { name: "打开未经验证的外部链接？" });
+  await expect(chineseWarning).toContainText("由浏览器直接连接第三方");
   expect(externalRequests).toEqual([]);
   await activateInView(chineseWarning.getByRole("button", { name: "取消" }));
   await activateInView(page.getByRole("button", { name: "Switch to English" }));
@@ -1553,6 +1557,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
   ).toBeVisible();
   await expect(page.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
 
+  await installAdminSession(page);
   await page.goto("/status");
   await expect(
     page.getByRole("heading", { name: "Data capabilities and current completeness", level: 2 }),
@@ -2354,7 +2359,6 @@ for (const initiallyConnected of [false, true]) {
     test.setTimeout(120_000);
     const authRequests: BrowserAuthRequest[] = [];
     let authenticated = false;
-    let currentDisplayName: string | null = "Browser Admin";
     let targetRole: "user" | "admin" = "user";
     let targetStatus: "active" | "disabled" = "active";
     let personalKey = {
@@ -2370,7 +2374,6 @@ for (const initiallyConnected of [false, true]) {
       address: walletAccount,
       role: "admin",
       status: "active",
-      display_name: currentDisplayName,
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
       last_login_at: "2026-01-01T00:00:00Z",
@@ -2381,7 +2384,6 @@ for (const initiallyConnected of [false, true]) {
       address,
       role: targetRole,
       status: targetStatus,
-      display_name: null,
       created_at: "2026-01-02T00:00:00Z",
       updated_at: "2026-01-02T00:00:00Z",
       last_login_at: "2026-01-02T00:00:00Z",
@@ -2474,16 +2476,6 @@ for (const initiallyConnected of [false, true]) {
           await route.fulfill({ status: 404 });
       }
     });
-    await page.route("**/api/v1/users/me", async (route) => {
-      const request = route.request();
-      record(request);
-      const body = request.postDataJSON() as { display_name: string | null };
-      currentDisplayName = body.display_name;
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope(currentUser()),
-      });
-    });
     let personalKeyDeleted = false;
     await page.route("**/api/v1/users/me/api-keys**", async (route) => {
       const request = route.request();
@@ -2551,6 +2543,9 @@ for (const initiallyConnected of [false, true]) {
       }
       await route.fulfill({ status: 404 });
     });
+    await page.route("**/api/v1/admin/overview", (route) =>
+      route.fulfill({ json: envelope({ user_count: "2" }) }),
+    );
     await page.route("**/api/v1/admin/users**", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -2726,22 +2721,24 @@ for (const initiallyConnected of [false, true]) {
 
     const response = await page.goto("/account");
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: "Wallet connection" })).toBeVisible();
-    await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
-    await expect(page.getByText("Not logged in", { exact: true }).last()).toBeVisible();
+    await expect(page.locator("[data-account-sign-in]")).toBeVisible();
+    await expect(page.locator(".account-identity")).toHaveCount(0);
+    await expect(page.locator(".wallet-summary")).toHaveAttribute("aria-label", "Connect wallet");
+    await expect(page.locator("[data-account-sign-in] button")).toContainText(
+      "Sign in with Ethereum",
+    );
 
     if (initiallyConnected) {
       await activateInView(page.locator(".wallet-summary"));
       await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
-      await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+      await expect(page.locator(".wallet-summary")).toHaveAttribute(
+        "aria-label",
+        /SIWE E2E Wallet/,
+      );
       await activateInView(page.locator(".wallet-summary"));
     }
-    await activateInView(page.locator(".auth-action-panel button"));
-    await expect(
-      page.locator(".identity-card").getByText("User authenticated", {
-        exact: true,
-      }),
-    ).toBeVisible();
+    await activateInView(page.locator("[data-account-sign-in] button"));
+    await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();
     const walletRequests = await page.evaluate(
       () => (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
     );
@@ -2765,21 +2762,25 @@ for (const initiallyConnected of [false, true]) {
       },
     ]);
 
-    for (const selector of [".authenticated-user", ".wallet-account"]) {
+    for (const [selector, destination] of [
+      [".authenticated-user", "/account"],
+      [".wallet-account", `/address/${walletAccount}`],
+    ] as const) {
       await activateInView(page.locator(".wallet-summary"));
       const identityLink = page.locator(selector);
-      await expect(identityLink).toHaveAttribute("href", `/address/${walletAccount}`);
+      await expect(identityLink).toHaveAttribute("href", destination);
       await identityLink.focus();
       await page.keyboard.press("Enter");
-      await expect(page).toHaveURL(new RegExp(`/address/${walletAccount}`));
+      await expect(page).toHaveURL(new RegExp(`${destination}$`));
       await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
       await activateInView(page.locator(".wallet-summary"));
       await expect(page.locator(".wallet-menu")).toHaveAttribute("open", "");
-      await activateInView(
+      await expect(
         page.locator(".wallet-popover").getByRole("link", { name: "Open account", exact: true }),
-      );
+      ).toHaveCount(0);
+      await activateInView(page.locator(".authenticated-user"));
       await expect(page).toHaveURL(/\/account$/);
-      await activateInView(page.locator(".wallet-summary"));
+      await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
     }
 
     const challengeRequest = authRequests.find(
@@ -2812,12 +2813,8 @@ for (const initiallyConnected of [false, true]) {
       ),
     ).toHaveLength(0);
     await page.reload();
-    await expect(
-      page.locator(".identity-card").getByText("User authenticated", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();
+    await expect(page.locator(".wallet-summary")).toHaveAttribute("aria-label", "Connect wallet");
     expect(
       authRequests.filter(
         ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
@@ -2826,14 +2823,13 @@ for (const initiallyConnected of [false, true]) {
 
     await activateInView(page.locator(".wallet-summary"));
     await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
-    await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+    await expect(page.locator(".wallet-summary")).toHaveAttribute("aria-label", /SIWE E2E Wallet/);
     expect(
       authRequests.filter(
         ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
       ),
     ).toHaveLength(0);
 
-    page.on("dialog", async (dialog) => dialog.accept());
     const accountSections = page.getByRole("navigation", { name: "Account sections" });
     await activateInView(accountSections.getByRole("link", { name: "API Keys", exact: true }));
     await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
@@ -2877,15 +2873,28 @@ for (const initiallyConnected of [false, true]) {
     ).toBe(true);
     await activateInView(page.getByRole("button", { name: "I saved the token" }));
     await activateInView(page.getByRole("button", { name: "Rotate" }));
+    await expect(
+      page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }),
+    ).toBeFocused();
+    await assertA11yAndNoOverflow(page, "API key rotation confirmation in English narrow mode");
+    await activateInView(
+      page.getByRole("alertdialog").getByRole("button", { name: "Rotate", exact: true }),
+    );
     await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
       rotatedUserAPIKeyToken,
     );
     await activateInView(page.getByRole("button", { name: "I saved the token" }));
     await activateInView(page.getByRole("button", { name: "Revoke" }));
+    await activateInView(
+      page.getByRole("alertdialog").getByRole("button", { name: "Revoke", exact: true }),
+    );
     await expect(
       page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
     ).toBeVisible();
     await activateInView(page.getByRole("button", { name: "Delete", exact: true }));
+    await activateInView(
+      page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }),
+    );
     await expect(page.locator(".api-key-card")).toHaveCount(0);
     const personalKeyWrites = authRequests.filter(
       ({ method, pathname }) =>
@@ -2921,26 +2930,28 @@ for (const initiallyConnected of [false, true]) {
     expect(new URLSearchParams(personalCursorRequest?.search).has("user_id")).toBe(false);
 
     await activateInView(accountSections.getByRole("link", { name: "Overview", exact: true }));
-    await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
-    await activateInView(page.getByRole("button", { name: "Save profile" }));
-    await expect(page.getByRole("status")).toContainText("Profile saved.");
-    const profileRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/users/me");
-    expect(profileRequest?.body).toBe(JSON.stringify({ display_name: "Updated Browser Admin" }));
-    expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
-    expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+    await expect(page.locator(".profile-form")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Account", exact: true }).click();
-    await activateInView(page.getByRole("link", { name: "User admin" }));
+    await activateInView(page.getByRole("link", { name: "Admin", exact: true }));
+    await activateInView(page.getByRole("link", { name: "Users", exact: true }));
     await expect(page.getByRole("heading", { name: "User administration" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByText(address, { exact: true })).toBeVisible();
     await page.getByRole("combobox", { name: `Role for ${address}` }).selectOption("admin");
     await page.getByRole("combobox", { name: `Status for ${address}` }).selectOption("disabled");
     await activateInView(page.getByRole("button", { name: "Save user" }));
     await expect(page.getByRole("status")).toContainText("Updated 0x111111…111111.");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await activateInView(page.getByRole("button", { name: "Revoke sessions" }));
+    await page.getByRole("alertdialog").getByRole("button", { name: "Revoke sessions" }).click();
     await expect(page.getByRole("status")).toContainText(
       "Revoked 3 session(s) for 0x111111…111111.",
     );
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Close", exact: true })
+      .first()
+      .click();
     const adminPatchRequest = authRequests.find(
       ({ method, pathname }) =>
         method === "PATCH" && pathname === `/api/v1/admin/users/${authTargetUserID}`,
@@ -2966,15 +2977,22 @@ for (const initiallyConnected of [false, true]) {
     });
     expect(cursorRequest).toBeDefined();
 
-    await page.getByRole("button", { name: "Account", exact: true }).click();
-    await activateInView(page.getByRole("link", { name: "Billing admin" }));
+    await activateInView(
+      page
+        .getByRole("navigation", { name: "Admin", exact: true })
+        .getByRole("link", { name: "Billing", exact: true }),
+    );
     await expect(page.getByRole("heading", { name: "Billing administration" })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("billing-admin-desktop.png") });
-    await expect(page.getByText("Settlement unknown", { exact: true })).toBeVisible();
+    await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "Payments", exact: true }).click();
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    await expect(page.getByText("Settlement unknown", { exact: true }).last()).toBeVisible();
     await expect(page.getByText(billingAdminUserID, { exact: true })).toBeVisible();
     await expect(page.getByText(billingAPIKeyPrefix, { exact: true })).toBeVisible();
-    await expect(page.getByText(billingAmount, { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("dialog").getByText(billingAmount, { exact: true })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+    await page.getByText("Advanced filters", { exact: true }).filter({ visible: true }).click();
 
     await page.getByRole("combobox", { name: "State" }).selectOption("settling");
     await page.getByRole("combobox", { name: "Operation" }).selectOption("getBlock");
@@ -3032,7 +3050,7 @@ for (const initiallyConnected of [false, true]) {
 
     await activateInView(page.getByRole("button", { name: "切换到中文" }));
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByRole("heading", { name: "计费管理", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "计费管理", level: 2 })).toBeVisible();
     const adminScan = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
@@ -3042,12 +3060,27 @@ for (const initiallyConnected of [false, true]) {
     );
     expect(overflow).toBeLessThanOrEqual(1);
 
+    await activateInView(page.locator(".wallet-summary"));
+    await activateInView(page.getByRole("button", { name: "退出登录", exact: true }));
+    const logoutDialog = page.getByRole("alertdialog", { name: "确认退出登录？" });
+    await expect(logoutDialog.getByRole("button", { name: "取消" })).toBeFocused();
+    await assertA11yAndNoOverflow(page, "logout confirmation in Chinese narrow mode");
+    await logoutDialog.getByRole("button", { name: "取消" }).click();
+    await expect(page.locator(".wallet-summary")).toBeFocused();
+    expect(
+      authRequests.filter(
+        ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+      ),
+    ).toHaveLength(0);
+    await activateInView(page.locator(".wallet-summary"));
+    await activateInView(page.getByRole("button", { name: "退出登录", exact: true }));
     await page.evaluate(() => {
       (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit("accountsChanged", [
         "0x4444444444444444444444444444444444444444",
       ]);
     });
-    await expect(page.getByRole("heading", { name: "需要已认证的用户会话。" })).toBeVisible();
+    await expect(logoutDialog).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "需要管理员权限。" })).toBeVisible();
     await expect
       .poll(
         () =>

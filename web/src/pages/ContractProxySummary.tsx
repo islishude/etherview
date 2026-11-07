@@ -1,3 +1,6 @@
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { ChevronRight, Minus, Plus } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useId, useState } from "react";
@@ -44,7 +47,9 @@ export function ProxySummary({ detail }: { detail: ContractProxyDetails }) {
     <div className="proxy-summary">
       <div className="proxy-summary-row">
         <ProxySummaryIdentity detail={detail} t={t} />
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           aria-controls={detailsId}
           aria-expanded={expanded}
           className="proxy-details-toggle"
@@ -53,7 +58,7 @@ export function ProxySummary({ detail }: { detail: ContractProxyDetails }) {
         >
           {t(expanded ? "contracts.proxy.hideDetails" : "contracts.proxy.viewDetails")}
           <UIIcon icon={expanded ? Minus : Plus} />
-        </button>
+        </Button>
       </div>
       <section aria-label={t("contracts.proxy.title")} hidden={!expanded} id={detailsId}>
         {expanded ? (
@@ -160,9 +165,11 @@ export function ProxySummary({ detail }: { detail: ContractProxyDetails }) {
               </details>
             ) : null}
             {diamond ? (
-              <p className="context-note" role="note">
-                {t("contracts.diamond.interactionSafety")}
-              </p>
+              <Alert asChild>
+                <p className="context-note" role="note">
+                  {t("contracts.diamond.interactionSafety")}
+                </p>
+              </Alert>
             ) : detail?.mechanism === "cwia" ? null : detail &&
               detail.status !== "verified" &&
               detail.status !== "not_detected" ? (
@@ -190,29 +197,35 @@ function ProxySummaryIdentity({ detail, t }: { detail: ContractProxyDetails; t: 
     <>
       <strong className="proxy-summary-type">{proxySummaryType(detail, t)}</strong>
       {unavailable ? (
-        <span className="availability no" role="status">
+        <Badge variant="status" className="availability no" role="status">
           {proxyStatusLabel(detail.status, t)}
-        </span>
+        </Badge>
       ) : detection ? (
-        <span className={detection.status === "confirmed" ? "availability yes" : "availability no"}>
+        <Badge
+          variant="status"
+          className={detection.status === "confirmed" ? "availability yes" : "availability no"}
+        >
           {t("contracts.proxy.detectionLabel", {
             status: proxyDetectionStatusLabel(detection.status, t),
           })}
-        </span>
+        </Badge>
       ) : null}
       {detection?.outcomes
         .filter(
           (outcome) => outcome.status !== "not-detected" && outcome.status !== detection.status,
         )
         .map((outcome) => (
-          <span className="availability no" key={outcome.detector}>
+          <Badge variant="status" className="availability no" key={outcome.detector}>
             {outcome.family ?? outcome.detector}: {proxyDetectionStatusLabel(outcome.status, t)}
-          </span>
+          </Badge>
         ))}
       {authoritative && !unavailable ? (
-        <span className={detail.status === "verified" ? "availability yes" : "availability no"}>
+        <Badge
+          variant="status"
+          className={detail.status === "verified" ? "availability yes" : "availability no"}
+        >
           {t("contracts.proxy.bindingLabel", { status: proxyStatusLabel(detail.status, t) })}
-        </span>
+        </Badge>
       ) : null}
       {diamond ? (
         primary.diamond ? (
@@ -415,13 +428,15 @@ function CloneImmutabilityNote({
 }) {
   if (detail?.pattern !== "clone") return null;
   return (
-    <p className="context-note" role="note">
-      {t(
-        detail.mechanism === "cwia"
-          ? "contracts.proxy.cwia.immutable"
-          : "contracts.proxy.cloneImmutable",
-      )}
-    </p>
+    <Alert asChild>
+      <p className="context-note" role="note">
+        {t(
+          detail.mechanism === "cwia"
+            ? "contracts.proxy.cwia.immutable"
+            : "contracts.proxy.cloneImmutable",
+        )}
+      </p>
+    </Alert>
   );
 }
 

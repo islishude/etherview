@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useWallet } from "@/wallet/WalletProvider";
@@ -15,7 +16,8 @@ export function BillingWalletConnect() {
   return (
     <div className="billing-connect">
       <p role="status">{t("billing.guide.connectHint")}</p>
-      <button
+      <Button
+        variant="outline"
         className="button secondary"
         type="button"
         disabled={wallet.connecting}
@@ -28,11 +30,12 @@ export function BillingWalletConnect() {
         }}
       >
         {t(wallet.connecting ? "actions.connecting" : "actions.connect")}
-      </button>
+      </Button>
       {choosing && wallet.providers.length > 1 && (
         <div className="wallet-list" role="group" aria-label={t("wallet.choose")}>
           {wallet.providers.slice(0, 32).map((provider) => (
-            <button
+            <Button
+              variant="ghost"
               className="wallet-option"
               type="button"
               disabled={wallet.connecting}
@@ -40,7 +43,7 @@ export function BillingWalletConnect() {
               onClick={() => connect(provider.uuid)}
             >
               {provider.name}
-            </button>
+            </Button>
           ))}
         </div>
       )}

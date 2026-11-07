@@ -1,3 +1,6 @@
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { lazyRouteComponent } from "@/lazyRouteComponent";
 import { AppNavigation } from "./AppNavigation";
 import { type SubmitEvent, Suspense, useEffect, useRef, useState } from "react";
@@ -75,10 +78,10 @@ export function AppShell() {
             </Link>
 
             <form className="global-search" role="search" onSubmit={submitSearch}>
-              <label className="sr-only" htmlFor="global-search-input">
+              <Label className="sr-only" htmlFor="global-search-input">
                 {t("actions.search")}
-              </label>
-              <input
+              </Label>
+              <Input
                 id="global-search-input"
                 aria-describedby={searchError ? "global-search-error" : undefined}
                 aria-invalid={Boolean(searchError)}
@@ -91,7 +94,7 @@ export function AppShell() {
                 type="search"
                 value={query}
               />
-              <button type="submit">{t("actions.search")}</button>
+              <Button type="submit">{t("actions.search")}</Button>
               {searchError ? (
                 <small className="global-search-error" id="global-search-error" role="alert">
                   {searchError}
@@ -100,33 +103,38 @@ export function AppShell() {
             </form>
 
             <div className="header-controls">
-              <button
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("actions.toggleTheme")}
                 aria-pressed={theme === "dark"}
-                className="control icon-control"
+                className="control icon-control aria-pressed:border-ui-brand aria-pressed:text-ui-brand"
                 onClick={toggleTheme}
                 type="button"
               >
                 <ShellIcon name={theme === "dark" ? "moon" : "sun"} />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("actions.followSystemTheme")}
                 title={t("actions.followSystemTheme")}
                 aria-pressed={followsSystem}
-                className="control icon-control"
+                className="control icon-control aria-pressed:border-ui-brand aria-pressed:text-ui-brand"
                 onClick={followSystem}
                 type="button"
               >
                 <ShellIcon name="monitor" />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
                 aria-label={t("actions.toggleLanguage")}
                 className="control language-control"
                 onClick={toggleLanguage}
                 type="button"
               >
                 {i18n.resolvedLanguage?.startsWith("zh") ? "EN" : "中文"}
-              </button>
+              </Button>
               <WalletMenu />
             </div>
           </div>

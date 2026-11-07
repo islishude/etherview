@@ -205,3 +205,44 @@ it.each(paginatedQueries)(
     client.clear();
   },
 );
+
+it.each([150, 1000])(
+  "bounds traversal to %i items and restores the window on back/reset",
+  (limit) => {
+    const { result, rerender } = renderHook(
+      (identity: string) => useCursorHistory(identity, limit),
+      {
+        initialProps: "limited",
+      },
+    );
+    // Short pages count actual records, not nominal page size.
+    act(() => result.current.next("short", 13));
+    expect(result.current.remaining).toBe(limit - 13);
+    for (let consumed = 13; consumed + 25 < limit; consumed += 25) {
+      act(() => result.current.next(`after-${consumed}`, 25));
+    }
+    expect(result.current.remaining).toBe(12);
+    const lastPage = result.current.page;
+    act(() => result.current.next("over-limit", 25));
+    expect(result.current.page).toBe(lastPage);
+    act(() => result.current.next("exact-limit", 12));
+    expect(result.current.page).toBe(lastPage);
+    act(() => result.current.previous());
+    expect(result.current.remaining).toBe(37);
+    act(() => result.current.reset());
+    expect(result.current.page).toBe(1);
+    expect(result.current.remaining).toBe(limit);
+    act(() => result.current.next("second", 25));
+    rerender("other");
+    expect(result.current.remaining).toBe(limit);
+  },
+);
+
+it("does not cap other pagers and stops when the API has no continuation", () => {
+  const { result } = renderHook(() => useCursorHistory("unlimited"));
+  act(() => result.current.next("older", 2000));
+  expect(result.current.page).toBe(2);
+  expect(result.current.remaining).toBe(Infinity);
+  act(() => result.current.next(undefined, 25));
+  expect(result.current.page).toBe(2);
+});

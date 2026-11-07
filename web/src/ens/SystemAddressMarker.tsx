@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { UIIcon } from "@/components/UIIcon";
 import { Cpu } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -38,7 +39,9 @@ export function SystemAddressMarker() {
       onMouseLeave={() => setOpen(false)}
       ref={markerRef}
     >
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         aria-describedby={open ? id : undefined}
         aria-label={t("detail.systemAddress")}
         className="system-address-button"
@@ -50,7 +53,7 @@ export function SystemAddressMarker() {
         type="button"
       >
         <UIIcon icon={Cpu} size={14} />
-      </button>
+      </Button>
       {open && (
         <span
           className="system-address-tooltip"

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { DropdownChevron } from "./DropdownChevron";
 
@@ -19,7 +20,7 @@ export function NavigationDisclosure({ label, children }: { label: string; child
 
   return (
     <div
-      className="navigation-disclosure"
+      className="navigation-disclosure group/navigation"
       ref={root}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
@@ -33,8 +34,9 @@ export function NavigationDisclosure({ label, children }: { label: string; child
         }
       }}
     >
-      <button
-        className="navigation-trigger"
+      <Button
+        variant="ghost"
+        className="navigation-trigger aria-expanded:text-ui-brand group-has-[a.active]/navigation:border-b-ui-brand group-has-[a.active]/navigation:text-ui-brand"
         type="button"
         aria-expanded={open}
         aria-controls={id}
@@ -43,7 +45,7 @@ export function NavigationDisclosure({ label, children }: { label: string; child
       >
         {label}
         <DropdownChevron />
-      </button>
+      </Button>
       <div
         className="navigation-popover"
         id={id}

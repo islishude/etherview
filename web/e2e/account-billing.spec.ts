@@ -103,7 +103,6 @@ for (const appearance of appearanceCases) {
             address,
             role: "user",
             status: "active",
-            display_name: "Alex",
             created_at: timestamp,
             updated_at: timestamp,
           },
@@ -191,10 +190,7 @@ for (const appearance of appearanceCases) {
     });
     await page.goto("/account?tab=billing");
     await expect(page.locator(".billing-topup-form")).toBeVisible();
-    await expect(page.locator(".identity-card .account-address")).toHaveAttribute(
-      "href",
-      `/address/${address}`,
-    );
+    await expect(page.locator(".account-identity")).toHaveCount(0);
     const checkView = async (name: string) => {
       const scan = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])

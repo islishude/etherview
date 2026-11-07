@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	cursorVersion        = 1
-	maximumCursorBytes   = 4096
-	maximumDecimalDigits = 78
+	cursorVersion          = 1
+	tokenListCursorVersion = 2
+	maximumCursorBytes     = 4096
+	maximumDecimalDigits   = 78
 )
 
 var maximumUint256 = func() *big.Int {
@@ -28,12 +29,13 @@ var maximumUint256 = func() *big.Int {
 }()
 
 type tokenListCursor struct {
-	Revision       string `json:"revision"`
-	Version        int    `json:"v"`
-	ChainID        string `json:"chain_id"`
-	SnapshotNumber string `json:"snapshot_number"`
-	SnapshotHash   string `json:"snapshot_hash"`
-	AfterAddress   string `json:"after_address"`
+	BeforeObservedBlockNumber string `json:"before_observed_block_number"`
+	Revision                  string `json:"revision"`
+	Version                   int    `json:"v"`
+	ChainID                   string `json:"chain_id"`
+	SnapshotNumber            string `json:"snapshot_number"`
+	SnapshotHash              string `json:"snapshot_hash"`
+	AfterAddress              string `json:"after_address"`
 }
 
 type tokenEventCursor struct {

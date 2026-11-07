@@ -1,7 +1,8 @@
+import { Button } from "@/components/ui/button";
 import { Message } from "./Message";
 import { Check, Copy } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export async function copyTextToClipboard(value: string): Promise<void> {
@@ -12,9 +13,13 @@ export async function copyTextToClipboard(value: string): Promise<void> {
 export function CopyButton({
   value,
   className = "copyable-copy-button",
+  variant = "ghost",
+  size = "icon-sm",
 }: {
   value: string;
   className?: string;
+  variant?: ComponentProps<typeof Button>["variant"];
+  size?: "icon-sm" | "icon" | "icon-lg";
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -50,15 +55,17 @@ export function CopyButton({
           {t(message === "success" ? "common.copied" : "common.copyFailed")}
         </Message>
       )}
-      <button
+      <Button
+        variant={variant}
+        size={size}
         aria-label={copied ? t("common.copied") : t("common.copy")}
-        className={`${className}${copied ? " copied" : ""}`}
+        className={`${className}${copied ? " copied text-success hover:text-success focus-visible:text-success" : ""}`}
         onClick={copy}
         title={copied ? t("common.copied") : t("common.copy")}
         type="button"
       >
         <UIIcon icon={copied ? Check : Copy} />
-      </button>
+      </Button>
     </>
   );
 }

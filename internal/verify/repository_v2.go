@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/cwiaargs"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/verifiedselector"
 )
 
@@ -335,15 +336,17 @@ func (repository *PostgresRepository) CompleteV2(
 		publicationCodeHash    []byte
 		publicationTarget      common.Address
 		authenticatedArtifact  *recognizedProxyArtifact
+		preparedPublication    *enrich.PreparedPublication
 	)
 	if localAddressJob(job.Kind) && outcomeKind == "verification_success" {
 		if err := validateAddressSuccessEvidence(job.RequestV2.Target, resultFields); err != nil {
 			return err
 		}
-		publicationBlockNumber, err = canonicalV2Target(ctx, tx, job.RequestV2.Target)
+		preparedPublication, publicationBlockNumber, err = repository.prepareCanonicalVerificationTarget(ctx, tx, job.RequestV2.Target)
 		if err != nil {
-			return ErrTargetNotCanonical
+			return err
 		}
+
 		publicationAddress, _ = decodeFixedHex(job.RequestV2.Target.Address, 20)
 		publicationCodeHash, _ = decodeFixedHex(job.RequestV2.Target.CodeHash, 32)
 		blockHash, _ := decodeFixedHex(job.RequestV2.Target.AtBlockHash, 32)
@@ -405,6 +408,7 @@ func (repository *PostgresRepository) CompleteV2(
 			Job: job, Fields: resultFields, BlockNumber: publicationBlockNumber,
 			Address: publicationAddress, CodeHash: publicationCodeHash,
 			Target: publicationTarget, AuthenticatedArtifact: authenticatedArtifact,
+			Prepared: preparedPublication,
 		}); err != nil {
 			return err
 		}
@@ -515,6 +519,7 @@ func (repository *PostgresRepository) persistAuthenticatedCompilationTx(
 }
 
 type verifiedPublication struct {
+	Prepared              *enrich.PreparedPublication
 	Job                   VerificationJob
 	Fields                v2ResultFields
 	BlockNumber           uint64
@@ -599,7 +604,7 @@ func (repository *PostgresRepository) publishVerifiedContractTx(
 	}
 	return repository.requestVerificationProxyReplayTx(
 		ctx, tx, job, publication.BlockNumber, publication.Target,
-		publication.AuthenticatedArtifact,
+		publication.AuthenticatedArtifact, publication.Prepared,
 	)
 }
 

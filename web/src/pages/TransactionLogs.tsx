@@ -1,3 +1,6 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { ChevronRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
@@ -56,7 +59,8 @@ export function TransactionLogCard({
       <header className="transaction-log-header">
         <div className="transaction-log-heading">
           {compact ? (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               className="event-log-toggle"
               aria-expanded={expanded}
@@ -64,8 +68,10 @@ export function TransactionLogCard({
             >
               <UIIcon icon={ChevronRight} size={16} />
               <strong>{signature}</strong>
-              <span className="event-status">{t(logDecodingKey(log.decoding.status))}</span>
-            </button>
+              <Badge variant="status" className="event-status">
+                {t(logDecodingKey(log.decoding.status))}
+              </Badge>
+            </Button>
           ) : (
             <strong>
               {log.decoding.protocol === "eip7708" ? t("detail.protocolETHTransfer") : signature}
@@ -208,9 +214,9 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
               <div>
                 <dt>{t("detail.sourceKind")}</dt>
                 <dd>
-                  <span className="transaction-provenance-badge">
+                  <Badge variant="status" className="transaction-provenance-badge">
                     {abiSourceKindLabel(source.kind, t)}
-                  </span>
+                  </Badge>
                 </dd>
               </div>
               {source.address && (
@@ -235,9 +241,9 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
                 <div>
                   <dt>{t("detail.confidence")}</dt>
                   <dd>
-                    <span className="transaction-provenance-badge">
+                    <Badge variant="status" className="transaction-provenance-badge">
                       {confidenceLabel(log.decoding.confidence, t)}
-                    </span>
+                    </Badge>
                   </dd>
                 </div>
               )}
@@ -270,9 +276,9 @@ function TransactionLogProvenance({ log }: { log: TransactionLog }) {
             <div>
               <dt>{t("detail.attribution")}</dt>
               <dd>
-                <span className="transaction-provenance-badge">
+                <Badge variant="status" className="transaction-provenance-badge">
                   {attributionLabel(attribution.mode, t)}
-                </span>
+                </Badge>
               </dd>
             </div>
             <div>
@@ -328,9 +334,9 @@ function TransactionLogTopicsAndData({
                   </CopyableField>
                 ) : (
                   <>
-                    <label className="sr-only" htmlFor={`topic-mode-${logIndex}-${index}`}>
+                    <Label className="sr-only" htmlFor={`topic-mode-${logIndex}-${index}`}>
                       {t("detail.topicMode", { index })}
-                    </label>
+                    </Label>
                     <SelectControl
                       aria-label={t("detail.topicMode", { index })}
                       className="topic-mode-select"

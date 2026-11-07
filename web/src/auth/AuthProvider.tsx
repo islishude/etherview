@@ -19,7 +19,6 @@ import {
   type AuthSession,
   type User,
   updateAdminUser,
-  updateCurrentUser,
   verifyAuthChallenge,
 } from "@/api/auth";
 import { ApiError } from "@/api/client";
@@ -60,7 +59,6 @@ interface AuthContextValue {
   refresh: () => Promise<void>;
   login: (providerUUID?: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateDisplayName: (displayName: string | null) => Promise<void>;
   updateUser: (id: string, update: AdminUserUpdate) => Promise<void>;
   revokeSessions: (id: string) => Promise<string>;
   clearError: () => void;
@@ -353,36 +351,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [commitSession]);
 
-  const updateDisplayName = useCallback(
-    async (displayName: string | null) => {
-      const current = requireAuthenticated(sessionRef.current);
-      const generation = generationRef.current + 1;
-      generationRef.current = generation;
-      setPending(true);
-      setError(undefined);
-      try {
-        const user = validateUpdatedUser(
-          await updateCurrentUser(current.csrf_token, displayName),
-          current.user.chain_id,
-          current.user.id,
-          current.user.address,
-        );
-        if ((user.display_name ?? null) !== displayName) {
-          throw new AuthBoundaryError("INVALID_AUTH_RESPONSE");
-        }
-        if (generationRef.current === generation) {
-          commitSession({ ...current, user });
-        }
-      } catch (cause) {
-        if (generationRef.current === generation) setError(toAuthErrorCode(cause));
-        throw cause;
-      } finally {
-        if (generationRef.current === generation) setPending(false);
-      }
-    },
-    [commitSession],
-  );
-
   const updateUser = useCallback(
     async (id: string, update: AdminUserUpdate) => {
       const current = requireAdmin(sessionRef.current);
@@ -450,7 +418,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refresh,
       login,
       logout,
-      updateDisplayName,
       updateUser,
       revokeSessions,
       clearError: () => setError(undefined),
@@ -466,7 +433,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refresh,
       revokeSessions,
       session,
-      updateDisplayName,
       updateUser,
     ],
   );
@@ -558,7 +524,7 @@ function isValidUserRecord(
   ) {
     return false;
   }
-  return isValidDisplayName(value.display_name);
+  return true;
 }
 
 function validateUpdatedUser(
@@ -603,18 +569,6 @@ function validateAuthChallenge(value: unknown): {
     expires_at: value.expires_at,
     message: value.message,
   };
-}
-
-function isValidDisplayName(value: string | null | undefined): boolean {
-  if (value === null || value === undefined) return true;
-  return (
-    typeof value === "string" &&
-    value.length > 0 &&
-    value.trim() === value &&
-    [...value].length <= 64 &&
-    new TextEncoder().encode(value).length <= 256 &&
-    !/\p{Cc}/u.test(value)
-  );
 }
 
 function isFutureTimestamp(value: string): boolean {

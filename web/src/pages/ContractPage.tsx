@@ -1,3 +1,10 @@
+import { Pagination } from "@/components/ui/pagination";
+import "@/styles/verification.css";
+import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
 import { ChevronRight, ArrowRight } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import "./ContractPage.css";
@@ -331,136 +338,141 @@ export function ContractPage({ address }: { address: string }) {
         </p>
       ) : (
         <div className="contract-detail-stack">
-          <nav
+          <NavigationTabs
             aria-label={t("contracts.sections")}
             aria-orientation="horizontal"
             className="contract-tabs"
             role="tablist"
           >
             {tabs.map((tab) => (
-              <button
-                aria-controls={`contract-panel-${tab.id}`}
-                aria-selected={activeTab === tab.id}
-                className={activeTab === tab.id ? "contract-tab active" : "contract-tab"}
-                id={`contract-tab-${tab.id}`}
-                key={tab.id}
-                onClick={() => selectTab(tab.id)}
-                onKeyDown={(event) => navigateTabs(event, tab.id)}
-                role="tab"
-                tabIndex={activeTab === tab.id ? 0 : -1}
-                type="button"
-              >
-                {tab.label}
-              </button>
+              <NavigationTab key={tab.id}>
+                <Button
+                  variant="ghost"
+                  aria-controls={`contract-panel-${tab.id}`}
+                  aria-selected={activeTab === tab.id}
+                  className={activeTab === tab.id ? "contract-tab active" : "contract-tab"}
+                  id={`contract-tab-${tab.id}`}
+
+                  onClick={() => selectTab(tab.id)}
+                  onKeyDown={(event) => navigateTabs(event, tab.id)}
+                  role="tab"
+                  tabIndex={activeTab === tab.id ? 0 : -1}
+                  type="button"
+                >
+                  {tab.label}
+                </Button>
+              </NavigationTab>
             ))}
-          </nav>
+          </NavigationTabs>
           {tabs.map((tab) => (
-            <section
-              aria-labelledby={`contract-tab-${tab.id}`}
-              className="panel contract-tab-panel"
-              hidden={activeTab !== tab.id}
-              id={`contract-panel-${tab.id}`}
-              key={tab.id}
-              role="tabpanel"
-            >
-              {activeTab === tab.id ? (
-                activeTab !== "code" && contractQueriesSettling ? (
-                  <QueryNotice
-                    loading={contractQueriesPending}
-                    error={contractQueryTemporaryError}
-                  />
-                ) : (
-                  <>
-                    {activeTab === "code" && (
-                      <>
-                        <QueryNotice
-                          compact
-                          loading={proxy.isPending}
-                          error={isUnverifiedArtifactError(proxy.error) ? undefined : proxy.error}
-                        />
-                        {showProxySummary && proxyDetail ? (
-                          <ProxySummary key={address} detail={proxyDetail} />
-                        ) : null}
-                        {showDirectSource ? (
-                          <ArtifactPanel
-                            address={address}
-                            artifact={artifact.data}
-                            error={artifact.error}
-                            loading={artifact.isPending}
+            <Card key={tab.id} asChild>
+              <section
+                aria-labelledby={`contract-tab-${tab.id}`}
+                className="panel contract-tab-panel"
+                hidden={activeTab !== tab.id}
+                id={`contract-panel-${tab.id}`}
+
+                role="tabpanel"
+              >
+                {activeTab === tab.id ? (
+                  activeTab !== "code" && contractQueriesSettling ? (
+                    <QueryNotice
+                      loading={contractQueriesPending}
+                      error={contractQueryTemporaryError}
+                    />
+                  ) : (
+                    <>
+                      {activeTab === "code" && (
+                        <>
+                          <QueryNotice
+                            compact
+                            loading={proxy.isPending}
+                            error={isUnverifiedArtifactError(proxy.error) ? undefined : proxy.error}
                           />
-                        ) : null}
-                      </>
-                    )}
-                    {(activeTab === "read-contract" || activeTab === "write-contract") && (
-                      <AbiFunctionExplorer
-                        abi={artifact.data?.abi ?? []}
-                        mode={activeTab === "read-contract" ? "read" : "write"}
-                        targets={contractTargets}
-                      />
-                    )}
-                    {implementationArtifactMatches &&
-                      (activeTab === "read-implementation" ||
-                        activeTab === "write-implementation") && (
+                          {showProxySummary && proxyDetail ? (
+                            <ProxySummary key={address} detail={proxyDetail} />
+                          ) : null}
+                          {showDirectSource ? (
+                            <ArtifactPanel
+                              address={address}
+                              artifact={artifact.data}
+                              error={artifact.error}
+                              loading={artifact.isPending}
+                            />
+                          ) : null}
+                        </>
+                      )}
+                      {(activeTab === "read-contract" || activeTab === "write-contract") && (
                         <AbiFunctionExplorer
-                          abi={implementationArtifact.data?.abi ?? []}
-                          mode={activeTab === "read-implementation" ? "read" : "write"}
-                          onBindingChanged={() => void proxy.refetch()}
-                          targets={implementationTargets}
+                          abi={artifact.data?.abi ?? []}
+                          mode={activeTab === "read-contract" ? "read" : "write"}
+                          targets={contractTargets}
                         />
                       )}
-                    {managementArtifactMatches && activeTab === "management" && (
-                      <AbiFunctionExplorer
-                        abi={managementArtifact.data?.abi ?? []}
-                        mode="all"
-                        onBindingChanged={() => void proxy.refetch()}
-                        targets={managementTargets}
-                      />
-                    )}
-                    {activeTab === "diamond-facets" && diamond && (
-                      <DiamondFacetsPanel
-                        diamondAddress={address}
-                        facets={diamond.facets}
-                        targets={diamondTargets}
-                        onBindingChanged={() => void proxy.refetch()}
-                      />
-                    )}
-                    {activeTab === "diamond-cuts" && (
-                      <DiamondCutHistory
-                        data={diamondCuts.data}
-                        error={diamondCuts.error}
-                        loading={diamondCuts.isPending}
-                        page={diamondCutPager.page}
-                        onNext={diamondCutPager.next}
-                        onPrevious={diamondCutPager.previous}
-                        onReset={diamondCutPager.reset}
-                      />
-                    )}
-                    {activeTab === "upgrades" && (
-                      <UpgradeHistory
-                        data={upgrades.data}
-                        error={upgrades.error}
-                        loading={upgrades.isPending}
-                        page={upgradePager.page}
-                        onNext={upgradePager.next}
-                        onPrevious={upgradePager.previous}
-                        onReset={upgradePager.reset}
-                      />
-                    )}
-                    {activeTab === "initializations" && (
-                      <InitializationHistory
-                        data={initializations.data}
-                        error={initializations.error}
-                        loading={initializations.isPending}
-                        page={initializationPager.page}
-                        onNext={initializationPager.next}
-                        onPrevious={initializationPager.previous}
-                        onReset={initializationPager.reset}
-                      />
-                    )}
-                  </>
-                )
-              ) : null}
-            </section>
+                      {implementationArtifactMatches &&
+                        (activeTab === "read-implementation" ||
+                          activeTab === "write-implementation") && (
+                          <AbiFunctionExplorer
+                            abi={implementationArtifact.data?.abi ?? []}
+                            mode={activeTab === "read-implementation" ? "read" : "write"}
+                            onBindingChanged={() => void proxy.refetch()}
+                            targets={implementationTargets}
+                          />
+                        )}
+                      {managementArtifactMatches && activeTab === "management" && (
+                        <AbiFunctionExplorer
+                          abi={managementArtifact.data?.abi ?? []}
+                          mode="all"
+                          onBindingChanged={() => void proxy.refetch()}
+                          targets={managementTargets}
+                        />
+                      )}
+                      {activeTab === "diamond-facets" && diamond && (
+                        <DiamondFacetsPanel
+                          diamondAddress={address}
+                          facets={diamond.facets}
+                          targets={diamondTargets}
+                          onBindingChanged={() => void proxy.refetch()}
+                        />
+                      )}
+                      {activeTab === "diamond-cuts" && (
+                        <DiamondCutHistory
+                          data={diamondCuts.data}
+                          error={diamondCuts.error}
+                          loading={diamondCuts.isPending}
+                          page={diamondCutPager.page}
+                          onNext={diamondCutPager.next}
+                          onPrevious={diamondCutPager.previous}
+                          onReset={diamondCutPager.reset}
+                        />
+                      )}
+                      {activeTab === "upgrades" && (
+                        <UpgradeHistory
+                          data={upgrades.data}
+                          error={upgrades.error}
+                          loading={upgrades.isPending}
+                          page={upgradePager.page}
+                          onNext={upgradePager.next}
+                          onPrevious={upgradePager.previous}
+                          onReset={upgradePager.reset}
+                        />
+                      )}
+                      {activeTab === "initializations" && (
+                        <InitializationHistory
+                          data={initializations.data}
+                          error={initializations.error}
+                          loading={initializations.isPending}
+                          page={initializationPager.page}
+                          onNext={initializationPager.next}
+                          onPrevious={initializationPager.previous}
+                          onReset={initializationPager.reset}
+                        />
+                      )}
+                    </>
+                  )
+                ) : null}
+              </section>
+            </Card>
           ))}
         </div>
       )}
@@ -487,13 +499,15 @@ function DiamondFacetsPanel({
           <span className="eyebrow">ERC-2535</span>
           <h2>{t("contracts.diamond.facetsTitle")}</h2>
         </div>
-        <span className="availability yes">
+        <Badge variant="status" className="availability yes">
           {t("contracts.diamond.facetCount", { count: facets.length })}
-        </span>
+        </Badge>
       </div>
-      <p className="context-note" role="note">
-        {t("contracts.diamond.callTarget", { address: diamondAddress })}
-      </p>
+      <Alert asChild>
+        <p className="context-note" role="note">
+          {t("contracts.diamond.callTarget", { address: diamondAddress })}
+        </p>
+      </Alert>
       <div className="history-list">
         {facets.map((facet) => {
           const target = targets.find(
@@ -561,9 +575,11 @@ function DiamondFacetCard({
         ))}
       </div>
       {facet.role === "immutable" ? (
-        <p className="context-note" role="note">
-          {t("contracts.diamond.immutableNotice")}
-        </p>
+        <Alert asChild>
+          <p className="context-note" role="note">
+            {t("contracts.diamond.immutableNotice")}
+          </p>
+        </Alert>
       ) : target === undefined ? (
         <p className="chain-warning" role="status">
           {t("contracts.diamond.partialInteraction")}
@@ -613,6 +629,7 @@ function DiamondCutHistory({
   const { t } = useTranslation();
   return (
     <HistoryLayout
+      itemCount={data?.items.length ?? 0}
       coverage={data?.coverage}
       error={error}
       loading={loading}
@@ -692,9 +709,11 @@ function ArtifactPanel({
       {unverified ? (
         <div className="chain-warning unverified-contract">
           <p role="status">{t("contracts.unverifiedArtifact")}</p>
-          <Link className="button secondary inline-button" search={{ address }} to="/verify">
-            {t("contracts.submitVerification")}
-          </Link>
+          <Button asChild variant="outline">
+            <Link className="button secondary inline-button" search={{ address }} to="/verify">
+              {t("contracts.submitVerification")}
+            </Link>
+          </Button>
         </div>
       ) : null}
       {artifact ? (
@@ -730,6 +749,7 @@ function UpgradeHistory({
   const { t } = useTranslation();
   return (
     <HistoryLayout
+      itemCount={data?.items.length ?? 0}
       coverage={data?.coverage}
       error={error}
       loading={loading}
@@ -820,6 +840,7 @@ function InitializationHistory({
   const { t } = useTranslation();
   return (
     <HistoryLayout
+      itemCount={data?.items.length ?? 0}
       coverage={data?.coverage}
       error={error}
       loading={loading}
@@ -857,6 +878,7 @@ function InitializationHistory({
 }
 
 function HistoryLayout({
+  itemCount,
   title,
   coverage,
   loading,
@@ -869,6 +891,7 @@ function HistoryLayout({
   children,
 }: {
   title: string;
+  itemCount: number;
   coverage?: ContractProxyUpgradePage["coverage"];
   loading: boolean;
   error: unknown;
@@ -885,9 +908,12 @@ function HistoryLayout({
       <div className="panel-heading">
         <h2>{title}</h2>
         {coverage ? (
-          <span className={coverage.state === "complete" ? "availability yes" : "availability no"}>
+          <Badge
+            variant="status"
+            className={coverage.state === "complete" ? "availability yes" : "availability no"}
+          >
             {historyCoverageLabel(coverage.state, t)}
-          </span>
+          </Badge>
         ) : null}
       </div>
       {coverage && (coverage.from_block !== undefined || coverage.to_block !== undefined) ? (
@@ -900,25 +926,39 @@ function HistoryLayout({
       ) : null}
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       <div className="history-list">{children}</div>
-      <div className="pagination-controls">
-        <button
-          className="button secondary"
-          disabled={page <= 1 || loading}
-          onClick={onPrevious}
-          type="button"
-        >
-          {t("pagination.previous")}
-        </button>
+      <Pagination
+        itemCount={itemCount}
+        onReset={onReset}
+        hasPrevious={page > 1 && (itemCount > 0 || (!loading && !error))}
+        hasNext={!!nextCursor}
+        busy={loading}
+        className="pagination-controls"
+        aria-label={title}
+      >
+        {page > 1 && (
+          <Button
+            variant="outline"
+            className="button secondary"
+            disabled={page <= 1 || loading}
+            onClick={onPrevious}
+            type="button"
+          >
+            {t("pagination.previous")}
+          </Button>
+        )}
         <span>{t("pagination.page", { page })}</span>
-        <button
-          className="button secondary"
-          disabled={!nextCursor || loading}
-          onClick={() => nextCursor && onNext(nextCursor)}
-          type="button"
-        >
-          {t("pagination.next")}
-        </button>
-      </div>
+        {nextCursor && (
+          <Button
+            variant="outline"
+            className="button secondary"
+            disabled={!nextCursor || loading}
+            onClick={() => nextCursor && onNext(nextCursor)}
+            type="button"
+          >
+            {t("pagination.next")}
+          </Button>
+        )}
+      </Pagination>
     </div>
   );
 }
