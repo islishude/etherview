@@ -146,6 +146,50 @@ describe("authentication pages", () => {
     ).toBeInTheDocument();
   });
 
+  it.each(["user", "admin"] as const)(
+    "removes overview logout and preserves %s administration access",
+    async (role) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          if (String(input) === "/api/v1/config")
+            return envelope({
+              chain_id: "1",
+              chain_name: "Auth Testnet",
+              native_symbol: "ETH",
+              native_name: "Ether",
+              native_decimals: 18,
+              features: { user_auth: true, api_billing: true },
+            });
+          if (String(input) === "/api/v1/auth/session")
+            return envelope(authSession(userRecord({ role })));
+          return notFound();
+        }),
+      );
+      renderRoute("/account");
+      await screen.findByRole("heading", { name: "Profile" });
+      const overview = document.querySelector<HTMLElement>('[data-account-tab="overview"]')!;
+      expect(within(overview).queryByRole("button", { name: "Log out" })).not.toBeInTheDocument();
+      expect(within(overview).queryByText("Session controls")).not.toBeInTheDocument();
+      if (role === "admin") {
+        expect(within(overview).getByRole("heading", { name: "Administration" })).toBeVisible();
+        expect(within(overview).getByRole("link", { name: "Manage users" })).toHaveAttribute(
+          "href",
+          "/admin/users",
+        );
+        expect(within(overview).getByRole("link", { name: "Billing ledger" })).toHaveAttribute(
+          "href",
+          "/admin/billing",
+        );
+      } else {
+        expect(
+          within(overview).queryByRole("heading", { name: "Administration" }),
+        ).not.toBeInTheDocument();
+        expect(overview).toHaveClass("account-layout-single");
+      }
+    },
+  );
+
   it("separates wallet connection from a restored user session and saves a bounded profile", async () => {
     const fake = fakeProvider();
     registerProvider(fake.provider);
@@ -287,10 +331,6 @@ describe("authentication pages", () => {
     const token = `evk_abcdefghij_${"a".repeat(43)}`;
     const requests: Array<{ url: string; request?: RequestInit }> = [];
     vi.stubGlobal(
-      "confirm",
-      vi.fn(() => true),
-    );
-    vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, request?: RequestInit) => {
         const url = String(input);
@@ -361,12 +401,22 @@ describe("authentication pages", () => {
       }),
     );
 
-    renderRoute("/account?tab=api-keys");
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderRoute("/account?tab=api-keys", client);
     const user = userEvent.setup();
     expect(await screen.findByRole("heading", { name: "API Keys" })).toBeVisible();
     expect(window.location.pathname).not.toBe("/users");
     expect(screen.queryByRole("textbox", { name: "Key name" })).not.toBeInTheDocument();
     expect(await screen.findByText("Existing reader")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Rotate" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent("Existing reader");
+    deleted = true;
+    await client.invalidateQueries({ queryKey: ["current-user-api-keys"] });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(requests.some(({ url }) => url.endsWith("/rotate"))).toBe(false);
+    deleted = false;
+    await client.invalidateQueries({ queryKey: ["current-user-api-keys"] });
+    await screen.findByText("Existing reader");
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await screen.findByText("Page 2");
     await user.click(screen.getByRole("tab", { name: "Create" }));
@@ -407,6 +457,10 @@ describe("authentication pages", () => {
     await screen.findByText("Page 2");
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Revoke" }));
+    expect(requests.some(({ url }) => url.endsWith("/revoke"))).toBe(false);
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Revoke" }),
+    );
     await waitFor(() =>
       expect(
         requests.some(
@@ -417,14 +471,22 @@ describe("authentication pages", () => {
     );
     const deleteButton = await screen.findByRole("button", { name: "Delete" });
     await waitFor(() => expect(deleteButton).toBeEnabled());
-    vi.mocked(window.confirm).mockReturnValueOnce(false);
     await user.click(deleteButton);
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" }),
+    );
     expect(requests.some(({ request }) => request?.method === "DELETE")).toBe(false);
     await user.click(deleteButton);
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+    );
     await screen.findByText("The API key operation failed. Refresh and try again.");
     expect(screen.getByText("Existing reader")).toBeVisible();
     deleteFails = false;
     await user.click(deleteButton);
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
+    );
     await waitFor(() => expect(screen.queryByText("Existing reader")).not.toBeInTheDocument());
     expect(screen.getByText("Page 1")).toBeVisible();
     expect(screen.getByRole("tab", { name: "List" })).toHaveAttribute("aria-selected", "true");
@@ -583,13 +645,15 @@ describe("authentication pages", () => {
   });
 });
 
-function renderRoute(path: string) {
+function renderRoute(path: string, client?: QueryClient) {
   const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, refetchOnWindowFocus: false },
-    },
-  });
+  const queryClient =
+    client ??
+    new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false },
+      },
+    });
   return render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

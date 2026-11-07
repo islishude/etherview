@@ -223,8 +223,8 @@ export const accountResources = {
         noDisplayName: "No display name",
       },
       sessionActions: {
-        title: "Session controls",
-        description: "The session has a fixed expiry. Logging out revokes it across API replicas.",
+        confirmLogout: "Log out?",
+        logoutDescription: "You will need to sign in again to access your account.",
         logout: "Log out",
       },
       menu: {
@@ -232,6 +232,7 @@ export const accountResources = {
         walletIsNotLogin: "A connected wallet is not an authenticated {{siteName}} user.",
       },
       admin: {
+        actionsTitle: "Administration",
         title: "User administration",
         description:
           "Review chain-scoped users, change roles or status, and revoke all active sessions through the writer-backed boundary.",
@@ -690,8 +691,8 @@ export const accountResources = {
         noDisplayName: "未设置显示名称",
       },
       sessionActions: {
-        title: "会话控制",
-        description: "会话采用固定过期时间；退出会在所有 API 副本上撤销会话。",
+        confirmLogout: "确认退出登录？",
+        logoutDescription: "退出后，需要重新登录才能访问账户。",
         logout: "退出登录",
       },
       menu: {
@@ -699,6 +700,7 @@ export const accountResources = {
         walletIsNotLogin: "钱包已连接并不表示已登录 {{siteName}} 用户。",
       },
       admin: {
+        actionsTitle: "管理入口",
         title: "用户管理",
         description: "通过 writer 权威边界查看当前链用户、修改角色或状态，并撤销全部活动会话。",
         openUsers: "管理用户",

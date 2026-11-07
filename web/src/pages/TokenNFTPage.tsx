@@ -1,3 +1,4 @@
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
 import {
   Table,
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import "@/i18n/resources/tokenPage";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
-import { CircleAlert, X } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useBrowsingCursorHistory, useCursorHistory } from "@/api/pagination";
 import { useEffect, useRef, useState } from "react";
@@ -740,24 +741,10 @@ function NFTExternalImageLink({ url }: { url: string }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const openButtonRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const label = externalTargetLabel(url);
-
   useEffect(() => {
-    if (!open) return;
-    const openButton = openButtonRef.current;
-    dialogRef.current?.focus();
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setOpen(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape);
-      openButton?.focus();
-    };
-  }, [open]);
+    setOpen(false);
+  }, [url]);
 
   return (
     <>
@@ -779,98 +766,34 @@ function NFTExternalImageLink({ url }: { url: string }) {
           {t("nftMetadata.unverifiedLink")}
         </Badge>
       </span>
-      {open ? (
-        <div
-          className="dialog-backdrop"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setOpen(false);
-          }}
-          role="presentation"
+      {open && (
+        <AlertDialog
+          title={t("nftMetadata.dialogTitle")}
+          description={t("nftMetadata.externalWarning")}
+          cancelLabel={t("nftMetadata.cancel")}
+          confirmLabel={t("nftMetadata.openExternal")}
+          returnFocus={openButtonRef}
+          onClose={() => setOpen(false)}
+          action={
+            <a
+              href={url}
+              referrerPolicy="no-referrer"
+              rel="external noopener noreferrer"
+              target="_blank"
+            >
+              {t("nftMetadata.openExternal")}
+            </a>
+          }
         >
-          <div
-            aria-describedby="nft-external-link-warning"
-            aria-labelledby="nft-external-link-title"
-            aria-modal="true"
-            className="external-link-dialog"
-            onKeyDown={trapDialogFocus}
-            ref={dialogRef}
-            role="dialog"
-            tabIndex={-1}
-          >
-            <div className="qr-dialog-heading">
-              <h2 id="nft-external-link-title">{t("nftMetadata.dialogTitle")}</h2>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("common.close")}
-                className="dialog-close"
-                onClick={() => setOpen(false)}
-                type="button"
-              >
-                <UIIcon icon={X} />
-              </Button>
-            </div>
-            <p className="external-link-warning" id="nft-external-link-warning" role="alert">
-              {t("nftMetadata.externalWarning")}
-            </p>
-            <div className="external-link-target">
-              <strong>{t("nftMetadata.target")}</strong>
-              <span>{label}</span>
-              <CopyButton value={url} />
-            </div>
-            <div className="external-link-dialog-actions">
-              <Button
-                variant="outline"
-                className="button secondary"
-                onClick={() => setOpen(false)}
-                type="button"
-              >
-                {t("nftMetadata.cancel")}
-              </Button>
-              <Button asChild>
-                <a
-                  className="button"
-                  href={url}
-                  onClick={() => setOpen(false)}
-                  referrerPolicy="no-referrer"
-                  rel="external noopener noreferrer"
-                  target="_blank"
-                >
-                  {t("nftMetadata.openExternal")}
-                </a>
-              </Button>
-            </div>
+          <div className="external-link-target">
+            <strong>{t("nftMetadata.target")}</strong>
+            <span>{label}</span>
+            <CopyButton value={url} />
           </div>
-        </div>
-      ) : null}
+        </AlertDialog>
+      )}
     </>
   );
-}
-
-function trapDialogFocus(event: React.KeyboardEvent<HTMLDivElement>) {
-  if (event.key !== "Tab") return;
-  const focusable = [
-    ...event.currentTarget.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
-    ),
-  ];
-  if (focusable.length === 0) {
-    event.preventDefault();
-    event.currentTarget.focus();
-    return;
-  }
-  const first = focusable[0]!;
-  const last = focusable.at(-1)!;
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  } else if (document.activeElement === event.currentTarget) {
-    event.preventDefault();
-    (event.shiftKey ? last : first).focus();
-  }
 }
 
 function externalTargetLabel(value: string): string {

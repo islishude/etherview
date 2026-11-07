@@ -126,6 +126,12 @@ concurrent messages coalesce, and caller teardown removes feedback and timers.
 Keep read/loading states, field validation and durable transaction/payment
 outcomes in their owning views.
 
+Confirmation actions use the shared `components/ui/alert-dialog` shadcn adaptation
+with native modal hosting. Focus cancellation initially, contain keyboard focus,
+allow Escape cancellation, ignore backdrop clicks, and restore focus on close.
+Only explicit confirmation runs the action; session and target changes discard
+pending confirmation. Keep business checks and translations with the caller.
+
 Support both light and dark themes and English and Chinese in every changed view.
 Use semantic theme tokens rather than page-local color literals. Leave room for
 translated labels and preserve accessible names for icon-only actions. Status

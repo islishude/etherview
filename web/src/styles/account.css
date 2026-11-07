@@ -8,6 +8,10 @@
     align-items: start;
   }
 
+  .account-layout-single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .api-key-workspace {
     display: grid;
     gap: 1rem;
@@ -301,7 +305,7 @@
   }
 
   .profile-panel,
-  .session-panel,
+  .admin-actions-panel,
   .auth-gate {
     padding: clamp(1rem, 3vw, 1.4rem);
   }
@@ -374,30 +378,30 @@
     justify-self: start;
   }
 
-  .session-panel {
+  .admin-actions-panel {
     display: grid;
     gap: 0.85rem;
   }
 
-  .session-panel h2,
-  .session-panel p,
+  .admin-actions-panel h2,
+  .admin-actions-panel p,
   .auth-gate h2,
   .auth-gate p {
     margin: 0;
   }
 
-  .session-panel h2,
+  .admin-actions-panel h2,
   .auth-gate h2 {
     font-size: 1.1rem;
   }
 
-  .session-panel p,
+  .admin-actions-panel p,
   .auth-gate p {
     color: var(--text-soft);
     line-height: 1.55;
   }
 
-  .session-panel .button {
+  .admin-actions-panel .button {
     width: 100%;
     justify-content: center;
   }

@@ -5,7 +5,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -164,6 +164,21 @@ describe("WalletMenu", () => {
     const summary = await screen.findByLabelText(/Test Wallet/u, { selector: "summary" });
     const menu = summary.parentElement as HTMLDetailsElement;
     const user = userEvent.setup();
+    await user.click(summary);
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+    expect(menu).not.toHaveAttribute("open");
+    const confirmation = screen.getByRole("alertdialog", { name: "Log out?" });
+    expect(useAuth().logout).not.toHaveBeenCalled();
+    await user.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+    expect(summary).toHaveFocus();
+    expect(useAuth().logout).not.toHaveBeenCalled();
+    await user.click(summary);
+    await user.click(screen.getByRole("button", { name: "Log out" }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Log out" }),
+    );
+    expect(useAuth().logout).toHaveBeenCalledTimes(1);
+    expect(summary).toHaveFocus();
     await user.click(summary);
     const walletLink = screen.getByRole("link", { name: walletAddress });
     expect(walletLink).toHaveAttribute("href", `/address/${walletAddress}`);

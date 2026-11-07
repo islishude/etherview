@@ -45,3 +45,17 @@ afterEach(() => {
   storedValues.clear();
   document.documentElement.removeAttribute("data-theme");
 });
+
+// jsdom has no native top-layer lifecycle. Real modality is covered by Playwright.
+Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
+  configurable: true,
+  value: function (this: HTMLDialogElement) {
+    this.open = true;
+  },
+});
+Object.defineProperty(HTMLDialogElement.prototype, "close", {
+  configurable: true,
+  value: function (this: HTMLDialogElement) {
+    this.open = false;
+  },
+});

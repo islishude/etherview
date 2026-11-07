@@ -1288,7 +1288,7 @@ test("allowlisted local NFT navigation still requires confirmation", async ({ pa
   await expect(review).toBeVisible();
   expect(requests).toEqual([]);
   await review.click();
-  const dialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
+  const dialog = page.getByRole("alertdialog", { name: "Open an unverified external link?" });
   await expect(dialog).toBeVisible();
   expect(requests).toEqual([]);
   await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -1351,11 +1351,11 @@ test("capability pages survive the embedded binary boundary in both accessible t
     name: `Review unverified external image target ${nftImageURL}`,
   });
   await activateInView(reviewImage);
-  const warningDialog = page.getByRole("dialog", { name: "Open an unverified external link?" });
+  const warningDialog = page.getByRole("alertdialog", {
+    name: "Open an unverified external link?",
+  });
   await expect(warningDialog).toBeVisible();
-  await expect(warningDialog.getByRole("alert")).toContainText(
-    "connects your browser directly to a third party",
-  );
+  await expect(warningDialog).toContainText("connects your browser directly to a third party");
   expect(externalRequests).toEqual([]);
   await assertA11yAndNoOverflow(page, "NFT external-link warning in English");
   const externalLink = warningDialog.getByRole("link", { name: "Open in new tab" });
@@ -1380,8 +1380,8 @@ test("capability pages survive the embedded binary boundary in both accessible t
       name: `检查未经验证的外部图片目标 ${nftImageURL}`,
     }),
   );
-  const chineseWarning = page.getByRole("dialog", { name: "打开未经验证的外部链接？" });
-  await expect(chineseWarning.getByRole("alert")).toContainText("由浏览器直接连接第三方");
+  const chineseWarning = page.getByRole("alertdialog", { name: "打开未经验证的外部链接？" });
+  await expect(chineseWarning).toContainText("由浏览器直接连接第三方");
   expect(externalRequests).toEqual([]);
   await activateInView(chineseWarning.getByRole("button", { name: "取消" }));
   await activateInView(page.getByRole("button", { name: "Switch to English" }));
@@ -2836,7 +2836,6 @@ for (const initiallyConnected of [false, true]) {
       ),
     ).toHaveLength(0);
 
-    page.on("dialog", async (dialog) => dialog.accept());
     const accountSections = page.getByRole("navigation", { name: "Account sections" });
     await activateInView(accountSections.getByRole("link", { name: "API Keys", exact: true }));
     await expect(page.getByRole("heading", { name: "API Keys" })).toBeVisible();
@@ -2880,15 +2879,28 @@ for (const initiallyConnected of [false, true]) {
     ).toBe(true);
     await activateInView(page.getByRole("button", { name: "I saved the token" }));
     await activateInView(page.getByRole("button", { name: "Rotate" }));
+    await expect(
+      page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }),
+    ).toBeFocused();
+    await assertA11yAndNoOverflow(page, "API key rotation confirmation in English narrow mode");
+    await activateInView(
+      page.getByRole("alertdialog").getByRole("button", { name: "Rotate", exact: true }),
+    );
     await expect(page.getByRole("dialog", { name: "Save your API key now" })).toContainText(
       rotatedUserAPIKeyToken,
     );
     await activateInView(page.getByRole("button", { name: "I saved the token" }));
     await activateInView(page.getByRole("button", { name: "Revoke" }));
+    await activateInView(
+      page.getByRole("alertdialog").getByRole("button", { name: "Revoke", exact: true }),
+    );
     await expect(
       page.locator(".api-key-card .user-state").getByText("Revoked", { exact: true }),
     ).toBeVisible();
     await activateInView(page.getByRole("button", { name: "Delete", exact: true }));
+    await activateInView(
+      page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }),
+    );
     await expect(page.locator(".api-key-card")).toHaveCount(0);
     const personalKeyWrites = authRequests.filter(
       ({ method, pathname }) =>
@@ -3045,11 +3057,26 @@ for (const initiallyConnected of [false, true]) {
     );
     expect(overflow).toBeLessThanOrEqual(1);
 
+    await activateInView(page.locator(".wallet-summary"));
+    await activateInView(page.getByRole("button", { name: "退出登录", exact: true }));
+    const logoutDialog = page.getByRole("alertdialog", { name: "确认退出登录？" });
+    await expect(logoutDialog.getByRole("button", { name: "取消" })).toBeFocused();
+    await assertA11yAndNoOverflow(page, "logout confirmation in Chinese narrow mode");
+    await logoutDialog.getByRole("button", { name: "取消" }).click();
+    await expect(page.locator(".wallet-summary")).toBeFocused();
+    expect(
+      authRequests.filter(
+        ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
+      ),
+    ).toHaveLength(0);
+    await activateInView(page.locator(".wallet-summary"));
+    await activateInView(page.getByRole("button", { name: "退出登录", exact: true }));
     await page.evaluate(() => {
       (window as AuthWalletWindow).__etherviewE2EAuthWallet.emit("accountsChanged", [
         "0x4444444444444444444444444444444444444444",
       ]);
     });
+    await expect(logoutDialog).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "需要已认证的用户会话。" })).toBeVisible();
     await expect
       .poll(

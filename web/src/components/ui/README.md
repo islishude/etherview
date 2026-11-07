@@ -3,7 +3,7 @@
 Etherview owns the adapted shadcn/ui source in this directory. `web/components.json`
 configures the existing Vite/Tailwind 4 project, aliases and registry style.
 Upstream sources are the official `https://ui.shadcn.com/r/styles/new-york-v4/`
-registry entries (button, input, textarea, card, badge, table, skeleton and tabs).
+registry entries (alert-dialog, button, input, textarea, card, badge, table, skeleton and tabs).
 The MIT notice is retained in `licenses/shadcn-ui-MIT.txt`.
 
 Import individual modules. Keep business data, translations, API calls and
@@ -33,8 +33,13 @@ uses `data-theme`, system fonts and no Preflight reset.
   while preserving router links, URL state and existing keyboard behavior.
 - Alert does not impose a live region. The caller chooses status/alert/note or
   ordinary content semantics. Message retains its caller-scoped timers, deduping,
-  native-dialog hosting and focus restoration. Dialog and search-selector behavior
+  native-dialog hosting and focus restoration. Non-confirmation dialog and search-selector behavior
   stays with the owning component. No floating-layer or toast runtime is added.
+- AlertDialog adapts the shadcn Alert Dialog layout to a native modal `dialog`
+  with `alertdialog` semantics. It owns cancellation focus, Tab containment,
+  Escape dismissal and focus restoration. Callers own translations, target/session
+  validity and mutations; confirmation closes before the action runs. External
+  navigation remains an `asChild` anchor with caller-owned privacy attributes.
 - Theme and status colors update immediately without color interpolation, preserving
   contrast during theme changes and synchronous status feedback. Skeleton motion
   respects reduced motion. No component generates runtime style

@@ -1,3 +1,4 @@
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import "@/styles/account.css";
 import { Card } from "@/components/ui/card";
@@ -14,7 +15,7 @@ import { UIIcon } from "@/components/UIIcon";
 import { SelectControl } from "@/components/SelectControl";
 import { WatchlistPanel } from "./WatchlistPages";
 import { usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
-import { type SubmitEvent, useEffect, useRef, useState } from "react";
+import { type SubmitEvent, type RefObject, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
@@ -242,7 +243,10 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
 
           {privateIdentity && activeTab === "watchlist" && <WatchlistPanel key={privateIdentity} />}
           {auth.session.authenticated && sessionUser && activeTab === "overview" && (
-            <div className="account-layout" data-account-tab="overview">
+            <div
+              className={`account-layout${sessionUser.role === "admin" ? "" : " account-layout-single"}`}
+              data-account-tab="overview"
+            >
               <Card asChild>
                 <section className="panel profile-panel" aria-labelledby="profile-title">
                   <div className="panel-heading">
@@ -319,37 +323,28 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                 </section>
               </Card>
 
-              <Card asChild>
-                <aside className="panel session-panel" aria-labelledby="session-actions-title">
-                  <h2 id="session-actions-title">{t("auth.sessionActions.title")}</h2>
-                  <p>{t("auth.sessionActions.description")}</p>
-                  {sessionUser.role === "admin" && (
-                    <>
+              {sessionUser.role === "admin" && (
+                <Card asChild>
+                  <aside
+                    className="panel admin-actions-panel"
+                    aria-labelledby="admin-actions-title"
+                  >
+                    <h2 id="admin-actions-title">{t("auth.admin.actionsTitle")}</h2>
+                    <Button asChild variant="outline">
+                      <Link className="button secondary inline-button" to="/admin/users">
+                        {t("auth.admin.openUsers")}
+                      </Link>
+                    </Button>
+                    {billingEnabled && (
                       <Button asChild variant="outline">
-                        <Link className="button secondary inline-button" to="/admin/users">
-                          {t("auth.admin.openUsers")}
+                        <Link className="button secondary inline-button" to="/admin/billing">
+                          {t("billing.admin.openBilling")}
                         </Link>
                       </Button>
-                      {billingEnabled && (
-                        <Button asChild variant="outline">
-                          <Link className="button secondary inline-button" to="/admin/billing">
-                            {t("billing.admin.openBilling")}
-                          </Link>
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  <Button
-                    variant="outline"
-                    className="button secondary"
-                    disabled={auth.pending}
-                    onClick={() => void auth.logout()}
-                    type="button"
-                  >
-                    {t("auth.sessionActions.logout")}
-                  </Button>
-                </aside>
-              </Card>
+                    )}
+                  </aside>
+                </Card>
+              )}
             </div>
           )}
           {auth.session.authenticated &&
@@ -447,6 +442,11 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   const [scopes, setScopes] = useState<APIKeyScope[]>(["api:read"]);
   const [issued, setIssued] = useState<UserAPIKeyIssued>();
   const [pendingPrefix, setPendingPrefix] = useState<string>();
+  const [confirmation, setConfirmation] = useState<{
+    operation: "rotate" | "revoke" | "delete";
+    key: UserAPIKey;
+    csrf: string;
+  }>();
   const [formError, setFormError] = useState<string>();
   const dialogRef = useRef<HTMLDivElement>(null);
   const cursor = cursors.at(-1) || undefined;
@@ -512,12 +512,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   };
 
   const rotateKey = async (key: UserAPIKey) => {
-    if (
-      !csrfToken ||
-      pendingPrefix ||
-      !window.confirm(t("auth.apiKeys.confirmRotate", { name: key.name }))
-    )
-      return;
+    if (!csrfToken || pendingPrefix || getSignal().aborted) return;
     setPendingPrefix(key.prefix);
     setFormError(undefined);
     try {
@@ -533,12 +528,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   };
 
   const revokeKey = async (key: UserAPIKey) => {
-    if (
-      !csrfToken ||
-      pendingPrefix ||
-      !window.confirm(t("auth.apiKeys.confirmRevoke", { name: key.name }))
-    )
-      return;
+    if (!csrfToken || pendingPrefix || getSignal().aborted) return;
     setPendingPrefix(key.prefix);
     setFormError(undefined);
     try {
@@ -552,12 +542,7 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
   };
 
   const deleteKey = async (key: UserAPIKey) => {
-    if (
-      !csrfToken ||
-      pendingPrefix ||
-      !window.confirm(t("auth.apiKeys.confirmDelete", { name: key.name }))
-    )
-      return;
+    if (!csrfToken || pendingPrefix || getSignal().aborted) return;
     setPendingPrefix(key.prefix);
     setFormError(undefined);
     try {
@@ -572,6 +557,19 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
       setPendingPrefix(undefined);
     }
   };
+
+  const confirmationValid =
+    confirmation &&
+    confirmation.csrf === csrfToken &&
+    keys.data?.data.items.some(
+      (key) =>
+        key.prefix === confirmation.key.prefix &&
+        key.status === confirmation.key.status &&
+        key.name === confirmation.key.name,
+    );
+  useEffect(() => {
+    if (!confirmationValid) setConfirmation(undefined);
+  }, [confirmationValid]);
 
   const policy = keys.data?.data.policy;
 
@@ -741,7 +739,10 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                         variant="destructive"
                         className="button danger"
                         disabled={Boolean(pendingPrefix)}
-                        onClick={() => void deleteKey(key)}
+                        onClick={() => {
+                          if (csrfToken)
+                            setConfirmation({ operation: "delete", key, csrf: csrfToken });
+                        }}
                         type="button"
                       >
                         {t("auth.apiKeys.delete")}
@@ -754,7 +755,10 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                         variant="outline"
                         className="button secondary"
                         disabled={Boolean(pendingPrefix)}
-                        onClick={() => void rotateKey(key)}
+                        onClick={() => {
+                          if (csrfToken)
+                            setConfirmation({ operation: "rotate", key, csrf: csrfToken });
+                        }}
                         type="button"
                       >
                         {t("auth.apiKeys.rotate")}
@@ -763,7 +767,10 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
                         variant="destructive"
                         className="button danger"
                         disabled={Boolean(pendingPrefix)}
-                        onClick={() => void revokeKey(key)}
+                        onClick={() => {
+                          if (csrfToken)
+                            setConfirmation({ operation: "revoke", key, csrf: csrfToken });
+                        }}
                         type="button"
                       >
                         {t("auth.apiKeys.revoke")}
@@ -805,41 +812,78 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
         )}
       </div>
 
+      {confirmation && confirmationValid && (
+        <AlertDialog
+          title={t(`auth.apiKeys.${confirmation.operation}`)}
+          description={t(
+            `auth.apiKeys.${{ rotate: "confirmRotate", revoke: "confirmRevoke", delete: "confirmDelete" }[confirmation.operation]}`,
+            { name: confirmation.key.name },
+          )}
+          cancelLabel={t("auth.apiKeys.cancel")}
+          confirmLabel={t(`auth.apiKeys.${confirmation.operation}`)}
+          destructive
+          onClose={() => setConfirmation(undefined)}
+          onConfirm={() => {
+            void { rotate: rotateKey, revoke: revokeKey, delete: deleteKey }[
+              confirmation.operation
+            ](confirmation.key);
+          }}
+        />
+      )}
       {issued && (
-        <div className="dialog-backdrop" onMouseDown={() => setIssued(undefined)}>
-          <div
-            aria-labelledby="api-key-issued-title"
-            aria-modal="true"
-            className="api-key-issued-dialog"
-            onMouseDown={(event) => event.stopPropagation()}
-            ref={dialogRef}
-            role="dialog"
-            tabIndex={-1}
-          >
-            <div className="qr-dialog-heading">
-              <div>
-                <span className="eyebrow">{t("auth.apiKeys.issuedEyebrow")}</span>
-                <h2 id="api-key-issued-title">{t("auth.apiKeys.issuedTitle")}</h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("auth.apiKeys.closeIssued")}
-                className="dialog-close"
-                onClick={() => setIssued(undefined)}
-                type="button"
-              >
-                <UIIcon icon={X} />
-              </Button>
-            </div>
-            <IssuedToken token={issued.token} />
-            <Button className="button primary" onClick={() => setIssued(undefined)} type="button">
-              {t("auth.apiKeys.savedToken")}
-            </Button>
-          </div>
-        </div>
+        <IssuedKeyDialog
+          token={issued.token}
+          dialogRef={dialogRef}
+          onClose={() => setIssued(undefined)}
+        />
       )}
     </section>
+  );
+}
+
+function IssuedKeyDialog({
+  token,
+  dialogRef,
+  onClose,
+}: {
+  token: string;
+  dialogRef: RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="dialog-backdrop" onMouseDown={onClose}>
+      <div
+        aria-labelledby="api-key-issued-title"
+        aria-modal="true"
+        className="api-key-issued-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <div className="qr-dialog-heading">
+          <div>
+            <span className="eyebrow">{t("auth.apiKeys.issuedEyebrow")}</span>
+            <h2 id="api-key-issued-title">{t("auth.apiKeys.issuedTitle")}</h2>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("auth.apiKeys.closeIssued")}
+            className="dialog-close"
+            onClick={onClose}
+            type="button"
+          >
+            <UIIcon icon={X} />
+          </Button>
+        </div>
+        <IssuedToken token={token} />
+        <Button className="button primary" onClick={onClose} type="button">
+          {t("auth.apiKeys.savedToken")}
+        </Button>
+      </div>
+    </div>
   );
 }
 

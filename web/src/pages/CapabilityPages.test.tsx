@@ -286,10 +286,8 @@ describe("P50 capability pages", () => {
     expect(review).toHaveTextContent("media.example/nft/very-long-image-name.png");
     expect(review).not.toHaveTextContent("signature");
     await user.click(review);
-    const dialog = screen.getByRole("dialog", { name: "Open an unverified external link?" });
-    expect(within(dialog).getByRole("alert")).toHaveTextContent(
-      "connects your browser directly to a third party",
-    );
+    const dialog = screen.getByRole("alertdialog", { name: "Open an unverified external link?" });
+    expect(dialog).toHaveTextContent("connects your browser directly to a third party");
     const external = within(dialog).getByRole("link", { name: "Open in new tab" });
     expect(external).toHaveAttribute("href", imageURL);
     expect(external).toHaveAttribute("target", "_blank");
@@ -298,10 +296,12 @@ describe("P50 capability pages", () => {
     expect(requested.every((path) => path.startsWith("/api/v1/"))).toBe(true);
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(review).toHaveFocus();
     await user.click(review);
-    expect(screen.getByRole("dialog", { name: "Open an unverified external link?" })).toBeVisible();
+    expect(
+      screen.getByRole("alertdialog", { name: "Open an unverified external link?" }),
+    ).toBeVisible();
   });
 
   it("supports ERC-1155 metadata without requesting a unique owner", async () => {

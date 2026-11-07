@@ -1,3 +1,4 @@
+import { AlertDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { CircleCheck, CircleDot } from "lucide-react";
@@ -21,6 +22,10 @@ export function WalletMenu() {
   const walletPrimaryName = usePrimaryName(wallet.active?.account ?? "");
   const authPrimaryName = usePrimaryName(auth.session.user?.address ?? "");
   const [open, setOpen] = useState(false);
+  const [logoutSession, setLogoutSession] = useState<typeof auth.session>();
+  useEffect(() => {
+    setLogoutSession(undefined);
+  }, [auth.session]);
   const menuRef = useRef<HTMLDetailsElement | null>(null);
   const summaryRef = useRef<HTMLElement | null>(null);
   const focusAfterTransition = useRef(false);
@@ -215,7 +220,10 @@ export function WalletMenu() {
                     variant="outline"
                     className="button secondary full"
                     disabled={auth.pending}
-                    onClick={() => void auth.logout()}
+                    onClick={() => {
+                      closeMenu();
+                      setLogoutSession(auth.session);
+                    }}
                     type="button"
                   >
                     {t("auth.sessionActions.logout")}
@@ -236,6 +244,19 @@ export function WalletMenu() {
           )}
         </div>
       </details>
+      {logoutSession === auth.session && auth.session.authenticated && (
+        <AlertDialog
+          title={t("auth.sessionActions.confirmLogout")}
+          description={t("auth.sessionActions.logoutDescription")}
+          cancelLabel={t("auth.apiKeys.cancel")}
+          confirmLabel={t("auth.sessionActions.logout")}
+          returnFocus={summaryRef}
+          onClose={() => setLogoutSession(undefined)}
+          onConfirm={() => {
+            if (!auth.pending) void auth.logout();
+          }}
+        />
+      )}
       {errorMessage && <Message type="error">{errorMessage}</Message>}
       {authErrorMessage && <Message type="error">{authErrorMessage}</Message>}
     </>
