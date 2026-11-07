@@ -13,7 +13,6 @@ import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useBrowsingInvalidated } from "@/api/browsingHooks";
-import NameCoverageNotice from "@/ens/NameCoverageNotice";
 import { expirationText } from "@/ens/nameDetails";
 import { useNameFreshness } from "@/ens/useNameFreshness";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
@@ -26,7 +25,6 @@ import { useTranslation } from "react-i18next";
 import { usePublicConfig } from "@/api/publicConfig";
 import {
   useBlocks,
-  useChainStatus,
   useGenesisAccounts,
   useSearchResults,
   useTokens,
@@ -148,6 +146,8 @@ export function BlocksPage() {
       )}
       {blocks.data && (
         <CursorPagination
+          itemCount={blocks.data?.items.length ?? 0}
+          onReset={pager.reset}
           busy={blocks.isFetching}
           hasNext={Boolean(blocks.data.next_cursor)}
           hasPrevious={pager.hasPrevious}
@@ -223,6 +223,8 @@ export function GenesisPage() {
       )}
       {accounts.data && (
         <CursorPagination
+          itemCount={accounts.data?.items.length ?? 0}
+          onReset={pager.reset}
           busy={accounts.isFetching}
           hasNext={Boolean(accounts.data.next_cursor)}
           hasPrevious={pager.hasPrevious}
@@ -328,6 +330,8 @@ export function TransactionsPage() {
       )}
       {transactions.data && (
         <CursorPagination
+          itemCount={transactions.data?.items.length ?? 0}
+          onReset={pager.reset}
           busy={transactions.isFetching}
           hasNext={Boolean(transactions.data.next_cursor)}
           hasPrevious={pager.hasPrevious}
@@ -404,6 +408,8 @@ export function TokensPage() {
         )}
         {tokens.data && (
           <CursorPagination
+            itemCount={tokens.data?.items.length ?? 0}
+            onReset={pager.reset}
             busy={tokens.isFetching}
             hasNext={Boolean(tokens.data.next_cursor)}
             hasPrevious={pager.hasPrevious}
@@ -437,6 +443,8 @@ export function ReorgContext({ kind, hash }: { kind: "block" | "transaction"; ha
 }
 
 export function CursorPagination({
+  itemCount,
+  onReset,
   busy,
   hasNext,
   hasPrevious,
@@ -445,6 +453,8 @@ export function CursorPagination({
   onPrevious,
   page,
 }: {
+  itemCount: number;
+  onReset: () => void;
   busy: boolean;
   hasNext: boolean;
   hasPrevious: boolean;
@@ -457,7 +467,15 @@ export function CursorPagination({
   const { i18n, t } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <Pagination className="cursor-pagination" aria-busy={busy} aria-label={label}>
+    <Pagination
+      itemCount={itemCount}
+      onReset={onReset}
+      hasPrevious={hasPrevious}
+      busy={busy}
+      className="cursor-pagination"
+      aria-busy={busy}
+      aria-label={label}
+    >
       <Button
         variant="outline"
         className="button secondary"
@@ -775,134 +793,6 @@ export function yesNo(value: boolean, t: ReturnType<typeof useTranslation>["t"])
   return value ? t("common.yes") : t("common.no");
 }
 
-export function StatusPage() {
-  const { i18n, t } = useTranslation();
-  const status = useChainStatus();
-  const publicConfig = usePublicConfig();
-  const locale = i18n.resolvedLanguage ?? "en";
-  return (
-    <Page title={t("page.status")} description={t("page.statusDescription")}>
-      <QueryNotice
-        loading={status.isPending || publicConfig.isPending}
-        error={status.error ?? publicConfig.error}
-      />
-      <NameCoverageNotice
-        enabled={publicConfig.data?.features.ens === true}
-        names={status.data?.names}
-      />
-      {status.data && (
-        <div className="status-layout">
-          <Card asChild>
-            <section className="panel status-card" aria-labelledby="sync-status-title">
-              <span>{publicConfig.data?.chain_name ?? t("app.tagline")}</span>
-              <strong id="sync-status-title">
-                {t("common.chain")} {formatInteger(status.data.chain_id, locale)}
-              </strong>
-              <dl>
-                <div>
-                  <dt>{t("context.coreReadiness")}</dt>
-                  <dd>
-                    <Badge
-                      variant="status"
-                      className={status.data.core_ready ? "availability yes" : "availability no"}
-                    >
-                      {status.data.core_ready ? t("context.coreReady") : t("context.coreNotReady")}
-                    </Badge>
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("home.indexed")}</dt>
-                  <dd>{formatInteger(status.data.indexed_block, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("home.highestCovered")}</dt>
-                  <dd>{formatInteger(status.data.highest_covered_block, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("home.networkHead")}</dt>
-                  <dd>{formatInteger(status.data.latest_block, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("home.lagBlocks")}</dt>
-                  <dd>{formatInteger(status.data.lag, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("context.safeBlock")}</dt>
-                  <dd>{formatInteger(status.data.safe_block, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("home.finality")}</dt>
-                  <dd>{formatInteger(status.data.finalized_block, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("context.coverageBounds")}</dt>
-                  <dd>
-                    {formatInteger(status.data.coverage_start, locale)} –{" "}
-                    {formatInteger(status.data.coverage_end, locale)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("home.backfill")}</dt>
-                  <dd>
-                    {status.data.backfill_complete
-                      ? t("home.backfillComplete")
-                      : t("home.backfillIncomplete")}
-                  </dd>
-                </div>
-              </dl>
-            </section>
-          </Card>
-          <div className="status-capabilities-stack">
-            <Card asChild>
-              <section className="panel capability-list" aria-labelledby="data-capabilities-title">
-                <h2 id="data-capabilities-title">{t("status.dataCapabilities")}</h2>
-                <ul>
-                  {Object.entries(status.data.completeness).map(([name, state]) => (
-                    <li key={name}>
-                      <code>{stageLabel(name, t)}</code>
-                      <Badge
-                        variant="status"
-                        className={state === "complete" ? "availability yes" : "availability no"}
-                      >
-                        {stageStateLabel(state, t)}
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </Card>
-            {publicConfig.data && (
-              <Card asChild>
-                <section
-                  className="panel capability-list"
-                  aria-labelledby="configured-features-title"
-                >
-                  <h2 id="configured-features-title">{t("status.configuredFeatures")}</h2>
-                  <ul>
-                    {Object.entries(publicConfig.data.features)
-                      .sort(([left], [right]) => left.localeCompare(right))
-                      .map(([name, enabled]) => (
-                        <li key={name}>
-                          <code>{featureLabel(name, t)}</code>
-                          <Badge
-                            variant="status"
-                            className={enabled ? "availability yes" : "availability no"}
-                          >
-                            {enabled ? t("status.enabled") : t("status.disabled")}
-                          </Badge>
-                        </li>
-                      ))}
-                  </ul>
-                </section>
-              </Card>
-            )}
-          </div>
-        </div>
-      )}
-    </Page>
-  );
-}
-
 export function SearchPage({ query }: { query: string }) {
   const { t } = useTranslation();
   const normalizedQuery = query.trim();
@@ -948,8 +838,10 @@ export function SearchPage({ query }: { query: string }) {
             <SearchResultLink key={`${result.kind}:${result.key}`} result={result} />
           ))}
       </div>
-      {search.data && (
+      {search.data && !search.error && (
         <CursorPagination
+          itemCount={names.items?.length ?? 0}
+          onReset={pager.reset}
           busy={search.isFetching}
           hasNext={Boolean(search.data.next_cursor)}
           hasPrevious={pager.hasPrevious}

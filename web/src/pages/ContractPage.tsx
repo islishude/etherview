@@ -1,3 +1,4 @@
+import { Pagination } from "@/components/ui/pagination";
 import "@/styles/verification.css";
 import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -628,6 +629,7 @@ function DiamondCutHistory({
   const { t } = useTranslation();
   return (
     <HistoryLayout
+      itemCount={data?.items.length ?? 0}
       coverage={data?.coverage}
       error={error}
       loading={loading}
@@ -747,6 +749,7 @@ function UpgradeHistory({
   const { t } = useTranslation();
   return (
     <HistoryLayout
+      itemCount={data?.items.length ?? 0}
       coverage={data?.coverage}
       error={error}
       loading={loading}
@@ -837,6 +840,7 @@ function InitializationHistory({
   const { t } = useTranslation();
   return (
     <HistoryLayout
+      itemCount={data?.items.length ?? 0}
       coverage={data?.coverage}
       error={error}
       loading={loading}
@@ -874,6 +878,7 @@ function InitializationHistory({
 }
 
 function HistoryLayout({
+  itemCount,
   title,
   coverage,
   loading,
@@ -886,6 +891,7 @@ function HistoryLayout({
   children,
 }: {
   title: string;
+  itemCount: number;
   coverage?: ContractProxyUpgradePage["coverage"];
   loading: boolean;
   error: unknown;
@@ -920,7 +926,14 @@ function HistoryLayout({
       ) : null}
       <QueryNotice loading={loading} error={error} onReset={onReset} />
       <div className="history-list">{children}</div>
-      <div className="pagination-controls">
+      <Pagination
+        itemCount={itemCount}
+        onReset={onReset}
+        hasPrevious={page > 1 && !loading && !error}
+        busy={loading}
+        className="pagination-controls"
+        aria-label={title}
+      >
         <Button
           variant="outline"
           className="button secondary"
@@ -940,7 +953,7 @@ function HistoryLayout({
         >
           {t("pagination.next")}
         </Button>
-      </div>
+      </Pagination>
     </div>
   );
 }

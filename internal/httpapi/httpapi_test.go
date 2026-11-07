@@ -19,6 +19,7 @@ import (
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/observability"
+	"github.com/islishude/etherview/internal/userauth"
 	webui "github.com/islishude/etherview/web"
 )
 
@@ -158,7 +159,7 @@ func TestStatusUsesStringQuantitiesAndCompleteness(t *testing.T) {
 	complete := gen.Completeness{Core: gen.StageStateComplete, Trace: gen.StageStateUnavailable, Metadata: gen.StageStatePending, State: gen.StageStateComplete}
 	handler := testHandler(t, fakeReader{status: StatusSnapshot{LatestBlock: 100, IndexedBlock: 98, CoverageStart: 0, CoverageEnd: 98, CoreReady: true, Completeness: complete}})
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	request := adminStatusRequest(handler.(*Handler))
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
@@ -458,7 +459,7 @@ func TestRecoveredPanicDoesNotLogSensitiveValue(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+	handler.ServeHTTP(recorder, adminStatusRequest(handler))
 	const expected = "{\"error\":{\"code\":\"internal_error\",\"message\":\"internal server error\",\"request_id\":\"panic-request\"}}\n"
 	if recorder.Code != http.StatusInternalServerError || recorder.Body.String() != expected {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
@@ -545,7 +546,7 @@ func TestHandlerRecoveryHandlesUncomparableValuesAndPassesAbortSentinel(t *testi
 				t.Fatal(err)
 			}
 			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/status", nil))
+			handler.ServeHTTP(response, adminStatusRequest(handler))
 			if response.Code != http.StatusInternalServerError || !strings.Contains(response.Body.String(), `"request_id":"uncomparable-request"`) {
 				t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 			}
@@ -745,4 +746,14 @@ func TestCursorRoundTripAndRejectsUnknownFields(t *testing.T) {
 	if err := DecodeCursor(strings.Repeat("x", maximumOpaqueCursorLength+1), &decoded); err == nil {
 		t.Fatal("expected oversized cursor input rejection")
 	}
+}
+
+// Existing status projection and panic tests run through the real session gate.
+func adminStatusRequest(handler *Handler) *http.Request {
+	handler.cfg.Features.UserAuth = true
+	handler.userAdministration = &fakeUserAdministration{}
+	handler.userAuth = &fakeUserAuthenticator{authentication: SessionAuthentication{Session: userauth.Session{User: authTestUser(time.Now(), userauth.RoleAdmin)}}}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session-token"})
+	return request
 }

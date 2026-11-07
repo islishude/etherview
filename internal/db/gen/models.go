@@ -2722,7 +2722,6 @@ type User struct {
 	ID          pgtype.UUID        `db:"id" json:"id"`
 	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Address     []byte             `db:"address" json:"address"`
-	DisplayName *string            `db:"display_name" json:"display_name"`
 	Role        string             `db:"role" json:"role"`
 	Status      string             `db:"status" json:"status"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`

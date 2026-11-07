@@ -218,12 +218,11 @@ it.each(["complete", "partial"])(
   },
 );
 
-it("retains next-page navigation when a published page contains no holdings", async () => {
+it("hides pagination when a published page contains no holdings even with a next cursor", async () => {
   tokenData = [];
   tokenMeta = { next_cursor: "token:next", browsing: { state: "partial" } };
   renderExplorer(`/address/${owner}?tab=assets`);
-  const next = await screen.findByRole("button", { name: "Next page" });
-  expect(next).toBeEnabled();
-  await userEvent.setup().click(next);
-  expect(await screen.findByText("Second token")).toBeVisible();
+  const region = await screen.findByRole("region", { name: "ERC-20 holdings" });
+  await waitFor(() => expect(region.querySelector(".empty-result")).not.toBeNull());
+  expect(within(region).queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
 });

@@ -395,6 +395,8 @@ export function AddressDetailPage({
               ) : null}
               {userOperations.data ? (
                 <CursorPagination
+                  itemCount={userOperations.data?.items.length ?? 0}
+                  onReset={userOperationPager.reset}
                   busy={userOperations.isFetching}
                   hasNext={Boolean(userOperations.data.next_cursor)}
                   hasPrevious={userOperationPager.hasPrevious}
@@ -703,6 +705,7 @@ function AddressTransactions({
       page={page}
       title={t("addressTab.transactions")}
       footer={<AddressExportLink address={address} />}
+      itemCount={items?.length ?? 0}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -789,6 +792,7 @@ function AddressInternalTransactions({
       onReset={onReset}
       page={page}
       title={t("addressTab.internalTransactions")}
+      itemCount={items?.length ?? 0}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -900,6 +904,8 @@ function AddressWithdrawals({
       ) : null}
       {!loading && !error ? (
         <CursorPagination
+          itemCount={items?.length ?? 0}
+          onReset={onReset}
           busy={busy}
           hasNext={hasNext}
           hasPrevious={hasPrevious}
@@ -941,6 +947,7 @@ function AddressTokenTransfers({
       onReset={onReset}
       page={page}
       title={title}
+      itemCount={items?.length ?? 0}
       empty={items?.length === 0}
     >
       {items && items.length > 0 ? (
@@ -1011,6 +1018,7 @@ function AddressTokenTransfers({
 function AddressActivitySection({
   busy,
   children,
+  itemCount,
   empty,
   footer,
   error,
@@ -1025,6 +1033,7 @@ function AddressActivitySection({
 }: Omit<AddressActivityProps, "address" | "locale"> & {
   children: React.ReactNode;
   footer?: React.ReactNode;
+  itemCount: number;
   empty: boolean;
   title: string;
 }) {
@@ -1040,6 +1049,8 @@ function AddressActivitySection({
       {children}
       {!loading && !error ? (
         <CursorPagination
+          itemCount={itemCount}
+          onReset={onReset}
           busy={busy}
           hasNext={hasNext}
           hasPrevious={hasPrevious}

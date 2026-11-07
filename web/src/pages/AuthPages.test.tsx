@@ -121,9 +121,73 @@ describe("authentication pages", () => {
         name: "User authentication is disabled",
       }),
     ).toBeVisible();
-    expect(screen.queryByRole("link", { name: "User admin" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
     expect(screen.queryByText("User session", { exact: true })).not.toBeInTheDocument();
   });
+
+  it.each([true, false])(
+    "opens admin overview by default with billing enabled=%s",
+    async (billingEnabled) => {
+      const requests: string[] = [];
+      let failCount = true;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (input: RequestInfo | URL) => {
+          const url = String(input);
+          requests.push(url);
+          if (url === "/api/v1/config") {
+            const response = configResponse(true);
+            const body = await response.json();
+            body.data.features.api_billing = billingEnabled;
+            return Response.json(body);
+          }
+          if (url === "/api/v1/auth/session") return envelope(authSession(userRecord()));
+          if (url === "/api/v1/admin/overview") {
+            if (failCount)
+              return Response.json(
+                {
+                  error: {
+                    code: "user_auth_unavailable",
+                    message: "Unavailable",
+                    request_id: "overview",
+                  },
+                },
+                { status: 503 },
+              );
+            return envelope({ user_count: "9007199254740993" });
+          }
+          if (url.startsWith("/api/v1/admin/billing/summary"))
+            return envelope({
+              payment_count: "0",
+              amount_atomic: "0",
+              from_time: "2026-01-01T00:00:00Z",
+              to_time: "2026-01-02T00:00:00Z",
+              rows: [],
+            });
+          return notFound();
+        }),
+      );
+      renderRoute("/account?tab=admin");
+      expect(await screen.findByText("Unable to load user count.")).toBeVisible();
+      expect(screen.queryByText("9007199254740993")).not.toBeInTheDocument();
+      failCount = false;
+      await userEvent
+        .setup()
+        .click(
+          within(
+            screen.getByText("Unable to load user count.").closest('[role="alert"]') as HTMLElement,
+          ).getByRole("button", { name: "Try again" }),
+        );
+      expect(await screen.findByText("9007199254740993")).toBeVisible();
+      expect(screen.getByRole("heading", { name: "Total users" })).toBeVisible();
+      expect(
+        screen.queryByRole("heading", { name: "User administration" }),
+      ).not.toBeInTheDocument();
+      if (billingEnabled) await screen.findByText("Amounts by network and asset");
+      else expect(requests.some((url) => url.includes("/admin/billing/"))).toBe(false);
+      expect(requests.some((url) => url.includes("/admin/users"))).toBe(false);
+    },
+  );
 
   it("keeps direct sign-in disabled when no injected wallet is discovered", async () => {
     vi.stubGlobal(
@@ -138,9 +202,10 @@ describe("authentication pages", () => {
     );
 
     renderRoute("/account");
-    await screen.findByRole("heading", { name: "Wallet connection" });
+    await screen.findByRole("heading", { name: "Account" });
 
     await waitFor(() => expect(accountPageSignInButton()).toBeDisabled());
+    expect(document.querySelector(".wallet-popover")).not.toHaveTextContent("Open account");
     expect(
       screen.getByText("Install or unlock a browser wallet, then refresh discovery."),
     ).toBeInTheDocument();
@@ -171,21 +236,17 @@ describe("authentication pages", () => {
       const overview = document.querySelector<HTMLElement>('[data-account-tab="overview"]')!;
       expect(within(overview).queryByRole("button", { name: "Log out" })).not.toBeInTheDocument();
       expect(within(overview).queryByText("Session controls")).not.toBeInTheDocument();
+      expect(
+        within(overview).queryByRole("heading", { name: "Administration" }),
+      ).not.toBeInTheDocument();
+      expect(overview).toHaveClass("account-layout-single");
       if (role === "admin") {
-        expect(within(overview).getByRole("heading", { name: "Administration" })).toBeVisible();
-        expect(within(overview).getByRole("link", { name: "Manage users" })).toHaveAttribute(
+        expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute(
           "href",
-          "/admin/users",
-        );
-        expect(within(overview).getByRole("link", { name: "Billing ledger" })).toHaveAttribute(
-          "href",
-          "/admin/billing",
+          "/account?tab=admin&section=overview",
         );
       } else {
-        expect(
-          within(overview).queryByRole("heading", { name: "Administration" }),
-        ).not.toBeInTheDocument();
-        expect(overview).toHaveClass("account-layout-single");
+        expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
       }
     },
   );
@@ -209,52 +270,31 @@ describe("authentication pages", () => {
         if (url === "/api/v1/auth/verify") {
           return envelope(authSession(userRecord()));
         }
-        if (url === "/api/v1/users/me" && request?.method === "PATCH") {
-          const body = JSON.parse(String(request.body)) as { display_name: string | null };
-          return envelope({ ...userRecord(), display_name: body.display_name });
-        }
         return notFound();
       }),
     );
 
     renderRoute("/account");
     const user = userEvent.setup();
-    await screen.findByRole("heading", { name: "Wallet connection" });
+    await screen.findByRole("heading", { name: "Account" });
     await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
 
-    expect(await screen.findByRole("heading", { name: "Wallet connection" })).toBeVisible();
-    expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();
-    expect(screen.getAllByText("User authenticated", { exact: true })).toHaveLength(2);
-    await user.click(screen.getByRole("button", { name: /^Account$/ }));
-    expect(screen.getByRole("link", { name: "User admin" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Profile" })).toBeVisible();
+    expect(document.querySelector(".account-identity")).toBeNull();
+    expect(document.querySelector(".authenticated-user")).toHaveAttribute("href", "/account");
+    expect(document.querySelector(".wallet-account")).toHaveAttribute(
+      "href",
+      `/address/${account}`,
+    );
+    expect(document.querySelector(".wallet-popover")).not.toHaveTextContent("Open account");
+    expect(screen.getAllByText("User authenticated", { exact: true })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Admin" })).toBeVisible();
     expect(document.body).not.toHaveTextContent(csrfToken);
     expect([...storageValues()]).not.toContain(csrfToken);
 
-    const displayName = screen.getByRole("textbox", {
-      name: "Display name",
-    });
-    await user.clear(displayName);
-    await user.type(displayName, "  Updated profile  ");
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Profile saved.");
-
-    const profileRequest = requests.find(
-      ({ url, request }) => url === "/api/v1/users/me" && request?.method === "PATCH",
-    );
-    expect(new Headers(profileRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
-    expect(profileRequest?.request?.body).toBe(JSON.stringify({ display_name: "Updated profile" }));
-    expect(profileRequest?.url).not.toContain(csrfToken);
-
-    await user.clear(displayName);
-    await user.type(displayName, "x".repeat(65));
-    await user.click(screen.getByRole("button", { name: "Save profile" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Use at most 64 Unicode characters");
-    expect(
-      requests.filter(
-        ({ url, request }) => url === "/api/v1/users/me" && request?.method === "PATCH",
-      ),
-    ).toHaveLength(1);
+    expect(screen.queryByRole("textbox", { name: "Display name" })).not.toBeInTheDocument();
+    expect(requests.some(({ url }) => url === "/api/v1/users/me")).toBe(false);
 
     const scan = await axe.run(document, {
       runOnly: {
@@ -266,8 +306,8 @@ describe("authentication pages", () => {
     expect(scan.violations, JSON.stringify(scan.violations, null, 2)).toEqual([]);
 
     await user.click(screen.getByRole("button", { name: "切换到中文" }));
-    expect(await screen.findByRole("heading", { name: "钱包连接" })).toBeVisible();
-    expect(screen.getAllByText("用户已登录", { exact: true })).toHaveLength(2);
+    expect(await screen.findByRole("heading", { name: "个人资料" })).toBeVisible();
+    expect(screen.getAllByText("用户已登录", { exact: true })).toHaveLength(1);
   });
 
   it("logs in through the exact generated API and bounded personal_sign sequence", async () => {
@@ -295,10 +335,10 @@ describe("authentication pages", () => {
 
     renderRoute("/account");
     const user = userEvent.setup();
-    await screen.findByRole("heading", { name: "Wallet connection" });
+    await screen.findByRole("heading", { name: "Account" });
     await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
-    expect(await screen.findAllByText("User authenticated", { exact: true })).toHaveLength(2);
+    expect(await screen.findAllByText("User authenticated", { exact: true })).toHaveLength(1);
     expect(fake.request).toHaveBeenCalledWith({
       method: "personal_sign",
       params: [
@@ -488,7 +528,8 @@ describe("authentication pages", () => {
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }),
     );
     await waitFor(() => expect(screen.queryByText("Existing reader")).not.toBeInTheDocument());
-    expect(screen.getByText("Page 1")).toBeVisible();
+    expect(screen.queryByRole("navigation", { name: "API key pages" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "List" })).toHaveAttribute("aria-selected", "true");
   });
 
@@ -525,7 +566,7 @@ describe("authentication pages", () => {
 
     renderRoute("/account");
     const user = userEvent.setup();
-    await screen.findByRole("heading", { name: "Wallet connection" });
+    await screen.findByRole("heading", { name: "Account" });
     await waitFor(() => expect(accountPageSignInButton()).toBeEnabled());
     await user.click(accountPageSignInButton());
 
@@ -534,7 +575,7 @@ describe("authentication pages", () => {
     });
     await user.click(within(chooser).getByRole("button", { name: /Beta Wallet/u }));
 
-    expect(await screen.findAllByText("User authenticated", { exact: true })).toHaveLength(2);
+    expect(await screen.findAllByText("User authenticated", { exact: true })).toHaveLength(1);
     expect(
       alpha.request.mock.calls.some(([request]) => request.method === "eth_requestAccounts"),
     ).toBe(false);
@@ -552,7 +593,6 @@ describe("authentication pages", () => {
       id: targetUserID,
       address: targetAccount,
       role: "user",
-      display_name: null,
     });
     vi.stubGlobal(
       "fetch",
@@ -598,6 +638,7 @@ describe("authentication pages", () => {
     await signInFromWalletMenu(user);
 
     expect(await screen.findByRole("heading", { name: "User administration" })).toBeVisible();
+    await user.click(await screen.findByRole("button", { name: "Settings" }));
     expect(await screen.findByText(targetAccount)).toBeVisible();
     await user.selectOptions(
       screen.getByRole("combobox", { name: `Role for ${targetAccount}` }),
@@ -619,7 +660,11 @@ describe("authentication pages", () => {
     );
     expect(new Headers(updateRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
 
+    await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("button", { name: "Revoke sessions" }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Revoke sessions" }),
+    );
     expect(await screen.findByText("Revoked 3 session(s) for 0x222222…222222.")).toBeVisible();
     const revokeRequest = requests.find(
       ({ url, request }) =>
@@ -627,12 +672,35 @@ describe("authentication pages", () => {
     );
     expect(new Headers(revokeRequest?.request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
 
+    await user.click(
+      within(screen.getByRole("dialog")).getAllByRole("button", { name: "Close" })[0]!,
+    );
     await user.click(screen.getByRole("button", { name: "Next page" }));
     await waitFor(() => {
       expect(
         requests.some(({ url }) => url.includes("cursor=users%2Fsnapshot%20%2B%20page%3D2")),
       ).toBe(true);
     });
+
+    const search = screen.getByRole("textbox", { name: "Search users" });
+    await user.type(search, "222222{Enter}");
+    await waitFor(() =>
+      expect(
+        requests.some(({ url }) => {
+          const query = new URL(url, "http://localhost").searchParams;
+          return query.get("q") === "222222" && !query.has("cursor");
+        }),
+      ).toBe(true),
+    );
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("navigation", { name: "Administrative user pages" }),
+      ).toHaveTextContent("Page 1"),
+    );
 
     const scan = await axe.run(document, {
       runOnly: {
@@ -668,7 +736,7 @@ function renderRoute(path: string, client?: QueryClient) {
 }
 
 function accountPageSignInButton() {
-  const panel = document.querySelector<HTMLElement>(".auth-action-panel");
+  const panel = document.querySelector<HTMLElement>("[data-account-sign-in]");
   expect(panel).not.toBeNull();
   return within(panel as HTMLElement).getByRole("button", {
     name: "Sign in with Ethereum",
@@ -732,7 +800,6 @@ function userRecord(
     address: string;
     role: "user" | "admin";
     status: "active" | "disabled";
-    display_name: string | null;
     created_at: string;
     updated_at: string;
     last_login_at: string;
@@ -744,7 +811,6 @@ function userRecord(
     address: account,
     role: "admin" as const,
     status: "active" as const,
-    display_name: "Alice" as string | null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     last_login_at: "2026-01-01T00:00:00Z",

@@ -68,10 +68,12 @@ export async function listAdminBillingPayments(
   limit: number,
   cursor?: string,
   filters: AdminBillingFilters = {},
+  signal?: AbortSignal,
 ) {
   return requireEnvelope(
     await sdk.listAdminBillingPayments({
       client: apiClient,
+      signal,
       query: {
         asset: filters.asset,
         cursor,
@@ -88,10 +90,12 @@ export async function listAdminBillingPayments(
 
 export async function getAdminBillingSummary(
   filters: AdminBillingFilters = {},
+  signal?: AbortSignal,
 ): Promise<BillingSummary> {
   return requireEnvelope(
     await sdk.getAdminBillingSummary({
       client: apiClient,
+      signal,
       query: {
         asset: filters.asset,
         from_time: filters.from_time,

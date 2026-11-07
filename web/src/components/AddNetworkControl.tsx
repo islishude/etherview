@@ -1,3 +1,5 @@
+import { Network } from "lucide-react";
+import { UIIcon } from "./UIIcon";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
 import { useEffect, useRef, useState } from "react";
@@ -78,12 +80,14 @@ export function AddNetworkControl({ menuOpen }: AddNetworkControlProps) {
         <span className="quiet">{chainName}</span>
       </div>
       <Button
-        variant="outline"
-        className="button secondary full add-network-button"
+        variant="ghost"
+        size="sm"
+        className="justify-start add-network-button"
         disabled={wallet.addingChain || (!wallet.active && wallet.providers.length === 0)}
         onClick={start}
         type="button"
       >
+        <UIIcon icon={Network} />
         {t("wallet.addNetwork", { chain: chainName })}
       </Button>
       {choosing && wallet.providers.length > 1 ? (

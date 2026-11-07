@@ -17,7 +17,7 @@ afterEach(() => {
 
 it.each([
   { name: "transaction", useResource: () => useTransaction(hash) },
-  { name: "chain status", useResource: () => queries.useChainStatus() },
+  { name: "chain status", useResource: () => queries.useChainStatus(true, "admin-session") },
   { name: "public config", useResource: () => usePublicConfig() },
   { name: "user operation", useResource: () => queries.useUserOperation(hash) },
   { name: "block", useResource: () => queries.useBlock(hash) },

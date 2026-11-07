@@ -369,15 +369,6 @@
     overflow-wrap: anywhere;
   }
 
-  .profile-form {
-    display: grid;
-    gap: 0.8rem;
-  }
-
-  .profile-form .button {
-    justify-self: start;
-  }
-
   .admin-actions-panel {
     display: grid;
     gap: 0.85rem;
@@ -862,7 +853,6 @@
   }
 
   @media (max-width: 767px) {
-    .identity-grid,
     .profile-details,
     .admin-user-card,
     .admin-user-card dl,
@@ -890,19 +880,6 @@
 
     .api-key-actions .button,
     .api-key-issued-dialog .button {
-      width: 100%;
-    }
-
-    .auth-action-panel {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .auth-action-panel .button {
-      width: 100%;
-    }
-
-    .auth-action-panel .siwe-login-control {
       width: 100%;
     }
 

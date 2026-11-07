@@ -1,3 +1,4 @@
+import { AdminSurface, useAdminIdentity } from "@/components/AdminSurface";
 import { AlertDialog } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import "@/styles/account.css";
@@ -8,20 +9,25 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert } from "@/components/ui/alert";
-import { Pagination } from "@/components/ui/pagination";
+import { BillingPagination } from "./BillingControls";
 import { Message } from "@/components/Message";
-import { CircleCheck, CircleDot, X } from "lucide-react";
+import { X } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
-import { SelectControl } from "@/components/SelectControl";
 import { WatchlistPanel } from "./WatchlistPages";
 import { usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
-import { type SubmitEvent, type RefObject, useEffect, useRef, useState } from "react";
+import {
+  type SubmitEvent,
+  type RefObject,
+  Suspense,
+  lazy,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { getAddress, isAddress } from "viem";
 
-import { listAdminUsers, type AdminUserUpdate, type User } from "@/api/auth";
 import {
   createCurrentUserAPIKey,
   deleteCurrentUserAPIKey,
@@ -35,66 +41,44 @@ import {
 } from "@/api/userApiKeys";
 import { usePublicConfig } from "@/api/publicConfig";
 import { CopyButton } from "@/components/CopyButton";
-import { formatTimestamp, shorten } from "@/components/format";
+import { formatTimestamp } from "@/components/format";
 import { SIWELoginControl } from "@/components/SIWELoginControl";
 import { authErrorTranslationKey, useAuth } from "@/auth/AuthProvider";
-import { chainsMatch } from "@/wallet/eip6963";
-import { useWallet } from "@/wallet/WalletProvider";
 import { PersonalBilling } from "./PersonalBilling";
 import { Page } from "./pages";
+import { UnavailablePanel } from "./AccountGates";
+import { AccountWalletNotice } from "./AccountWalletNotice";
 
-const ADMIN_PAGE_SIZE = 25;
+const AdminOverviewPage = lazy(() =>
+  import("./AdminOverviewPage").then((module) => ({ default: module.AdminOverviewPage })),
+);
+const AdminUsersPage = lazy(() =>
+  import("./AdminUsersPage").then((module) => ({ default: module.AdminUsersPage })),
+);
+const AdminBillingPage = lazy(() =>
+  import("./BillingPages").then((module) => ({ default: module.AdminBillingPage })),
+);
+const StatusPage = lazy(() =>
+  import("./StatusPage").then((module) => ({ default: module.StatusPage })),
+);
 
-export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" | "watchlist" }) {
+export function AccountPage({
+  tab,
+  section = "overview",
+}: {
+  tab: "overview" | "api-keys" | "billing" | "watchlist" | "admin";
+  section?: "overview" | "users" | "billing" | "status";
+}) {
   const privateIdentity = usePrivateIdentity();
   const { i18n, t } = useTranslation();
   const auth = useAuth();
-  const wallet = useWallet();
+  const adminIdentity = useAdminIdentity();
   const publicConfig = usePublicConfig();
-  const [displayName, setDisplayName] = useState("");
-  const [profileError, setProfileError] = useState<string>();
-  const [profileSaved, setProfileSaved] = useState(false);
   const locale = i18n.resolvedLanguage ?? "en";
   const sessionUser = auth.session.user ?? undefined;
-  const expectedChainID = publicConfig.data?.chain_id;
   const billingEnabled = publicConfig.data?.features.api_billing === true;
   const apiKeysEnabled = publicConfig.data?.features.user_api_keys === true;
   const activeTab = tab === "billing" && !billingEnabled ? "overview" : tab;
-  const walletOnChain =
-    Boolean(wallet.active) && chainsMatch(wallet.active?.chainID, expectedChainID);
-  const walletMatchesUser =
-    Boolean(wallet.active && sessionUser) &&
-    addressesMatch(wallet.active?.account, sessionUser?.address) &&
-    chainsMatch(wallet.active?.chainID, sessionUser?.chain_id);
-
-  useEffect(() => {
-    setDisplayName(sessionUser?.display_name ?? "");
-  }, [sessionUser?.display_name]);
-
-  useEffect(() => {
-    void sessionUser?.id;
-    setProfileError(undefined);
-    setProfileSaved(false);
-  }, [sessionUser?.id]);
-
-  const submitProfile = async (event: SubmitEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setProfileSaved(false);
-    const normalized = normalizeDisplayName(displayName);
-    if (!normalized.valid) {
-      setProfileError(t("auth.profile.invalidDisplayName"));
-      return;
-    }
-    setProfileError(undefined);
-    try {
-      await auth.updateDisplayName(normalized.value);
-      setDisplayName(normalized.value ?? "");
-      setProfileSaved(true);
-    } catch {
-      // AuthProvider maps the boundary to a stable code. Never render nested
-      // API, database, or transport text from the thrown value.
-    }
-  };
 
   return (
     <Page title={t("auth.account.title")} description={t("auth.account.description")}>
@@ -102,104 +86,27 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
         <UnavailablePanel />
       ) : (
         <>
-          <section className="identity-grid" aria-label={t("auth.account.identityStatus")}>
-            <Card asChild>
-              <article className="panel identity-card">
-                <div className="identity-card-heading">
-                  <UIIcon
-                    icon={wallet.active ? CircleCheck : CircleDot}
-                    size={14}
-                    className={wallet.active ? "status-icon success" : "status-icon"}
-                  />
-                  <h2>{t("auth.walletState.title")}</h2>
-                </div>
-                <strong>
-                  {wallet.active
-                    ? t("auth.walletState.connected")
-                    : t("auth.walletState.disconnected")}
-                </strong>
-                {wallet.active ? (
-                  <>
-                    <Link
-                      className="account-address"
-                      to="/address/$address"
-                      params={{ address: wallet.active.account }}
-                    >
-                      <code>{wallet.active.account}</code>
-                    </Link>
-                    <p>
-                      {walletOnChain
-                        ? t("auth.walletState.correctChain", {
-                            chain: wallet.active.chainID,
-                          })
-                        : t("auth.walletState.wrongChain", {
-                            expected: expectedChainID ?? "—",
-                            actual: wallet.active.chainID,
-                          })}
-                    </p>
-                  </>
-                ) : (
-                  <p>{t("auth.walletState.connectHint")}</p>
-                )}
-              </article>
-            </Card>
-
-            <Card asChild>
-              <article className="panel identity-card">
-                <div className="identity-card-heading">
-                  <UIIcon
-                    icon={auth.session.authenticated ? CircleCheck : CircleDot}
-                    size={14}
-                    className={auth.session.authenticated ? "status-icon success" : "status-icon"}
-                  />
-                  <h2>{t("auth.sessionState.title")}</h2>
-                </div>
-                <strong>
-                  {auth.loading
-                    ? t("auth.sessionState.checking")
-                    : auth.session.authenticated
-                      ? t("auth.sessionState.authenticated")
-                      : t("auth.sessionState.anonymous")}
-                </strong>
-                {auth.session.authenticated && sessionUser ? (
-                  <>
-                    <Link
-                      className="account-address"
-                      to="/address/$address"
-                      params={{ address: sessionUser.address }}
-                    >
-                      <code>{sessionUser.address}</code>
-                    </Link>
-                    <p>
-                      {walletMatchesUser
-                        ? t("auth.sessionState.walletMatches")
-                        : t("auth.sessionState.independent")}
-                    </p>
-                  </>
-                ) : (
-                  <p>{t("auth.sessionState.loginHint")}</p>
-                )}
-              </article>
-            </Card>
-          </section>
-
           {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
 
+          {auth.loading && <p role="status">{t("auth.sessionState.checking")}</p>}
           {!auth.loading && !auth.session.authenticated && (
-            <Card asChild>
-              <section className="panel auth-action-panel" aria-labelledby="sign-in-title">
-                <div>
-                  <span className="eyebrow">{t("auth.signIn.eyebrow")}</span>
-                  <h2 id="sign-in-title">{t("auth.signIn.title")}</h2>
-                  <p>{t("auth.signIn.description")}</p>
-                </div>
-                <SIWELoginControl />
-              </section>
-            </Card>
+            <section
+              data-account-sign-in
+              className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3"
+              aria-label={t("auth.signIn.title")}
+            >
+              <p className="m-0 text-sm text-muted-foreground">
+                {t("auth.sessionState.loginHint")}
+              </p>
+              <SIWELoginControl />
+            </section>
           )}
 
           {auth.session.authenticated && sessionUser && (
-            <NavigationTabs className="account-tabs" aria-label={t("auth.account.sections")}>
+            <NavigationTabs
+              className="account-tabs gap-2 [&>a]:px-1"
+              aria-label={t("auth.account.sections")}
+            >
               <NavigationTab>
                 <Link
                   aria-current={activeTab === "overview" ? "page" : undefined}
@@ -238,15 +145,40 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                   </Link>
                 </NavigationTab>
               )}
+              {adminIdentity && (
+                <NavigationTab>
+                  <Link
+                    to="/account"
+                    search={{ tab: "admin", section: "overview" }}
+                    aria-current={activeTab === "admin" ? "page" : undefined}
+                  >
+                    {t("adminUI.title")}
+                  </Link>
+                </NavigationTab>
+              )}
             </NavigationTabs>
           )}
 
+          <AccountWalletNotice />
+          {activeTab === "admin" &&
+            (adminIdentity ? (
+              <Suspense fallback={<p role="status">{t("adminUI.checking")}</p>}>
+                {section === "billing" ? (
+                  <AdminBillingPage />
+                ) : section === "status" ? (
+                  <StatusPage />
+                ) : section === "users" ? (
+                  <AdminUsersPage />
+                ) : (
+                  <AdminOverviewPage />
+                )}
+              </Suspense>
+            ) : (
+              <AdminSurface>{null}</AdminSurface>
+            ))}
           {privateIdentity && activeTab === "watchlist" && <WatchlistPanel key={privateIdentity} />}
           {auth.session.authenticated && sessionUser && activeTab === "overview" && (
-            <div
-              className={`account-layout${sessionUser.role === "admin" ? "" : " account-layout-single"}`}
-              data-account-tab="overview"
-            >
+            <div className="account-layout account-layout-single" data-account-tab="overview">
               <Card asChild>
                 <section className="panel profile-panel" aria-labelledby="profile-title">
                   <div className="panel-heading">
@@ -293,58 +225,8 @@ export function AccountPage({ tab }: { tab: "overview" | "api-keys" | "billing" 
                       </dd>
                     </div>
                   </dl>
-                  <form className="profile-form" onSubmit={submitProfile}>
-                    <div className="field-control">
-                      <Label htmlFor="auth-display-name">{t("auth.profile.displayName")}</Label>
-                      <Input
-                        aria-describedby="display-name-hint"
-                        autoComplete="nickname"
-                        id="auth-display-name"
-                        maxLength={256}
-                        onChange={(event) => {
-                          setDisplayName(event.target.value);
-                          setProfileError(undefined);
-                          setProfileSaved(false);
-                        }}
-                        value={displayName}
-                      />
-                      <small id="display-name-hint">{t("auth.profile.displayNameHint")}</small>
-                    </div>
-                    {profileError && (
-                      <p className="form-error" role="alert">
-                        {profileError}
-                      </p>
-                    )}
-                    {profileSaved && <Message type="success">{t("auth.profile.saved")}</Message>}
-                    <Button className="button primary" disabled={auth.pending} type="submit">
-                      {t("auth.profile.save")}
-                    </Button>
-                  </form>
                 </section>
               </Card>
-
-              {sessionUser.role === "admin" && (
-                <Card asChild>
-                  <aside
-                    className="panel admin-actions-panel"
-                    aria-labelledby="admin-actions-title"
-                  >
-                    <h2 id="admin-actions-title">{t("auth.admin.actionsTitle")}</h2>
-                    <Button asChild variant="outline">
-                      <Link className="button secondary inline-button" to="/admin/users">
-                        {t("auth.admin.openUsers")}
-                      </Link>
-                    </Button>
-                    {billingEnabled && (
-                      <Button asChild variant="outline">
-                        <Link className="button secondary inline-button" to="/admin/billing">
-                          {t("billing.admin.openBilling")}
-                        </Link>
-                      </Button>
-                    )}
-                  </aside>
-                </Card>
-              )}
             </div>
           )}
           {auth.session.authenticated &&
@@ -783,32 +665,14 @@ function UserAPIKeysPanel({ locale }: { locale: string }) {
           </div>
         )}
         {!creating && keys.data && (
-          <Pagination className="cursor-pagination" aria-label={t("auth.apiKeys.pagination")}>
-            <Button
-              variant="outline"
-              className="button secondary"
-              disabled={Boolean(pendingPrefix) || keys.isFetching || cursors.length === 1}
-              onClick={() =>
-                setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current))
-              }
-              type="button"
-            >
-              {t("pagination.previous")}
-            </Button>
-            <span>{t("pagination.page", { page: cursors.length })}</span>
-            <Button
-              variant="outline"
-              className="button secondary"
-              disabled={Boolean(pendingPrefix) || keys.isFetching || !keys.data.meta.next_cursor}
-              onClick={() => {
-                const next = keys.data?.meta.next_cursor;
-                if (next) setCursors((current) => [...current, next]);
-              }}
-              type="button"
-            >
-              {t("pagination.next")}
-            </Button>
-          </Pagination>
+          <BillingPagination
+            itemCount={keys.data.data.items.length}
+            busy={Boolean(pendingPrefix) || keys.isFetching}
+            cursors={cursors}
+            onChange={setCursors}
+            nextCursor={keys.data.meta.next_cursor}
+            label={t("auth.apiKeys.pagination")}
+          />
         )}
       </div>
 
@@ -887,340 +751,8 @@ function IssuedKeyDialog({
   );
 }
 
-export function AdminUsersPage() {
-  const { i18n, t } = useTranslation();
-  const auth = useAuth();
-  const publicConfig = usePublicConfig();
-  const billingEnabled = publicConfig.data?.features.api_billing === true;
-  const [cursors, setCursors] = useState([""]);
-  const [announcement, setAnnouncement] = useState<{ text: string; revision: number }>();
-  const cursor = cursors.at(-1) || undefined;
-  const isAdmin =
-    auth.session.authenticated &&
-    auth.session.user?.status === "active" &&
-    auth.session.user.role === "admin";
-  const locale = i18n.resolvedLanguage ?? "en";
-  const users = useQuery({
-    queryKey: ["admin-users", cursor ?? null],
-    queryFn: () => listAdminUsers(ADMIN_PAGE_SIZE, cursor),
-    enabled: auth.enabled && isAdmin,
-    retry: false,
-    staleTime: 0,
-  });
-
-  useEffect(() => {
-    if (!isAdmin) setCursors([""]);
-  }, [isAdmin]);
-
-  const mutationComplete = async (message: string) => {
-    setAnnouncement((previous) => ({ text: message, revision: (previous?.revision ?? 0) + 1 }));
-    await users.refetch();
-  };
-
-  return (
-    <Page title={t("auth.admin.title")} description={t("auth.admin.description")}>
-      {!auth.enabled && !auth.loading ? (
-        <UnavailablePanel />
-      ) : auth.loading ? (
-        <Alert asChild>
-          <p className="query-notice" role="status">
-            {t("auth.sessionState.checking")}
-          </p>
-        </Alert>
-      ) : !auth.session.authenticated ? (
-        <AuthGate
-          detail={t("auth.admin.authenticationRequired")}
-          title={t("auth.errors.authenticationRequired")}
-        />
-      ) : !isAdmin ? (
-        <AuthGate detail={t("auth.admin.adminRequired")} title={t("auth.errors.adminRequired")} />
-      ) : (
-        <>
-          <div className="admin-toolbar">
-            <p>{t("auth.admin.page", { page: cursors.length })}</p>
-            <div className="admin-toolbar-actions">
-              {billingEnabled && (
-                <Button asChild variant="outline">
-                  <Link className="button secondary" to="/admin/billing">
-                    {t("billing.admin.openBilling")}
-                  </Link>
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                className="button secondary"
-                disabled={users.isFetching}
-                onClick={() => void users.refetch()}
-                type="button"
-              >
-                {t("auth.admin.refresh")}
-              </Button>
-            </div>
-          </div>
-          {auth.error && <Message type="error">{t(authErrorTranslationKey(auth.error))}</Message>}
-          {announcement && (
-            <Message key={announcement.revision} type="success">
-              {announcement.text}
-            </Message>
-          )}
-          {users.isPending && (
-            <Alert asChild>
-              <p className="query-notice" role="status">
-                {t("auth.admin.loading")}
-              </p>
-            </Alert>
-          )}
-          {users.error && (
-            <Alert asChild>
-              <div className="query-notice degraded" role="alert">
-                <span>
-                  <strong>{t("auth.admin.loadFailed")}</strong>
-                  <small>{t("auth.admin.loadFailedDetail")}</small>
-                </span>
-              </div>
-            </Alert>
-          )}
-          {users.data?.data.length === 0 && (
-            <p className="empty-result" role="status">
-              {t("auth.admin.empty")}
-            </p>
-          )}
-          {users.data && users.data.data.length > 0 && (
-            <div className="admin-user-list" aria-label={t("auth.admin.userList")}>
-              {users.data.data.map((user) => (
-                <AdminUserCard
-                  currentUserID={auth.session.user?.id}
-                  key={user.id}
-                  locale={locale}
-                  onMutationComplete={mutationComplete}
-                  user={user}
-                />
-              ))}
-            </div>
-          )}
-          {users.data && (
-            <Pagination className="cursor-pagination" aria-label={t("auth.admin.pagination")}>
-              <Button
-                variant="outline"
-                className="button secondary"
-                disabled={users.isFetching || cursors.length === 1}
-                onClick={() => {
-                  setAnnouncement(undefined);
-                  setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current));
-                }}
-                type="button"
-              >
-                {t("pagination.previous")}
-              </Button>
-              <span>{t("pagination.page", { page: cursors.length })}</span>
-              <Button
-                variant="outline"
-                className="button secondary"
-                disabled={users.isFetching || !users.data.meta.next_cursor}
-                onClick={() => {
-                  const next = users.data?.meta.next_cursor;
-                  if (!next) return;
-                  setAnnouncement(undefined);
-                  setCursors((current) => [...current, next]);
-                }}
-                type="button"
-              >
-                {t("pagination.next")}
-              </Button>
-            </Pagination>
-          )}
-        </>
-      )}
-    </Page>
-  );
-}
-
-function AdminUserCard({
-  currentUserID,
-  locale,
-  onMutationComplete,
-  user,
-}: {
-  currentUserID?: string;
-  locale: string;
-  onMutationComplete: (message: string) => Promise<void>;
-  user: User;
-}) {
-  const { t } = useTranslation();
-  const auth = useAuth();
-  const [role, setRole] = useState(user.role);
-  const [status, setStatus] = useState(user.status);
-  const changed = role !== user.role || status !== user.status;
-
-  useEffect(() => {
-    setRole(user.role);
-    setStatus(user.status);
-  }, [user.role, user.status]);
-
-  const save = async () => {
-    const update: AdminUserUpdate = {};
-    if (role !== user.role) update.role = role;
-    if (status !== user.status) update.status = status;
-    if (Object.keys(update).length === 0) return;
-    try {
-      await auth.updateUser(user.id, update);
-      await onMutationComplete(t("auth.admin.updated", { address: shorten(user.address) }));
-    } catch {
-      // Stable AuthProvider error is rendered by the owning page.
-    }
-  };
-
-  const revoke = async () => {
-    try {
-      const count = await auth.revokeSessions(user.id);
-      await onMutationComplete(
-        t("auth.admin.revoked", {
-          address: shorten(user.address),
-          count,
-        }),
-      );
-    } catch {
-      // Stable AuthProvider error is rendered by the owning page.
-    }
-  };
-
-  return (
-    <Card asChild>
-      <article className="panel admin-user-card">
-        <header>
-          <div>
-            <strong>{user.display_name ?? t("auth.profile.noDisplayName")}</strong>
-            {user.id === currentUserID && (
-              <span className="current-user-label">{t("auth.admin.you")}</span>
-            )}
-          </div>
-          <code title={user.address}>{user.address}</code>
-        </header>
-        <dl>
-          <div>
-            <dt>{t("auth.fields.lastLogin")}</dt>
-            <dd>
-              {user.last_login_at ? (
-                <time dateTime={user.last_login_at}>
-                  {formatTimestamp(user.last_login_at, locale)}
-                </time>
-              ) : (
-                "—"
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>{t("auth.fields.createdAt")}</dt>
-            <dd>
-              <time dateTime={user.created_at}>{formatTimestamp(user.created_at, locale)}</time>
-            </dd>
-          </div>
-        </dl>
-        <div className="admin-user-controls">
-          <Label className="field-control">
-            <span>{t("auth.fields.role")}</span>
-            <SelectControl
-              aria-label={t("auth.admin.roleFor", { address: user.address })}
-              disabled={auth.pending}
-              onChange={(event) => setRole(event.target.value as User["role"])}
-              value={role}
-            >
-              <option value="user">{t("auth.role.user")}</option>
-              <option value="admin">{t("auth.role.admin")}</option>
-            </SelectControl>
-          </Label>
-          <Label className="field-control">
-            <span>{t("auth.fields.status")}</span>
-            <SelectControl
-              aria-label={t("auth.admin.statusFor", { address: user.address })}
-              disabled={auth.pending}
-              onChange={(event) => setStatus(event.target.value as User["status"])}
-              value={status}
-            >
-              <option value="active">{t("auth.status.active")}</option>
-              <option value="disabled">{t("auth.status.disabled")}</option>
-            </SelectControl>
-          </Label>
-        </div>
-        <div className="admin-user-actions">
-          <Button
-            className="button primary"
-            disabled={auth.pending || !changed}
-            onClick={() => void save()}
-            type="button"
-          >
-            {t("auth.admin.saveUser")}
-          </Button>
-          <Button
-            variant="outline"
-            className="button secondary"
-            disabled={auth.pending}
-            onClick={() => void revoke()}
-            type="button"
-          >
-            {t("auth.admin.revokeSessions")}
-          </Button>
-        </div>
-      </article>
-    </Card>
-  );
-}
-
-function AuthGate({ detail, title }: { detail: string; title: string }) {
-  const { t } = useTranslation();
-  return (
-    <Card asChild>
-      <section className="panel auth-gate" aria-labelledby="auth-gate-title">
-        <h2 id="auth-gate-title">{title}</h2>
-        <p>{detail}</p>
-        <Button asChild variant="default">
-          <Link className="button primary inline-button" to="/account">
-            {t("auth.account.open")}
-          </Link>
-        </Button>
-      </section>
-    </Card>
-  );
-}
-
 function apiKeyScopeTranslationKey(scope: APIKeyScope): "read" | "verify" {
   return scope === "api:read" ? "read" : "verify";
-}
-
-function UnavailablePanel() {
-  const { t } = useTranslation();
-  return (
-    <Card asChild>
-      <section className="panel auth-gate" aria-labelledby="auth-unavailable-title">
-        <h2 id="auth-unavailable-title">{t("auth.unavailable.title")}</h2>
-        <p>{t("auth.unavailable.description")}</p>
-      </section>
-    </Card>
-  );
-}
-
-function normalizeDisplayName(
-  value: string,
-): { valid: true; value: string | null } | { valid: false } {
-  const normalized = value.trim();
-  if (normalized === "") return { valid: true, value: null };
-  if (
-    [...normalized].length > 64 ||
-    new TextEncoder().encode(normalized).length > 256 ||
-    /\p{Cc}/u.test(normalized)
-  ) {
-    return { valid: false };
-  }
-  return { valid: true, value: normalized };
-}
-
-function addressesMatch(left: string | undefined, right: string | undefined): boolean {
-  if (!left || !right || !isAddress(left) || !isAddress(right)) return false;
-  try {
-    return getAddress(left) === getAddress(right);
-  } catch {
-    return false;
-  }
 }
 
 function IssuedToken({ token }: { token: string }) {

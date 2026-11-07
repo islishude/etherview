@@ -62,7 +62,6 @@ type User struct {
 	ID          string
 	ChainID     uint64
 	Address     string
-	DisplayName *string
 	Role        Role
 	Status      Status
 	CreatedAt   time.Time

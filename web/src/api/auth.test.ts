@@ -6,7 +6,6 @@ import {
   logoutAuthSession,
   revokeAdminUserSessions,
   updateAdminUser,
-  updateCurrentUser,
   verifyAuthChallenge,
 } from "./auth";
 
@@ -80,11 +79,10 @@ describe("generated authentication API adapter", () => {
     vi.stubGlobal("fetch", fetcher);
 
     await logoutAuthSession(csrfToken);
-    await updateCurrentUser(csrfToken, "Alice");
     await updateAdminUser(csrfToken, userID, { role: "admin" });
     expect(await revokeAdminUserSessions(csrfToken, userID)).toBe("2");
 
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(fetcher).toHaveBeenCalledTimes(3);
     for (const [url, request] of fetcher.mock.calls) {
       expect(String(url)).not.toContain(csrfToken);
       expect(new Headers(request?.headers).get("X-CSRF-Token")).toBe(csrfToken);
@@ -130,7 +128,6 @@ function userRecord() {
     address,
     role: "admin",
     status: "active",
-    display_name: "Alice",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     last_login_at: "2026-01-01T00:00:00Z",

@@ -31,7 +31,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(systemTheme).toHaveAttribute("aria-pressed", "true");
     await expect.soft(systemTheme).toHaveCSS("border-top-color", await tokenColor(page, "--brand"));
 
-    await page.goto("/status");
+    await page.goto("/charts");
     const more = page.getByRole("button", { name: "More", exact: true });
     await expect.soft(more).toHaveCSS("border-bottom-color", await tokenColor(page, "--brand"));
     await more.click();

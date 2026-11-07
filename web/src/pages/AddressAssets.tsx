@@ -82,17 +82,21 @@ export function AddressAssets({ address, asset }: { address: string; asset: Addr
           {asset === "nfts" && !nfts.error && nfts.data && nfts.data.items.length > 0 && (
             <NFTHoldings balances={nfts.data.items} locale={locale} />
           )}
-          {data && (data.items.length > 0 || pager.hasPrevious || data.next_cursor) && (
-            <CursorPagination
-              busy={query.isFetching}
-              hasNext={Boolean(data.next_cursor)}
-              hasPrevious={pager.hasPrevious}
-              label={t(asset === "tokens" ? "pagination.erc20Balances" : "pagination.nfts")}
-              onNext={() => pager.next(data.next_cursor)}
-              onPrevious={pager.previous}
-              page={pager.page}
-            />
-          )}
+          {data &&
+            !query.error &&
+            (data.items.length > 0 || pager.hasPrevious || data.next_cursor) && (
+              <CursorPagination
+                itemCount={data.items.length}
+                onReset={pager.reset}
+                busy={query.isFetching}
+                hasNext={Boolean(data.next_cursor)}
+                hasPrevious={pager.hasPrevious}
+                label={t(asset === "tokens" ? "pagination.erc20Balances" : "pagination.nfts")}
+                onNext={() => pager.next(data.next_cursor)}
+                onPrevious={pager.previous}
+                page={pager.page}
+              />
+            )}
         </BrowsingScope>
       </section>
     </div>

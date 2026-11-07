@@ -12,10 +12,12 @@ paths:
   /status:
     get:
       operationId: getStatus
-      tags: [system]
+      tags: [system, admin]
+      security:
+        - UserSession: []
       responses:
         "200":
-          description: Current indexing and capability status.
+          description: Current indexing and capability status. Requires an active administrator session.
           content:
             application/json:
               schema:
@@ -104,29 +106,6 @@ paths:
           description: The current session is revoked and its Cookie is cleared.
         default:
           $ref: "#/components/responses/Error"
-  /users/me:
-    patch:
-      operationId: updateCurrentUser
-      tags: [users]
-      security:
-        - UserSession: []
-      parameters:
-        - $ref: "#/components/parameters/CSRFToken"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UserProfileUpdate"
-      responses:
-        "200":
-          description: Updated current user.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserResponse"
-        default:
-          $ref: "#/components/responses/Error"
   /users/me/api-keys:
     get:
       operationId: listCurrentUserAPIKeys
@@ -213,6 +192,21 @@ paths:
           description: Revoked API key soft-deleted, or already deleted. Active keys return 409 api_key_not_revoked.
         default:
           $ref: "#/components/responses/Error"
+  /admin/overview:
+    get:
+      operationId: getAdminOverview
+      tags: [users, admin]
+      security:
+        - UserSession: []
+      responses:
+        "200":
+          description: Current-chain user count, including administrators and disabled users.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOverviewResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /admin/users:
     get:
       operationId: listAdminUsers
@@ -220,6 +214,12 @@ paths:
       security:
         - UserSession: []
       parameters:
+        - name: q
+          in: query
+          description: Case-insensitive literal substring of address; trimmed, at most 64 characters and 256 UTF-8 bytes, without control characters. Cursors are bound to this search.
+          schema:
+            type: string
+            maxLength: 64
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
       responses:
@@ -2946,11 +2946,6 @@ components:
           $ref: "#/components/schemas/Quantity"
         address:
           $ref: "#/components/schemas/Address"
-        display_name:
-          type: string
-          nullable: true
-          minLength: 1
-          maxLength: 64
         role:
           $ref: "#/components/schemas/UserRole"
         status:
@@ -3013,16 +3008,21 @@ components:
           type: string
           minLength: 43
           maxLength: 43
-    UserProfileUpdate:
+    AdminOverview:
       type: object
       additionalProperties: false
-      required: [display_name]
+      required: [user_count]
       properties:
-        display_name:
-          type: string
-          nullable: true
-          minLength: 1
-          maxLength: 64
+        user_count:
+          $ref: "#/components/schemas/Quantity"
+    AdminOverviewResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/AdminOverview"
+        meta:
+          $ref: "#/components/schemas/Meta"
     APIKeyScope:
       type: string
       enum: [api:read, contract:verify]

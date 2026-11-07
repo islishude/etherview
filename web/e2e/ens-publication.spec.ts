@@ -1,3 +1,4 @@
+import { installAdminSession } from "./adminFixtures";
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { configureAppearance, collectBrowserErrors } from "./appearance";
@@ -178,6 +179,7 @@ for (const language of ["en", "zh"] as const) {
       ),
     ).toBeLessThanOrEqual(1);
     expect(statusRequests).toBe(0);
+    await installAdminSession(page, "admin", { ens: true });
     await page.goto("/status");
     await expect(
       page.getByText(

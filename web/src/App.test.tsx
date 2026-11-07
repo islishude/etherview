@@ -1025,7 +1025,8 @@ describe("embedded explorer shell", () => {
 });
 
 function renderExplorer(path: string) {
-  if (path.startsWith("/verify")) vi.stubGlobal("fetch", withVerificationSession(fetch));
+  if (path.startsWith("/verify") || path === "/status")
+    vi.stubGlobal("fetch", withVerificationSession(fetch, path === "/status" ? "admin" : "user"));
   const router = makeRouter(createMemoryHistory({ initialEntries: [path] }));
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },

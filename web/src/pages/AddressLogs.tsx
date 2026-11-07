@@ -288,6 +288,8 @@ function AddressLogsContent({
             ))}
           {logs.data && !logs.error && (
             <CursorPagination
+              itemCount={logs.data?.data.length ?? 0}
+              onReset={pager.reset}
               label={t("addressLogs.title")}
               busy={logs.isFetching}
               hasNext={!pager.invalid && Boolean(logs.data.meta.next_cursor)}

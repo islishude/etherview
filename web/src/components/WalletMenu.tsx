@@ -1,7 +1,7 @@
 import { AlertDialog } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Message } from "@/components/Message";
-import { CircleCheck, CircleDot } from "lucide-react";
+import { CircleCheck, CircleDot, LogOut, Unplug, RefreshCw } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
@@ -68,10 +68,17 @@ export function WalletMenu() {
       <details
         className="wallet-menu"
         ref={menuRef}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            closeMenu();
+            summaryRef.current?.focus();
+          }
+        }}
         onBlurCapture={(event) => {
           const next = event.relatedTarget;
           if (next instanceof Node && !event.currentTarget.contains(next)) {
             focusWithinMenu.current = false;
+            closeMenu();
           }
         }}
         onFocusCapture={() => {
@@ -120,21 +127,24 @@ export function WalletMenu() {
               ) : null}
               <Link
                 className="wallet-account"
+                aria-label={wallet.active.account}
                 to="/address/$address"
                 params={{ address: wallet.active.account }}
                 onClick={closeMenu}
               >
-                <code>{wallet.active.account}</code>
+                <code title={wallet.active.account}>{shorten(wallet.active.account)}</code>
               </Link>
               <Button
-                variant="outline"
-                className="button secondary full"
+                variant="ghost"
+                size="sm"
+                className="justify-start"
                 type="button"
                 onClick={() => {
                   focusAfterTransition.current = true;
                   wallet.disconnect();
                 }}
               >
+                <UIIcon icon={Unplug} />
                 {t("actions.disconnect")}
               </Button>
             </>
@@ -169,11 +179,13 @@ export function WalletMenu() {
               <strong>{t("wallet.none")}</strong>
               <small>{t("wallet.installHint")}</small>
               <Button
-                variant="outline"
-                className="button secondary full"
+                variant="ghost"
+                size="sm"
+                className="justify-start"
                 type="button"
                 onClick={wallet.discover}
               >
+                <UIIcon icon={RefreshCw} />
                 {t("actions.retry")}
               </Button>
             </div>
@@ -195,30 +207,19 @@ export function WalletMenu() {
                 <p role="status">{t("auth.sessionState.checking")}</p>
               ) : auth.session.authenticated && auth.session.user ? (
                 <>
-                  <Link
-                    className="authenticated-user"
-                    to="/address/$address"
-                    params={{ address: auth.session.user.address }}
-                    onClick={closeMenu}
-                  >
+                  <Link className="authenticated-user" to="/account" onClick={closeMenu}>
                     <UIIcon icon={CircleCheck} size={14} className="status-icon success" />
                     <span>
                       <strong>
-                        {auth.session.user.display_name ??
-                          authPrimaryName?.name ??
-                          shorten(auth.session.user.address, 6, 4)}
+                        {authPrimaryName?.name ?? shorten(auth.session.user.address, 6, 4)}
                       </strong>
                       <small>{t(`auth.role.${auth.session.user.role}`)}</small>
                     </span>
                   </Link>
-                  <Button asChild variant="outline">
-                    <Link className="button secondary inline-button full" to="/account">
-                      {t("auth.account.open")}
-                    </Link>
-                  </Button>
                   <Button
-                    variant="outline"
-                    className="button secondary full"
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start"
                     disabled={auth.pending}
                     onClick={() => {
                       closeMenu();
@@ -226,18 +227,14 @@ export function WalletMenu() {
                     }}
                     type="button"
                   >
+                    <UIIcon icon={LogOut} />
                     {t("auth.sessionActions.logout")}
                   </Button>
                 </>
               ) : (
                 <>
                   <p className="quiet">{t("auth.menu.walletIsNotLogin")}</p>
-                  <SIWELoginControl full />
-                  <Button asChild variant="outline">
-                    <Link className="button secondary inline-button full" to="/account">
-                      {t("auth.account.open")}
-                    </Link>
-                  </Button>
+                  <SIWELoginControl compact />
                 </>
               )}
             </section>

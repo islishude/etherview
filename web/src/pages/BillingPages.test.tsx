@@ -2,7 +2,7 @@ import { testBillingConfig } from "@/billing/testFixtures";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import axe from "axe-core";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -97,17 +97,14 @@ describe("billing pages", () => {
     expect(await screen.findByRole("heading", { name: "Account", level: 1 })).toBeVisible();
     const user = userEvent.setup();
     await connectTestWallet(user);
-    await user.click(document.querySelector(".auth-action-panel button") as HTMLElement);
+    await user.click(document.querySelector("[data-account-sign-in] button") as HTMLElement);
 
     expect(await screen.findByRole("heading", { name: "Add credit" })).toBeVisible();
     expect(screen.queryByRole("heading", { name: "History" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "History" }));
     await user.selectOptions(screen.getByRole("combobox", { name: "Record type" }), "payments");
     expect(await screen.findByRole("heading", { name: "History" })).toBeVisible();
-    expect(screen.getByText("Wallet connected", { exact: true })).toBeVisible();
-    for (const link of document.querySelectorAll(".identity-card .account-address")) {
-      expect(link).toHaveAttribute("href", `/address/${address}`);
-    }
+    expect(document.querySelector(".account-identity")).toBeNull();
     expect(
       screen.getAllByText("340282366920938463463374607431768.211455", { exact: true }).length,
     ).toBeGreaterThan(0);
@@ -192,11 +189,19 @@ describe("billing pages", () => {
     await signInFromWalletMenu(user);
 
     expect(await screen.findByRole("heading", { name: "Billing administration" })).toBeVisible();
-    expect(await screen.findByText("Settlement unknown", { exact: true })).toBeVisible();
+    expect((await screen.findAllByText(count, { exact: true }))[0]).toBeVisible();
+    expect(requests.some(({ url }) => url.startsWith("/api/v1/admin/billing/payments"))).toBe(
+      false,
+    );
+    await user.click(screen.getByRole("tab", { name: "Payments" }));
+    await user.click(await screen.findByRole("button", { name: "Details" }));
     expect(screen.getByText(currentUserID, { exact: true })).toBeVisible();
     expect(screen.getByText(apiKeyPrefix, { exact: true })).toBeVisible();
-    expect(screen.getAllByText(amount, { exact: true }).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(count, { exact: true }).length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("dialog")).getByText(amount, { exact: true })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(
+      screen.getAllByText("Advanced filters").find((element) => !element.closest("[hidden]"))!,
+    );
     expect(screen.queryByRole("option", { name: "getVerifiedContract" })).not.toBeInTheDocument();
     for (const operation of [
       "listTransactionTokenTransfers",
@@ -225,18 +230,33 @@ describe("billing pages", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "settling");
     await user.selectOptions(screen.getByRole("combobox", { name: "Operation" }), "getBlock");
     await user.type(screen.getByRole("textbox", { name: "Asset" }), asset);
-    fireEvent.change(screen.getByLabelText("From time"), {
-      target: { value: "2026-06-01T00:00" },
-    });
-    fireEvent.change(screen.getByLabelText("To time"), {
-      target: { value: "2026-07-03T00:00" },
-    });
+    fireEvent.change(
+      screen
+        .getByRole("tabpanel", { name: "Payments" })
+        .querySelector("input[type=datetime-local]")!,
+      {
+        target: { value: "2026-06-01T00:00" },
+      },
+    );
+    fireEvent.change(
+      screen
+        .getByRole("tabpanel", { name: "Payments" })
+        .querySelectorAll("input[type=datetime-local]")[1]!,
+      {
+        target: { value: "2026-07-03T00:00" },
+      },
+    );
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("cannot exceed 31 days");
 
-    fireEvent.change(screen.getByLabelText("From time"), {
-      target: { value: "2026-07-02T00:00" },
-    });
+    fireEvent.change(
+      screen
+        .getByRole("tabpanel", { name: "Payments" })
+        .querySelector("input[type=datetime-local]")!,
+      {
+        target: { value: "2026-07-02T00:00" },
+      },
+    );
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
     const expectedFromTime = new Date("2026-07-02T00:00").toISOString();
     const expectedToTime = new Date("2026-07-03T00:00").toISOString();
@@ -321,7 +341,6 @@ function authSession(role: "user" | "admin") {
       address,
       role,
       status: "active",
-      display_name: "Billing User",
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
       last_login_at: "2026-07-26T00:00:00Z",

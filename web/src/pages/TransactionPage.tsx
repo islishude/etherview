@@ -357,6 +357,8 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
                 )}
                 {logIdentityCurrent && logs.data && (
                   <CursorPagination
+                    itemCount={logs.data?.items.length ?? 0}
+                    onReset={logPager.reset}
                     busy={logs.isFetching}
                     hasNext={Boolean(logs.data.next_cursor)}
                     hasPrevious={logPager.hasPrevious}
@@ -426,6 +428,8 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
                   ))}
                 {stateIdentityCurrent && stateChanges.data && (
                   <CursorPagination
+                    itemCount={stateChanges.data?.items.length ?? 0}
+                    onReset={statePager.reset}
                     busy={stateChanges.isFetching}
                     hasNext={Boolean(stateChanges.data.next_cursor)}
                     hasPrevious={statePager.hasPrevious}

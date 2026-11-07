@@ -14,7 +14,6 @@ const mocks = vi.hoisted(() => ({
   logoutAuthSession: vi.fn(),
   revokeAdminUserSessions: vi.fn(),
   updateAdminUser: vi.fn(),
-  updateCurrentUser: vi.fn(),
   verifyAuthChallenge: vi.fn(),
   publicConfig: {
     data: {
@@ -44,7 +43,6 @@ vi.mock("@/api/auth", () => ({
   logoutAuthSession: mocks.logoutAuthSession,
   revokeAdminUserSessions: mocks.revokeAdminUserSessions,
   updateAdminUser: mocks.updateAdminUser,
-  updateCurrentUser: mocks.updateCurrentUser,
   verifyAuthChallenge: mocks.verifyAuthChallenge,
 }));
 
@@ -81,10 +79,6 @@ describe("AuthProvider", () => {
     mocks.wallet.signSIWEChallenge.mockResolvedValue(signature);
     mocks.getAuthSession.mockResolvedValue({ authenticated: false });
     mocks.logoutAuthSession.mockResolvedValue(undefined);
-    mocks.updateCurrentUser.mockResolvedValue({
-      ...userRecord(),
-      display_name: "Updated",
-    });
     mocks.updateAdminUser.mockResolvedValue(userRecord());
     mocks.revokeAdminUserSessions.mockResolvedValue("1");
   });
@@ -116,8 +110,10 @@ describe("AuthProvider", () => {
     renderAuth();
     expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Update profile" }));
-    expect(mocks.updateCurrentUser).toHaveBeenCalledWith(csrfToken, "Updated");
+    await userEvent.setup().click(screen.getByRole("button", { name: "Update user" }));
+    expect(mocks.updateAdminUser).toHaveBeenCalledWith(csrfToken, userRecord().id, {
+      role: "admin",
+    });
     expect(storageWrite).not.toHaveBeenCalled();
     expect(window.localStorage.length).toBe(0);
     expect(document.body).not.toHaveTextContent(csrfToken);
@@ -380,23 +376,6 @@ describe("AuthProvider", () => {
     expect(mocks.logoutAuthSession).toHaveBeenCalledWith(csrfToken);
   });
 
-  it.each(["", " leading", "trailing ", "control\u0000name", "x".repeat(65)])(
-    "rejects a non-canonical returned display name %j",
-    async (displayName) => {
-      mocks.getAuthSession.mockResolvedValue(
-        authenticatedSession({
-          user: { ...userRecord(), display_name: displayName },
-        }),
-      );
-
-      renderAuth();
-
-      expect(await screen.findByTestId("auth-state")).toHaveTextContent("anonymous");
-      expect(screen.getByTestId("auth-error")).toHaveTextContent("INVALID_AUTH_RESPONSE");
-      expect(mocks.logoutAuthSession).toHaveBeenCalledWith(csrfToken);
-    },
-  );
-
   it("expires a restored session without waiting for another request", async () => {
     vi.useFakeTimers();
     try {
@@ -498,28 +477,27 @@ describe("AuthProvider", () => {
     expect(document.body).not.toHaveTextContent("secret database endpoint");
   });
 
-  it("rejects a profile response that changes the authenticated identity", async () => {
+  it("rejects a user response that changes the authenticated identity", async () => {
     mocks.getAuthSession.mockResolvedValue(authenticatedSession());
-    mocks.updateCurrentUser.mockResolvedValue({
+    mocks.updateAdminUser.mockResolvedValue({
       ...userRecord(),
       address: "0x2222222222222222222222222222222222222222",
-      display_name: "Updated",
       role: "admin",
     });
 
     renderAuth();
     expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Update profile" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Update user" }));
 
     expect(await screen.findByTestId("auth-error")).toHaveTextContent("INVALID_AUTH_RESPONSE");
     expect(screen.getByTestId("auth-state")).toHaveTextContent("authenticated");
-    expect(screen.getByText("Alice")).toBeVisible();
+    expect(screen.getByText(userRecord().address)).toBeVisible();
   });
 
-  it("does not let a delayed profile write resurrect a cleared wallet session", async () => {
+  it("does not let a delayed user write resurrect a cleared wallet session", async () => {
     let resolveUpdate: ((value: ReturnType<typeof userRecord>) => void) | undefined;
     mocks.getAuthSession.mockResolvedValue(authenticatedSession());
-    mocks.updateCurrentUser.mockReturnValue(
+    mocks.updateAdminUser.mockReturnValue(
       new Promise((resolve) => {
         resolveUpdate = resolve;
       }),
@@ -527,17 +505,17 @@ describe("AuthProvider", () => {
 
     const view = renderAuth();
     expect(await screen.findByTestId("auth-state")).toHaveTextContent("authenticated");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Update profile" }));
-    await waitFor(() => expect(mocks.updateCurrentUser).toHaveBeenCalledOnce());
+    await userEvent.setup().click(screen.getByRole("button", { name: "Update user" }));
+    await waitFor(() => expect(mocks.updateAdminUser).toHaveBeenCalledOnce());
 
     mocks.wallet.active = { ...initialWallet(), chainID: "2", revision: 2 };
     view.rerender(authTree());
     await act(async () => {
-      resolveUpdate?.({ ...userRecord(), display_name: "Updated" });
+      resolveUpdate?.(userRecord());
     });
 
     expect(screen.getByTestId("auth-state")).toHaveTextContent("anonymous");
-    expect(screen.queryByText("Updated")).not.toBeInTheDocument();
+    expect(screen.queryByText(userRecord().address)).not.toBeInTheDocument();
   });
 });
 
@@ -550,7 +528,7 @@ function AuthHarness() {
       <output data-testid="auth-state">
         {auth.session.authenticated ? "authenticated" : "anonymous"}
       </output>
-      {auth.session.user?.display_name && <span>{auth.session.user.display_name}</span>}
+      {auth.session.user && <span>{auth.session.user.address}</span>}
       {auth.error && <output data-testid="auth-error">{auth.error}</output>}
       <button type="button" onClick={() => void auth.login()}>
         Log in
@@ -564,11 +542,11 @@ function AuthHarness() {
       <button
         type="button"
         onClick={() => {
-          void auth.updateDisplayName("Updated").catch(() => {});
+          void auth.updateUser(userRecord().id, { role: "admin" }).catch(() => {});
           rerender((value) => value + 1);
         }}
       >
-        Update profile
+        Update user
       </button>
     </div>
   );
@@ -634,7 +612,6 @@ function userRecord() {
     address: "0x1111111111111111111111111111111111111111",
     role: "admin" as const,
     status: "active" as const,
-    display_name: "Alice",
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     last_login_at: "2026-01-01T00:00:00Z",

@@ -20,7 +20,6 @@ const BlocksPage = lazyRouteComponent(() => import("@/pages/pages"), "BlocksPage
 const GenesisPage = lazyRouteComponent(() => import("@/pages/pages"), "GenesisPage");
 const NotFoundPage = lazyRouteComponent(() => import("@/pages/pages"), "NotFoundPage");
 const SearchPage = lazyRouteComponent(() => import("@/pages/pages"), "SearchPage");
-const StatusPage = lazyRouteComponent(() => import("@/pages/pages"), "StatusPage");
 const TokensPage = lazyRouteComponent(() => import("@/pages/pages"), "TokensPage");
 const TransactionsPage = lazyRouteComponent(() => import("@/pages/pages"), "TransactionsPage");
 const EntityPage = lazyRouteComponent(() => import("@/pages/EntityPage"), "EntityPage");
@@ -41,11 +40,6 @@ const AddressExportPage = lazyRouteComponent(
   "AddressExportPage",
 );
 const AccountPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AccountPage");
-const AdminUsersPage = lazyRouteComponent(() => import("@/pages/AuthPages"), "AdminUsersPage");
-const AdminBillingPage = lazyRouteComponent(
-  () => import("@/pages/BillingPages"),
-  "AdminBillingPage",
-);
 
 const rootRoute = createRootRoute({
   component: AppShell,
@@ -302,17 +296,31 @@ const pendingRoute = createRoute({
 const statusRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/status",
-  component: StatusPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/account", search: { tab: "admin", section: "status" }, replace: true });
+  },
 });
 const accountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/account",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab?: "overview" | "api-keys" | "billing" | "watchlist" } => ({
+  ): {
+    tab?: "overview" | "api-keys" | "billing" | "watchlist" | "admin";
+    section?: "overview" | "users" | "billing" | "status";
+  } => ({
     tab:
-      search.tab === "watchlist" || search.tab === "api-keys" || search.tab === "billing"
+      search.tab === "watchlist" ||
+      search.tab === "api-keys" ||
+      search.tab === "billing" ||
+      search.tab === "admin"
         ? search.tab
+        : undefined,
+    section:
+      search.tab === "admin"
+        ? search.section === "users" || search.section === "billing" || search.section === "status"
+          ? search.section
+          : "overview"
         : undefined,
   }),
   component: AccountRoutePage,
@@ -320,12 +328,16 @@ const accountRoute = createRoute({
 const adminUsersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/users",
-  component: AdminUsersPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/account", search: { tab: "admin", section: "users" }, replace: true });
+  },
 });
 const adminBillingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin/billing",
-  component: AdminBillingPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/account", search: { tab: "admin", section: "billing" }, replace: true });
+  },
 });
 const searchRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -413,8 +425,8 @@ function NFTRoutePage() {
 }
 
 function AccountRoutePage() {
-  const { tab } = accountRoute.useSearch();
-  return <AccountPage tab={tab ?? "overview"} />;
+  const { tab, section } = accountRoute.useSearch();
+  return <AccountPage tab={tab ?? "overview"} section={section ?? "users"} />;
 }
 
 function VerifyRoutePage() {

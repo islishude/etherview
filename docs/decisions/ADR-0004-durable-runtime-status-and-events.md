@@ -155,3 +155,10 @@ aggregate sync snapshot. Readers refresh from PostgreSQL rather than treating
 an invalidation payload as a status observation. One deferred transaction-local
 projection emits only actual publication-identity transitions; duplicate source
 triggers do not multiply events for an unchanged identity.
+
+## Detailed status authorization
+
+ADR-0020 restricts the detailed `/api/v1/status` projection to administrator
+sessions. This changes access, not status publication or replay: the public
+home snapshot and compact browsing events retain their existing contracts,
+and operational health probes remain on their dedicated listener.

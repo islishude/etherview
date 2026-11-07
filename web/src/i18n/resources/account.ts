@@ -213,14 +213,6 @@ export const accountResources = {
       },
       profile: {
         title: "Profile",
-        displayName: "Display name",
-        displayNameHint:
-          "Optional; 64 Unicode characters and 256 UTF-8 bytes maximum. Clear the field to remove it.",
-        invalidDisplayName:
-          "Use at most 64 Unicode characters and 256 UTF-8 bytes, without control characters.",
-        saved: "Profile saved.",
-        save: "Save profile",
-        noDisplayName: "No display name",
       },
       sessionActions: {
         confirmLogout: "Log out?",
@@ -239,8 +231,6 @@ export const accountResources = {
         openUsers: "Manage users",
         authenticationRequired: "Log in before opening user administration.",
         adminRequired: "The current user does not have the administrator role.",
-        page: "User page {{page}}",
-        refresh: "Refresh users",
         loading: "Loading users…",
         loadFailed: "User list is unavailable",
         loadFailedDetail:
@@ -683,12 +673,6 @@ export const accountResources = {
       },
       profile: {
         title: "个人资料",
-        displayName: "显示名称",
-        displayNameHint: "可选；最多 64 个 Unicode 字符和 256 个 UTF-8 字节。清空字段即可移除。",
-        invalidDisplayName: "最多使用 64 个 Unicode 字符和 256 个 UTF-8 字节，且不能包含控制字符。",
-        saved: "个人资料已保存。",
-        save: "保存资料",
-        noDisplayName: "未设置显示名称",
       },
       sessionActions: {
         confirmLogout: "确认退出登录？",
@@ -706,8 +690,6 @@ export const accountResources = {
         openUsers: "管理用户",
         authenticationRequired: "请先登录再打开用户管理。",
         adminRequired: "当前用户没有管理员角色。",
-        page: "用户第 {{page}} 页",
-        refresh: "刷新用户",
         loading: "正在加载用户…",
         loadFailed: "用户列表不可用",
         loadFailedDetail: "writer 权威管理员查询失败；不会据此使用缓存权限。",

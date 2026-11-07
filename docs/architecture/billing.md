@@ -115,3 +115,11 @@ publishes fenced observations on the intent. Browser intent polling begins at
 signed submission, preserves terminal results and known hashes, and restores
 durable observations on reload. Neither progress nor a transaction hash credits
 an account; ADR-0044 and ADR-0059 retain the settlement and publication boundaries.
+
+## Management presentation
+
+A separate administrator navigation surface hosts searchable users, Billing,
+and session-protected detailed sync status. User settings and payment details
+use native modal drawers. Billing Overview and Payments fetch only their visible
+view, with separate filter and pagination state; amounts are grouped by network
+and asset. Public status authorization is specified in ADR-0020.

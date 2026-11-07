@@ -318,6 +318,8 @@ function TokenHolders({
         </div>
       )}
       <CursorPagination
+        itemCount={holders?.length ?? 0}
+        onReset={onReset}
         busy={busy}
         hasNext={hasNext}
         hasPrevious={hasPrevious}
@@ -436,6 +438,8 @@ function TokenTransfers({
       )}
       {events && (
         <CursorPagination
+          itemCount={events?.length ?? 0}
+          onReset={onReset}
           busy={busy}
           hasNext={hasNext}
           hasPrevious={hasPrevious}

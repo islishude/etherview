@@ -1,30 +1,9 @@
 package userauth
 
 import (
-	"strings"
 	"testing"
 	"time"
 )
-
-func TestDisplayNameValidation(t *testing.T) {
-	t.Parallel()
-	value := "  Alice 钱包  "
-	normalized, err := normalizeDisplayName(&value)
-	if err != nil || normalized == nil || *normalized != "Alice 钱包" {
-		t.Fatalf("normalized display name = %v, %v", normalized, err)
-	}
-	if cleared, err := normalizeDisplayName(nil); err != nil || cleared != nil {
-		t.Fatalf("cleared display name = %v, %v", cleared, err)
-	}
-	for _, invalid := range []string{
-		"", " \t ", "Alice\nAdmin", strings.Repeat("a", 65),
-		strings.Repeat("界", 64) + "a",
-	} {
-		if _, err := normalizeDisplayName(&invalid); err == nil {
-			t.Errorf("accepted invalid display name %q", invalid)
-		}
-	}
-}
 
 func TestNormalizePublicOrigin(t *testing.T) {
 	t.Parallel()
@@ -63,12 +42,12 @@ func TestNormalizePublicOrigin(t *testing.T) {
 func TestAdministrativeInputBounds(t *testing.T) {
 	t.Parallel()
 	repository := &PostgresRepository{}
-	if _, err := repository.Users(t.Context(), nil, 0); err == nil {
+	if _, err := repository.Users(t.Context(), nil, 0, ""); err == nil {
 		t.Fatal("accepted zero user page limit")
 	}
 	if _, err := repository.Users(t.Context(), &UserPageAfter{
 		ID: "not-a-uuid", CreatedAt: time.Now(),
-	}, 1); err == nil {
+	}, 1, ""); err == nil {
 		t.Fatal("accepted malformed page position")
 	}
 	if _, err := repository.Cleanup(t.Context(), time.Now(), 1001); err == nil {

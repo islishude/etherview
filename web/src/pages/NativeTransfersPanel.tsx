@@ -146,6 +146,8 @@ export function NativeTransfersPanel({
                     </div>
                   )}
                   <CursorPagination
+                    itemCount={transfers.data?.data.length ?? 0}
+                    onReset={pager.reset}
                     busy={transfers.isFetching}
                     hasNext={Boolean(transfers.data.meta.next_cursor)}
                     hasPrevious={pager.hasPrevious}

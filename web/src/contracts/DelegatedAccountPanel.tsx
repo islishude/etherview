@@ -508,7 +508,14 @@ function DelegationHistory({
         </div>
       ) : null}
       {data ? (
-        <Pagination className="cursor-pagination" aria-label={t("delegation.history")}>
+        <Pagination
+          itemCount={data.items.length}
+          onReset={onReset}
+          hasPrevious={hasPrevious}
+          busy={busy}
+          className="cursor-pagination"
+          aria-label={t("delegation.history")}
+        >
           <Button
             variant="outline"
             className="button secondary"

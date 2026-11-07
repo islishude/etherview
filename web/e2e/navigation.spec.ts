@@ -32,6 +32,8 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
   await more.focus();
   await page.keyboard.press("Enter");
   await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Charts", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Verify contract", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "User Ops", exact: true })).toBeFocused();
@@ -50,7 +52,7 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
     await explore.click();
     await more.click();
     await expect(page.getByRole("link", { name: "Verify contract", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Sync status" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Charts", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(more).toBeFocused();
     await page.keyboard.press("Escape");
@@ -58,8 +60,8 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
     await expect(explore).toHaveAttribute("aria-expanded", "false");
     await explore.click();
     await more.click();
-    await page.getByRole("link", { name: "Sync status" }).click();
-    await expect(page).toHaveURL("/status");
+    await page.getByRole("link", { name: "Charts", exact: true }).click();
+    await expect(page).toHaveURL("/charts");
     await expect(explore).toHaveAttribute("aria-expanded", "false");
     await expect(explore).toBeFocused();
     await page.getByRole("button", { name: "Switch color theme" }).click();
@@ -78,7 +80,7 @@ test("grouped navigation supports keyboard, responsive disclosure and capability
   await more.click();
   await expect(page.getByRole("link", { name: "Pending", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "User Ops", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Account", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Account", exact: true })).toHaveCount(0);
   const scan = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -73,9 +75,9 @@ type fakeUserAdministration struct {
 	updateResult userauth.AdminUserUpdateResult
 	revoked      uint64
 	err          error
-	displayName  *string
 	pageAfter    *userauth.UserPageAfter
 	pageLimit    int
+	search       string
 	update       userauth.AdminUserUpdate
 	updateUserID string
 	revokeUserID string
@@ -140,22 +142,17 @@ func (fake *fakeUserAdministration) UserByAddress(context.Context, string) (user
 	return fake.user, fake.err
 }
 
-func (fake *fakeUserAdministration) UpdateDisplayName(
-	_ context.Context,
-	_ string,
-	displayName *string,
-	_ time.Time,
-) (userauth.User, error) {
-	fake.displayName = displayName
-	return fake.user, fake.err
+func (fake *fakeUserAdministration) UserCount(context.Context) (uint64, error) {
+	return uint64(len(fake.users)), fake.err
 }
 
 func (fake *fakeUserAdministration) Users(
 	_ context.Context,
 	after *userauth.UserPageAfter,
 	limit int,
+	query string,
 ) ([]userauth.User, error) {
-	fake.pageAfter, fake.pageLimit = after, limit
+	fake.pageAfter, fake.pageLimit, fake.search = after, limit, query
 	return fake.users, fake.err
 }
 
@@ -324,8 +321,7 @@ func TestAPIKeyCannotAuthorizeUserOrAdministratorRoutes(t *testing.T) {
 		body   string
 	}{
 		{
-			name: "current user", method: http.MethodPatch, path: "/api/v1/users/me",
-			body: `{"display_name":"API key is not a user"}`,
+			name: "overview", method: http.MethodGet, path: "/api/v1/admin/overview",
 		},
 		{
 			name: "administrator", method: http.MethodGet, path: "/api/v1/admin/users",
@@ -347,12 +343,10 @@ func TestAPIKeyCannotAuthorizeUserOrAdministratorRoutes(t *testing.T) {
 			)
 		})
 	}
-	if authenticator.authCalls != 0 || administration.pageLimit != 0 ||
-		administration.displayName != nil {
+	if authenticator.authCalls != 0 || administration.pageLimit != 0 {
 		t.Fatalf(
-			"API key crossed user boundary: auth=%d page_limit=%d display=%v",
+			"API key crossed user boundary: auth=%d page_limit=%d",
 			authenticator.authCalls, administration.pageLimit,
-			administration.displayName,
 		)
 	}
 }
@@ -483,7 +477,7 @@ func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
 		}
 	}
 	for _, operation := range []string{
-		"getAuthSession", "listCurrentUserAPIKeys", "deleteCurrentUserAPIKey", "revokeCurrentUserAPIKey", "listAdminUsers",
+		"getStatus", "getAuthSession", "listCurrentUserAPIKeys", "deleteCurrentUserAPIKey", "revokeCurrentUserAPIKey", "listAdminUsers",
 		"listCurrentUserBillingPayments",
 		"listCurrentUserPushSubscriptions", "saveCurrentUserPushSubscription", "deleteCurrentUserPushSubscription",
 	} {
@@ -493,7 +487,7 @@ func TestVerificationWorkflowUsesVerificationScope(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedWritesRequireCSRFAndPreserveNullableProfile(t *testing.T) {
+func TestAuthenticatedLogoutRequiresCSRF(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 7, 26, 3, 4, 5, 0, time.UTC)
 	user := authTestUser(now, userauth.RoleUser)
@@ -519,13 +513,12 @@ func TestAuthenticatedWritesRequireCSRFAndPreserveNullableProfile(t *testing.T) 
 		{"missing", nil, http.StatusForbidden, "csrf_invalid"},
 		{"duplicate", []string{"csrf", "csrf"}, http.StatusForbidden, "csrf_invalid"},
 		{"wrong", []string{"wrong"}, http.StatusForbidden, "csrf_invalid"},
-		{"valid", []string{"csrf"}, http.StatusOK, ""},
+		{"valid", []string{"csrf"}, http.StatusNoContent, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(
-				http.MethodPatch, "/api/v1/users/me",
-				strings.NewReader(`{"display_name":null}`),
+				http.MethodPost, "/api/v1/auth/logout", nil,
 			)
 			request.Header.Set("Origin", testAuthOrigin)
 			for _, token := range test.csrf {
@@ -539,8 +532,8 @@ func TestAuthenticatedWritesRequireCSRFAndPreserveNullableProfile(t *testing.T) 
 				assertAuthError(t, recorder, test.status, test.code)
 				return
 			}
-			if recorder.Code != http.StatusOK || administration.displayName != nil {
-				t.Fatalf("status=%d display_name=%v body=%s", recorder.Code, administration.displayName, recorder.Body.String())
+			if recorder.Code != test.status {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
@@ -685,4 +678,139 @@ func assertAuthError(
 func (fake *fakeUserAPIKeys) Delete(_ context.Context, _, prefix string, _ time.Time) error {
 	fake.deleted = prefix
 	return fake.deleteErr
+}
+
+func TestStatusRequiresActiveAdministratorSession(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		role     userauth.Role
+		cookie   bool
+		err      error
+		disabled bool
+		status   int
+		code     string
+	}{
+		{name: "anonymous", status: 401, code: "authentication_required"},
+		{name: "api key only", status: 401, code: "authentication_required"},
+		{name: "ordinary user", cookie: true, role: userauth.RoleUser, status: 403, code: "admin_required"},
+		{name: "administrator", cookie: true, role: userauth.RoleAdmin, status: 200},
+		{name: "expired or revoked", cookie: true, err: userauth.ErrSessionInvalid, status: 401, code: "authentication_required"},
+		{name: "disabled user", cookie: true, err: userauth.ErrUserDisabled, status: 403, code: "user_disabled"},
+		{name: "auth disabled", disabled: true, status: 503, code: "user_auth_unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			authenticator := &fakeUserAuthenticator{authenticateErr: tc.err, authentication: SessionAuthentication{Session: userauth.Session{User: authTestUser(time.Now(), tc.role)}}}
+			handler := enabledAuthHandler(t, authenticator, &fakeUserAdministration{})
+			if tc.disabled {
+				handler.cfg.Features.UserAuth = false
+			}
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+			if tc.cookie {
+				request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session-token"})
+			}
+			// API-key middleware identity cannot replace the Cookie authority.
+			if tc.name == "api key only" {
+				request.Header.Set("X-API-Key", "ev_valid-looking-but-not-authority")
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if tc.code != "" {
+				assertAuthError(t, recorder, tc.status, tc.code)
+			} else if recorder.Code != tc.status {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body)
+			}
+		})
+	}
+}
+
+func TestAdminUserSearchBoundsAndCursorBinding(t *testing.T) {
+	t.Parallel()
+	admin := authTestUser(time.Now().UTC(), userauth.RoleAdmin)
+	authenticator := &fakeUserAuthenticator{authentication: SessionAuthentication{Session: userauth.Session{User: admin}}}
+	administration := &fakeUserAdministration{users: []userauth.User{admin, admin}}
+	handler := enabledAuthHandler(t, authenticator, administration)
+	for _, query := range []string{" ALICE ", "0X5290", "用户", "%_\\", "", strings.Repeat("a", 64)} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users?limit=1&q="+url.QueryEscape(query), nil)
+		request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session-token"})
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != 200 {
+			t.Fatalf("q=%q status=%d body=%s", query, recorder.Code, recorder.Body)
+		}
+		if administration.search != strings.ToLower(strings.TrimSpace(query)) {
+			t.Fatalf("search=%q", administration.search)
+		}
+		var page gen.UserListResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &page); err != nil {
+			t.Fatal(err)
+		}
+		request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users?q=different&cursor="+url.QueryEscape(*page.Meta.NextCursor), nil)
+		request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session-token"})
+		recorder = httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		assertAuthError(t, recorder, 400, "invalid_cursor")
+	}
+	for _, query := range []string{strings.Repeat("a", 65), "a\nb", "\tAlice", string([]byte{0xff})} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users?q="+url.QueryEscape(query), nil)
+		request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session-token"})
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		assertAuthError(t, recorder, 400, "invalid_query")
+	}
+}
+
+func TestAdminOverviewCountsAndAuthorization(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	for _, tc := range []struct {
+		name    string
+		role    userauth.Role
+		authErr error
+		cookie  bool
+		count   int
+		status  int
+	}{
+		{"empty", userauth.RoleAdmin, nil, true, 0, http.StatusOK},
+		{"users", userauth.RoleAdmin, nil, true, 3, http.StatusOK},
+		{"ordinary", userauth.RoleUser, nil, true, 3, http.StatusForbidden},
+		{"anonymous", userauth.RoleAdmin, nil, false, 3, http.StatusUnauthorized},
+		{"disabled", userauth.RoleAdmin, userauth.ErrUserDisabled, true, 3, http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			authenticator := &fakeUserAuthenticator{authentication: SessionAuthentication{Session: userauth.Session{User: authTestUser(now, tc.role), ExpiresAt: now.Add(time.Hour)}}, authenticateErr: tc.authErr}
+			handler := enabledAuthHandler(t, authenticator, &fakeUserAdministration{users: make([]userauth.User, tc.count)})
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/overview", nil)
+			if tc.cookie {
+				request.AddCookie(&http.Cookie{Name: userauth.SessionCookieName, Value: "session"})
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != tc.status {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			if tc.status == http.StatusOK {
+				var response gen.AdminOverviewResponse
+				if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+					t.Fatal(err)
+				}
+				if response.Data.UserCount != fmt.Sprint(tc.count) {
+					t.Fatalf("count=%s", response.Data.UserCount)
+				}
+				if recorder.Header().Get("Cache-Control") != "no-store" {
+					t.Fatal("overview must not be cached")
+				}
+			}
+		})
+	}
+}
+
+func TestUserProfileUpdateRouteRemoved(t *testing.T) {
+	t.Parallel()
+	handler := enabledAuthHandler(t, &fakeUserAuthenticator{}, &fakeUserAdministration{})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPatch, "/api/v1/users/me", strings.NewReader(`{"display_name":"removed"}`)))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
 }

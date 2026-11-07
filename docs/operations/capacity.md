@@ -203,7 +203,7 @@ ETHERVIEW_LOAD_REVISION=0123456789abcdef \
 ETHERVIEW_LOAD_DATASET=mainnet-snapshot-2026-07-23 \
 ETHERVIEW_LOAD_HARDWARE=kubernetes-reference-profile \
 ETHERVIEW_LOAD_RPC_BEHAVIOR=isolated-head-history-state \
-ETHERVIEW_LOAD_PATHS='["/api/v1/status","/api/v1/blocks?limit=20","/api/v1/tokens/0x1111111111111111111111111111111111111111/holders?limit=200","/api/v1/tokens/0x1111111111111111111111111111111111111111/holders/count","/v2/api?chainid=1&module=token&action=tokenholderlist&contractaddress=0x1111111111111111111111111111111111111111&page=1&offset=1000","/v2/api?chainid=1&module=token&action=tokenholdercount&contractaddress=0x1111111111111111111111111111111111111111"]' \
+ETHERVIEW_LOAD_PATHS='["/api/v1/home","/api/v1/blocks?limit=20","/api/v1/tokens/0x1111111111111111111111111111111111111111/holders?limit=200","/api/v1/tokens/0x1111111111111111111111111111111111111111/holders/count","/v2/api?chainid=1&module=token&action=tokenholderlist&contractaddress=0x1111111111111111111111111111111111111111&page=1&offset=1000","/v2/api?chainid=1&module=token&action=tokenholdercount&contractaddress=0x1111111111111111111111111111111111111111"]' \
 make test-load >artifacts/load.json
 ```
 

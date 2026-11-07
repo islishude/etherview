@@ -51,6 +51,8 @@ export function UserOperationsPage() {
         ) : null}
         {operations.data ? (
           <CursorPagination
+            itemCount={operations.data?.items.length ?? 0}
+            onReset={pager.reset}
             busy={operations.isFetching}
             hasNext={Boolean(operations.data.next_cursor)}
             hasPrevious={pager.hasPrevious}

@@ -53,8 +53,18 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T25 | done   | P60-T12, P60-T14, P60-T21           | Multi-chain/token funding with immutable conversion into unified credit, payment-view wallet scope and persistent second Preview chain                               | Four payment options, exact credit/replay, failed-switch recovery, departure restoration, gateway/restart/outage and all/split acceptance |
 | P60-T26 | done   | P60-T25                             | Standalone multi-chain facilitator with keystore/KMS, durable settlement/progress, strict offline-checkable configuration, role-scoped secrets and bounded lifecycle | Protocol/config/CLI race, PostgreSQL journal/nonce/recovery, schema/runtime/Preview and deployment gates; local evidence                  |
 | P60-T27 | done   | P60-T26                             | Rustack KMS and two independent Anvil networks for local facilitator acceptance                                                                                      | AWS SDK HTTP signing compatibility, both payment methods on both networks, all/split recovery and independent chain/writer reconciliation |
+| P60-T31 | done   | P60-T03, P60-T05, P60-T16           | Administrator-only sync status, address-only users, default overview and empty-list pagination                                                                       | HTTP/API, PostgreSQL, bilingual browser and production all/split acceptance passed                                                        |
 
 ## Acceptance
+
+- [x] P60-T31: Sync status requires an active administrator session in both
+      production layouts; anonymous, API-key-only, ordinary, disabled and invalid
+      sessions cannot authorize it. Address-only user search retains chain isolation
+      and query-bound pagination. Compact navigation, settings/detail drawers and
+      Billing tabs pass bilingual, light/dark, desktop and 390px browser checks,
+      including session cleanup, errors, keyboard focus and overflow. Overview
+      defaults to current-chain user counts and the existing billing summary;
+      custom display names are removed and empty lists hide pagination.
 
 - [x] Payment-network selection retains failed selections and unavailable balances;
       the payment-view scope preserves site-bound identity and restores the original
@@ -129,6 +139,16 @@ Earlier P60-T17 live evidence retains its original scope, and P70 release
 gates remain separate.
 
 ## Evidence
+
+### Management navigation and page hierarchy (P60-T31)
+
+HTTP race/API contract tests, full PostgreSQL integration, 1,021 frontend tests
+and all 252 embedded browser tests passed. The final user-row simplification
+also passed all 10 management browser cases without retries; mobile/desktop,
+English/Chinese and light/dark screenshots were inspected. Fresh production
+schema and all/split runtime checks passed, including overview authorization.
+OpenAPI, generation, frontend/Go lint, asset budgets, documentation and plan
+checks passed without changing their acceptance limits.
 
 ### Final live payment and API-debit acceptance
 

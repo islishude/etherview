@@ -1,3 +1,4 @@
+import { installAdminSession } from "./adminFixtures";
 import { installVerificationSession } from "./verification-session";
 import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
@@ -1556,6 +1557,7 @@ test("capability pages survive the embedded binary boundary in both accessible t
   ).toBeVisible();
   await expect(page.getByText("9,007,199,254,740,993", { exact: true })).toBeVisible();
 
+  await installAdminSession(page);
   await page.goto("/status");
   await expect(
     page.getByRole("heading", { name: "Data capabilities and current completeness", level: 2 }),
@@ -2357,7 +2359,6 @@ for (const initiallyConnected of [false, true]) {
     test.setTimeout(120_000);
     const authRequests: BrowserAuthRequest[] = [];
     let authenticated = false;
-    let currentDisplayName: string | null = "Browser Admin";
     let targetRole: "user" | "admin" = "user";
     let targetStatus: "active" | "disabled" = "active";
     let personalKey = {
@@ -2373,7 +2374,6 @@ for (const initiallyConnected of [false, true]) {
       address: walletAccount,
       role: "admin",
       status: "active",
-      display_name: currentDisplayName,
       created_at: "2026-01-01T00:00:00Z",
       updated_at: "2026-01-01T00:00:00Z",
       last_login_at: "2026-01-01T00:00:00Z",
@@ -2384,7 +2384,6 @@ for (const initiallyConnected of [false, true]) {
       address,
       role: targetRole,
       status: targetStatus,
-      display_name: null,
       created_at: "2026-01-02T00:00:00Z",
       updated_at: "2026-01-02T00:00:00Z",
       last_login_at: "2026-01-02T00:00:00Z",
@@ -2477,16 +2476,6 @@ for (const initiallyConnected of [false, true]) {
           await route.fulfill({ status: 404 });
       }
     });
-    await page.route("**/api/v1/users/me", async (route) => {
-      const request = route.request();
-      record(request);
-      const body = request.postDataJSON() as { display_name: string | null };
-      currentDisplayName = body.display_name;
-      await route.fulfill({
-        contentType: "application/json",
-        json: envelope(currentUser()),
-      });
-    });
     let personalKeyDeleted = false;
     await page.route("**/api/v1/users/me/api-keys**", async (route) => {
       const request = route.request();
@@ -2554,6 +2543,9 @@ for (const initiallyConnected of [false, true]) {
       }
       await route.fulfill({ status: 404 });
     });
+    await page.route("**/api/v1/admin/overview", (route) =>
+      route.fulfill({ json: envelope({ user_count: "2" }) }),
+    );
     await page.route("**/api/v1/admin/users**", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -2729,22 +2721,24 @@ for (const initiallyConnected of [false, true]) {
 
     const response = await page.goto("/account");
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: "Wallet connection" })).toBeVisible();
-    await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
-    await expect(page.getByText("Not logged in", { exact: true }).last()).toBeVisible();
+    await expect(page.locator("[data-account-sign-in]")).toBeVisible();
+    await expect(page.locator(".account-identity")).toHaveCount(0);
+    await expect(page.locator(".wallet-summary")).toHaveAttribute("aria-label", "Connect wallet");
+    await expect(page.locator("[data-account-sign-in] button")).toContainText(
+      "Sign in with Ethereum",
+    );
 
     if (initiallyConnected) {
       await activateInView(page.locator(".wallet-summary"));
       await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
-      await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+      await expect(page.locator(".wallet-summary")).toHaveAttribute(
+        "aria-label",
+        /SIWE E2E Wallet/,
+      );
       await activateInView(page.locator(".wallet-summary"));
     }
-    await activateInView(page.locator(".auth-action-panel button"));
-    await expect(
-      page.locator(".identity-card").getByText("User authenticated", {
-        exact: true,
-      }),
-    ).toBeVisible();
+    await activateInView(page.locator("[data-account-sign-in] button"));
+    await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();
     const walletRequests = await page.evaluate(
       () => (window as AuthWalletWindow).__etherviewE2EAuthWallet.requests,
     );
@@ -2768,21 +2762,25 @@ for (const initiallyConnected of [false, true]) {
       },
     ]);
 
-    for (const selector of [".authenticated-user", ".wallet-account"]) {
+    for (const [selector, destination] of [
+      [".authenticated-user", "/account"],
+      [".wallet-account", `/address/${walletAccount}`],
+    ] as const) {
       await activateInView(page.locator(".wallet-summary"));
       const identityLink = page.locator(selector);
-      await expect(identityLink).toHaveAttribute("href", `/address/${walletAccount}`);
+      await expect(identityLink).toHaveAttribute("href", destination);
       await identityLink.focus();
       await page.keyboard.press("Enter");
-      await expect(page).toHaveURL(new RegExp(`/address/${walletAccount}`));
+      await expect(page).toHaveURL(new RegExp(`${destination}$`));
       await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
       await activateInView(page.locator(".wallet-summary"));
       await expect(page.locator(".wallet-menu")).toHaveAttribute("open", "");
-      await activateInView(
+      await expect(
         page.locator(".wallet-popover").getByRole("link", { name: "Open account", exact: true }),
-      );
+      ).toHaveCount(0);
+      await activateInView(page.locator(".authenticated-user"));
       await expect(page).toHaveURL(/\/account$/);
-      await activateInView(page.locator(".wallet-summary"));
+      await expect(page.locator(".wallet-menu")).not.toHaveAttribute("open");
     }
 
     const challengeRequest = authRequests.find(
@@ -2815,12 +2813,8 @@ for (const initiallyConnected of [false, true]) {
       ),
     ).toHaveLength(0);
     await page.reload();
-    await expect(
-      page.locator(".identity-card").getByText("User authenticated", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(page.getByText("Wallet disconnected", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Profile", exact: true })).toBeVisible();
+    await expect(page.locator(".wallet-summary")).toHaveAttribute("aria-label", "Connect wallet");
     expect(
       authRequests.filter(
         ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
@@ -2829,7 +2823,7 @@ for (const initiallyConnected of [false, true]) {
 
     await activateInView(page.locator(".wallet-summary"));
     await activateInView(page.getByRole("button", { name: /SIWE E2E Wallet/ }));
-    await expect(page.getByText("Wallet connected", { exact: true })).toBeVisible();
+    await expect(page.locator(".wallet-summary")).toHaveAttribute("aria-label", /SIWE E2E Wallet/);
     expect(
       authRequests.filter(
         ({ method, pathname }) => method === "POST" && pathname === "/api/v1/auth/logout",
@@ -2936,26 +2930,28 @@ for (const initiallyConnected of [false, true]) {
     expect(new URLSearchParams(personalCursorRequest?.search).has("user_id")).toBe(false);
 
     await activateInView(accountSections.getByRole("link", { name: "Overview", exact: true }));
-    await page.locator(".profile-form input").fill("  Updated Browser Admin  ");
-    await activateInView(page.getByRole("button", { name: "Save profile" }));
-    await expect(page.getByRole("status")).toContainText("Profile saved.");
-    const profileRequest = authRequests.find(({ pathname }) => pathname === "/api/v1/users/me");
-    expect(profileRequest?.body).toBe(JSON.stringify({ display_name: "Updated Browser Admin" }));
-    expect(profileRequest?.headers["x-csrf-token"]).toBe(authCSRFToken);
-    expect(profileRequest?.headers.origin).toBe("http://127.0.0.1:4173");
+    await expect(page.locator(".profile-form")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Account", exact: true }).click();
-    await activateInView(page.getByRole("link", { name: "User admin" }));
+    await activateInView(page.getByRole("link", { name: "Admin", exact: true }));
+    await activateInView(page.getByRole("link", { name: "Users", exact: true }));
     await expect(page.getByRole("heading", { name: "User administration" })).toBeVisible();
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByText(address, { exact: true })).toBeVisible();
     await page.getByRole("combobox", { name: `Role for ${address}` }).selectOption("admin");
     await page.getByRole("combobox", { name: `Status for ${address}` }).selectOption("disabled");
     await activateInView(page.getByRole("button", { name: "Save user" }));
     await expect(page.getByRole("status")).toContainText("Updated 0x111111…111111.");
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
     await activateInView(page.getByRole("button", { name: "Revoke sessions" }));
+    await page.getByRole("alertdialog").getByRole("button", { name: "Revoke sessions" }).click();
     await expect(page.getByRole("status")).toContainText(
       "Revoked 3 session(s) for 0x111111…111111.",
     );
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Close", exact: true })
+      .first()
+      .click();
     const adminPatchRequest = authRequests.find(
       ({ method, pathname }) =>
         method === "PATCH" && pathname === `/api/v1/admin/users/${authTargetUserID}`,
@@ -2981,15 +2977,22 @@ for (const initiallyConnected of [false, true]) {
     });
     expect(cursorRequest).toBeDefined();
 
-    await page.getByRole("button", { name: "Account", exact: true }).click();
-    await activateInView(page.getByRole("link", { name: "Billing admin" }));
+    await activateInView(
+      page
+        .getByRole("navigation", { name: "Admin", exact: true })
+        .getByRole("link", { name: "Billing", exact: true }),
+    );
     await expect(page.getByRole("heading", { name: "Billing administration" })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("billing-admin-desktop.png") });
-    await expect(page.getByText("Settlement unknown", { exact: true })).toBeVisible();
+    await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
+    await page.getByRole("tab", { name: "Payments", exact: true }).click();
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    await expect(page.getByText("Settlement unknown", { exact: true }).last()).toBeVisible();
     await expect(page.getByText(billingAdminUserID, { exact: true })).toBeVisible();
     await expect(page.getByText(billingAPIKeyPrefix, { exact: true })).toBeVisible();
-    await expect(page.getByText(billingAmount, { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(billingCount, { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("dialog").getByText(billingAmount, { exact: true })).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+    await page.getByText("Advanced filters", { exact: true }).filter({ visible: true }).click();
 
     await page.getByRole("combobox", { name: "State" }).selectOption("settling");
     await page.getByRole("combobox", { name: "Operation" }).selectOption("getBlock");
@@ -3047,7 +3050,7 @@ for (const initiallyConnected of [false, true]) {
 
     await activateInView(page.getByRole("button", { name: "切换到中文" }));
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByRole("heading", { name: "计费管理", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "计费管理", level: 2 })).toBeVisible();
     const adminScan = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
@@ -3077,7 +3080,7 @@ for (const initiallyConnected of [false, true]) {
       ]);
     });
     await expect(logoutDialog).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "需要已认证的用户会话。" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "需要管理员权限。" })).toBeVisible();
     await expect
       .poll(
         () =>

@@ -225,6 +225,8 @@ function BlockTransactionsPanel({
         ) : null}
         {items ? (
           <CursorPagination
+            itemCount={items?.length ?? 0}
+            onReset={onReset}
             busy={busy}
             hasNext={hasNext}
             hasPrevious={hasPrevious}

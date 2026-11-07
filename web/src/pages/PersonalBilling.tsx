@@ -51,7 +51,7 @@ import { Message } from "@/components/Message";
 import { UIIcon } from "@/components/UIIcon";
 import { type ActiveWallet, useWallet } from "@/wallet/WalletProvider";
 import { BillingChainError, chainsMatch } from "@/wallet/eip6963";
-import { BillingLoadError, BillingPagination } from "./BillingPages";
+import { BillingLoadError, BillingPagination } from "./BillingControls";
 
 import {
   amountInputLength,
@@ -1020,6 +1020,7 @@ function PersonalHistory({ visible, config }: { visible: boolean; config?: Billi
               </ul>
             )}
             <BillingPagination
+              itemCount={query.data.data.length}
               busy={query.isFetching}
               cursors={kind === "topups" ? topupCursors : paymentCursors}
               onChange={kind === "topups" ? setTopupCursors : setPaymentCursors}

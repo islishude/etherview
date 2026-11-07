@@ -32,6 +32,12 @@ func (h *Handler) ready(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
+	if !h.userAuthAvailable(w, r) {
+		return
+	}
+	if _, ok := h.requireAdminSession(w, r); !ok {
+		return
+	}
 	snapshot, err := h.reader.Status(r.Context())
 	if err != nil {
 		h.handleReaderError(w, r, err)

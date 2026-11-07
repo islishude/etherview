@@ -219,6 +219,8 @@ export function RequestsPanel({ hash }: { hash: string }) {
                   </div>
                 )}
                 <CursorPagination
+                  itemCount={query.data?.data.items.length ?? 0}
+                  onReset={pager.reset}
                   busy={query.isFetching}
                   hasNext={Boolean(query.data?.meta.next_cursor)}
                   hasPrevious={pager.hasPrevious}

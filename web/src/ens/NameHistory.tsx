@@ -71,8 +71,10 @@ export function NameHistory({ name }: { name: string }) {
               />
             ))}
           </div>
-          {data.items.length > 0 && (
+          {(data.items.length > 0 || pager.hasPrevious) && (
             <CursorPagination
+              itemCount={query.data?.data.items.length ?? 0}
+              onReset={pager.reset}
               busy={query.isFetching}
               hasNext={Boolean(query.data?.meta.next_cursor)}
               hasPrevious={pager.hasPrevious}
@@ -243,6 +245,8 @@ function HistoryEvents({
       ))}
       {query.data && (query.data.meta.next_cursor || pager.hasPrevious) && (
         <CursorPagination
+          itemCount={query.data?.data.items.length ?? 0}
+          onReset={pager.reset}
           busy={query.isFetching}
           hasNext={Boolean(query.data.meta.next_cursor)}
           hasPrevious={pager.hasPrevious}

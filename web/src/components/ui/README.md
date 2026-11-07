@@ -40,6 +40,10 @@ uses `data-theme`, system fonts and no Preflight reset.
   Escape dismissal and focus restoration. Callers own translations, target/session
   validity and mutations; confirmation closes before the action runs. External
   navigation remains an `asChild` anchor with caller-owned privacy attributes.
+- Sheet uses the same native modal top layer for right-side details/settings,
+  with a full-width mobile layout, contained scrolling, initial close-button
+  focus and focus restoration. Callers own dirty-state confirmation and session
+  invalidation; Sheet adds no floating-layer dependency.
 - Theme and status colors update immediately without color interpolation, preserving
   contrast during theme changes and synchronous status feedback. Skeleton motion
   respects reduced motion. No component generates runtime style

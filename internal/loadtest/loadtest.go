@@ -296,7 +296,7 @@ func readRuntimeStatus(
 	apiKey string,
 	timeout time.Duration,
 ) (runtimeStatus, error) {
-	target, err := base.Parse("/api/v1/status")
+	target, err := base.Parse("/api/v1/home")
 	if err != nil {
 		return runtimeStatus{}, errors.New("resolve status path")
 	}
@@ -327,36 +327,38 @@ func readRuntimeStatus(
 	}
 	var envelope struct {
 		Data *struct {
-			Lag              json.RawMessage `json:"lag"`
-			CoreReady        *bool           `json:"core_ready"`
-			BackfillComplete *bool           `json:"backfill_complete"`
+			Status *struct {
+				Lag              json.RawMessage `json:"lag"`
+				CoreReady        *bool           `json:"core_ready"`
+				BackfillComplete *bool           `json:"backfill_complete"`
+			} `json:"status"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return runtimeStatus{}, errors.New("decode status after load")
 	}
-	if envelope.Data == nil || envelope.Data.CoreReady == nil || envelope.Data.BackfillComplete == nil {
+	if envelope.Data == nil || envelope.Data.Status == nil || envelope.Data.Status.CoreReady == nil || envelope.Data.Status.BackfillComplete == nil {
 		return runtimeStatus{}, errors.New("status readiness fields are missing")
 	}
 	var text string
-	if err := json.Unmarshal(envelope.Data.Lag, &text); err != nil ||
+	if err := json.Unmarshal(envelope.Data.Status.Lag, &text); err != nil ||
 		text == "" || (len(text) > 1 && text[0] == '0') {
 		return runtimeStatus{
-			coreReady:        *envelope.Data.CoreReady,
-			backfillComplete: *envelope.Data.BackfillComplete,
+			coreReady:        *envelope.Data.Status.CoreReady,
+			backfillComplete: *envelope.Data.Status.BackfillComplete,
 		}, errors.New("status lag is invalid")
 	}
 	lag, parseErr := strconv.ParseUint(text, 10, 64)
 	if parseErr != nil {
 		return runtimeStatus{
-			coreReady:        *envelope.Data.CoreReady,
-			backfillComplete: *envelope.Data.BackfillComplete,
+			coreReady:        *envelope.Data.Status.CoreReady,
+			backfillComplete: *envelope.Data.Status.BackfillComplete,
 		}, errors.New("status lag is invalid")
 	}
 	return runtimeStatus{
 		lag:              lag,
-		coreReady:        *envelope.Data.CoreReady,
-		backfillComplete: *envelope.Data.BackfillComplete,
+		coreReady:        *envelope.Data.Status.CoreReady,
+		backfillComplete: *envelope.Data.Status.BackfillComplete,
 	}, nil
 }
 

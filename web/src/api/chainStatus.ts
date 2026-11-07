@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getStatus } from "./heyapi/sdk.gen";
 import { apiClient, requireEnvelope } from "./client";
 
-export function useChainStatus(enabled = true) {
+export function useChainStatus(enabled: boolean, identity: string) {
   return useQuery({
-    queryKey: ["status"],
-    enabled,
+    queryKey: ["private-account", identity, "admin", "status"],
+    enabled: enabled && Boolean(identity),
     meta: { refreshPolicy: "live", chainEvents: ["head", "reorg", "status", "names"] },
     queryFn: async ({ signal }) => {
       const response = requireEnvelope(await getStatus({ client: apiClient, signal }));

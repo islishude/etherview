@@ -125,7 +125,13 @@ export function PendingPage() {
             />
           )}
 
-          <Pagination className="pending-pagination" aria-label={t("pending.pagination")}>
+          <Pagination
+            itemCount={snapshot.items.length}
+            onReset={resetPagination}
+            hasPrevious={pager.page > 1}
+            className="pending-pagination"
+            aria-label={t("pending.pagination")}
+          >
             <Button
               variant="outline"
               className="button secondary"

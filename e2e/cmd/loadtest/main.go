@@ -85,7 +85,7 @@ func main() {
 	if len(paths) == 0 {
 		paths = pathsFlag{
 			"/api/v1/config",
-			"/api/v1/status",
+			"/api/v1/home",
 			"/api/v1/blocks?limit=20",
 			"/api/v1/transactions?limit=20",
 		}

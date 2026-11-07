@@ -619,7 +619,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.validateSSE(ctx)
 		report, err := loadtest.Run(ctx, loadtest.Config{
 			BaseURL: h.baseURL,
-			Paths:   []string{"/api/v1/config", "/api/v1/status", "/api/v1/blocks?limit=20", "/api/v1/transactions?limit=20"},
+			Paths:   []string{"/api/v1/config", "/api/v1/home", "/api/v1/blocks?limit=20", "/api/v1/transactions?limit=20"},
 			Rate:    40, Duration: 3 * time.Second, Concurrency: 16,
 			RequestTimeout: runtimeServerWriteTimeout, MaximumP95: time.Second,
 			MaximumErrorRate: 0, MinimumThroughputRatio: 0.8, MaximumLag: 0,
@@ -2225,6 +2225,9 @@ func (h *harness) request(ctx context.Context, path string) (*http.Response, err
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.baseURL+path, nil)
 	if err != nil {
 		return nil, err
+	}
+	if path == "/api/v1/status" {
+		request.AddCookie(h.statusAdminCookie(ctx))
 	}
 	return h.http.Do(request)
 }

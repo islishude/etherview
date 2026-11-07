@@ -235,6 +235,8 @@ export function TransactionAuthorizationsPanel({
         ) : null}
         {identityCurrent && authorizations.data ? (
           <CursorPagination
+            itemCount={authorizations.data?.items.length ?? 0}
+            onReset={pager.reset}
             busy={authorizations.isFetching}
             hasNext={Boolean(authorizations.data.next_cursor)}
             hasPrevious={pager.hasPrevious}
@@ -284,6 +286,8 @@ export function TransactionUserOperationsPanel({
           ) : null}
           {identityCurrent && operations.data ? (
             <CursorPagination
+              itemCount={operations.data?.items.length ?? 0}
+              onReset={pager.reset}
               busy={operations.isFetching}
               hasNext={Boolean(operations.data.next_cursor)}
               hasPrevious={pager.hasPrevious}
@@ -396,6 +400,8 @@ export function TransactionInternalTransactionsPanel({
         ) : null}
         {identityCurrent && resource.data ? (
           <CursorPagination
+            itemCount={resource.data?.items.length ?? 0}
+            onReset={pager.reset}
             busy={resource.isFetching}
             hasNext={Boolean(resource.data.next_cursor)}
             hasPrevious={pager.hasPrevious}
@@ -503,6 +509,8 @@ export function TransactionTokenTransfersPanel({
           )}
         {tokenIdentityCurrent && tokenTransfers.data && (
           <CursorPagination
+            itemCount={tokenTransfers.data?.items.length ?? 0}
+            onReset={tokenPager.reset}
             busy={tokenTransfers.isFetching}
             hasNext={Boolean(tokenTransfers.data.next_cursor)}
             hasPrevious={tokenPager.hasPrevious}

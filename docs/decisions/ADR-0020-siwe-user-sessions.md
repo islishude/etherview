@@ -138,3 +138,30 @@ attempt. Actual chain and account are checked before challenge creation. Rejecti
 or failure stops login and permits an explicit retry. Successful login leaves the
 wallet on the site chain. This does not preserve a previously authenticated
 identity across an unrelated chain change or modify the payment scope.
+
+## Administrator browsing and search
+
+Detailed synchronization status (`GET /api/v1/status` and `/status`) requires
+an active administrator Cookie session. API keys do not grant this access;
+authentication-disabled deployments do not expose the detailed status API.
+Operational readiness/liveness, the public home snapshot, and compact event
+notifications retain their existing boundaries.
+
+Administrator user search accepts a bounded, trimmed, case-insensitive literal
+substring of address. PostgreSQL applies search within the
+configured chain, using the existing newest-first keyset ordering. User cursors
+bind the normalized search so a cursor cannot cross search conditions.
+Management queries and drawers are session-scoped and cleared on identity or
+authorization loss. The UI keeps wallet connection separate from login identity.
+
+## Account identity and administration overview
+
+Users have no custom display-name storage, update endpoint, or public field.
+The wallet menu may use its existing ENS projection, falling back to the wallet
+address; administrator search and management use the address.
+`GET /api/v1/admin/overview` requires an active administrator Cookie session,
+returns `no-store`, and counts all users on the configured chain on the writer,
+including administrators and disabled users. `user_count` is a decimal string.
+API keys never authorize it. The default Admin view combines this count with
+the existing last-24-hour billing summary; billing statistics keep their own
+network/asset units and authorization, without a cross-asset monetary total.

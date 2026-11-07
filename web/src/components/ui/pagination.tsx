@@ -1,8 +1,31 @@
 import type { ComponentProps } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { Button } from "./button";
 
-// Cursor ownership and translated accessible names stay with the data view.
-export function Pagination({ className, ...props }: ComponentProps<"nav">) {
+// The owning view supplies its visible row count and cursor reset.
+export function Pagination({
+  itemCount,
+  onReset,
+  hasPrevious,
+  busy,
+  className,
+  ...props
+}: ComponentProps<"nav"> & {
+  itemCount: number;
+  onReset: () => void;
+  hasPrevious: boolean;
+  busy?: boolean;
+}) {
+  const { t } = useTranslation();
+  if (itemCount === 0)
+    return hasPrevious ? (
+      <div>
+        <Button variant="outline" disabled={busy} type="button" onClick={onReset}>
+          {t("actions.restartPagination")}
+        </Button>
+      </div>
+    ) : null;
   return (
     <nav
       data-slot="pagination"

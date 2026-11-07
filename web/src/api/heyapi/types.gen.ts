@@ -124,7 +124,6 @@ export type User = {
     id: string;
     chain_id: Quantity;
     address: Address;
-    display_name?: string | null;
     role: UserRole;
     status: UserStatus;
     created_at: string;
@@ -154,8 +153,13 @@ export type AuthSession = {
     csrf_token?: string;
 };
 
-export type UserProfileUpdate = {
-    display_name: string | null;
+export type AdminOverview = {
+    user_count: Quantity;
+};
+
+export type AdminOverviewResponse = {
+    data: AdminOverview;
+    meta: Meta;
 };
 
 export type ApiKeyScope = 'api:read' | 'contract:verify';
@@ -2828,7 +2832,7 @@ export type GetStatusError = GetStatusErrors[keyof GetStatusErrors];
 
 export type GetStatusResponses = {
     /**
-     * Current indexing and capability status.
+     * Current indexing and capability status. Requires an active administrator session.
      */
     200: StatusResponse;
 };
@@ -2962,34 +2966,6 @@ export type LogoutAuthSessionResponses = {
 };
 
 export type LogoutAuthSessionResponse = LogoutAuthSessionResponses[keyof LogoutAuthSessionResponses];
-
-export type UpdateCurrentUserData = {
-    body: UserProfileUpdate;
-    headers: {
-        'X-CSRF-Token': string;
-    };
-    path?: never;
-    query?: never;
-    url: '/users/me';
-};
-
-export type UpdateCurrentUserErrors = {
-    /**
-     * Machine-readable error.
-     */
-    default: ErrorResponse;
-};
-
-export type UpdateCurrentUserError = UpdateCurrentUserErrors[keyof UpdateCurrentUserErrors];
-
-export type UpdateCurrentUserResponses = {
-    /**
-     * Updated current user.
-     */
-    200: UserResponse;
-};
-
-export type UpdateCurrentUserResponse = UpdateCurrentUserResponses[keyof UpdateCurrentUserResponses];
 
 export type ListCurrentUserApiKeysData = {
     body?: never;
@@ -3137,10 +3113,39 @@ export type DeleteCurrentUserApiKeyResponses = {
 
 export type DeleteCurrentUserApiKeyResponse = DeleteCurrentUserApiKeyResponses[keyof DeleteCurrentUserApiKeyResponses];
 
+export type GetAdminOverviewData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/admin/overview';
+};
+
+export type GetAdminOverviewErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type GetAdminOverviewError = GetAdminOverviewErrors[keyof GetAdminOverviewErrors];
+
+export type GetAdminOverviewResponses = {
+    /**
+     * Current-chain user count, including administrators and disabled users.
+     */
+    200: AdminOverviewResponse;
+};
+
+export type GetAdminOverviewResponse = GetAdminOverviewResponses[keyof GetAdminOverviewResponses];
+
 export type ListAdminUsersData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Case-insensitive literal substring of address; trimmed, at most 64 characters and 256 UTF-8 bytes, without control characters. Cursors are bound to this search.
+         */
+        q?: string;
         cursor?: OpaqueCursor;
         limit?: number;
     };

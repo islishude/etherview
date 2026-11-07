@@ -6,7 +6,7 @@ func (h *Handler) registerIdentityBillingRoutes() {
 	h.mux.HandleFunc("POST /api/v1/auth/verify", h.verifyAuthChallenge)
 	h.mux.HandleFunc("GET /api/v1/auth/session", h.authSession)
 	h.mux.HandleFunc("POST /api/v1/auth/logout", h.logoutAuthSession)
-	h.mux.HandleFunc("PATCH /api/v1/users/me", h.updateCurrentUser)
+	h.mux.HandleFunc("GET /api/v1/admin/overview", h.adminOverview)
 	h.mux.HandleFunc("GET /api/v1/users/me/api-keys", h.listCurrentUserAPIKeys)
 	h.mux.HandleFunc("POST /api/v1/users/me/api-keys", h.createCurrentUserAPIKey)
 	h.mux.HandleFunc("POST /api/v1/users/me/api-keys/{prefix}/rotate", h.rotateCurrentUserAPIKey)

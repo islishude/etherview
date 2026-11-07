@@ -18,7 +18,6 @@ it("preserves discriminants, exact quantities, nullability and schema constraint
   expectTypeOf<
     Extract<TransactionDetail, { kind: "replaced" }>["replacement_hash"]
   >().toEqualTypeOf<string>();
-  expectTypeOf<schemas.User["display_name"]>().toEqualTypeOf<string | null | undefined>();
   expectTypeOf<schemas.UserApiKeyPolicy["allowed_scopes"]>().toEqualTypeOf<
     [schemas.ApiKeyScope, schemas.ApiKeyScope]
   >();

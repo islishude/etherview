@@ -9,10 +9,13 @@ import (
 	"github.com/islishude/etherview/internal/testdbguard"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"net/http"
+	"sync"
 	"testing"
 )
 
 type harness struct {
+	statusAdminMu   sync.Mutex
+	statusCookie    *http.Cookie
 	deadlockGuard   *testdbguard.Guard
 	pushURL         string
 	pushHTTP        *http.Client

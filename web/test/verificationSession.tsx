@@ -17,11 +17,11 @@ export const verificationSession = {
     updated_at: "2026-01-01T00:00:00Z",
   },
 };
-export function withVerificationSession(fetcher: typeof fetch): typeof fetch {
+export function withVerificationSession(fetcher: typeof fetch, role = "user"): typeof fetch {
   return async (input, init) => {
     if (String(input) === "/api/v1/auth/session")
       return Response.json({
-        data: verificationSession,
+        data: { ...verificationSession, user: { ...verificationSession.user, role } },
         meta: { chain_id: "1", request_id: "session" },
       });
     const response = await fetcher(input, init);

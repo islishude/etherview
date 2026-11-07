@@ -1,3 +1,5 @@
+import { LogIn } from "lucide-react";
+import { UIIcon } from "./UIIcon";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,10 +9,11 @@ import { useWallet } from "@/wallet/WalletProvider";
 
 interface SIWELoginControlProps {
   full?: boolean;
+  compact?: boolean;
   label?: string;
 }
 
-export function SIWELoginControl({ full = false, label }: SIWELoginControlProps) {
+export function SIWELoginControl({ full = false, compact = false, label }: SIWELoginControlProps) {
   const { t } = useTranslation();
   const auth = useAuth();
   const wallet = useWallet();
@@ -40,11 +43,14 @@ export function SIWELoginControl({ full = false, label }: SIWELoginControlProps)
   return (
     <div className={`siwe-login-control${full ? " full" : ""}`}>
       <Button
-        className={`button primary${full ? " full" : ""}`}
+        variant={compact ? "ghost" : "default"}
+        size={compact ? "sm" : "default"}
+        className={compact ? "justify-start" : `button primary${full ? " full" : ""}`}
         disabled={busy || (!wallet.active && wallet.providers.length === 0)}
         onClick={start}
         type="button"
       >
+        <UIIcon icon={LogIn} />
         {busy ? t("auth.signIn.pending") : (label ?? t("auth.signIn.action"))}
       </Button>
       {choosing && wallet.providers.length > 1 ? (
