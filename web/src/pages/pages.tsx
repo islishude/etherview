@@ -355,10 +355,9 @@ export function TransactionsPage() {
 }
 
 export function TokensPage() {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
   const pager = useBrowsingCursorHistory("tokens", 150);
   const tokens = useTokens(pager.request, CORE_PAGE_SIZE);
-  const locale = i18n.resolvedLanguage ?? "en";
 
   return (
     <Page
@@ -381,7 +380,6 @@ export function TokensPage() {
                   <TableHead>{t("table.token")}</TableHead>
                   <TableHead>{t("table.standard")}</TableHead>
                   <TableHead>{t("table.confidence")}</TableHead>
-                  <TableHead className="numeric">{t("table.supply")}</TableHead>
                   <TableHead>{t("table.metadata")}</TableHead>
                 </TableRow>
               </TableHeader>
@@ -408,9 +406,6 @@ export function TokensPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{confidenceLabel(token.confidence, t)}</TableCell>
-                    <TableCell className="numeric">
-                      <code>{formatInteger(token.total_supply, locale)}</code>
-                    </TableCell>
                     <TableCell>{stageStateLabel(token.metadata_state, t)}</TableCell>
                   </TableRow>
                 ))}
