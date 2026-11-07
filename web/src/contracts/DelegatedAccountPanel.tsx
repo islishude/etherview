@@ -512,28 +512,33 @@ function DelegationHistory({
           itemCount={data.items.length}
           onReset={onReset}
           hasPrevious={hasPrevious}
+          hasNext={!!data.nextCursor}
           busy={busy}
           className="cursor-pagination"
           aria-label={t("delegation.history")}
         >
-          <Button
-            variant="outline"
-            className="button secondary"
-            disabled={!hasPrevious || busy}
-            onClick={onPrevious}
-            type="button"
-          >
-            {t("pagination.previous")}
-          </Button>
-          <Button
-            variant="outline"
-            className="button secondary"
-            disabled={!data.nextCursor || busy}
-            onClick={() => data.nextCursor && onNext(data.nextCursor)}
-            type="button"
-          >
-            {t("pagination.next")}
-          </Button>
+          {hasPrevious && (
+            <Button
+              variant="outline"
+              className="button secondary"
+              disabled={!hasPrevious || busy}
+              onClick={onPrevious}
+              type="button"
+            >
+              {t("pagination.previous")}
+            </Button>
+          )}
+          {data.nextCursor && (
+            <Button
+              variant="outline"
+              className="button secondary"
+              disabled={!data.nextCursor || busy}
+              onClick={() => data.nextCursor && onNext(data.nextCursor)}
+              type="button"
+            >
+              {t("pagination.next")}
+            </Button>
+          )}
         </Pagination>
       ) : null}
     </section>

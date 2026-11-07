@@ -63,9 +63,11 @@ describe("core explorer pages", () => {
     );
 
     const user = userEvent.setup();
+    expect(screen.queryByRole("button", { name: "Previous page" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByRole("link", { name: "11" })).toBeVisible();
     expect(screen.getByText("Page 2")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
     expect(requestedCursors).toContain(opaqueCursor);
 
     await user.click(screen.getByRole("button", { name: "Previous page" }));

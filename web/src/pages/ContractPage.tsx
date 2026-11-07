@@ -929,30 +929,35 @@ function HistoryLayout({
       <Pagination
         itemCount={itemCount}
         onReset={onReset}
-        hasPrevious={page > 1 && !loading && !error}
+        hasPrevious={page > 1 && (itemCount > 0 || (!loading && !error))}
+        hasNext={!!nextCursor}
         busy={loading}
         className="pagination-controls"
         aria-label={title}
       >
-        <Button
-          variant="outline"
-          className="button secondary"
-          disabled={page <= 1 || loading}
-          onClick={onPrevious}
-          type="button"
-        >
-          {t("pagination.previous")}
-        </Button>
+        {page > 1 && (
+          <Button
+            variant="outline"
+            className="button secondary"
+            disabled={page <= 1 || loading}
+            onClick={onPrevious}
+            type="button"
+          >
+            {t("pagination.previous")}
+          </Button>
+        )}
         <span>{t("pagination.page", { page })}</span>
-        <Button
-          variant="outline"
-          className="button secondary"
-          disabled={!nextCursor || loading}
-          onClick={() => nextCursor && onNext(nextCursor)}
-          type="button"
-        >
-          {t("pagination.next")}
-        </Button>
+        {nextCursor && (
+          <Button
+            variant="outline"
+            className="button secondary"
+            disabled={!nextCursor || loading}
+            onClick={() => nextCursor && onNext(nextCursor)}
+            type="button"
+          >
+            {t("pagination.next")}
+          </Button>
+        )}
       </Pagination>
     </div>
   );

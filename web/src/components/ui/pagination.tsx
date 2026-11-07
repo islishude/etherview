@@ -8,6 +8,7 @@ export function Pagination({
   itemCount,
   onReset,
   hasPrevious,
+  hasNext,
   busy,
   className,
   ...props
@@ -15,6 +16,7 @@ export function Pagination({
   itemCount: number;
   onReset: () => void;
   hasPrevious: boolean;
+  hasNext: boolean;
   busy?: boolean;
 }) {
   const { t } = useTranslation();
@@ -26,6 +28,7 @@ export function Pagination({
         </Button>
       </div>
     ) : null;
+  if (!hasPrevious && !hasNext) return null;
   return (
     <nav
       data-slot="pagination"

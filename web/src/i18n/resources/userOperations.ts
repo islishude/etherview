@@ -56,7 +56,6 @@ export const userOperationsResources = {
         aggregator: "Aggregator",
         eip7702_delegate: "EIP-7702 delegate",
       },
-      coverage: "UserOperation coverage {{start}}–{{end}}",
       eventKind: {
         account_deployed: "Account deployed",
         ignored_init_code: "initCode ignored",
@@ -125,7 +124,6 @@ export const userOperationsResources = {
         aggregator: "Aggregator",
         eip7702_delegate: "EIP-7702 委托目标",
       },
-      coverage: "UserOperation 覆盖范围 {{start}}–{{end}}",
       eventKind: {
         account_deployed: "账户已部署",
         ignored_init_code: "initCode 已忽略",

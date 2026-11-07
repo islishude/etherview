@@ -129,30 +129,35 @@ export function PendingPage() {
             itemCount={snapshot.items.length}
             onReset={resetPagination}
             hasPrevious={pager.page > 1}
+            hasNext={!!snapshot.meta.next_cursor}
             className="pending-pagination"
             aria-label={t("pending.pagination")}
           >
-            <Button
-              variant="outline"
-              className="button secondary"
-              disabled={pager.invalid || !pager.hasPrevious}
-              onClick={pager.previous}
-              type="button"
-            >
-              {t("pending.previousPage")}
-            </Button>
+            {pager.hasPrevious && (
+              <Button
+                variant="outline"
+                className="button secondary"
+                disabled={pager.invalid || !pager.hasPrevious}
+                onClick={pager.previous}
+                type="button"
+              >
+                {t("pending.previousPage")}
+              </Button>
+            )}
             <span aria-live="polite">
               {t("pending.pageNumber", { page: formatInteger(pager.page, locale) })}
             </span>
-            <Button
-              variant="outline"
-              className="button secondary"
-              disabled={pager.invalid || !snapshot.meta.next_cursor}
-              onClick={() => pager.next(snapshot.meta.next_cursor)}
-              type="button"
-            >
-              {t("pending.nextPage")}
-            </Button>
+            {snapshot.meta.next_cursor && (
+              <Button
+                variant="outline"
+                className="button secondary"
+                disabled={pager.invalid || !snapshot.meta.next_cursor}
+                onClick={() => pager.next(snapshot.meta.next_cursor)}
+                type="button"
+              >
+                {t("pending.nextPage")}
+              </Button>
+            )}
           </Pagination>
         </>
       )}

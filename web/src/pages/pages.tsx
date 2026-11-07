@@ -483,30 +483,35 @@ export function CursorPagination({
       itemCount={itemCount}
       onReset={onReset}
       hasPrevious={hasPrevious}
+      hasNext={hasNext}
       busy={busy}
       className="cursor-pagination"
       aria-busy={busy}
       aria-label={label}
     >
-      <Button
-        variant="outline"
-        className="button secondary"
-        disabled={!hasPrevious || busy || invalid}
-        onClick={onPrevious}
-        type="button"
-      >
-        {t("pagination.previous")}
-      </Button>
+      {hasPrevious && (
+        <Button
+          variant="outline"
+          className="button secondary"
+          disabled={!hasPrevious || busy || invalid}
+          onClick={onPrevious}
+          type="button"
+        >
+          {t("pagination.previous")}
+        </Button>
+      )}
       <span aria-live="polite">{t("pagination.page", { page: formatInteger(page, locale) })}</span>
-      <Button
-        variant="outline"
-        className="button secondary"
-        disabled={!hasNext || busy || invalid}
-        onClick={onNext}
-        type="button"
-      >
-        {t("pagination.next")}
-      </Button>
+      {hasNext && (
+        <Button
+          variant="outline"
+          className="button secondary"
+          disabled={!hasNext || busy || invalid}
+          onClick={onNext}
+          type="button"
+        >
+          {t("pagination.next")}
+        </Button>
+      )}
     </Pagination>
   );
 }

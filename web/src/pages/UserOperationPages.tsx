@@ -1,4 +1,3 @@
-import { Alert } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { useQueryWithdrawn } from "@/api/browsingHooks";
 import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
@@ -19,10 +18,9 @@ import { AddressIdentity } from "@/ens/AddressIdentity";
 import { CORE_PAGE_SIZE, CursorPagination, Detail, DetailList, FinalityBadge, Page } from "./pages";
 
 export function UserOperationsPage() {
-  const { i18n, t } = useTranslation();
+  const { t } = useTranslation();
   const pager = useBrowsingCursorHistory("user-operations", 1000);
   const operations = useUserOperations(pager.request, CORE_PAGE_SIZE);
-  const locale = i18n.resolvedLanguage ?? "en";
   return (
     <Page
       title={t("page.userOperations")}
@@ -34,16 +32,6 @@ export function UserOperationsPage() {
           error={operations.error}
           onReset={pager.reset}
         />
-        {operations.data?.meta.coverage_start && operations.data.meta.coverage_end ? (
-          <Alert asChild>
-            <p className="context-note" role="note">
-              {t("userOperation.coverage", {
-                start: formatInteger(operations.data.meta.coverage_start, locale),
-                end: formatInteger(operations.data.meta.coverage_end, locale),
-              })}
-            </p>
-          </Alert>
-        ) : null}
         {operations.data?.items.length === 0 ? (
           <p className="empty-result" role="status">
             <BrowsingEmpty>{t("state.noUserOperations")}</BrowsingEmpty>

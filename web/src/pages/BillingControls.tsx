@@ -24,32 +24,39 @@ export function BillingPagination({
       itemCount={itemCount}
       onReset={() => onChange([""])}
       hasPrevious={cursors.length > 1}
+      hasNext={!!nextCursor}
       busy={busy}
       className="cursor-pagination"
       aria-busy={busy}
       aria-label={label}
     >
-      <Button
-        variant="outline"
-        className="button secondary"
-        disabled={busy || cursors.length === 1}
-        onClick={() => onChange((current) => (current.length > 1 ? current.slice(0, -1) : current))}
-        type="button"
-      >
-        {t("pagination.previous")}
-      </Button>
+      {cursors.length > 1 && (
+        <Button
+          variant="outline"
+          className="button secondary"
+          disabled={busy || cursors.length === 1}
+          onClick={() =>
+            onChange((current) => (current.length > 1 ? current.slice(0, -1) : current))
+          }
+          type="button"
+        >
+          {t("pagination.previous")}
+        </Button>
+      )}
       <span aria-live="polite">{t("pagination.page", { page: cursors.length })}</span>
-      <Button
-        variant="outline"
-        className="button secondary"
-        disabled={busy || !nextCursor}
-        onClick={() => {
-          if (nextCursor) onChange((current) => [...current, nextCursor]);
-        }}
-        type="button"
-      >
-        {t("pagination.next")}
-      </Button>
+      {nextCursor && (
+        <Button
+          variant="outline"
+          className="button secondary"
+          disabled={busy || !nextCursor}
+          onClick={() => {
+            if (nextCursor) onChange((current) => [...current, nextCursor]);
+          }}
+          type="button"
+        >
+          {t("pagination.next")}
+        </Button>
+      )}
     </Pagination>
   );
 }

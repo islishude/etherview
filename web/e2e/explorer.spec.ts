@@ -701,9 +701,9 @@ test("EIP-7702 transaction keeps authorization outcomes lazy and uses transactio
   await expect(applied.getByText(codeHash, { exact: true })).toBeVisible();
 
   const authorizationPagination = page.getByRole("navigation", { name: "Authorizations" });
-  await expect(
-    authorizationPagination.getByRole("button", { name: "Previous page" }),
-  ).toBeDisabled();
+  await expect(authorizationPagination.getByRole("button", { name: "Previous page" })).toHaveCount(
+    0,
+  );
   await activateInView(authorizationPagination.getByRole("button", { name: "Next page" }));
   const skipped = page.locator("article.transaction-log").filter({ hasText: "Authorization #1" });
   await expect(skipped.getByText("skipped", { exact: true })).toBeVisible();
@@ -1214,7 +1214,7 @@ test("delegated-account panels keep shared layout and accessibility on narrow Pr
   await expect(page.getByRole("heading", { name: "Delegation history" })).toBeVisible();
   await expect(page.getByText("Re-delegated", { exact: true })).toBeVisible();
   const historyNavigation = page.getByRole("navigation", { name: "Delegation history" });
-  await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toBeDisabled();
+  await expect(historyNavigation.getByRole("button", { name: "Previous page" })).toHaveCount(0);
   await historyNavigation.getByRole("button", { name: "Next page" }).click();
   await expect(page.getByText("Delegated", { exact: true })).toBeVisible();
 

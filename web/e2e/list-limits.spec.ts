@@ -57,16 +57,16 @@ for (const language of ["en", "zh"] as const) {
           language === "en" ? `Page ${index + 1}` : `第 ${index + 1} 页`,
         );
       }
-      await expect(next).toBeDisabled();
+      await expect(next).toHaveCount(0);
       await expect(page.locator("tbody tr")).toHaveCount(25);
       expect(Math.max(...offsets)).toBe(cap - 25);
       await previous.click();
       await expect(next).toBeEnabled();
       await next.click();
-      await expect(next).toBeDisabled();
+      await expect(next).toHaveCount(0);
       expect(offsets).not.toContain(cap);
       await page.reload();
-      await expect(previous).toBeDisabled();
+      await expect(previous).toHaveCount(0);
       await expect(next).toBeEnabled();
     });
   }

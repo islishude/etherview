@@ -584,6 +584,52 @@ describe("authentication pages", () => {
     ).toBe(true);
   });
 
+  it("hides unavailable admin page directions and recovers an empty later page", async () => {
+    let mode: "single" | "multiple" | "empty" = "single";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/v1/config") return configResponse(true);
+        if (url === "/api/v1/auth/session") return envelope(authSession(userRecord()));
+        if (url.startsWith("/api/v1/admin/users?")) {
+          const query = new URL(url, "http://localhost").searchParams;
+          if (mode === "empty") return envelope([]);
+          return envelope(
+            [userRecord()],
+            mode === "multiple" && !query.has("cursor") ? { next_cursor: "page-two" } : {},
+          );
+        }
+        return notFound();
+      }),
+    );
+    renderRoute("/admin/users");
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "Settings" });
+    expect(
+      screen.queryByRole("navigation", { name: "Administrative user pages" }),
+    ).not.toBeInTheDocument();
+    mode = "multiple";
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    const next = await screen.findByRole("button", { name: "Next page" });
+    expect(screen.queryByRole("button", { name: "Previous page" })).not.toBeInTheDocument();
+    await user.click(next);
+    await screen.findByRole("button", { name: "Previous page" });
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
+    mode = "empty";
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    const restart = await screen.findByRole("button", { name: "Restart from the first page" });
+    expect(
+      screen.queryByRole("navigation", { name: "Administrative user pages" }),
+    ).not.toBeInTheDocument();
+    mode = "single";
+    await user.click(restart);
+    await screen.findByRole("button", { name: "Settings" });
+    expect(
+      screen.queryByRole("navigation", { name: "Administrative user pages" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("provides accessible admin mutation, revocation, and opaque pagination controls", async () => {
     const fake = fakeProvider();
     registerProvider(fake.provider);

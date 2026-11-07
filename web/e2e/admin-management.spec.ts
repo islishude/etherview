@@ -84,6 +84,12 @@ for (const appearance of appearanceCases.filter(({ width }) => width !== 768)) {
     await expect(page.locator(".admin-user-list")).toBeVisible();
     expect((await search.boundingBox())!.width).toBeLessThanOrEqual(320);
     await page.screenshot({ path: testInfo.outputPath("admin-users.png") });
+    await expect(
+      page.getByRole("button", { name: zh ? "上一页" : "Previous page", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: zh ? "下一页" : "Next page", exact: true }),
+    ).toHaveCount(0);
     await search.fill("missing");
     expect(searches).not.toContain("missing");
     await search.press("Enter");

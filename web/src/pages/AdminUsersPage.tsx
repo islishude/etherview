@@ -193,42 +193,47 @@ function AdminUsersContent() {
               ))}
             </div>
           )}
-          {users.data && (
+          {users.data && (cursors.length > 1 || users.data.meta.next_cursor) && (
             <Pagination
               itemCount={users.data.data.length}
               onReset={() => setCursors([""])}
               hasPrevious={cursors.length > 1}
+              hasNext={!!users.data.meta.next_cursor}
               busy={users.isFetching}
               className="cursor-pagination"
               aria-label={t("auth.admin.pagination")}
             >
-              <Button
-                variant="outline"
-                className="button secondary"
-                disabled={users.isFetching || cursors.length === 1}
-                onClick={() => {
-                  setAnnouncement(undefined);
-                  setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current));
-                }}
-                type="button"
-              >
-                {t("pagination.previous")}
-              </Button>
+              {cursors.length > 1 && (
+                <Button
+                  variant="outline"
+                  className="button secondary"
+                  disabled={users.isFetching}
+                  onClick={() => {
+                    setAnnouncement(undefined);
+                    setCursors((current) => (current.length > 1 ? current.slice(0, -1) : current));
+                  }}
+                  type="button"
+                >
+                  {t("pagination.previous")}
+                </Button>
+              )}
               <span>{t("pagination.page", { page: cursors.length })}</span>
-              <Button
-                variant="outline"
-                className="button secondary"
-                disabled={users.isFetching || !users.data.meta.next_cursor}
-                onClick={() => {
-                  const next = users.data?.meta.next_cursor;
-                  if (!next) return;
-                  setAnnouncement(undefined);
-                  setCursors((current) => [...current, next]);
-                }}
-                type="button"
-              >
-                {t("pagination.next")}
-              </Button>
+              {users.data.meta.next_cursor && (
+                <Button
+                  variant="outline"
+                  className="button secondary"
+                  disabled={users.isFetching}
+                  onClick={() => {
+                    const next = users.data?.meta.next_cursor;
+                    if (!next) return;
+                    setAnnouncement(undefined);
+                    setCursors((current) => [...current, next]);
+                  }}
+                  type="button"
+                >
+                  {t("pagination.next")}
+                </Button>
+              )}
             </Pagination>
           )}
         </>
