@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -46,23 +45,9 @@ test("license gate covers hoisted production dependencies and excludes developme
   assert.deepEqual(Object.keys(result).sort(), ["direct@1.0.0", "transitive@1.0.0"]);
 });
 
-test("license gate rejects a disallowed hoisted transitive license", (t) => {
+test("license gate rejects a disallowed hoisted transitive license", async (t) => {
   const root = fixture(t, "GPL-3.0-only");
-  const moduleURL = new URL("../../.github/scripts/check-workspace-licenses.mjs", import.meta.url)
-    .href;
-  // The pinned checker exits on a disallowed license, so exercise it in a child.
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--input-type=module",
-      "-e",
-      `import { checkLicenses } from ${JSON.stringify(moduleURL)}; await checkLicenses(${JSON.stringify(root)});`,
-    ],
-    { encoding: "utf8", timeout: 20_000 },
-  );
-  assert.ifError(result.error);
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /transitive@1\.0\.0.*GPL-3\.0-only/);
+  await assert.rejects(checkLicenses(root), /transitive@1\.0\.0.*GPL-3\.0-only/);
 });
 
 test("license gate fails when a required hoisted dependency is missing", async (t) => {

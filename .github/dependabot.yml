@@ -34,7 +34,7 @@ updates:
     open-pull-requests-limit: 10
     # Coordinated updates and reviewed holds: .github/dependency-registry.json.
     ignore:
-      - dependency-name: "license-checker-rseidelsohn"
+      - dependency-name: "@lizenz/checker"
       - dependency-name: "node"
       - dependency-name: "pnpm"
       - dependency-name: "pyodide"

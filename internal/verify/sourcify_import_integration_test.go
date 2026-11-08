@@ -15,6 +15,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	dbaccess "github.com/islishude/etherview/internal/db"
+	"github.com/islishude/etherview/internal/testdbguard"
+	"github.com/islishude/etherview/internal/testpgx"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestSourcifyImportPostgresLocalPublication(t *testing.T) {
@@ -88,7 +93,7 @@ func TestSourcifyImportPostgresLocalPublication(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				assertImmutableImportRace(t, repository, lease, input)
+				assertImmutableImportRace(t, db, repository, lease, input)
 				bytecodeDBExec(t, db, `UPDATE verification_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1::uuid`, job.ID)
 				if _, err := repository.SaveImportInput(t.Context(), lease, input); !errors.Is(err, ErrLeaseLost) {
 					t.Fatalf("stale source writer: %v", err)
@@ -134,10 +139,21 @@ func (unavailableImportCompiler) Availability(context.Context) CompilerAvailabil
 
 // Competing deliveries may observe different upstream contents. Only the first
 // normalized input is retained; neither the request identity nor its digest moves.
-func assertImmutableImportRace(t *testing.T, repository *PostgresRepository, lease VerificationLease, input SubmissionV2) {
+func assertImmutableImportRace(t *testing.T, db *pgxpool.Pool, repository *PostgresRepository, lease VerificationLease, input SubmissionV2) {
 	t.Helper()
 	var originalPayload, originalDigest []byte
 	if err := repository.db.QueryRow(t.Context(), `SELECT request_payload, request_digest FROM verification_jobs WHERE id=$1::uuid`, lease.Job.ID).Scan(&originalPayload, &originalDigest); err != nil {
+		t.Fatal(err)
+	}
+	// Hold the job until both writers have taken their statement snapshots and
+	// are waiting for its row lock, then let them serialize their input writes.
+	tx, err := db.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbaccess.Rollback(t.Context(), tx)
+	var blocker int32
+	if err := tx.QueryRow(t.Context(), `SELECT pg_backend_pid() FROM verification_jobs WHERE id=$1::uuid FOR UPDATE`, lease.Job.ID).Scan(&blocker); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -150,14 +166,30 @@ func assertImmutableImportRace(t *testing.T, repository *PostgresRepository, lea
 		}
 		standard["sources"] = map[string]any{"A.sol": map[string]string{"content": "contract A {} // " + name}}
 		candidate.StandardJSON, _ = json.Marshal(standard)
+		pool := testpgx.Pool(t, db.Config().ConnConfig, 1)
+		peer, err := NewPostgresRepository(pool, RepositoryOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var waiter int32
+		if err := pool.QueryRow(t.Context(), `SELECT pg_backend_pid()`).Scan(&waiter); err != nil {
+			t.Fatal(err)
+		}
 		wg.Go(func() {
-			saved, err := repository.SaveImportInput(t.Context(), lease, candidate)
+			saved, err := peer.SaveImportInput(t.Context(), lease, candidate)
 			if err != nil {
 				t.Error(err)
 				return
 			}
 			results <- saved.RequestV2.StandardJSON
 		})
+		if err := testdbguard.WaitBlocked(t.Context(), db, waiter, blocker); err != nil {
+			t.Fatal(err)
+		}
+		blocker = waiter
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 	wg.Wait()
 	close(results)

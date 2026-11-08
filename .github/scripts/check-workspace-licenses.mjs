@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { asSummary, init } from "license-checker-rseidelsohn";
+import { runLicenseCheck } from "@lizenz/checker";
 
 const allowed = "0BSD;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;MIT;MPL-2.0;Unlicense";
 
@@ -46,19 +46,14 @@ export async function checkLicenses(root, workspace = "web") {
     // Scan each real package directly: a root scan can miss nested optional
     // dependencies in pnpm's virtual store. Keep license detection and policy
     // enforcement in the pinned checker, including license-file inference.
-    const result = await new Promise((resolve, reject) => {
-      init(
-        {
-          start: directory,
-          direct: 0,
-          includePackages: name,
-          onlyAllow: allowed,
-          ...(existsSync(join(root, "licenses/npm-clarifications.json"))
-            ? { clarificationsFile: join(root, "licenses/npm-clarifications.json") }
-            : {}),
-        },
-        (error, result) => (error ? reject(error) : resolve(result)),
-      );
+    const result = await runLicenseCheck({
+      start: directory,
+      depth: 0,
+      includePackages: name,
+      onlyAllow: allowed,
+      ...(existsSync(join(root, "licenses/npm-clarifications.json"))
+        ? { clarificationsFile: join(root, "licenses/npm-clarifications.json") }
+        : {}),
     });
     assert.ok(result[name]?.licenses, `license scan omitted ${name}`);
     Object.assign(licenses, result);
@@ -74,5 +69,12 @@ if (import.meta.main) {
     workspace,
   );
   console.log(`${workspace}-license-check: ${Object.keys(licenses).length} production packages`);
-  console.log(asSummary(licenses));
+  const counts = new Map();
+  for (const { licenses: license } of Object.values(licenses)) {
+    const label = Array.isArray(license) ? license.join(", ") : license;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  for (const [license, count] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
+    console.log(`${license}: ${count}`);
+  }
 }
