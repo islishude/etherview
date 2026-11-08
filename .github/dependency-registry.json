@@ -119,7 +119,7 @@
     {
       "id": "license-checker",
       "source": "npm",
-      "package": "license-checker-rseidelsohn",
+      "package": "@lizenz/checker",
       "policy": "auto",
       "reason": "",
       "pins": [
@@ -133,7 +133,7 @@
           "template": "{{version}}",
           "jsonPath": [
             "devDependencies",
-            "license-checker-rseidelsohn"
+            "@lizenz/checker"
           ]
         }
       ],
@@ -150,7 +150,7 @@
       ],
       "ignores": {
         "npm": [
-          "license-checker-rseidelsohn"
+          "@lizenz/checker"
         ]
       }
     },

@@ -33,7 +33,7 @@ GOVULNCHECK_VERSION ?= v1.9.0
 GITLEAKS_VERSION ?= v8.30.1
 GO_LICENSES_VERSION ?= v2.0.1
 GOLANGCI_LINT_VERSION ?= v2.15.0
-WEB_LICENSE_CHECKER_VERSION ?= 5.0.1
+WEB_LICENSE_CHECKER_VERSION ?= 0.0.2
 MKCERT_VERSION ?= v1.4.4
 FOUNDRY_VERSION ?= 1.9.0
 
@@ -240,7 +240,7 @@ security-check: security-tool-check web-build compiler-install
 
 license-tool-check:
 	@command -v "$(GO_LICENSES)" >/dev/null 2>&1 || { echo "license-check: missing $(GO_LICENSES); run 'make install-security-tools'"; exit 1; }
-	@grep -Eq '"license-checker-rseidelsohn": "$(WEB_LICENSE_CHECKER_VERSION)"' package.json || { \
+	@grep -Eq '"@lizenz/checker": "$(WEB_LICENSE_CHECKER_VERSION)"' package.json || { \
 		echo "license-check: frontend checker must be pinned at $(WEB_LICENSE_CHECKER_VERSION)"; exit 1; }
 
 license-check: license-tool-check web-install compiler-install
