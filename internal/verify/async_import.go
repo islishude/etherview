@@ -53,14 +53,21 @@ func (repository *PostgresRepository) SaveImportInput(ctx context.Context, lease
 	}
 	defer dbaccess.Rollback(ctx, tx)
 	q := dbgen.New(tx)
-	row, err := q.VerifyV2LockRunningJob(ctx, id, new(lease.Token))
+	_, err = q.VerifyV2LockRunningJob(ctx, id, new(lease.Token))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return VerificationJob{}, ErrLeaseLost
 	}
 	if err != nil {
 		return VerificationJob{}, err
 	}
-	job, err := repository.decodeV2Job(dbgen.VerifyV2GetJobRow(row))
+	// A lock wait can outlive the statement snapshot used by the import-input
+	// subquery. Read again after acquiring the job lock so a competing writer's
+	// committed input is visible before deciding whether to bind it.
+	current, err := q.VerifyV2GetJob(ctx, id)
+	if err != nil {
+		return VerificationJob{}, err
+	}
+	job, err := repository.decodeV2Job(current)
 	if err != nil {
 		return VerificationJob{}, err
 	}
@@ -83,7 +90,7 @@ func (repository *PostgresRepository) SaveImportInput(ctx context.Context, lease
 			return VerificationJob{}, ErrLeaseLost
 		}
 	}
-	row, err = q.VerifyV2LockRunningJob(ctx, id, new(lease.Token))
+	row, err := q.VerifyV2LockRunningJob(ctx, id, new(lease.Token))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return VerificationJob{}, ErrLeaseLost
 	}
