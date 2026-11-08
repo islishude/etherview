@@ -29,7 +29,7 @@ require (
 	github.com/pk910/dynamic-ssz v1.4.0
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/signinwithethereum/siwe-go v1.0.0
-	github.com/x402-foundation/x402/go/v2 v2.29.0
+	github.com/x402-foundation/x402/go/v2 v2.30.0
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
 	go.opentelemetry.io/otel/sdk v1.47.0
