@@ -11,7 +11,7 @@ import (
 func TestParseRejectsUnboundedTypes(t *testing.T) {
 	for _, typ := range []string{"uint256" + strings.Repeat("[]", 8000), "uint256[999999999999999999999]", "uint256[4096][4096]"} {
 		t.Run(typ[:min(40, len(typ))], func(t *testing.T) {
-			raw := []byte(fmt.Sprintf(`[{"type":"constructor","inputs":[{"name":"a","type":%q}]}]`, typ))
+			raw := fmt.Appendf(nil, `[{"type":"constructor","inputs":[{"name":"a","type":%q}]}]`, typ)
 			if _, err := Parse(raw); err == nil {
 				t.Fatal("unbounded type accepted")
 			}
@@ -39,7 +39,7 @@ func TestCheckValuesAcceptsCanonicalNestedValues(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.typ, func(t *testing.T) {
-			parsed, err := Parse([]byte(fmt.Sprintf(`[{"type":"constructor","inputs":[{"name":"a","type":%q}]}]`, test.typ)))
+			parsed, err := Parse(fmt.Appendf(nil, `[{"type":"constructor","inputs":[{"name":"a","type":%q}]}]`, test.typ))
 			if err != nil {
 				t.Fatal(err)
 			}
