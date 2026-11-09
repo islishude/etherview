@@ -315,7 +315,7 @@ TTL 0 drops messages instead of storing them for later delivery.
 Preview uses the official Caddy image directly; its upstream image owns its
 license inventory, rather than the application image build.
 
-Preview uses `caddy:2.11.7-alpine` directly, configurable with
+Preview uses `caddy:2.11.9-alpine` directly, configurable with
 `PREVIEW_GATEWAY_IMAGE`. `make preview-images` pulls it; lifecycle commands and
 CI no longer build a gateway binary. `make test-preview-gateway` exercises the
 shipped Caddyfile in real containers before full Preview acceptance.
