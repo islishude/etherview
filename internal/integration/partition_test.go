@@ -68,7 +68,7 @@ func TestPostgresPartitionLifecycleCrossesFixedBoundary(t *testing.T) {
 	}
 
 	for parent, child := range partitionTableNames {
-		assertAttachedPartition(t, ctx, db, parent, child, testPartitionLower, testPartitionUpper)
+		assertAttachedPartition(t, ctx, db, parent, child)
 		assertPartitionRangeCount(t, ctx, db, parent+"_default", 0)
 	}
 	for _, table := range []string{
@@ -113,7 +113,7 @@ func TestPostgresPartitionLifecycleIsConcurrentAndIdempotent(t *testing.T) {
 		}
 	}
 	for parent, child := range partitionTableNames {
-		assertAttachedPartition(t, ctx, db, parent, child, testPartitionLower, testPartitionUpper)
+		assertAttachedPartition(t, ctx, db, parent, child)
 	}
 }
 
@@ -121,7 +121,7 @@ func TestPostgresPartitionLifecycleEvacuatesDefaultRowsAtomically(t *testing.T) 
 	db := newMigratedPostgres(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
-	insertDefaultPartitionFixtures(t, ctx, db, testPartitionLower)
+	insertDefaultPartitionFixtures(t, ctx, db)
 
 	for parent := range partitionTableNames {
 		assertPartitionRangeCount(t, ctx, db, parent+"_default", 1)
@@ -135,7 +135,7 @@ func TestPostgresPartitionLifecycleEvacuatesDefaultRowsAtomically(t *testing.T) 
 	}
 
 	for parent, child := range partitionTableNames {
-		assertAttachedPartition(t, ctx, db, parent, child, testPartitionLower, testPartitionUpper)
+		assertAttachedPartition(t, ctx, db, parent, child)
 		assertPartitionRangeCount(t, ctx, db, parent+"_default", 0)
 		assertPartitionRangeCount(t, ctx, db, child, 1)
 		assertPartitionRangeCount(t, ctx, db, parent, 1)
@@ -160,7 +160,7 @@ func TestPostgresPartitionLifecycleReportsRecoverablePartialState(t *testing.T) 
 		"CREATE TABLE %s PARTITION OF receipts FOR VALUES FROM (%d) TO (%d)",
 		quoteIdentifier(partialReceiptPartition), testPartitionLower, testPartitionUpper,
 	))
-	insertDefaultPartitionFixtures(t, ctx, db, testPartitionLower)
+	insertDefaultPartitionFixtures(t, ctx, db)
 
 	repository, err := store.NewPostgresRepository(db)
 	if err != nil {
@@ -183,7 +183,7 @@ func TestPostgresPartitionLifecycleReportsRecoverablePartialState(t *testing.T) 
 	)
 }
 
-func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *pgxpool.Pool, number uint64) {
+func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *pgxpool.Pool) {
 	t.Helper()
 	blockHash := mustBytes(t, testHash(60_000))
 	parentHash := mustBytes(t, testHash(59_999))
@@ -192,7 +192,7 @@ func insertDefaultPartitionFixtures(t *testing.T, ctx context.Context, db *pgxpo
 	toAddress := mustBytes(t, testAddress(62))
 	tokenAddress := mustBytes(t, testAddress(63))
 	topic := mustBytes(t, testHash(60_001))
-	height := fmt.Sprint(number)
+	height := fmt.Sprint(testPartitionLower)
 
 	execFixture(t, ctx, db, `INSERT INTO chains (chain_id) VALUES (1)`)
 	execFixture(t, ctx, db, `
@@ -298,7 +298,6 @@ func assertAttachedPartition(
 	ctx context.Context,
 	db queryRowContext,
 	parent, child string,
-	lower, upper uint64,
 ) {
 	t.Helper()
 	var bound string
@@ -314,7 +313,7 @@ func assertAttachedPartition(
 		t.Fatalf("query partition %s of %s: %v", child, parent, err)
 	}
 	normalized := strings.NewReplacer(" ", "", "'", "", "::numeric", "").Replace(bound)
-	want := fmt.Sprintf("FORVALUESFROM(%d)TO(%d)", lower, upper)
+	want := fmt.Sprintf("FORVALUESFROM(%d)TO(%d)", testPartitionLower, testPartitionUpper)
 	if strings.ToUpper(normalized) != want {
 		t.Fatalf("partition %s bound = %q, want %q", child, bound, want)
 	}

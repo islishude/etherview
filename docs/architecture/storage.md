@@ -66,6 +66,13 @@ COMMITTED statement snapshots so a process that waited for another process's
 DDL sees the committed relations. The DEFAULT partitions are a recoverable
 upgrade buffer, not steady-state storage.
 
+A fully attached range is checked through the catalog without taking fact-table
+locks. When DDL is needed, the manager acquires the full table-lock set with
+`NOWAIT` inside a savepoint. Contention rolls back that attempt's partial locks
+before retrying for at most ten seconds (or the caller's shorter deadline), so
+ordinary writers with a different table order can finish. The catalog is checked
+again under the acquired locks before any data movement or DDL.
+
 Automatic recovery is atomic: a failed copy, delete, or attach rolls back both
 DDL and data movement. A partially hand-managed range whose existing child
 partitions make automatic foreign-key movement ambiguous returns a typed

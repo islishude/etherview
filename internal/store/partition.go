@@ -9,9 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	dbaccess "github.com/islishude/etherview/internal/db"
 	pgx "github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const DefaultPartitionSpan uint64 = 1_000_000
@@ -303,6 +305,23 @@ func ensurePartitionRangeTx(ctx context.Context, tx pgx.Tx, lower, upper uint64)
 	if err != nil {
 		return err
 	}
+	// Another process may already have provisioned this range. The lifecycle
+	// advisory lock serializes catalog changes; inspecting them does not need
+	// fact-table locks that would conflict with active enrichment transactions.
+	complete := true
+	for _, spec := range specs {
+		attached, err := partitionAttachedForRange(ctx, tx, schema, spec, lower, upper)
+		if err != nil {
+			return err
+		}
+		if !attached {
+			complete = false
+			break
+		}
+	}
+	if complete {
+		return nil
+	}
 	if err := lockPartitionTables(ctx, tx, schema, specs); err != nil {
 		return err
 	}
@@ -481,11 +500,41 @@ func lockPartitionTables(
 	if len(tables) == 0 {
 		return nil
 	}
-	if _, err := tx.Exec(ctx,
-		"LOCK TABLE "+strings.Join(tables, ", ")+" IN ACCESS EXCLUSIVE MODE"); err != nil {
-		return fmt.Errorf("lock partitioned fact tables: %w", err)
+	// Writers can touch these tables in a different order. Never wait while
+	// holding only part of the lock set: rollback releases locks acquired since
+	// the savepoint, without discarding the caller's chain/lifecycle locks.
+	lockCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if _, err := tx.Exec(lockCtx, "SAVEPOINT partition_table_locks"); err != nil {
+		return fmt.Errorf("save partition lock attempt: %w", err)
 	}
-	return nil
+	for {
+		_, err := tx.Exec(lockCtx,
+			"LOCK TABLE "+strings.Join(tables, ", ")+" IN ACCESS EXCLUSIVE MODE NOWAIT")
+		if err == nil {
+			if _, err := tx.Exec(lockCtx, "RELEASE SAVEPOINT partition_table_locks"); err != nil {
+				return fmt.Errorf("retain partition table locks: %w", err)
+			}
+			return nil
+		}
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "55P03" {
+			return fmt.Errorf("lock partitioned fact tables: %w", err)
+		}
+		rollbackCtx, rollbackCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		_, rollbackErr := tx.Exec(rollbackCtx, "ROLLBACK TO SAVEPOINT partition_table_locks")
+		rollbackCancel()
+		if rollbackErr != nil {
+			return fmt.Errorf("release partial partition table locks: %w", rollbackErr)
+		}
+		timer := time.NewTimer(50 * time.Millisecond)
+		select {
+		case <-lockCtx.Done():
+			timer.Stop()
+			return fmt.Errorf("wait for partition table locks: %w", lockCtx.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 func partitionAttachedForRange(
