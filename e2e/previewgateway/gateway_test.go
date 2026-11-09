@@ -183,7 +183,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 	}
 	image := os.Getenv("PREVIEW_GATEWAY_IMAGE")
 	if image == "" {
-		image = "caddy:2.11.7-alpine"
+		image = "caddy:2.11.9-alpine"
 	}
 	g.id = docker(t, append(args, image)...)
 	t.Cleanup(func() { docker(t, "rm", "-fv", g.id) })

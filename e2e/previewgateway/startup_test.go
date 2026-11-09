@@ -24,7 +24,7 @@ func TestInvalidCertificatesFailStartup(t *testing.T) {
 	}
 	image := os.Getenv("PREVIEW_GATEWAY_IMAGE")
 	if image == "" {
-		image = "caddy:2.11.7-alpine"
+		image = "caddy:2.11.9-alpine"
 	}
 	for _, test := range []struct{ name, key string }{{"mismatch", otherKey}, {"invalid", cert}} {
 		t.Run(test.name, func(t *testing.T) {

@@ -58,7 +58,7 @@ if (${JSON.stringify(name)} === "docker" && args[0] === "run" && process.env.FAI
           "BUILDX=stub-buildx",
           "COMPOSE=stub-compose",
           "IMAGE=etherview:local",
-          "PREVIEW_GATEWAY_IMAGE=caddy:2.11.7-alpine",
+          "PREVIEW_GATEWAY_IMAGE=caddy:2.11.9-alpine",
           "HARDHAT3_IMAGE=etherview-hardhat3:local",
           "FOUNDRY_IMAGE=etherview-foundry:local",
           ...overrides,
@@ -227,7 +227,7 @@ for (const suite of [
     );
     assert.deepEqual(prebuilt.commands[0].args, ["image", "inspect", "etherview:local"]);
     if (preview)
-      assert.deepEqual(prebuilt.commands[1].args, ["image", "inspect", "caddy:2.11.7-alpine"]);
+      assert.deepEqual(prebuilt.commands[1].args, ["image", "inspect", "caddy:2.11.9-alpine"]);
     if (suite.startsWith("preview-tools-e2e")) {
       const args = prebuilt.commands.at(-1).args;
       const full = suite.endsWith("-full");
@@ -261,7 +261,7 @@ for (const suite of [
   test(`${target}: missing images and failed tests stop the command`, (t) => {
     const f = fixture(t);
     for (const missing of preview
-      ? ["etherview:local", "caddy:2.11.7-alpine", previewHelperImage, previewVerifierImage]
+      ? ["etherview:local", "caddy:2.11.9-alpine", previewHelperImage, previewVerifierImage]
       : ["etherview:local"]) {
       const result = f.run(`${target}-prebuilt`, { MISSING_IMAGE: missing });
       assert.notEqual(result.status, 0);

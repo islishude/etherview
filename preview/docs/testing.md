@@ -5,7 +5,7 @@
 ### Preview gateway regressions
 
 `make test-preview-gateway` runs the shipped Caddyfile against the pinned
-`caddy:2.11.7-alpine` image with isolated upstreams and a test-only trusted CA.
+`caddy:2.11.9-alpine` image with isolated upstreams and a test-only trusted CA.
 It covers domain routing, raw IPFS paths, CORS, TLS, request limits, streaming,
 cancellation, deadlines and WSS/SSE idle connections. Origin regressions cover
 arbitrary website, extension, null and absent Origins for Geth RPC/preflight/WSS,

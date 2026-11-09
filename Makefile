@@ -52,7 +52,7 @@ HARDHAT3_IMAGE ?= etherview-hardhat3:local
 # Enable 2 by default only after matching native AMD64/ARM64 measurements.
 VERIFICATION_PARALLEL ?= 1
 FOUNDRY_IMAGE ?= etherview-foundry:local
-PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.7-alpine
+PREVIEW_GATEWAY_IMAGE ?= caddy:2.11.9-alpine
 export PREVIEW_GATEWAY_IMAGE
 HELM_CHART ?= deploy/helm/etherview
 PREVIEW_APP_SERVICES := api sync enrich trace metadata maintenance
