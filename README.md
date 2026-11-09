@@ -69,7 +69,7 @@ Open <http://localhost:8080>. For Kubernetes, see the
 
 ## Development
 
-Requires Go >=1.27.3, Node 26.13.0, and pnpm 12.16.1.
+Requires Go >=1.27.3, Node 26.13.0, and pnpm 12.18.0.
 
 ```sh
 make toolchain-check

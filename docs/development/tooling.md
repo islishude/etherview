@@ -37,7 +37,7 @@ through both `make lint` and root `pnpm run lint`. Use `make format-check` for a
 check; `make lint` and CI include it. Both commands install the locked root pnpm
 workspace. `pnpm-workspace.yaml` owns the workspace list, install policy and
 dependency overrides; `api`, `web`, `compiler`, and `e2e/hardhat3` share one root
-`pnpm-lock.yaml`. Install pnpm 12.16.1 (pinned by `packageManager`), then run
+`pnpm-lock.yaml`. Install pnpm 12.18.0 (pinned by `packageManager`), then run
 `pnpm install --frozen-lockfile` (or `make pnpm-install`) at the repository root.
 When switching an existing checkout from npm, remove the generated root and
 workspace `node_modules` directories before installing. Dependency changes use
