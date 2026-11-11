@@ -37,7 +37,11 @@ func TestSourcifyImportPostgresLocalPublication(t *testing.T) {
 					t.Error("import must never upload sources")
 				}
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(strings.ReplaceAll(strings.ReplaceAll(string(sourcifyContractFixture(address)), `"chainId":"1"`, `"chainId":"11155111"`), "0x6001", "0x6002")))
+				fixture := strings.ReplaceAll(strings.ReplaceAll(string(sourcifyContractFixture(address)), `"chainId":"1"`, `"chainId":"11155111"`), "0x6001", "0x6002")
+				if scenario == "match" {
+					fixture = strings.ReplaceAll(fixture, "contract A {}", "contract A {} /*"+strings.Repeat("a", 3<<20)+"*/")
+				}
+				_, _ = w.Write([]byte(fixture))
 			}))
 			defer server.Close()
 			client, err := newSourcifyClient(SourcifyOptions{BaseURL: server.URL}, server.Client(), nil, true, true)
@@ -53,6 +57,14 @@ func TestSourcifyImportPostgresLocalPublication(t *testing.T) {
 			job, created, err := service.SubmitV2(t.Context(), request)
 			if err != nil || !created {
 				t.Fatalf("enqueue created=%t err=%v", created, err)
+			}
+			var reserved int64
+			if err := db.QueryRow(t.Context(), `SELECT bytes FROM verification_budget`).Scan(&reserved); err != nil || reserved != 16<<20 {
+				t.Fatalf("unknown source reservation=%d err=%v", reserved, err)
+			}
+			summary, found, summaryErr := repository.JobSummary(t.Context(), job.ID)
+			if summaryErr != nil || !found || summary.ChainID != "1" || summary.Address != address {
+				t.Fatalf("target projection=%+v err=%v", summary, summaryErr)
 			}
 			if _, found, err := repository.VerifiedContract(t.Context(), 1, address); err != nil || found {
 				t.Fatal("external match published without local compilation")
@@ -81,6 +93,10 @@ func TestSourcifyImportPostgresLocalPublication(t *testing.T) {
 				saved, found, err := repository.Job(t.Context(), job.ID)
 				if err != nil || !found || saved.Status != JobQueued || saved.AttemptCount != 0 || saved.RequestV2.Kind != JobAddress {
 					t.Fatalf("catalog wait did not preserve input: %+v %v", saved, err)
+				}
+				var actual int64
+				if err := db.QueryRow(t.Context(), `SELECT bytes FROM verification_budget`).Scan(&actual); err != nil || actual <= 0 || actual >= reserved {
+					t.Fatalf("bound source budget=%d reservation=%d err=%v", actual, reserved, err)
 				}
 				server.Close()
 			}
@@ -112,11 +128,33 @@ func TestSourcifyImportPostgresLocalPublication(t *testing.T) {
 			if err != nil || !found {
 				t.Fatal("durable local result missing")
 			}
+			var jobs, inputBytes int64
+			if err := db.QueryRow(t.Context(), `SELECT jobs,bytes FROM verification_budget`).Scan(&jobs, &inputBytes); err != nil {
+				t.Fatal(err)
+			}
+			if result.Status == JobQueued || result.Status == JobRunning {
+				if jobs != 1 || inputBytes <= 0 || inputBytes >= reserved {
+					t.Fatalf("retry budget=%d/%d", jobs, inputBytes)
+				}
+			} else if jobs != 0 || inputBytes != 0 {
+				t.Fatalf("terminal budget=%d/%d", jobs, inputBytes)
+			}
 			var published int
 			if err := db.QueryRow(t.Context(), `SELECT count(*) FROM verified_contracts`).Scan(&published); err != nil {
 				t.Fatal(err)
 			}
 			if scenario == "match" || scenario == "restart" || scenario == "catalog wait" {
+				status, found, err := service.Job(t.Context(), job.ID)
+				if err != nil || !found || len(status.Outcome) > 4096 || bytes.Contains(status.Outcome, []byte(`"sources"`)) {
+					t.Fatalf("status loaded sources: bytes=%d err=%v", len(status.Outcome), err)
+				}
+				full, found, err := service.JobWithOutcome(t.Context(), job.ID)
+				if err != nil || !found || !bytes.Equal(full.Outcome, result.Outcome) {
+					t.Fatalf("native outcome compatibility: %v", err)
+				}
+				if scenario == "match" && len(full.Outcome) < 3<<20 {
+					t.Fatal("large success evidence was truncated")
+				}
 				artifact, found, err := repository.VerifiedContract(t.Context(), 1, address)
 				if err != nil || !found || published != 1 || result.Status != JobSucceeded || len(artifact.Sources) == 0 || len(artifact.ABI) == 0 || compiler.compileCalls != 2 {
 					t.Fatalf("local publication missing: status=%s found=%t compiled=%d err=%v", result.Status, found, compiler.compileCalls, err)

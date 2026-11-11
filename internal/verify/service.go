@@ -14,6 +14,8 @@ import (
 type ServiceErrorCode string
 
 const (
+	ServiceUserCapacity   ServiceErrorCode = "verification_user_capacity"
+	ServiceGlobalCapacity ServiceErrorCode = "verification_global_capacity"
 	ServiceInvalidRequest ServiceErrorCode = "invalid_request"
 	ServiceStorageFailure ServiceErrorCode = "storage_unavailable"
 )
@@ -27,6 +29,10 @@ type ServiceError struct {
 
 func (err ServiceError) Error() string {
 	switch err.Code {
+	case ServiceUserCapacity:
+		return "verification user queue is full"
+	case ServiceGlobalCapacity:
+		return "verification queue is full"
 	case ServiceInvalidRequest:
 		return "invalid verification request"
 	default:
@@ -75,6 +81,9 @@ func (service *Service) SubmitV2(ctx context.Context, request SubmissionV2) (Ver
 	if err := service.prepareV2(ctx, &request); err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
 	}
+	if err := validateCompilerInputs(request, service.maxInputBytes); err != nil {
+		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: err}
+	}
 	if request.SourcifyAPIKey != "" {
 		sealed, err := service.sourcifyCredentials.seal(request.SourcifyRequest, request.SourcifyAPIKey)
 		if err != nil {
@@ -85,6 +94,9 @@ func (service *Service) SubmitV2(ctx context.Context, request SubmissionV2) (Ver
 	}
 	job, created, err := repository.SubmitV2(ctx, request)
 	if err != nil {
+		if typed, ok := errors.AsType[ServiceError](err); ok {
+			return VerificationJob{}, false, typed
+		}
 		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
 	}
 	return job, created, nil
@@ -411,6 +423,15 @@ func (service *Service) Job(ctx context.Context, id string) (VerificationJob, bo
 	if !validUUID(id) {
 		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest, cause: errors.New("invalid job ID")}
 	}
+	if reader, ok := service.repository.(interface {
+		JobSummary(context.Context, string) (JobSummary, bool, error)
+	}); ok {
+		summary, found, err := reader.JobSummary(ctx, id)
+		if err != nil {
+			return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
+		}
+		return summary.statusJob(), found, nil
+	}
 	job, found, err := service.repository.Job(ctx, id)
 	if err != nil {
 		return VerificationJob{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
@@ -430,4 +451,16 @@ func (service *Service) VerifiedContract(ctx context.Context, chainID uint64, ad
 		return VerifiedContract{}, false, ServiceError{Code: ServiceStorageFailure, cause: err}
 	}
 	return contract, found, nil
+}
+
+func validateCompilerInputs(request SubmissionV2, maximum int) error {
+	for _, input := range request.StandardJSONVariants {
+		if len(input) > maximum {
+			return errors.New("compiler input exceeds limit")
+		}
+		if _, err := PerturbVerifierSources(input, maximum); err != nil {
+			return err
+		}
+	}
+	return nil
 }

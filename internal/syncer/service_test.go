@@ -1112,3 +1112,50 @@ func TestSkippedLivePollDoesNotRenewStatusFromOldObservation(t *testing.T) {
 		t.Fatalf("skipped poll refreshed status: before=%d after=%d", before, got)
 	}
 }
+
+type observedHeadSource struct {
+	*fakeSource
+	fullFetches, finalityCalls int
+}
+
+func (source *observedHeadSource) ObserveHead(context.Context) (HeadObservation, error) {
+	bundle := source.bundles[source.head]
+	ref, err := store.RefFromBundle(bundle)
+	if err != nil {
+		return HeadObservation{}, err
+	}
+	return HeadObservation{Reference: ref, Fetch: func(context.Context) (chainbundle.Bundle, error) { source.fullFetches++; return bundle, nil }}, nil
+}
+func (source *observedHeadSource) Finality(context.Context) (*store.BlockRef, *store.BlockRef, error) {
+	source.finalityCalls++
+	return nil, nil, nil
+}
+func TestLiveHeadSkipsUnchangedBundleButContinuesFinality(t *testing.T) {
+	t.Parallel()
+	repository := store.NewMemoryRepository()
+	if err := repository.ConfigureIndex(t.Context(), "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	source := &observedHeadSource{fakeSource: &fakeSource{head: 0, bundles: testChain(2)}}
+	canonicalizer := &indexer.Canonicalizer{ChainID: "1", Repository: repository}
+	service := &Service{ChainID: "1", Source: source, Repository: repository, Canonicalizer: canonicalizer, Tracker: &Tracker{}}
+	for range 4 {
+		if err := service.liveOnceOwned(t.Context(), repository, canonicalizer); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if source.fullFetches != 1 || source.finalityCalls != 4 {
+		t.Fatalf("full=%d finality=%d", source.fullFetches, source.finalityCalls)
+	}
+	source.head = 1
+	if err := service.liveOnceOwned(t.Context(), repository, canonicalizer); err != nil {
+		t.Fatal(err)
+	}
+	source.head = 0
+	if err := service.liveOnceOwned(t.Context(), repository, canonicalizer); err != nil {
+		t.Fatal(err)
+	}
+	if source.fullFetches != 3 {
+		t.Fatalf("short head must be applied; full=%d", source.fullFetches)
+	}
+}

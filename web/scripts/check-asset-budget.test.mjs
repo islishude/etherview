@@ -96,3 +96,51 @@ test("still requires both compressed script representations and every image iden
     assert.throws(() => measureInitialAssets(distribution, budget), /lacks identity/u);
   });
 });
+
+test("detail budgets follow shared static imports but exclude lazy features", async () => {
+  const { measureDetailAssets } = await import("./check-asset-budget.mjs");
+  withFixture(({ distribution, budget }) => {
+    mkdirSync(join(distribution, ".vite"));
+    const manifestPath = join(distribution, ".vite", "manifest.json");
+    const manifest = {
+      block: {
+        file: "assets/index-12345678.js",
+        imports: ["shared"],
+        dynamicImports: ["transaction"],
+      },
+      transaction: { file: "transaction.js" },
+      shared: { file: "shared.js", imports: ["block"] },
+    };
+    writeFileSync(join(distribution, "shared.js"), "shared");
+    writeFileSync(join(distribution, "transaction.js"), "transaction");
+    const modulePath = join(distribution, ".vite", "module-graph.json");
+    const modules = {
+      "assets/index-12345678.js": ["block"],
+      "shared.js": ["shared"],
+      "transaction.js": ["transaction"],
+    };
+    writeFileSync(modulePath, JSON.stringify(modules));
+    const detailRoutes = ["block", "transaction"].map((entry) => ({
+      entry,
+      maximumRawBytes: 8192,
+      maximumGzipBytes: 8192,
+    }));
+    writeBudget(budget, { detailRoutes });
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    const [result] = measureDetailAssets(distribution, budget);
+    assert.equal(result.files.length, 2);
+    manifest.shared.imports.push("transaction");
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    assert.throws(() => measureDetailAssets(distribution, budget), /another entity/);
+    manifest.shared.imports.pop();
+    writeFileSync(manifestPath, JSON.stringify(manifest));
+    modules["shared.js"].push("transaction");
+    writeFileSync(modulePath, JSON.stringify(modules));
+    assert.throws(() => measureDetailAssets(distribution, budget), /another entity module/);
+    modules["shared.js"].pop();
+    writeFileSync(modulePath, JSON.stringify(modules));
+    detailRoutes[0].maximumRawBytes = 1;
+    writeBudget(budget, { detailRoutes });
+    assert.throws(() => measureDetailAssets(distribution, budget), /exceeds/);
+  });
+});

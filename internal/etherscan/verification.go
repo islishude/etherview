@@ -17,6 +17,7 @@ import (
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/auth"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/verify"
 )
@@ -190,7 +191,7 @@ func (b *PostgresBackend) submitProxyVerification(ctx context.Context, values ur
 			ExpectedImplementation:       strings.ToLower(implementation.Hex()),
 		},
 	}
-	job, _, err := b.verification.SubmitV2(ctx, request)
+	job, _, err := b.verification.SubmitV2(verificationAdmissionContext(ctx), request)
 	if err != nil {
 		return "", translateVerificationServiceError(err)
 	}
@@ -374,7 +375,7 @@ func (b *PostgresBackend) submitSourceVerification(ctx context.Context, values u
 		}},
 		Target: &target,
 	}
-	job, _, err := b.verification.SubmitV2(ctx, request)
+	job, _, err := b.verification.SubmitV2(verificationAdmissionContext(ctx), request)
 	if err != nil {
 		return "", translateVerificationServiceError(err)
 	}
@@ -943,4 +944,16 @@ func validVerificationGUID(value string) bool {
 
 func containsString(values []string, wanted string) bool {
 	return slices.Contains(values, wanted)
+}
+
+func verificationAdmissionContext(ctx context.Context) context.Context {
+	identity := auth.IdentityFrom(ctx)
+	if !identity.Authenticated {
+		return verify.WithAdmissionPrincipal(ctx, "system:verification")
+	}
+	principal := "key:" + identity.Prefix
+	if identity.OwnerUserID != nil {
+		principal = "user:" + *identity.OwnerUserID
+	}
+	return verify.WithAdmissionPrincipal(ctx, principal)
 }

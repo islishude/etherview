@@ -58,7 +58,7 @@ export function NamePage({ name }: { name: string }) {
           </Badge>
         )}
       </header>
-      <QueryNotice loading={query.isPending} error={query.error} />
+      <QueryNotice loading={query.isLoading} error={query.error} />
       {detail?.state === "not_indexed" && (
         <Alert asChild>
           <p className="context-note">{t("names.notIndexed")}</p>

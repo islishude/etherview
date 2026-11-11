@@ -72,3 +72,15 @@ lease or authorizes publication.
 - v1 services share a database and schema rather than claiming independent
   database ownership; stronger service isolation would require a future ADR and
   migration plan.
+
+### Bounded request and recovery components
+
+Ordinary public API requests share one execution deadline from before
+authentication through pool/SQL/RPC work (20 seconds by default). Exact GET SSE
+routes remain explicitly exempt with per-write limits. Uncommitted deadlines
+produce stable 504 errors; committed bodies are never followed by an error JSON.
+The verification input cleaner and execution-endpoint recovery service are
+supervised components in the same all/split component manifest. Startup may
+quarantine only temporary transport/timeout failures when verified endpoints
+still satisfy required role purposes. Reentry requires fresh chain/genesis and
+capability checks; invalid identity or response remains fatal.

@@ -105,3 +105,44 @@ func blockRefByTag(ctx context.Context, endpoint *ethrpc.Endpoint, tag string) (
 		ParentHash: header.ParentHash,
 	}, nil
 }
+
+// HeadObservation binds the lightweight identity and any subsequent bundle to
+// one endpoint. Fetch never falls back to another height or endpoint.
+type HeadObservation struct {
+	Reference store.BlockRef
+	Fetch     func(context.Context) (chainbundle.Bundle, error)
+}
+
+func (s *RPCSource) ObserveHead(ctx context.Context) (HeadObservation, error) {
+	endpoint, err := s.endpoint(ethrpc.PurposeHead)
+	if err != nil {
+		return HeadObservation{}, err
+	}
+	var number hexutil.Uint64
+	if err := endpoint.CallContext(ctx, &number, "eth_blockNumber"); err != nil {
+		s.Pool.ReportFailure(endpoint.Name)
+		return HeadObservation{}, ethrpc.SanitizeError(err)
+	}
+	ref, err := blockRefByTag(ctx, endpoint, hexutil.EncodeUint64(uint64(number)))
+	if err != nil {
+		s.Pool.ReportFailure(endpoint.Name)
+		return HeadObservation{}, err
+	}
+	if ref.Number != uint64(number) {
+		s.Pool.ReportFailure(endpoint.Name)
+		return HeadObservation{}, errors.New("RPC head header height mismatch")
+	}
+	s.Pool.ReportSuccess(endpoint.Name)
+	return HeadObservation{Reference: *ref, Fetch: func(ctx context.Context) (chainbundle.Bundle, error) {
+		bundle, err := s.Fetcher.ByHash(ctx, endpoint, ref.Hash)
+		if err != nil {
+			s.Pool.ReportFailure(endpoint.Name)
+			return chainbundle.Bundle{}, err
+		}
+		if bundle.Block.NumberU64() != ref.Number {
+			return chainbundle.Bundle{}, errors.New("RPC head bundle height mismatch")
+		}
+		s.Pool.ReportSuccess(endpoint.Name)
+		return bundle, nil
+	}}, nil
+}

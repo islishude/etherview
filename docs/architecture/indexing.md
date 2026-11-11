@@ -191,3 +191,25 @@ silently infer the downstream range an operator intends to rebuild. See
   transaction detail lookup gives canonical or orphan inclusion precedence,
   then resolves current pending and retained direct replacement observations
   without a live RPC call. See ADR-0036.
+
+## Bounded ingestion and publication work
+
+Head polling pins one endpoint for height, lightweight header validation and,
+when identity changes, exact-hash bundle retrieval. An unchanged canonical tip
+skips bundle and receipt work while safe/finalized markers continue to advance.
+Same-height reorgs and shorter heads still enter canonicalization.
+
+Canonical segment validation locks the mapping and both neighboring boundaries
+in one bounded query under the chain lock, then checks parent/hash continuity in
+memory. Enrichment claims inspect at most 32 priority-ordered candidates per
+attempt, trying publication advisory ownership before nonblocking row ownership.
+Busy candidates are skipped, including during exhaustion processing.
+
+Browsing publication triggers compare only publication-relevant fields and merge
+transaction-local chain/stage/height work. Deferred refresh drains in that order
+before commit. All deferred projection paths acquire locks in the same order:
+proxy interaction coverage, chart source, then browsing stages. This prefix also
+applies when an earlier source mutation queues browsing ahead of outbox work.
+Heartbeat expiry extensions do not refresh publication; changing
+whether the expiry is null still does. Canonical switches cover every stage,
+while outbox changes affect core only. Revision, coverage and events remain atomic.

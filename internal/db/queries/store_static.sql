@@ -53,6 +53,18 @@ WHERE canonical.chain_id = sqlc.arg('chain_id')::text::numeric
   AND canonical.number = sqlc.arg('number')::text::numeric
 FOR UPDATE OF canonical;
 
+-- name: StoreLockCanonicalSegment :many
+SELECT canonical.number::text, canonical.block_hash, block.parent_hash
+FROM canonical_blocks AS canonical
+JOIN blocks AS block
+  ON block.chain_id = canonical.chain_id
+ AND block.number = canonical.number
+ AND block.hash = canonical.block_hash
+WHERE canonical.chain_id = sqlc.arg('chain_id')::text::numeric
+  AND canonical.number BETWEEN sqlc.arg('from_number')::text::numeric AND sqlc.arg('to_number')::text::numeric
+ORDER BY canonical.number
+FOR UPDATE OF canonical;
+
 -- name: StoreFinality :one
 SELECT safe_number, safe_hash, finalized_number,
        finalized_hash, updated_at

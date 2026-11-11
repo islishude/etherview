@@ -42,7 +42,7 @@ func TestSourcifyCredentialsPostgresWorkerRestart(t *testing.T) {
 	if err := db.QueryRow(t.Context(), `SELECT request::text, request_payload FROM verification_jobs WHERE id=$1`, job.ID).Scan(&document, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(document, credentialTestSecret) || bytes.Contains(payload, []byte(credentialTestSecret)) || !strings.Contains(document, "ciphertext") {
+	if strings.Contains(document, credentialTestSecret) || bytes.Contains(payload, []byte(credentialTestSecret)) || strings.Contains(document, "ciphertext") || !bytes.Contains(payload, []byte("ciphertext")) {
 		t.Fatal("durable job did not contain only encrypted credentials")
 	}
 	const verificationID = "123e4567-e89b-42d3-a456-426614174000"

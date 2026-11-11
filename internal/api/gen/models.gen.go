@@ -4004,7 +4004,7 @@ type ABIValue struct {
 	Value interface{} `json:"value"`
 }
 
-// APIError defines model for APIError.
+// APIError Stable public error. Ordinary API execution is bounded by server.request_timeout; expiry returns HTTP 504 with code request_timeout.
 type APIError struct {
 	Code string `json:"code"`
 
@@ -5792,6 +5792,7 @@ type ERC20BalanceListResponse struct {
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
+	// Error Stable public error. Ordinary API execution is bounded by server.request_timeout; expiry returns HTTP 504 with code request_timeout.
 	Error APIError `json:"error"`
 }
 

@@ -234,3 +234,19 @@ and the [operator procedure](../operations/verification.md#automatic-bytecode-da
 The independent `bytecode_db.unsafe_allow_private_networks` development override
 defaults off outside Preview. Preview enables it for Fake-IP/private destinations while
 retaining TLS verification, redirect rejection and all source-verification fences.
+
+## Queue capacity and input lifecycle
+
+Admission and terminal transitions use the PostgreSQL capacity contract in
+[ADR-0024](../decisions/ADR-0024-verifier-v2-workflow.md#input-persistence-and-admission-capacity).
+Small job metadata and source-free status projections remain available after
+failed-input retention expires. The source body stores the base compiler input
+once, with ordered settings alternatives, and workers reconstruct variants before
+compiling. Successful evidence remains durable. `verification-input-cleanup`
+runs with the verification role in every layout; it performs bounded hourly work.
+
+Status polling reads a stored outcome summary containing kind, verification ID and
+match evidence, alongside target identity and task state. It does not detoast
+submitted sources or full successful results. The native status endpoint retains
+its existing complete-result contract through a separate evidence read; browser
+and compatibility polling never fetch that source-bearing evidence.

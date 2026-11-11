@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from "node:url";
+import { relative } from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -8,7 +9,34 @@ import { brandingPlugin } from "./scripts/branding.ts";
 const KiB = 1024;
 
 export default defineConfig({
-  plugins: [brandingPlugin(), tailwindcss(), react()],
+  plugins: [
+    brandingPlugin(),
+    tailwindcss(),
+    react(),
+    {
+      name: "detail-route-module-evidence",
+      generateBundle(_options, bundle) {
+        const root = fileURLToPath(new URL(".", import.meta.url));
+        const modules = Object.fromEntries(
+          Object.values(bundle)
+            .filter((output) => output.type === "chunk")
+            .map((chunk) => [
+              chunk.fileName,
+              Object.entries(chunk.modules)
+                .filter(([, module]) => module.renderedLength > 0)
+                .map(([id]) => relative(root, id).replaceAll("\\", "/"))
+                .filter((id) => id.startsWith("src/"))
+                .sort(),
+            ]),
+        );
+        this.emitFile({
+          type: "asset",
+          fileName: ".vite/module-graph.json",
+          source: JSON.stringify(modules),
+        });
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -37,6 +65,7 @@ export default defineConfig({
     },
   },
   build: {
+    manifest: true,
     outDir: "dist",
     emptyOutDir: true,
     assetsInlineLimit: 0,

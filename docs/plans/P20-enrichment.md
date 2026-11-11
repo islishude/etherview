@@ -64,8 +64,13 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 | P20-T20 | done   | P20-T19                        | Independent blob@1 archives: KZG-authenticated S2 bodies, immutable manifests, bounded decode, verified retained-object replay and repair                                      | Integrity/bounds, object-store readback, crash/reorg/repair, PostgreSQL race and Lighthouse acceptance                           |
 | P20-T21 | done   | P10, P20-T19                   | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                                      | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                                       |
 | P20-T27 | done   | P10, P20-T01                   | Current-chain ENS v1/v2 core-backed discovery, lifecycle/recovery, independent resolution and registration profiles, canonical name directory and event-time operation history | Pinned protocol fixtures, coverage/expiry/lease/publication fences and PostgreSQL race; separate runtime/Mainnet evidence in P30 |
+| P20-T33 | done   | P20-T06                        | Incremental analytics source/hour completeness, constant-work idle progress and bounded reconciliation                                                                         | Publication/reorg/replay, PostgreSQL concurrency and representative query plans                                                  |
 
 ## Acceptance
+
+- [x] Incremental analytics source/hour/chain projections preserve reorg/replay and
+      prefix completeness; bounded resumable reconciliation and idle query plans
+      pass PostgreSQL integration/race and production topology checks.
 
 - [x] Durable stages retain exact block identity, bounded work, immutable observations,
       atomic lease/generation-fenced publication and orphan-safe replay.
@@ -98,6 +103,12 @@ Full directory coverage remains separately reported deployment progress; P70
 retains its release security, capacity, recovery and other existing gates.
 
 ## Evidence
+
+P20-T33 passed complete PostgreSQL integration/race, schema/runtime all/split and
+multi-scale publication/query-plan checks on the reviewed working tree. Reconciliation
+is capped at 1,000 identities per 15 minutes with a durable cursor. See the
+[review completion report](../reviews/review-fixes-2026-11-11.md) for exact commands,
+source identities and local performance limits; P70 reference capacity remains blocked.
 
 P20-T01/P20-T02/P20-T04/P20-T05/P20-T06/P20-T11/P20-T13 passed
 stage/ABI/proxy/token/trace/state-difference and PostgreSQL normal/race tests covering immutable block identity, bounded decoding/batches, atomic

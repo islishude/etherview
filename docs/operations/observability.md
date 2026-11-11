@@ -116,7 +116,11 @@ span as an error, and aborts without appending a second body. The net/http
 internal logger discards panic values and stack text and emits only a stable
 error code.
 
-`server.write_timeout` is the whole-response budget for ordinary handlers and
+`server.request_timeout` (default 20 seconds) bounds ordinary API execution from
+authentication through pool waits, SQL and external calls. Expiry returns
+`504 request_timeout` before response commitment; it never appends JSON to an
+already-started response. The two GET SSE routes are exempt.
+`server.write_timeout` is the response-write budget for ordinary handlers and
 the per-write/flush budget for `/api/v1/events` and `/api/v1/home/stream`.
 Idle SSE connections intentionally outlive that duration; a 15-second
 heartbeat keeps intermediaries aware of the stream without turning the timeout

@@ -186,3 +186,45 @@ func assertJobState(t *testing.T, ctx context.Context, db *pgxpool.Pool, id stri
 		t.Fatalf("durable job %s state = %+v, want status=%q attempts=%d with cleared lease/result/error", id, got, want.Status, want.Attempts)
 	}
 }
+
+func TestPostgresClaimSkipsBusyPublicationAndRowCandidates(t *testing.T) {
+	for _, lockKind := range []string{"publication", "row"} {
+		t.Run(lockKind, func(t *testing.T) {
+			db := newMigratedPostgres(t)
+			ctx := t.Context()
+			repository, _ := store.NewPostgresRepository(db)
+			bundle := testBundle(0, testHash(710), testHash(0), testHash(711), "queue-busy")
+			commitCanonical(t, ctx, repository, bundle)
+			queue, _ := enrich.NewPostgresJobQueue(db)
+			word, _ := enrich.ParseWord(testHash(710).String())
+			stages := []enrich.StageID{{Name: "busy-first", Version: 1}, {Name: "busy-second", Version: 1}}
+			first, err := queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: stages[0], ChainID: "1", BlockHash: word, Payload: []byte(`{}`), Priority: 10, MaxAttempts: 3})
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: stages[1], ChainID: "1", BlockHash: word, Payload: []byte(`{}`), Priority: 1, MaxAttempts: 3})
+			if err != nil {
+				t.Fatal(err)
+			}
+			holder, err := db.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = holder.Rollback(ctx) }()
+			if lockKind == "publication" {
+				_, err = holder.Exec(ctx, `SELECT pg_advisory_xact_lock(-$1::bigint)`, first.Job.ID)
+			} else {
+				_, err = holder.Exec(ctx, `SELECT id FROM durable_jobs WHERE id=$1::bigint FOR UPDATE`, first.Job.ID)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			bounded, cancel := context.WithTimeout(ctx, time.Second)
+			defer cancel()
+			lease, found, err := queue.Claim(bounded, "skip-busy", stages, time.Minute)
+			if err != nil || !found || lease.Job.ID != second.Job.ID {
+				t.Fatalf("claim=%+v found=%v err=%v", lease, found, err)
+			}
+		})
+	}
+}

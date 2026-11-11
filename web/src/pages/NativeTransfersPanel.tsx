@@ -24,18 +24,21 @@ import { CORE_PAGE_SIZE, CursorPagination } from "./pages";
 export function NativeTransfersPanel({
   kind,
   identity,
+  blockHash,
 }: {
   kind: "address" | "transaction";
   identity: string;
+  blockHash?: string;
 }) {
   const { t, i18n } = useTranslation();
-  const pager = useBrowsingCursorHistory(`native-transfers:${kind}:${identity}`);
+  const pager = useBrowsingCursorHistory(`native-transfers:${kind}:${identity}:${blockHash ?? ""}`);
   const locale = i18n.resolvedLanguage ?? "en";
   const transfers = useQuery({
     queryKey: [
       "native-transfers",
       kind,
       identity,
+      blockHash,
       pager.request.cursor,
       pager.request.refreshGeneration,
     ],
@@ -65,17 +68,24 @@ export function NativeTransfersPanel({
           );
     },
   });
+  const identityCurrent =
+    kind !== "transaction" ||
+    !blockHash ||
+    transfers.data?.meta.browsing?.snapshot.block_hash === blockHash;
   return (
     <Card asChild>
       <section className="panel transaction-tab-panel" aria-label={t("nativeTransfer.title")}>
         <h2>{t("nativeTransfer.title")}</h2>
         <BrowsingScope status={transfers.data?.meta.browsing}>
           <QueryNotice
-            loading={transfers.isPending}
+            loading={transfers.isLoading}
             error={transfers.error}
             onReset={pager.reset}
           />
-          {transfers.data && !transfers.error ? (
+          {transfers.data && !transfers.error && !identityCurrent && (
+            <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
+          )}
+          {transfers.data && !transfers.error && identityCurrent ? (
             <>
               {!transfers.data.applicable ? (
                 <p role="status">{t("nativeTransfer.unavailable")}</p>

@@ -82,6 +82,7 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 	ReadTimeout     time.Duration `yaml:"read_timeout"`
 	WriteTimeout    time.Duration `yaml:"write_timeout"`
+	RequestTimeout  time.Duration `yaml:"request_timeout"`
 }
 
 type ChainConfig struct {
@@ -255,6 +256,11 @@ type SecurityConfig struct {
 // VerificationConfig describes reproducible, checksum-bound solc-js
 // compilation owned by API-capable processes.
 type VerificationConfig struct {
+	MaxRequestBytes        int               `yaml:"max_request_bytes"`
+	MaxJobBytes            int               `yaml:"max_job_bytes"`
+	MaxQueuedJobs          int               `yaml:"max_queued_jobs"`
+	MaxQueuedBytes         int               `yaml:"max_queued_bytes"`
+	MaxUserJobs            int               `yaml:"max_user_jobs"`
 	MaxInputBytes          int               `yaml:"max_input_bytes"`
 	MaxOutputBytes         int               `yaml:"max_output_bytes"`
 	WorkerCount            int               `yaml:"worker_count"`
@@ -386,6 +392,7 @@ func Default() Config {
 			ShutdownTimeout: 20 * time.Second,
 			ReadTimeout:     15 * time.Second,
 			WriteTimeout:    30 * time.Second,
+			RequestTimeout:  20 * time.Second,
 		},
 		Chain: ChainConfig{
 			ID:                  1,
@@ -467,6 +474,7 @@ func Default() Config {
 			AnonymousBurst:             20,
 		},
 		Verification: VerificationConfig{
+			MaxRequestBytes: 6 << 20, MaxJobBytes: 16 << 20, MaxQueuedJobs: 100, MaxQueuedBytes: 256 << 20, MaxUserJobs: 5,
 			MaxInputBytes:           5 << 20,
 			MaxOutputBytes:          64 << 20,
 			WorkerCount:             1,

@@ -147,35 +147,44 @@ func (r *PostgresRepository) CommitCanonicalSegment(
 	if first.Number < configuredStart {
 		return CoreCoverage{}, fmt.Errorf("%w: segment starts before configured height %d", ErrConflict, configuredStart)
 	}
+	from, to := first.Number, last.Number
+	if from > 0 {
+		from--
+	}
+	if to < math.MaxUint64 {
+		to++
+	}
+	rows, err := dbgen.New(tx).StoreLockCanonicalSegment(ctx, chainID, decimal(from), decimal(to))
+	if err != nil {
+		return CoreCoverage{}, fmt.Errorf("lock canonical segment: %w", err)
+	}
+	existing := make(map[uint64]BlockRef, len(rows))
+	for _, row := range rows {
+		reference, _, decodeErr := decodeBlockRef(dbgen.StoreCanonicalTipRow(row), nil, "decode canonical segment")
+		if decodeErr != nil {
+			return CoreCoverage{}, decodeErr
+		}
+		existing[reference.Number] = reference
+	}
 	newCanonical := make([]bool, len(references))
 	for index, reference := range references {
-		existing, exists, err := queryCanonicalBlock(ctx, tx, chainID, reference.Number, true)
-		if err != nil {
-			return CoreCoverage{}, err
-		}
-		if exists && (existing.Hash != reference.Hash || existing.ParentHash != reference.ParentHash) {
+		stored, exists := existing[reference.Number]
+		if exists && (stored.Hash != reference.Hash || stored.ParentHash != reference.ParentHash) {
 			return CoreCoverage{}, fmt.Errorf("%w: height %d already maps to another canonical identity", ErrConflict, reference.Number)
 		}
 		newCanonical[index] = !exists
 	}
 	if first.Number > 0 {
-		lower, exists, err := queryCanonicalBlock(ctx, tx, chainID, first.Number-1, true)
-		if err != nil {
-			return CoreCoverage{}, err
-		}
-		if exists && first.ParentHash != lower.Hash {
+		if lower, exists := existing[first.Number-1]; exists && first.ParentHash != lower.Hash {
 			return CoreCoverage{}, fmt.Errorf("%w: segment parent does not match lower canonical boundary", ErrConflict)
 		}
 	}
 	if last.Number < math.MaxUint64 {
-		upper, exists, err := queryCanonicalBlock(ctx, tx, chainID, last.Number+1, true)
-		if err != nil {
-			return CoreCoverage{}, err
-		}
-		if exists && upper.ParentHash != last.Hash {
+		if upper, exists := existing[last.Number+1]; exists && upper.ParentHash != last.Hash {
 			return CoreCoverage{}, fmt.Errorf("%w: upper canonical boundary does not descend from segment", ErrConflict)
 		}
 	}
+
 	ranges, err := queryCoverageRangesTx(ctx, tx, chainID)
 	if err != nil {
 		return CoreCoverage{}, err

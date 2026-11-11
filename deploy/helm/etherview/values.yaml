@@ -304,6 +304,7 @@ config:
     shutdown_timeout: 20s
     read_timeout: 15s
     write_timeout: 30s
+    request_timeout: 20s
   chain:
     id: 1
     genesis_hash: "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"
@@ -455,6 +456,11 @@ config:
     max_batch_addresses: 100
     max_concurrency: 8
   verification:
+    max_request_bytes: 6291456
+    max_job_bytes: 16777216
+    max_queued_jobs: 100
+    max_queued_bytes: 268435456
+    max_user_jobs: 5
     max_input_bytes: 5242880
     max_output_bytes: 67108864
     timeout: 2m

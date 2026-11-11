@@ -684,6 +684,24 @@ export function useTokenTransfers(
   });
 }
 
+export function useTokenHolderCount(address: string, enabled = true) {
+  return useQuery({
+    queryKey: ["token", address, "holder-count"],
+    meta: chainQueryMeta,
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await sdk.getTokenHolderCount({
+          client: apiClient,
+          signal,
+          path: { address },
+        }),
+      ),
+    enabled: enabled && address.length > 0,
+    retry: false,
+    staleTime: liveRefetchInterval,
+  });
+}
+
 export function useTokenHolders(
   address: string,
   page: CursorRequest = firstPage,

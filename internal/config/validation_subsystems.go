@@ -23,7 +23,7 @@ func validateServerConfig(c Config) error {
 	if c.Server.Address != "" && c.Server.Address == c.Server.MetricsAddress {
 		errs = append(errs, errors.New("server.address and server.metrics_address must use different listeners"))
 	}
-	if c.Server.ShutdownTimeout <= 0 || c.Server.ReadTimeout <= 0 || c.Server.WriteTimeout <= 0 {
+	if c.Server.RequestTimeout <= 0 || c.Server.ShutdownTimeout <= 0 || c.Server.ReadTimeout <= 0 || c.Server.WriteTimeout <= 0 {
 		errs = append(errs, errors.New("server timeouts must be positive"))
 	}
 	if c.Server.PublicURL != "" {
@@ -293,6 +293,9 @@ func validateFeatureSecurityConfig(c Config) error {
 
 func validateVerificationConfig(c Config) error {
 	var errs []error
+	if c.Verification.MaxRequestBytes <= 0 || c.Verification.MaxRequestBytes > 64<<20 || c.Verification.MaxJobBytes <= 0 || c.Verification.MaxJobBytes > 64<<20 || c.Verification.MaxQueuedJobs <= 0 || c.Verification.MaxQueuedBytes < c.Verification.MaxJobBytes || c.Verification.MaxUserJobs <= 0 {
+		errs = append(errs, errors.New("verification request, job and queue limits must be positive and queue bytes must fit one job"))
+	}
 	if c.Verification.MaxInputBytes <= 0 || c.Verification.MaxInputBytes > 64<<20 {
 		errs = append(errs, errors.New("verification.max_input_bytes must be between 1 and 67108864"))
 	}

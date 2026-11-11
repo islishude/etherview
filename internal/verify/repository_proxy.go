@@ -28,7 +28,7 @@ func (repository *PostgresRepository) CompleteProxyV2(
 		lease.Job.RequestV2.Target == nil || lease.Job.RequestV2.ProxyTarget == nil {
 		return errors.New("proxy verification lease is invalid")
 	}
-	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := repository.beginCapacityTx(ctx)
 	if err != nil {
 		return err
 	}

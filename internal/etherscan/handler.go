@@ -17,6 +17,7 @@ import (
 	"github.com/islishude/etherview/internal/auth"
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/etherscanops"
+	"github.com/islishude/etherview/internal/verify"
 )
 
 var (
@@ -405,6 +406,16 @@ func validateValues(values url.Values, spec actionSpec) error {
 }
 
 func (h Handler) writeBackendError(w http.ResponseWriter, err error) {
+	var capacity verify.ServiceError
+	if errors.As(err, &capacity) && (capacity.Code == verify.ServiceUserCapacity || capacity.Code == verify.ServiceGlobalCapacity) {
+		status := http.StatusTooManyRequests
+		if capacity.Code == verify.ServiceGlobalCapacity {
+			status = http.StatusServiceUnavailable
+		}
+		w.Header().Set("Retry-After", "30")
+		h.writeErrorStatus(w, status, string(capacity.Code))
+		return
+	}
 	switch {
 	case errors.Is(err, ErrBlobUnavailable):
 		h.writeError(w, "blob content unavailable")

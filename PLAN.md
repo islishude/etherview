@@ -76,6 +76,8 @@ Preview storage-enforced writer IAM remains deferred under
 ENS full-directory coverage remains measured deployment progress; representative
 Mainnet publication acceptance does not prove complete historical coverage.
 
+Incremental analytics (P20-T33) and verification admission/input lifecycle (P30-T156) are complete. Their local acceptance does not clear P70 release gates.
+
 ## Global Release Gates
 
 - [ ] Every plan required by P70 is `done` or explicitly `superseded` with reviewable evidence.

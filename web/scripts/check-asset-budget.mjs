@@ -111,6 +111,61 @@ export function measureInitialAssets(distributionPath, budgetPath) {
   return { files, rawBytes, gzipBytes };
 }
 
+// Follow static imports only: dynamic imports are separate user-selected features.
+export function measureDetailAssets(distributionPath, budgetPath) {
+  const distribution = resolve(distributionPath);
+  const budget = JSON.parse(readFileSync(budgetPath, "utf8"));
+  if (!budget.detailRoutes) return [];
+  const manifest = JSON.parse(readFileSync(join(distribution, ".vite/manifest.json"), "utf8"));
+  const moduleGraph = JSON.parse(
+    readFileSync(join(distribution, ".vite/module-graph.json"), "utf8"),
+  );
+  return budget.detailRoutes.map((route) => {
+    const visited = new Set();
+    const files = new Set();
+    function visit(key) {
+      if (visited.has(key)) return;
+      visited.add(key);
+      const chunk = manifest[key];
+      if (!chunk) throw new Error(`missing route asset ${key}`);
+      if (key !== route.entry && budget.detailRoutes.some((other) => other.entry === key)) {
+        throw new Error(`detail route ${route.entry} imports another entity ${key}`);
+      }
+      const modules = moduleGraph[chunk.file];
+      if (!Array.isArray(modules)) throw new Error(`missing module evidence for ${chunk.file}`);
+      for (const other of budget.detailRoutes.filter((other) => other.entry !== route.entry)) {
+        const foreign = modules.find((module) =>
+          (other.exclusiveModules ?? [other.entry]).includes(module),
+        );
+        if (foreign)
+          throw new Error(`detail route ${route.entry} imports another entity module ${foreign}`);
+      }
+      files.add(chunk.file);
+      for (const file of [...(chunk.css ?? []), ...(chunk.assets ?? [])]) files.add(file);
+      for (const dependency of chunk.imports ?? []) visit(dependency);
+    }
+    visit(route.entry);
+    let rawBytes = 0;
+    let gzipBytes = 0;
+    for (const file of files) {
+      const path = resolve(distribution, file);
+      if (!inside(distribution, path)) throw new Error(`route asset escapes distribution: ${file}`);
+      const contents = readFileSync(path);
+      rawBytes += contents.length;
+      gzipBytes += gzipSync(contents, { level: 9 }).length;
+    }
+    if (
+      rawBytes > boundedPositiveInteger(route.maximumRawBytes, "maximumRawBytes") ||
+      gzipBytes > boundedPositiveInteger(route.maximumGzipBytes, "maximumGzipBytes")
+    ) {
+      throw new Error(
+        `detail route ${route.entry} exceeds its asset budget: raw=${rawBytes} gzip=${gzipBytes}`,
+      );
+    }
+    return { entry: route.entry, files: [...files].sort(), rawBytes, gzipBytes };
+  });
+}
+
 function main() {
   const scriptDirectory = dirname(fileURLToPath(import.meta.url));
   const webRoot = resolve(scriptDirectory, "..");
@@ -118,6 +173,13 @@ function main() {
     process.argv[2] ?? join(webRoot, "dist"),
     process.argv[3] ?? join(webRoot, "asset-budget.json"),
   );
+  for (const route of measureDetailAssets(
+    process.argv[2] ?? join(webRoot, "dist"),
+    process.argv[3] ?? join(webRoot, "asset-budget.json"),
+  ))
+    process.stdout.write(
+      `web-detail-budget: ${route.entry} raw=${route.rawBytes} gzip=${route.gzipBytes}\n`,
+    );
   process.stdout.write(
     `web-asset-budget: files=${result.files.length} raw=${result.rawBytes} gzip=${result.gzipBytes}\n`,
   );

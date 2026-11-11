@@ -147,7 +147,7 @@ export function TransactionAuthorizationsPanel({
   return (
     <Card asChild>
       <section className="panel transaction-tab-panel" role="tabpanel">
-        <QueryNotice loading={authorizations.isPending} error={authorizations.error} />
+        <QueryNotice loading={authorizations.isLoading} error={authorizations.error} />
         {authorizations.data && !identityCurrent ? (
           <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
         ) : null}
@@ -269,7 +269,7 @@ export function TransactionUserOperationsPanel({
       <section className="panel transaction-tab-panel" role="tabpanel">
         <BrowsingScope status={operations.data?.meta.browsing}>
           <QueryNotice
-            loading={operations.isPending}
+            loading={operations.isLoading}
             error={operations.error}
             onReset={pager.reset}
           />
@@ -332,7 +332,7 @@ export function TransactionInternalTransactionsPanel({
         aria-labelledby="transaction-internal-transactions-title"
       >
         <h2 id="transaction-internal-transactions-title">{t("addressTab.internalTransactions")}</h2>
-        <QueryNotice loading={resource.isPending} error={resource.error} />
+        <QueryNotice loading={resource.isLoading} error={resource.error} />
         {resource.data && !identityCurrent ? (
           <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
         ) : null}
@@ -432,7 +432,7 @@ export function TransactionTokenTransfersPanel({
   return (
     <Card asChild>
       <section className="panel transaction-tab-panel" role="tabpanel">
-        <QueryNotice loading={tokenTransfers.isPending} error={tokenTransfers.error} />
+        <QueryNotice loading={tokenTransfers.isLoading} error={tokenTransfers.error} />
         {tokenTransfers.data && !tokenIdentityCurrent && (
           <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
         )}

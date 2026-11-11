@@ -33,6 +33,7 @@ type Querier interface {
 	AnalyticsWriteDeleteRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz) error
 	AnalyticsWriteNextDirty(ctx context.Context, chainID pgtype.Numeric, nextAttemptAt pgtype.Timestamptz) (AnalyticsWriteNextDirtyRow, error)
 	AnalyticsWriteRecomputeRollup(ctx context.Context, chainID pgtype.Numeric, bucketStart pgtype.Timestamptz, sourceGeneration int64) (int64, error)
+	AnalyticsWriteReconcile(ctx context.Context, chainID pgtype.Numeric) error
 	AnalyticsWriteRefreshBackfill(ctx context.Context, chainID pgtype.Numeric) error
 	AnalyticsWriteRollupLock(ctx context.Context, chainID *string) (bool, error)
 	AnalyticsWriteRollupMetrics(ctx context.Context, now pgtype.Timestamptz, chainID pgtype.Numeric) (AnalyticsWriteRollupMetricsRow, error)
@@ -346,8 +347,10 @@ type Querier interface {
 	EnrichRollbackStageOutput(ctx context.Context) error
 	EnrichSavepointDispatchJobs(ctx context.Context) error
 	EnrichSavepointStageOutput(ctx context.Context) error
-	EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (EnrichSelectClaimCandidateRow, error)
-	EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (int64, error)
+	EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) ([]EnrichSelectClaimCandidateRow, error)
+	EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) ([]int64, error)
+	EnrichTryClaimRow(ctx context.Context, jobID int64) (int64, error)
+	EnrichTryPublicationLock(ctx context.Context, jobID int64) (bool, error)
 	EnsureBillingAccount(ctx context.Context, createdAt pgtype.Timestamptz, userID pgtype.UUID, chainID pgtype.Numeric) (EnsureBillingAccountRow, error)
 	EnsureENSSyncCandidate(ctx context.Context, arg EnsureENSSyncCandidateParams) (EnsureENSSyncCandidateRow, error)
 	EnsureENSSyncDiscoveredCandidate(ctx context.Context, arg EnsureENSSyncDiscoveredCandidateParams) (EnsSyncCandidate, error)
@@ -765,6 +768,7 @@ type Querier interface {
 	StoreLegacyUpsertCheckpointTxStatement1(ctx context.Context, arg StoreLegacyUpsertCheckpointTxStatement1Params) error
 	StoreLegacyValidateRefreshParentTxStatement1(ctx context.Context, chainID pgtype.Numeric, maxNumber pgtype.Numeric) (bool, error)
 	StoreLockCanonicalBlock(ctx context.Context, chainID string, number string) (StoreLockCanonicalBlockRow, error)
+	StoreLockCanonicalSegment(ctx context.Context, chainID string, fromNumber string, toNumber string) ([]StoreLockCanonicalSegmentRow, error)
 	StoreLockCanonicalTip(ctx context.Context, chainID string) (StoreLockCanonicalTipRow, error)
 	StoreLockConfiguredStart(ctx context.Context, chainID string) (string, error)
 	StoreLockFinality(ctx context.Context, chainID string) (StoreLockFinalityRow, error)
@@ -793,6 +797,8 @@ type Querier interface {
 	ValidateSearchCursor(ctx context.Context, arg ValidateSearchCursorParams) (*bool, error)
 	VerifiedSelectorWritePersistStatement1(ctx context.Context, arg VerifiedSelectorWritePersistStatement1Params) (int64, error)
 	VerifiedSelectorWritePersistStatement2(ctx context.Context, arg VerifiedSelectorWritePersistStatement2Params) error
+	VerifyCleanupInputs(ctx context.Context) (int64, error)
+	VerifyConfigureBudget(ctx context.Context, arg VerifyConfigureBudgetParams) error
 	VerifyImportAwaitCompiler(ctx context.Context, iD pgtype.UUID, token *string) (int64, error)
 	VerifyImportBindInput(ctx context.Context, iD pgtype.UUID, token *string) (int64, error)
 	VerifyImportSaveInput(ctx context.Context, arg VerifyImportSaveInputParams) (int64, error)
@@ -823,6 +829,7 @@ type Querier interface {
 	VerifyLegacyVerificationCanonicalGenesisTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalGenesisTargetParams) (string, error)
 	VerifyLegacyVerificationCanonicalTarget(ctx context.Context, arg VerifyLegacyVerificationCanonicalTargetParams) (string, error)
 	VerifyLegacyVerificationProxyReplayTarget(ctx context.Context, arg VerifyLegacyVerificationProxyReplayTargetParams) error
+	VerifyLockBudget(ctx context.Context) error
 	VerifyLockClaimGate(ctx context.Context) error
 	VerifyLockPublication(ctx context.Context, chainID string, address []byte) error
 	VerifyPublicationBlockIdentity(ctx context.Context, chainID pgtype.Numeric, blockHash []byte) (string, error)
@@ -830,6 +837,8 @@ type Querier interface {
 	VerifyV2ClaimRunnable(ctx context.Context, arg VerifyV2ClaimRunnableParams) (VerifyV2ClaimRunnableRow, error)
 	VerifyV2FindActiveJobByDigest(ctx context.Context, requestDigest []byte) (VerifyV2FindActiveJobByDigestRow, error)
 	VerifyV2GetJob(ctx context.Context, jobID pgtype.UUID) (VerifyV2GetJobRow, error)
+	VerifyV2GetJobOutcome(ctx context.Context, id pgtype.UUID) ([]byte, error)
+	VerifyV2GetJobSummary(ctx context.Context, id pgtype.UUID) (VerifyV2GetJobSummaryRow, error)
 	VerifyV2LockRunningJob(ctx context.Context, iD pgtype.UUID, leaseToken *string) (VerifyV2LockRunningJobRow, error)
 	VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobParams) (VerifyV2SubmitJobRow, error)
 	VerifyVyperPersistRuntime(ctx context.Context, arg VerifyVyperPersistRuntimeParams) error

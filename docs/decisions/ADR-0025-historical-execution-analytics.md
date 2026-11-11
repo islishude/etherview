@@ -101,3 +101,20 @@ introduced.
   component in monolith and split-role deployments.
 - A formula or source-stage change requires another reviewed stage or rollup
   contract version; it cannot silently reinterpret published history.
+
+### Incremental source completeness
+
+Canonical identity and stats/token publication transitions maintain one source
+projection per block, hourly completeness metadata, chain totals and dirty-hour
+counts in the same transaction. Deferred work merges repeated block identities;
+heartbeat-only changes enqueue nothing. A per-chain source lock serializes delta
+application. Ordinary idle work reads counters and indexed bounds, and read-side
+completeness uses hourly metadata in the response snapshot. Neither path scans
+canonical jobs or journals across the full chain. The completed-prefix rule above
+also applies when an incomplete suffix is added within the same hour.
+
+Reconciliation visits at most 1,000 block identities every 15 minutes with a
+persisted cursor. It compares the current exact canonical identity and published
+sources before enqueueing repair; deferred refresh rechecks final transaction
+state. Serializable worker transactions cannot overwrite concurrent publication.
+A cursor wraps after reaching the end, without a startup full-chain scan.

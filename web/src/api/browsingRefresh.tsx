@@ -46,6 +46,9 @@ export function BrowsingRefreshProvider({
   );
   const queries = activeQueries(client);
   const stale = queries.some((query) => snapshotInvalid(query));
+  const emptyInvalid = queries.some(
+    (query) => snapshotInvalid(query) && query.state.data === undefined,
+  );
   const busy = refreshing || queries.some((query) => query.state.fetchStatus === "fetching");
   const context = useMemo(
     () => ({
@@ -87,7 +90,7 @@ export function BrowsingRefreshProvider({
               {stale && (
                 <span className="browsing-refresh-status" role="status">
                   <span aria-hidden="true" className="browsing-refresh-dot" />
-                  {t("refresh.changed")}
+                  {t(emptyInvalid ? "refresh.stale" : "refresh.changed")}
                 </span>
               )}
               <Button

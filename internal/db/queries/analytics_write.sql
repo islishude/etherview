@@ -119,109 +119,37 @@ ON CONFLICT (chain_id, bucket_start) DO UPDATE SET
     computed_at = now();
 
 -- name: AnalyticsWriteRefreshBackfill :exec
-INSERT INTO chart_rollup_backfill AS current (
-    chain_id, available_from, available_to, next_block, target_start_block,
-    completed_blocks, total_blocks, complete, updated_at
-)
+INSERT INTO chart_rollup_backfill AS current(chain_id,available_from,available_to,next_block,target_start_block,completed_blocks,total_blocks,complete)
 SELECT sqlc.arg('chain_id')::numeric,
-       (SELECT min(bucket_start) FROM chart_hourly_rollups WHERE chain_id = sqlc.arg('chain_id')::numeric),
-       (SELECT max(bucket_start) FROM chart_hourly_rollups WHERE chain_id = sqlc.arg('chain_id')::numeric),
-       (
-           SELECT min(canonical.number)
-           FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
-             AND (
-                 NOT EXISTS (
-                     SELECT 1 FROM published_block_stage_results AS result
-                     WHERE result.chain_id = canonical.chain_id
-                       AND result.block_number = canonical.number
-                       AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'stats' AND result.stage_version = 4
-                       AND result.state = 'complete'
-                 )
-                 OR NOT EXISTS (
-                     SELECT 1 FROM published_block_stage_results AS result
-                     WHERE result.chain_id = canonical.chain_id
-                       AND result.block_number = canonical.number
-                       AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'token' AND result.stage_version = 2
-                       AND result.state = 'complete'
-                 )
-             )
-       ),
-       (SELECT configured_start FROM core_index_configuration WHERE chain_id = sqlc.arg('chain_id')::numeric),
-       (
-           SELECT count(*)
-           FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
-             AND EXISTS (
-                 SELECT 1 FROM published_block_stage_results AS result
-                 WHERE result.chain_id = canonical.chain_id
-                   AND result.block_number = canonical.number
-                   AND result.block_hash = canonical.block_hash
-                   AND result.stage = 'stats' AND result.stage_version = 4
-                   AND result.state = 'complete'
-             )
-             AND EXISTS (
-                 SELECT 1 FROM published_block_stage_results AS result
-                 WHERE result.chain_id = canonical.chain_id
-                   AND result.block_number = canonical.number
-                   AND result.block_hash = canonical.block_hash
-                   AND result.stage = 'token' AND result.stage_version = 2
-                   AND result.state = 'complete'
-             )
-       ),
-       (SELECT count(*) FROM canonical_blocks WHERE chain_id = sqlc.arg('chain_id')::numeric),
-       NOT EXISTS (
-           SELECT 1
-           FROM canonical_blocks AS canonical
-           WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
-             AND (
-                 NOT EXISTS (
-                     SELECT 1 FROM published_block_stage_results AS result
-                     WHERE result.chain_id = canonical.chain_id
-                       AND result.block_number = canonical.number
-                       AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'stats' AND result.stage_version = 4
-                       AND result.state = 'complete'
-                 )
-                 OR NOT EXISTS (
-                     SELECT 1 FROM published_block_stage_results AS result
-                     WHERE result.chain_id = canonical.chain_id
-                       AND result.block_number = canonical.number
-                       AND result.block_hash = canonical.block_hash
-                       AND result.stage = 'token' AND result.stage_version = 2
-                       AND result.state = 'complete'
-                 )
-             )
-       ) AND NOT EXISTS (
-           SELECT 1 FROM chart_rollup_dirty_hours WHERE chain_id = sqlc.arg('chain_id')::numeric
-       ),
-       now()
-ON CONFLICT (chain_id) DO UPDATE SET
-    available_from = EXCLUDED.available_from,
-    available_to = EXCLUDED.available_to,
-    next_block = EXCLUDED.next_block,
-    target_start_block = EXCLUDED.target_start_block,
-    completed_blocks = EXCLUDED.completed_blocks,
-    total_blocks = EXCLUDED.total_blocks,
-    complete = EXCLUDED.complete,
-    updated_at = now();
+    (SELECT min(bucket_start) FROM chart_hourly_rollups WHERE chain_id=sqlc.arg('chain_id')::numeric),
+    (SELECT max(bucket_start) FROM chart_hourly_rollups WHERE chain_id=sqlc.arg('chain_id')::numeric),
+    (SELECT block_number FROM chart_source_blocks WHERE chain_id=sqlc.arg('chain_id')::numeric AND NOT ready ORDER BY block_number LIMIT 1),
+    (SELECT configured_start FROM core_index_configuration WHERE chain_id=sqlc.arg('chain_id')::numeric),
+    COALESCE(t.completed_blocks,0),COALESCE(t.total_blocks,0),
+    COALESCE(t.completed_blocks=t.total_blocks,true) AND COALESCE(d.dirty_hours,0)=0
+FROM (SELECT 1) singleton
+LEFT JOIN chart_source_totals t ON t.chain_id=sqlc.arg('chain_id')::numeric
+LEFT JOIN chart_dirty_totals d ON d.chain_id=sqlc.arg('chain_id')::numeric
+ON CONFLICT(chain_id) DO UPDATE SET available_from=EXCLUDED.available_from,available_to=EXCLUDED.available_to,
+    next_block=EXCLUDED.next_block,target_start_block=EXCLUDED.target_start_block,
+    completed_blocks=EXCLUDED.completed_blocks,total_blocks=EXCLUDED.total_blocks,complete=EXCLUDED.complete,updated_at=now()
+WHERE ROW(current.available_from,current.available_to,current.next_block,current.target_start_block,current.completed_blocks,current.total_blocks,current.complete)
+    IS DISTINCT FROM ROW(EXCLUDED.available_from,EXCLUDED.available_to,EXCLUDED.next_block,EXCLUDED.target_start_block,EXCLUDED.completed_blocks,EXCLUDED.total_blocks,EXCLUDED.complete);
+
+-- name: AnalyticsWriteReconcile :exec
+SELECT reconcile_chart_sources(sqlc.arg('chain_id')::numeric);
 
 -- name: AnalyticsWriteRollupLock :one
 SELECT pg_try_advisory_xact_lock(hashtextextended('chart-rollup:' || sqlc.arg('chain_id'), 0));
 
 -- name: AnalyticsWriteRollupMetrics :one
-SELECT count(dirty.bucket_start),
-       COALESCE(extract(epoch FROM (sqlc.arg('now')::timestamptz - min(dirty.dirtied_at))), 0)::double precision AS oldest_dirty_seconds,
-       COALESCE(
-           backfill.completed_blocks * 100.0 / NULLIF(backfill.total_blocks, 0),
-           0
-       )::double precision AS backfill_percent
-FROM chart_rollup_backfill AS backfill
-LEFT JOIN chart_rollup_dirty_hours AS dirty ON dirty.chain_id = backfill.chain_id
-WHERE backfill.chain_id = sqlc.arg('chain_id')::numeric
-GROUP BY backfill.completed_blocks, backfill.total_blocks;
+SELECT COALESCE(d.dirty_hours,0)::bigint AS count,
+       COALESCE(extract(epoch FROM (sqlc.arg('now')::timestamptz -
+           (SELECT dirtied_at FROM chart_rollup_dirty_hours WHERE chain_id=sqlc.arg('chain_id')::numeric ORDER BY dirtied_at LIMIT 1))),0)::double precision AS oldest_dirty_seconds,
+       COALESCE(b.completed_blocks*100.0/NULLIF(b.total_blocks,0),0)::double precision AS backfill_percent
+FROM (SELECT 1) singleton
+LEFT JOIN chart_rollup_backfill b ON b.chain_id=sqlc.arg('chain_id')::numeric
+LEFT JOIN chart_dirty_totals d ON d.chain_id=sqlc.arg('chain_id')::numeric;
 
 -- name: AnalyticsWriteSourceReadiness :one
 WITH source AS (

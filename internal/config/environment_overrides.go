@@ -377,6 +377,21 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt(lookup, "USER_AUTH_MAX_ACTIVE_API_KEYS", &cfg.UserAuth.MaxActiveAPIKeys); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "VERIFICATION_MAX_REQUEST_BYTES", &cfg.Verification.MaxRequestBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_JOB_BYTES", &cfg.Verification.MaxJobBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_QUEUED_JOBS", &cfg.Verification.MaxQueuedJobs); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_QUEUED_BYTES", &cfg.Verification.MaxQueuedBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_USER_JOBS", &cfg.Verification.MaxUserJobs); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "VERIFICATION_MAX_INPUT_BYTES", &cfg.Verification.MaxInputBytes); err != nil {
 		return err
 	}
@@ -442,6 +457,7 @@ func applyDurationEnvironment(cfg *Config, lookup func(string) (string, bool)) e
 		"SERVER_SHUTDOWN_TIMEOUT":       &cfg.Server.ShutdownTimeout,
 		"SERVER_READ_TIMEOUT":           &cfg.Server.ReadTimeout,
 		"SERVER_WRITE_TIMEOUT":          &cfg.Server.WriteTimeout,
+		"SERVER_REQUEST_TIMEOUT":        &cfg.Server.RequestTimeout,
 		"DATABASE_CONNECT_TIMEOUT":      &cfg.Database.ConnectTimeout,
 		"DATABASE_STATEMENT_TIMEOUT":    &cfg.Database.StatementTimeout,
 		"RPC_REQUEST_TIMEOUT":           &cfg.RPC.RequestTimeout,

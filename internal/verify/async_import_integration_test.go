@@ -79,6 +79,10 @@ func TestSourcifyImportConcurrentClaimsAndWake(t *testing.T) {
 	if err != nil || !found || next.Token == first.Token {
 		t.Fatalf("takeover: %v %v", found, err)
 	}
+	var occupied, inputBytes int64
+	if err := db.QueryRow(t.Context(), `SELECT jobs,bytes FROM verification_budget`).Scan(&occupied, &inputBytes); err != nil || occupied != 1 || inputBytes != 16<<20 {
+		t.Fatalf("takeover duplicated reservation=%d/%d err=%v", occupied, inputBytes, err)
+	}
 	if err := repository.Fail(t.Context(), first, ErrorSourcifyUnavailable); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("old owner published: %v", err)
 	}

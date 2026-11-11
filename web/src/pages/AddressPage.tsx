@@ -1,3 +1,4 @@
+import { TransactionMethodCell } from "@/components/TransactionMethodCell";
 import { Alert } from "@/components/ui/alert";
 import { NavigationTabs, NavigationTab } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -72,7 +73,7 @@ import {
   isNFTStandard,
   tokenStandardLabel,
 } from "./pages";
-import { TransactionStatusBadge } from "./TransactionPage";
+import { TransactionStatusBadge } from "@/components/TransactionStatus";
 
 type AddressTab =
   | "logs"
@@ -192,7 +193,7 @@ export function AddressDetailPage({
 
   return (
     <Page title={title} description={<AddressHeader address={displayAddress} />} mono>
-      <QueryNotice loading={account.isPending} error={account.error} />
+      <QueryNotice loading={account.isLoading} error={account.error} />
       {account.data && (
         <>
           <DetailList label={t("detail.addressSummary")}>
@@ -283,7 +284,7 @@ export function AddressDetailPage({
           error={transactions.error}
           hasNext={Boolean(transactions.data?.next_cursor)}
           items={transactions.data?.items}
-          loading={transactions.isPending}
+          loading={transactions.isLoading}
           locale={locale}
           nativeDecimals={nativeDecimals}
           nativeSymbol={nativeSymbol}
@@ -302,7 +303,7 @@ export function AddressDetailPage({
             error={internalTransactions.error}
             hasNext={Boolean(internalTransactions.data?.next_cursor)}
             items={internalTransactions.error ? undefined : internalTransactions.data?.items}
-            loading={internalTransactions.isPending}
+            loading={internalTransactions.isLoading}
             locale={locale}
             nativeDecimals={nativeDecimals}
             nativeSymbol={nativeSymbol}
@@ -321,7 +322,7 @@ export function AddressDetailPage({
           hasNext={Boolean(withdrawals.data?.next_cursor)}
           hasPrevious={withdrawalPager.hasPrevious}
           items={withdrawals.data?.items}
-          loading={withdrawals.isPending}
+          loading={withdrawals.isLoading}
           locale={locale}
           onNext={() => withdrawalPager.next(withdrawals.data?.next_cursor)}
           onPrevious={withdrawalPager.previous}
@@ -337,7 +338,7 @@ export function AddressDetailPage({
             error={erc20Transfers.error}
             hasNext={Boolean(erc20Transfers.data?.next_cursor)}
             items={erc20Transfers.error ? undefined : erc20Transfers.data?.items}
-            loading={erc20Transfers.isPending}
+            loading={erc20Transfers.isLoading}
             locale={locale}
             onNext={() => erc20Pager.next(erc20Transfers.data?.next_cursor)}
             onPrevious={erc20Pager.previous}
@@ -356,7 +357,7 @@ export function AddressDetailPage({
             error={nftTransfers.error}
             hasNext={Boolean(nftTransfers.data?.next_cursor)}
             items={nftTransfers.error ? undefined : nftTransfers.data?.items}
-            loading={nftTransfers.isPending}
+            loading={nftTransfers.isLoading}
             locale={locale}
             onNext={() => nftTransferPager.next(nftTransfers.data?.next_cursor)}
             onPrevious={nftTransferPager.previous}
@@ -381,7 +382,7 @@ export function AddressDetailPage({
             >
               <h2 id="address-user-operations-title">{t("addressTab.userOperations")}</h2>
               <QueryNotice
-                loading={userOperations.isPending}
+                loading={userOperations.isLoading}
                 error={userOperations.error}
                 onReset={userOperationPager.reset}
               />
@@ -1151,23 +1152,6 @@ function ActivityIdentity({
       </TableCell>
       <TableCell>{timestamp ? formatRelativeTimestamp(timestamp, locale) : "—"}</TableCell>
     </>
-  );
-}
-
-export function TransactionMethodCell({
-  method,
-  signature,
-}: {
-  method?: string;
-  signature?: string;
-}) {
-  const accessibleName = signature ?? method;
-  return (
-    <TableCell className="transaction-method-cell">
-      <code aria-label={accessibleName} className="transaction-method" title={accessibleName}>
-        {method ?? "—"}
-      </code>
-    </TableCell>
   );
 }
 

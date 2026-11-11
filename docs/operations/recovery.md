@@ -175,3 +175,13 @@ failure retains readiness, logs only
 bounded backoff. Disabling a feature registers no corresponding housekeeper.
 The split maintenance role must not receive session, fingerprint, or
 facilitator-header Secrets.
+
+## Temporarily unreachable execution endpoints
+
+At least one verified endpoint must satisfy each purpose required by enabled
+roles. An unreachable backup may start quarantined; `rpc-recovery` retries with
+5-second to 1-minute backoff. It logs endpoint names and stable errors, never URLs
+or credentials. A successful probe revalidates chain/genesis and capabilities
+before reuse. Identity/configuration/invalid-response errors fail startup or the
+recovery component; fix the configured endpoint before restarting. Recovery uses
+the same supervisor and cancellation path in all and split deployments.

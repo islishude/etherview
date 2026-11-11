@@ -299,3 +299,28 @@ reads available. Job IDs are not an ownership boundary: any authorized user
 with a known ID can read its redacted status and match evidence. There is no
 personal job list or schema migration. Sourcify publication remains explicit;
 its external success is separate from local compilation and publication.
+
+## Admission limits and retention
+
+The `verification` configuration defaults are:
+
+| Setting             | Default   | Meaning                                              |
+| ------------------- | --------- | ---------------------------------------------------- |
+| `max_request_bytes` | 6291456   | Native/compatibility HTTP body                       |
+| `max_input_bytes`   | 5242880   | Each compiler invocation, including perturbation     |
+| `max_job_bytes`     | 16777216  | Compact durable input and unknown-import reservation |
+| `max_queued_jobs`   | 100       | Global queued/running jobs                           |
+| `max_queued_bytes`  | 268435456 | Global queued/running input bytes                    |
+| `max_user_jobs`     | 5         | Shared user quota, or ownerless API-key quota        |
+
+Each supports the corresponding `VERIFICATION_` uppercase environment variable.
+Configure the same limits on all replicas. PostgreSQL counters are authoritative;
+worker count does not increase admission capacity. Repeated submission of the
+same active/successful digest reuses its UUID. On 429 or 503 capacity errors, wait
+at least the returned `Retry-After: 30` seconds before another submission.
+
+The verification role removes at most 100 failed/cancelled inputs older than
+seven days each hour, retaining audit metadata/digests and status lookup. It
+preserves successful and referenced inputs. There is no startup purge/backfill.
+Monitor `verification_budget.jobs` and `verification_budget.bytes` alongside task
+status; do not manually reset these counters to admit extra work.

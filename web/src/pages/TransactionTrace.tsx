@@ -56,7 +56,7 @@ export function TransactionTracePanel({
   return (
     <Card asChild>
       <section className="panel transaction-tab-panel" role="tabpanel">
-        <QueryNotice loading={trace.isPending} error={trace.error} />
+        <QueryNotice loading={trace.isLoading} error={trace.error} />
         {trace.data && !traceIdentityCurrent && (
           <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
         )}

@@ -31,7 +31,18 @@ func (repository *PostgresRepository) SubmitV2(
 	if request.BytecodeDB != nil {
 		return VerificationJob{}, false, errors.New("internal source provenance is not accepted")
 	}
-	job, created, err := repository.submitV2(ctx, dbgen.New(repository.db), request)
+	tx, err := repository.beginCapacityTx(ctx)
+	if err != nil {
+		return VerificationJob{}, false, err
+	}
+	defer dbaccess.Rollback(ctx, tx)
+	job, created, err := repository.submitV2(ctx, dbgen.New(tx), request)
+	if err == nil {
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		err = capacityError(err)
+	}
 	if err == nil && repository.options.SignalJobs != nil {
 		repository.options.SignalJobs()
 	}
@@ -39,6 +50,9 @@ func (repository *PostgresRepository) SubmitV2(
 }
 
 func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbgen.Queries, request SubmissionV2) (VerificationJob, bool, error) {
+	if err := queries.VerifyConfigureBudget(ctx, dbgen.VerifyConfigureBudgetParams{MaxJobs: repository.options.MaxQueuedJobs, MaxBytes: repository.options.MaxQueuedBytes, MaxUserJobs: repository.options.MaxUserJobs, MaxInputBytes: int64(repository.options.MaxRequestBytes)}); err != nil {
+		return VerificationJob{}, false, err
+	}
 	if request.SourcifyAPIKey != "" {
 		return VerificationJob{}, false, errSourcifyCredential
 	}
@@ -58,9 +72,9 @@ func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbg
 		}
 		request.VyperLockDigest = recipe.Digest()
 	}
-	encoded, err := json.Marshal(request)
+	encoded, metadata, err := encodeSubmission(request)
 	if err != nil || len(encoded) > repository.options.MaxRequestBytes {
-		return VerificationJob{}, false, errors.New("v2 verification request exceeds configured bounds")
+		return VerificationJob{}, false, ServiceError{Code: ServiceInvalidRequest}
 	}
 	digestPayload, err := sourcifyDigestPayload(request, encoded)
 	if err != nil {
@@ -111,7 +125,7 @@ func (repository *PostgresRepository) submitV2(ctx context.Context, queries *dbg
 		if repository.options.MaxAttempts < -2147483648 || repository.options.MaxAttempts > 2147483647 {
 			return VerificationJob{}, errors.New("invalid stored query value")
 		}
-		row, err := queries.VerifyV2SubmitJob(ctx, dbgen.VerifyV2SubmitJobParams{ID: queryValue0, Kind: string(request.Kind), Language: language, CatalogLanguage: catalogLanguage, CompilerVersion: version, CompilerPlatform: platform, CatalogGenerationID: generation, CompilerDigest: compilerDigest, ChainID: queryValue1, Address: address, CodeHash: codeHash, BlockHash: blockHash, Request: []byte(string(encoded)), RequestPayload: encoded, RequestDigest: digest[:], MaxAttempts: int32(repository.options.MaxAttempts)})
+		row, err := queries.VerifyV2SubmitJob(ctx, dbgen.VerifyV2SubmitJobParams{ID: queryValue0, Kind: string(request.Kind), Language: language, CatalogLanguage: catalogLanguage, CompilerVersion: version, CompilerPlatform: platform, CatalogGenerationID: generation, CompilerDigest: compilerDigest, ChainID: queryValue1, Address: address, CodeHash: codeHash, BlockHash: blockHash, Request: metadata, RequestPayload: encoded, RequestDigest: digest[:], MaxAttempts: int32(repository.options.MaxAttempts), AdmissionPrincipal: admissionPrincipal(ctx)})
 		if err != nil {
 			return VerificationJob{}, err
 		}
@@ -180,7 +194,7 @@ func (repository *PostgresRepository) claimRunnable(
 	if err != nil {
 		return VerificationLease{}, false, err
 	}
-	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := repository.beginCapacityTx(ctx)
 	if err != nil {
 		return VerificationLease{}, false, err
 	}
@@ -294,7 +308,7 @@ func (repository *PostgresRepository) CompleteV2(
 		(!localAddressJob(lease.Job.Kind) || outcomeKind != "verification_success")) {
 		return errors.New("v2 authenticated compilation is invalid for outcome")
 	}
-	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := repository.beginCapacityTx(ctx)
 	if err != nil {
 		return err
 	}
@@ -687,8 +701,10 @@ func (repository *PostgresRepository) decodeV2Job(row dbgen.VerifyV2GetJobRow) (
 		generation = pgtype.Int8{Int64: *row.CatalogGenerationID, Valid: true}
 	}
 
+	var decodeErr error
+	job.RequestV2, decodeErr = decodeSubmission(payload)
 	if len(payload) > repository.options.MaxRequestBytes ||
-		json.Unmarshal(payload, &job.RequestV2) != nil || job.RequestV2 == nil ||
+		decodeErr != nil || job.RequestV2 == nil ||
 		len(digest) != sha256.Size {
 		return VerificationJob{}, errors.New("stored v2 verification job is invalid")
 	}

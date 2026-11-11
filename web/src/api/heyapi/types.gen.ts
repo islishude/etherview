@@ -2173,6 +2173,9 @@ export type DiamondCutHistory = {
     items: Array<DiamondCut>;
 };
 
+/**
+ * Stable public error. Ordinary API execution is bounded by server.request_timeout; expiry returns HTTP 504 with code request_timeout.
+ */
 export type ApiError = {
     code: string;
     message: string;
@@ -5452,6 +5455,14 @@ export type SubmitBrowserAddressVerificationData = {
 
 export type SubmitBrowserAddressVerificationErrors = {
     /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
+    /**
      * Machine-readable error.
      */
     default: ErrorResponse;
@@ -5483,6 +5494,14 @@ export type ImportBrowserSourcifyContractData = {
 };
 
 export type ImportBrowserSourcifyContractErrors = {
+    /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
     /**
      * Machine-readable error.
      */
@@ -5516,6 +5535,14 @@ export type SubmitBrowserSourcifyVerificationData = {
 
 export type SubmitBrowserSourcifyVerificationErrors = {
     /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
+    /**
      * Machine-readable error.
      */
     default: ErrorResponse;
@@ -5547,6 +5574,14 @@ export type SubmitBrowserSourcifyFromEtherscanData = {
 };
 
 export type SubmitBrowserSourcifyFromEtherscanErrors = {
+    /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
     /**
      * Machine-readable error.
      */
@@ -5825,6 +5860,14 @@ export type VerifySolidityMultipartData = {
 
 export type VerifySolidityMultipartErrors = {
     /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
+    /**
      * Machine-readable error.
      */
     default: ErrorResponse;
@@ -5849,6 +5892,14 @@ export type VerifyVyperMultipartData = {
 };
 
 export type VerifyVyperMultipartErrors = {
+    /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
     /**
      * Machine-readable error.
      */
@@ -5875,6 +5926,14 @@ export type VerifySolidityStandardJsonData = {
 
 export type VerifySolidityStandardJsonErrors = {
     /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
+    /**
      * Machine-readable error.
      */
     default: ErrorResponse;
@@ -5899,6 +5958,14 @@ export type VerifyVyperStandardJsonData = {
 };
 
 export type VerifyVyperStandardJsonErrors = {
+    /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
     /**
      * Machine-readable error.
      */
@@ -5925,6 +5992,14 @@ export type BatchVerifySolidityMultipartData = {
 
 export type BatchVerifySolidityMultipartErrors = {
     /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
+    /**
      * Machine-readable error.
      */
     default: ErrorResponse;
@@ -5949,6 +6024,14 @@ export type BatchVerifySolidityStandardJsonData = {
 };
 
 export type BatchVerifySolidityStandardJsonErrors = {
+    /**
+     * User queue budget exhausted; browser sessions and owned API keys share five active jobs by default.
+     */
+    429: ErrorResponse;
+    /**
+     * Global verification queue budget exhausted (100 active jobs or 256 MiB by default).
+     */
+    503: ErrorResponse;
     /**
      * Machine-readable error.
      */

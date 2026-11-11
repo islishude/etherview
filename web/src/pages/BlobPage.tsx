@@ -23,7 +23,7 @@ export function BlobPage({ hash, index }: { hash: string; index: string }) {
       </Link>
       <Card asChild>
         <section className="panel blob-detail-panel" aria-label={t("consensus.blobDetails")}>
-          <QueryNotice loading={query.isPending} error={query.error} compact />
+          <QueryNotice loading={query.isLoading} error={query.error} compact />
           <BlobArchiveNotice data={query.data} />
           {query.data && !item && (
             <p className="quiet">

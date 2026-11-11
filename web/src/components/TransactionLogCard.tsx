@@ -24,7 +24,7 @@ import {
   formatLogArgument,
   logDecodingKey,
   yesNo,
-} from "./pages";
+} from "@/pages/pages";
 
 export function TransactionLogCard({
   log,

@@ -44,6 +44,28 @@ func TestNativeTransferHeartbeatDuringPublication(t *testing.T) {
 		t.Fatalf("claim found=%t err=%v", found, err)
 	}
 
+	// A different block's browsing publication must not serialize lease renewal.
+	browsingTx, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = browsingTx.Rollback(ctx) }()
+	for _, stage := range []string{"core", "abi", "native_transfer", "token", "trace", "userop"} {
+		if _, err := browsingTx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('browsing:1:' || $1, 0))`, stage); err != nil {
+			t.Fatal(err)
+		}
+	}
+	renewCtx, renewCancel := context.WithTimeout(ctx, time.Second)
+	err = queue.Renew(renewCtx, lease, 2*time.Minute)
+	renewCancel()
+	if err != nil {
+		t.Fatalf("browsing publication blocked heartbeat: %v", err)
+	}
+	if err := browsingTx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM browsing_refresh_work`, 0)
+
 	renewed := false
 	publicationDB := &nativePublicationHookDB{Database: db, afterResult: func() error {
 		// The real result INSERT has completed and holds the coverage row lock.

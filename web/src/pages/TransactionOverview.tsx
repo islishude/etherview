@@ -1,6 +1,5 @@
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { ChevronRight, ArrowUpRight, CircleAlert } from "lucide-react";
 import { UIIcon } from "@/components/UIIcon";
 import { Link } from "@tanstack/react-router";
@@ -20,14 +19,8 @@ import {
 } from "@/components/format";
 import { CopyableField } from "@/components/CopyButton";
 import { AddressIdentity } from "@/ens/AddressIdentity";
-import { TransactionStatus, type TransactionVisualStatus } from "@/components/TransactionStatus";
-import {
-  finalityLabel,
-  transactionStatusLabel,
-  transactionTypeLabel,
-  type Translate,
-  yesNo,
-} from "./pages";
+import { TransactionStatus, TransactionStatusBadge } from "@/components/TransactionStatus";
+import { finalityLabel, transactionTypeLabel, type Translate, yesNo } from "./pages";
 import { TransactionCalldata, TransactionFailureReason } from "./TransactionCalldata";
 
 function gasUsageValue(gasLimit: string, gasUsed: string | undefined, locale: string): string {
@@ -245,59 +238,6 @@ export function MempoolTransactionOverview({
         </section>
       </Card>
     </div>
-  );
-}
-
-export function TransactionStatusBadge({
-  transaction,
-  showFinality = true,
-}: {
-  transaction: TransactionSummary;
-  showFinality?: boolean;
-}) {
-  const { t } = useTranslation();
-  const state = !transaction.canonical
-    ? "orphan"
-    : transaction.status === "success"
-      ? "success"
-      : transaction.status === "failed"
-        ? "failed"
-        : "unknown";
-  return (
-    <Badge variant="status" className="transaction-status-group">
-      <TransactionStatus
-        label={
-          state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)
-        }
-        status={state}
-      />
-      {showFinality && transaction.canonical && transaction.finality === "finalized" ? (
-        <Badge variant="status" className="finality-badge finalized">
-          {finalityLabel(transaction.finality, t)}
-        </Badge>
-      ) : null}
-    </Badge>
-  );
-}
-
-export function IncludedTransactionStatus({ transaction }: { transaction: TransactionSummary }) {
-  const { t } = useTranslation();
-  const state: TransactionVisualStatus = !transaction.canonical
-    ? "orphan"
-    : transaction.status === "success"
-      ? "success"
-      : transaction.status === "failed"
-        ? "failed"
-        : transaction.status === "pending"
-          ? "pending"
-          : "unknown";
-  return (
-    <TransactionStatus
-      label={
-        state === "orphan" ? t("detail.orphaned") : transactionStatusLabel(transaction.status, t)
-      }
-      status={state}
-    />
   );
 }
 
@@ -521,7 +461,7 @@ export function TransactionOverviewPanel({
               <TransactionDetailRow label={t("detail.input")} wide>
                 <TransactionCalldata
                   identityCurrent={calldataIdentityCurrent}
-                  loading={calldata.isPending}
+                  loading={calldata.isLoading}
                   resource={calldata.data}
                   transaction={transaction.data}
                 />

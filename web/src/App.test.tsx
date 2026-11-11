@@ -346,6 +346,9 @@ describe("embedded explorer shell", () => {
           meta,
         });
       }
+      if (path === `/api/v1/tokens/${address}/holders/count`) {
+        return Response.json({ data: { holder_count: "1" }, meta });
+      }
       if (path === `/api/v1/tokens/${address}/holders?limit=50`) {
         return Response.json({
           data: [

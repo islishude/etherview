@@ -39,7 +39,7 @@ import {
   finalityLabel,
   yesNo,
 } from "./pages";
-import { TransactionStatusBadge } from "./TransactionPage";
+import { TransactionStatusBadge } from "@/components/TransactionStatus";
 
 const BLOCK_TABS = [
   "overview",
@@ -264,7 +264,7 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
 
   return (
     <Page title={t("page.block")} description={identifier} mono>
-      <QueryNotice loading={block.isPending} error={block.error} />
+      <QueryNotice loading={block.isLoading} error={block.error} />
       {block.data && (
         <>
           {!block.data.canonical && <ReorgContext kind="block" hash={block.data.hash} />}
@@ -391,7 +391,7 @@ export function BlockDetailPage({ identifier, tab }: { identifier: string; tab: 
               hasNext={Boolean(transactions.data?.next_cursor)}
               hasPrevious={pager.hasPrevious}
               items={transactions.data?.items}
-              loading={transactions.isPending}
+              loading={transactions.isLoading}
               locale={locale}
               nativeDecimals={nativeDecimals}
               nativeSymbol={nativeSymbol}

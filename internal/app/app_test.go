@@ -210,20 +210,20 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "api with OTLP", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
 		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
-		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "10-core-sync", "12-genesis-state"}},
+		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "10-core-sync", "12-genesis-state"}},
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "10-core-sync", "12-genesis-state", "15-pending-mempool"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "06-rpc-recovery", "10-core-sync", "12-genesis-state", "15-pending-mempool"}},
 		{name: "enrich", role: components.RoleEnrich, want: []string{
-			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "30-enrichment-outbox",
 			"35-core-enrichment-01", "35-core-enrichment-02",
 			"35-core-enrichment-03", "35-core-enrichment-04",
 		}},
-		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "02-durable-metrics", "50-role-trace"}},
+		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "50-role-trace"}},
 		{name: "trace enabled", role: components.RoleTrace, setup: func(cfg *config.Config) {
 			cfg.Features.Trace = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 			"37-trace-enrichment-03", "37-trace-enrichment-04",
 		}},
@@ -234,19 +234,19 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 			cfg.Features.Verification = true
 		}, want: []string{
 			"00-operations-http", "02-durable-metrics",
-			"35-compiler-catalog-refresher", "40-contract-verification-01",
+			"35-compiler-catalog-refresher", "36-verification-input-cleanup", "40-contract-verification-01",
 		}},
 		{name: "metadata disabled", role: components.RoleMetadata, want: []string{"00-operations-http", "02-durable-metrics", "50-role-metadata"}},
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
 			cfg.Features.NFTMetadata = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics", "41-nft-metadata-updates",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "41-nft-metadata-updates",
 			"42-nft-metadata-discovery",
 			"45-nft-metadata-01", "45-nft-metadata-02",
 			"45-nft-metadata-03", "45-nft-metadata-04",
 		}},
 		{name: "maintenance", role: components.RoleMaintenance, want: []string{
-			"00-operations-http", "02-durable-metrics",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 			"44-historical-analytics-rollup",
 			"45-maintenance-01", "45-maintenance-02",
 			"45-maintenance-03", "45-maintenance-04",
@@ -259,7 +259,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				cfg.Features.UserAuth = true
 			},
 			want: []string{
-				"00-operations-http", "02-durable-metrics",
+				"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
@@ -274,7 +274,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				cfg.Features.APIBilling = true
 			},
 			want: []string{
-				"00-operations-http", "02-durable-metrics",
+				"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
@@ -291,7 +291,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				cfg.Features.APIBilling = true
 			},
 			want: []string{
-				"00-operations-http", "02-durable-metrics",
+				"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
@@ -334,27 +334,27 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 		want []string
 	}{
 		{role: components.RoleEnrich, want: []string{
-			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "30-enrichment-outbox",
 			"35-core-enrichment-01", "35-core-enrichment-02",
 		}},
 		{role: components.RoleTrace, want: []string{
-			"00-operations-http", "02-durable-metrics",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 		}},
 		{role: components.RoleVerification, want: []string{
 			"00-operations-http", "02-durable-metrics",
-			"35-compiler-catalog-refresher",
+			"35-compiler-catalog-refresher", "36-verification-input-cleanup",
 			"40-contract-verification-01", "40-contract-verification-02",
 			"41-factory-derived-verification-01", "41-factory-derived-verification-02",
 			"42-factory-derived-forward-01", "42-factory-derived-forward-02",
 		}},
 		{role: components.RoleMetadata, want: []string{
-			"00-operations-http", "02-durable-metrics", "41-nft-metadata-updates",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "41-nft-metadata-updates",
 			"42-nft-metadata-discovery",
 			"45-nft-metadata-01", "45-nft-metadata-02",
 		}},
 		{role: components.RoleMaintenance, want: []string{
-			"00-operations-http", "02-durable-metrics",
+			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
 			"44-historical-analytics-rollup",
 			"45-maintenance-01", "45-maintenance-02",
 			"46-search-catalog-maintenance",

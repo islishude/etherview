@@ -69,6 +69,12 @@ func openFakeSQLDB(t *testing.T, backend *fakeSQLBackend) *fakeSQLConn {
 	return &fakeSQLConn{backend: backend}
 }
 func (connection *fakeSQLConn) Query(_ context.Context, query string, arguments ...any) (pgx.Rows, error) {
+	if strings.Contains(query, "-- name: EnrichTryPublicationLock ") {
+		return &testpgx.Rows{ColumnNames: []string{"locked"}, ValuesList: [][]any{{true}}}, nil
+	}
+	if strings.Contains(query, "-- name: EnrichTryClaimRow ") {
+		return &testpgx.Rows{ColumnNames: []string{"id"}, ValuesList: [][]any{{arguments[0]}}}, nil
+	}
 	if connection.backend.query == nil {
 		return nil, errors.New("unexpected query")
 	}

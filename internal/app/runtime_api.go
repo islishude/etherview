@@ -286,7 +286,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		}
 		compatibility := &etherscan.Handler{
 			ChainID: cfg.Chain.ID, Backend: compatibilityBackend,
-			MaxBody:      int64(cfg.Verification.MaxInputBytes) + 1<<20,
+			MaxBody:      int64(cfg.Verification.MaxRequestBytes),
 			PublicOrigin: cfg.Server.PublicURL, Usage: usageDispatcher, APIBilling: cfg.Features.APIBilling,
 		}
 		proxyReader := newProxyReaderAdapter(
@@ -316,7 +316,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			BillingReader:       billingReader,
 			PrepaidBilling:      prepaidLedger,
 			TopupBilling:        topupDispatcher,
-			MaxVerificationBody: int64(cfg.Verification.MaxInputBytes) + 1<<20,
+			MaxVerificationBody: int64(cfg.Verification.MaxRequestBytes),
 			Metrics:             registry.Handler(), Logger: logger, RuntimeReady: lifecycle.Ready,
 			ReadinessStatus: readinessStatus,
 			Requirements: httpapi.CapabilityRequirements{

@@ -213,13 +213,29 @@ type Repository interface {
 type RepositoryOptions struct {
 	SignalJobs      func()
 	MaxRequestBytes int
+	MaxInputBytes   int
+	MaxQueuedJobs   int64
+	MaxQueuedBytes  int64
+	MaxUserJobs     int64
 	MaxResultBytes  int
 	MaxAttempts     int
 }
 
 func (options *RepositoryOptions) defaults() {
+	if options.MaxInputBytes <= 0 {
+		options.MaxInputBytes = 5 << 20
+	}
+	if options.MaxQueuedJobs <= 0 {
+		options.MaxQueuedJobs = 100
+	}
+	if options.MaxQueuedBytes <= 0 {
+		options.MaxQueuedBytes = 256 << 20
+	}
+	if options.MaxUserJobs <= 0 {
+		options.MaxUserJobs = 5
+	}
 	if options.MaxRequestBytes <= 0 {
-		options.MaxRequestBytes = 5 << 20
+		options.MaxRequestBytes = 16 << 20
 	}
 	if options.MaxResultBytes <= 0 {
 		options.MaxResultBytes = 16 << 20

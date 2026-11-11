@@ -13,6 +13,8 @@ const compressibleExtensions = new Set([".css", ".html", ".js", ".json", ".svg",
 function filesUnder(root, directory = root) {
   const result = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    // Vite build metadata is for local budget verification, never a public asset.
+    if (entry.name.startsWith(".")) continue;
     const target = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...filesUnder(root, target));
     else if (entry.isFile()) result.push(relative(root, target).split(sep).join("/"));

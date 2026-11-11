@@ -17,6 +17,7 @@ const hash = `0x${"56".repeat(32)}`;
 const snapshotHash = `0x${"78".repeat(32)}`;
 let token: Record<string, unknown>;
 let holderMeta: Record<string, unknown>;
+let holderListMeta: Record<string, unknown>;
 let holderError: string | undefined;
 const requests: URL[] = [];
 
@@ -24,6 +25,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("en");
   requests.length = 0;
   holderError = undefined;
+  holderListMeta = {};
   token = {
     chain_id: "1",
     address,
@@ -53,7 +55,12 @@ beforeEach(async () => {
       if (url.pathname === "/api/v1/config") return configResponse();
       if (url.pathname === "/api/v1/tokens") return envelope([token]);
       if (url.pathname === `/api/v1/tokens/${address}`) return envelope(token);
-      if (url.pathname.endsWith("/holders")) {
+      if (url.pathname.endsWith("/holders/count") && !holderError)
+        return envelope(
+          { chain_id: "1", token_address: address, holder_count: holderMeta.holder_count },
+          holderMeta,
+        );
+      if (url.pathname.endsWith("/holders") || url.pathname.endsWith("/holders/count")) {
         if (holderError)
           return Response.json(
             {
@@ -82,6 +89,7 @@ beforeEach(async () => {
               ],
           {
             ...holderMeta,
+            ...holderListMeta,
             next_cursor: url.searchParams.has("cursor") ? undefined : holderMeta.next_cursor,
           },
         );
@@ -120,6 +128,22 @@ const resourceRequests = (kind: string) =>
   requests.filter((url) => url.pathname.endsWith(`/${kind}`));
 const field = (label: string) => summary().getByText(label, { exact: true }).nextElementSibling!;
 
+it.each(["0", "2"])("shows the list's own snapshot for %s holders", async (count) => {
+  const listHash = `0x${"90".repeat(32)}`;
+  holderMeta.holder_count = count;
+  holderListMeta = { snapshot_block_number: "43", snapshot_block_hash: listHash };
+  renderExplorer(`/token/${address}?tab=holders`);
+  const region = await screen.findByRole("region", { name: "Token holders" });
+  expect(await within(region).findByRole("link", { name: "43" })).toHaveAttribute(
+    "href",
+    `/blocks/${listHash}`,
+  );
+  expect(summary().getByRole("link", { name: "42" })).toHaveAttribute(
+    "href",
+    `/blocks/${snapshotHash}`,
+  );
+});
+
 it("links the token address and shares the authoritative summary across tabs and browser history", async () => {
   const { router } = renderExplorer("/tokens");
   const addressLink = await screen.findByRole("link", { name: shorten(address) });
@@ -146,6 +170,28 @@ it("links the token address and shares the authoritative summary across tabs and
   expect(await screen.findByRole("region", { name: "Token holders" })).toBeVisible();
   act(() => router.history.forward());
   expect(await screen.findByRole("heading", { name: "Token metadata" })).toBeVisible();
+});
+
+it("keeps a hidden holders cursor when refreshing the active transfers tab", async () => {
+  renderExplorer(`/token/${address}?tab=holders`);
+  const holders = await screen.findByRole("region", { name: "Token holders" });
+  await userEvent.click(await within(holders).findByRole("button", { name: /next/i }));
+  await waitFor(() =>
+    expect(resourceRequests("holders").at(-1)?.searchParams.get("cursor")).toBe("holders:next"),
+  );
+  await userEvent.click(tabs().getByRole("link", { name: "Transfers" }));
+  await screen.findByRole("region", { name: "Token events" });
+  const holderReads = resourceRequests("holders").length;
+  await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(resourceRequests("transfers")).toHaveLength(2));
+  expect(resourceRequests("holders")).toHaveLength(holderReads);
+  await userEvent.click(tabs().getByRole("link", { name: "Token holders" }));
+  expect(
+    within(await screen.findByRole("region", { name: "Token holders" })).getByRole("button", {
+      name: /previous/i,
+    }),
+  ).toBeEnabled();
+  expect(resourceRequests("holders").at(-1)?.searchParams.get("cursor")).toBe("holders:next");
 });
 
 it("deep-links details without loading transfers and preserves independent cursors until manual refresh", async () => {
@@ -199,7 +245,8 @@ it("does not fabricate holder totals on failure and recovers invalid cursors", a
   holderError = "invalid_cursor";
   await userEvent.click(next);
   const restart = await screen.findByRole("button", { name: /restart/i });
-  expect(field("Holder count")).toHaveTextContent("—");
+  // List cursor failures do not withdraw the independently published summary.
+  expect(field("Holder count")).toHaveTextContent("2");
   holderError = undefined;
   await userEvent.click(restart);
   await waitFor(() => expect(field("Holder count")).toHaveTextContent("2"));

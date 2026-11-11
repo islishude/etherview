@@ -1,4 +1,4 @@
--- name: EnrichSelectExhaustedCandidate :one
+-- name: EnrichSelectExhaustedCandidate :many
 SELECT exhausted_job.id
 FROM durable_jobs AS exhausted_job
 WHERE exhausted_job.kind = 'enrichment'
@@ -67,7 +67,7 @@ WHERE exhausted_job.kind = 'enrichment'
       OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
   )
 ORDER BY exhausted_job.available_at, exhausted_job.id
-LIMIT 1;
+LIMIT 32;
 
 -- name: EnrichLockExhaustedJob :one
 SELECT exhausted_job.id, exhausted_job.chain_id::text AS chain_id,
@@ -142,9 +142,9 @@ WHERE exhausted_job.id = sqlc.arg('i_d')
       (exhausted_job.status = 'queued' AND exhausted_job.available_at <= clock_timestamp())
       OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
   )
-FOR UPDATE;
+FOR UPDATE SKIP LOCKED;
 
--- name: EnrichSelectClaimCandidate :one
+-- name: EnrichSelectClaimCandidate :many
 SELECT candidate_job.id, candidate_job.chain_id::text AS chain_id,
        candidate_job.stage, candidate_job.stage_version,
        candidate_job.attempts, candidate_job.max_attempts,
@@ -216,7 +216,7 @@ WHERE candidate_job.kind = 'enrichment'
   )
 ORDER BY candidate_job.priority DESC, candidate_job.available_at,
          candidate_job.id
-LIMIT 1;
+LIMIT 32;
 
 -- name: EnrichClaimCandidate :one
 UPDATE durable_jobs AS job
@@ -308,3 +308,10 @@ WHERE job.id = sqlc.arg('id')
   )
 RETURNING job.id, job.chain_id::text AS chain_id, job.stage, job.stage_version,
           job.attempts, job.max_attempts, job.payload, job.leased_generation::bigint AS requested_generation;
+
+-- name: EnrichTryPublicationLock :one
+SELECT pg_try_advisory_xact_lock(-(sqlc.arg('job_id')::bigint));
+
+-- name: EnrichTryClaimRow :one
+SELECT id FROM durable_jobs WHERE id = sqlc.arg('job_id')::bigint
+FOR UPDATE SKIP LOCKED;

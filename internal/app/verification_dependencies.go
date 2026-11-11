@@ -33,8 +33,9 @@ func buildVerificationDependencies(cfg config.Config, roleSet map[components.Rol
 			return verificationDependencies{}, err
 		}
 		verificationRepository, err = verify.NewPostgresRepository(db, verify.RepositoryOptions{
-			MaxRequestBytes: cfg.Verification.MaxInputBytes,
-			MaxResultBytes:  cfg.Verification.MaxOutputBytes,
+			MaxRequestBytes: cfg.Verification.MaxJobBytes,
+			MaxInputBytes:   cfg.Verification.MaxInputBytes, MaxQueuedJobs: int64(cfg.Verification.MaxQueuedJobs), MaxQueuedBytes: int64(cfg.Verification.MaxQueuedBytes), MaxUserJobs: int64(cfg.Verification.MaxUserJobs),
+			MaxResultBytes: cfg.Verification.MaxOutputBytes,
 			SignalJobs: func() {
 				if natsWake != nil {
 					natsWake.Signal(accelerator.WakeJobs)

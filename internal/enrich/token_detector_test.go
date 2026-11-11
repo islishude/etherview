@@ -266,7 +266,7 @@ func TestRPCTokenDetectorRecognizesERC721MintedDuringConstructorAtBlockEnd(t *te
 
 func TestRPCTokenDetectorReturnsTransportErrorsForRetry(t *testing.T) {
 	t.Parallel()
-	retryable := errors.New("RPC transport unavailable")
+	retryable := fmt.Errorf("provider-secret: %w", ethrpc.ErrTransport)
 	caller := &fakeTokenRPCCaller{handler: func(method string, _ []any) ([]byte, error) {
 		if method == "eth_getCode" {
 			return []byte{0x60}, nil

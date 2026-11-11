@@ -749,7 +749,20 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 		}
 		candidate, selectErr := func() (Job, error) {
 
-			return decodeJob(dbgen.New(tx).EnrichSelectClaimCandidate(ctx, []byte(stageKeys), int64(ProxyStage.Version)))
+			rows, err := dbgen.New(tx).EnrichSelectClaimCandidate(ctx, []byte(stageKeys), int64(ProxyStage.Version))
+			if err != nil {
+				return Job{}, err
+			}
+			for _, row := range rows {
+				locked, err := tryPublicationClaimTx(ctx, tx, row.ID)
+				if err != nil {
+					return Job{}, err
+				}
+				if locked {
+					return decodeJob(row, nil)
+				}
+			}
+			return Job{}, pgx.ErrNoRows
 		}()
 		if selectErr != nil {
 			dbaccess.Rollback(ctx, tx)
@@ -762,10 +775,6 @@ func (queue *PostgresJobQueue) Claim(ctx context.Context, workerID string, stage
 		if identityErr != nil {
 			dbaccess.Rollback(ctx, tx)
 			return Lease{}, false, identityErr
-		}
-		if lockErr := lockPublicationJobTx(ctx, tx, candidateID); lockErr != nil {
-			dbaccess.Rollback(ctx, tx)
-			return Lease{}, false, lockErr
 		}
 		token, tokenErr := randomLeaseToken(queue.random)
 		if tokenErr != nil {
@@ -821,23 +830,23 @@ func (queue *PostgresJobQueue) terminalizeOneExhausted(
 	if err := enablePublicationProtocolTx(ctx, tx); err != nil {
 		return false, err
 	}
-	var candidateID int64
-	if err := func() error {
-
-		queryRow, err := dbgen.New(tx).EnrichSelectExhaustedCandidate(ctx, []byte(stageKeys), int64(ProxyStage.Version))
-		if err != nil {
-			return err
-		}
-		candidateID = queryRow
-		return nil
-	}(); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
+	candidates, err := dbgen.New(tx).EnrichSelectExhaustedCandidate(ctx, []byte(stageKeys), int64(ProxyStage.Version))
+	if err != nil {
 		return false, fmt.Errorf("select exhausted enrichment job: %w", err)
 	}
-	if err := lockPublicationJobTx(ctx, tx, candidateID); err != nil {
-		return false, err
+	var candidateID int64
+	for _, id := range candidates {
+		locked, err := tryPublicationClaimTx(ctx, tx, id)
+		if err != nil {
+			return false, err
+		}
+		if locked {
+			candidateID = id
+			break
+		}
+	}
+	if candidateID == 0 {
+		return false, nil
 	}
 	job, reason, err := func() (Job, string, error) {
 
@@ -1237,4 +1246,18 @@ func requireLeaseUpdate(result int64) error {
 		return ErrLeaseLost
 	}
 	return nil
+}
+
+// Preserve advisory-before-row order without waiting behind a busy candidate.
+func tryPublicationClaimTx(ctx context.Context, tx pgx.Tx, id int64) (bool, error) {
+	queries := dbgen.New(tx)
+	locked, err := queries.EnrichTryPublicationLock(ctx, id)
+	if err != nil || !locked {
+		return false, err
+	}
+	_, err = queries.EnrichTryClaimRow(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }

@@ -488,6 +488,13 @@ type BrowsingCoverage struct {
 	Covered             pgtype.Multirange[pgtype.Range[pgtype.Numeric]] `db:"covered" json:"covered"`
 }
 
+type BrowsingRefreshWork struct {
+	TransactionID pgtype.Uint64  `db:"transaction_id" json:"transaction_id"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+	Stage         string         `db:"stage" json:"stage"`
+}
+
 type BytecodeDbAttempt struct {
 	ServiceID       []byte      `db:"service_id" json:"service_id"`
 	TargetDigest    []byte      `db:"target_digest" json:"target_digest"`
@@ -574,6 +581,11 @@ type ChainFinality struct {
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type ChartDirtyTotal struct {
+	ChainID    pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	DirtyHours int64          `db:"dirty_hours" json:"dirty_hours"`
+}
+
 type ChartHourlyRollup struct {
 	ChainID                pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	BucketStart            pgtype.Timestamptz `db:"bucket_start" json:"bucket_start"`
@@ -621,6 +633,43 @@ type ChartRollupDirtyHour struct {
 	Attempts      int32              `db:"attempts" json:"attempts"`
 	NextAttemptAt pgtype.Timestamptz `db:"next_attempt_at" json:"next_attempt_at"`
 	DirtiedAt     pgtype.Timestamptz `db:"dirtied_at" json:"dirtied_at"`
+}
+
+type ChartSourceBlock struct {
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	BucketStart pgtype.Timestamptz `db:"bucket_start" json:"bucket_start"`
+	Ready       bool               `db:"ready" json:"ready"`
+}
+
+type ChartSourceHour struct {
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BucketStart  pgtype.Timestamptz `db:"bucket_start" json:"bucket_start"`
+	BlockCount   int64              `db:"block_count" json:"block_count"`
+	ReadyCount   int64              `db:"ready_count" json:"ready_count"`
+	FirstBlock   pgtype.Numeric     `db:"first_block" json:"first_block"`
+	LastBlock    pgtype.Numeric     `db:"last_block" json:"last_block"`
+	FirstPending pgtype.Numeric     `db:"first_pending" json:"first_pending"`
+}
+
+type ChartSourceReconciliation struct {
+	ChainID   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	NextBlock pgtype.Numeric     `db:"next_block" json:"next_block"`
+	NextAt    pgtype.Timestamptz `db:"next_at" json:"next_at"`
+}
+
+type ChartSourceRefreshWork struct {
+	TransactionID pgtype.Uint64  `db:"transaction_id" json:"transaction_id"`
+	ChainID       pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber   pgtype.Numeric `db:"block_number" json:"block_number"`
+}
+
+type ChartSourceTotal struct {
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	TotalBlocks     pgtype.Numeric `db:"total_blocks" json:"total_blocks"`
+	CompletedBlocks pgtype.Numeric `db:"completed_blocks" json:"completed_blocks"`
+	Generation      int64          `db:"generation" json:"generation"`
 }
 
 type CompilerCatalogEntry struct {
@@ -2769,6 +2818,16 @@ type UupsImplementationObservationGeneration struct {
 	CreatedAt               pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type VerificationBudget struct {
+	Singleton     bool  `db:"singleton" json:"singleton"`
+	Jobs          int64 `db:"jobs" json:"jobs"`
+	Bytes         int64 `db:"bytes" json:"bytes"`
+	MaxJobs       int64 `db:"max_jobs" json:"max_jobs"`
+	MaxBytes      int64 `db:"max_bytes" json:"max_bytes"`
+	MaxUserJobs   int64 `db:"max_user_jobs" json:"max_user_jobs"`
+	MaxInputBytes int64 `db:"max_input_bytes" json:"max_input_bytes"`
+}
+
 type VerificationClaimGate struct {
 	Singleton bool `db:"singleton" json:"singleton"`
 }
@@ -2824,7 +2883,11 @@ type VerificationJob struct {
 	CodeHash            []byte             `db:"code_hash" json:"code_hash"`
 	BlockHash           []byte             `db:"block_hash" json:"block_hash"`
 	Request             []byte             `db:"request" json:"request"`
+	AdmissionPrincipal  string             `db:"admission_principal" json:"admission_principal"`
+	InputBytes          int64              `db:"input_bytes" json:"input_bytes"`
 	RequestPayload      []byte             `db:"request_payload" json:"request_payload"`
+	SummaryChainID      *string            `db:"summary_chain_id" json:"summary_chain_id"`
+	SummaryAddress      *string            `db:"summary_address" json:"summary_address"`
 	RequestDigest       []byte             `db:"request_digest" json:"request_digest"`
 	Status              string             `db:"status" json:"status"`
 	LeasedBy            *string            `db:"leased_by" json:"leased_by"`
@@ -2834,11 +2897,17 @@ type VerificationJob struct {
 	MaxAttempts         int32              `db:"max_attempts" json:"max_attempts"`
 	OutcomeKind         *string            `db:"outcome_kind" json:"outcome_kind"`
 	Outcome             []byte             `db:"outcome" json:"outcome"`
+	SummaryOutcome      []byte             `db:"summary_outcome" json:"summary_outcome"`
 	ErrorCode           *string            `db:"error_code" json:"error_code"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 	ExecutorKind        *string            `db:"executor_kind" json:"executor_kind"`
 	ExecutionPolicy     *string            `db:"execution_policy" json:"execution_policy"`
+}
+
+type VerificationPrincipalBudget struct {
+	Principal string `db:"principal" json:"principal"`
+	Jobs      int64  `db:"jobs" json:"jobs"`
 }
 
 type VerificationResult struct {

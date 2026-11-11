@@ -357,5 +357,8 @@ func SanitizeError(err error) error {
 	if errors.Is(err, ErrResponseTooLarge) {
 		return ErrResponseTooLarge
 	}
-	return ErrTransport
+	if errors.Is(err, ErrTransport) {
+		return ErrTransport
+	}
+	return ErrInvalidResponse
 }
