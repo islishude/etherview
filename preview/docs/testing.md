@@ -94,9 +94,9 @@ It is outside ordinary PR, push and scheduled CI. The Go test requires
 Both targets offer prebuilt variants: `make test-preview-consensus-prebuilt`
 and `make test-preview-consensus-full-prebuilt`.
 
-Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.4;
+Writer IAM enforcement of conditional headers remains deferred on RustFS 1.0.5;
 the full test's read-only denial check does not establish that property.
-Reevaluate 1.0.5 against the
+Evaluate the pinned image and proposed policy against the
 [IAM clearing conditions](operations.md#preview-archive-iam-limitation);
 a passing `make test-rustfs` establishes application conditional-create behavior,
 not writer-policy enforcement.

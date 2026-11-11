@@ -144,14 +144,14 @@ The following pre-existing deferred deployment limitation remains explicit
 and is not cleared by CI.
 
 Preview storage-enforced conditional-write IAM permissions are deferred by
-operator decision until RustFS 1.0.5 is evaluated. The deployed RustFS 1.0.4
-still does not resolve this IAM limitation; application conditional writes and
-API read-only access remain active. The
+operator decision pending policy evaluation against the pinned RustFS 1.0.5
+image. The image upgrade does not enable writer-policy enforcement; application
+conditional writes and API read-only access remain active. The
 [runbook](../../preview/docs/operations.md#preview-archive-iam-limitation) owns the issue details.
 Clearing this requires a fixed release containing upstream
 [PR #8615](https://github.com/rustfs/rustfs/pull/8615) and real-container rejection
 of unconditional writes and overwrites, with unchanged stored bytes after denial.
-The 1.0.5 target is an evaluation checkpoint, not a guarantee of a fix.
+The 1.0.5 pin is an evaluation baseline, not evidence of IAM enforcement.
 This is a retained deployment limitation
 of P30-T138; its completed local acceptance does not establish writer IAM enforcement.
 P70 release gates remain independent.

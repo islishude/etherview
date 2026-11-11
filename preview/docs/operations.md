@@ -75,7 +75,7 @@ supernode with blob pruning disabled. Its Beacon API is published only on
 mounted only into Geth and Lighthouse. Validator keys are isolated from
 application roles. Startup waits for successive real execution/Beacon blocks.
 
-RustFS 1.0.4 stores blobs in the persistent `blob-data` volume. The one-shot
+RustFS 1.0.5 stores blobs in the persistent `blob-data` volume. The one-shot
 `archive-init` service uses RustFS CLI v0.1.36 to provision the private
 `etherview-preview-blobs` bucket and scoped users idempotently. There is no
 expiry policy or trace-cache bucket reuse. API has GetObject permission;
@@ -94,6 +94,13 @@ After correcting credentials or restoring storage, repeat
 existing objects. To recreate application roles during an archive outage, use
 `docker compose --env-file .local/preview.env -f compose.yaml up -d --no-build --force-recreate --wait api enrich`.
 The full start/recreate targets still report optional service startup failures.
+
+For the 1.0.4 to 1.0.5 upgrade, retain `blob-data` and use
+`make recreate-preview` to recreate services and rerun archive provisioning.
+Do not use `make stop-preview` for an upgrade: it deletes Preview volumes.
+The [upstream upgrade notes](https://github.com/rustfs/rustfs/releases/tag/1.0.5)
+require all nodes to reach 1.0.5 before pool changes or decommission retries;
+mixed-version DELETE requests may return HTTP 503 until the upgrade completes.
 
 ### Preview x402 billing
 
@@ -147,8 +154,9 @@ reports and independent writer/chain reconciliation.
 
 ### Preview archive IAM limitation
 
-The archive client sends `If-None-Match: *` on writes, but upgrading to RustFS
-1.0.4 does not resolve storage-enforced conditional-write IAM permissions.
+The archive client sends `If-None-Match: *` on writes. Preview is pinned to
+RustFS 1.0.5, but storage-enforced conditional-write IAM permissions remain
+unverified and are not enabled by this image upgrade.
 The current writer policy grants GetObject/PutObject without requiring that
 header, so writer credentials can still issue unconditional writes and overwrite
 an existing key. API read-only permissions, application conditional creation,
@@ -165,8 +173,8 @@ The PR also checks raw headers and parsed inputs separately to prevent form
 uploads from bypassing validation. It does not itself provide
 `s3:ObjectCreationOperation` or full AWS conditional-policy parity.
 
-Storage-enforced permissions remain deferred until RustFS 1.0.5 is evaluated.
-This is the next evaluation target, not a promise that the release fixes IAM;
+Storage-enforced permissions remain deferred pending policy evaluation against
+the pinned RustFS 1.0.5 image. The version pin does not establish enforcement;
 a merged PR or release milestone is insufficient. Before clearing the limitation,
 verify the deployed image contains the fix and all nodes support the policy keys.
 Using the scoped writer credentials and the proposed policy, test successful
