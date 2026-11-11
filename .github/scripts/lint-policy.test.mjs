@@ -25,7 +25,7 @@ test("real golangci-lint enforces database, package and file-length rules with t
     }
     // pq is deliberately absent from production dependencies. Only its import
     // path matters to depguard; native pgx below uses the real pinned module.
-    write("pq/go.mod", "module github.com/lib/pq\n\ngo 1.27.3\n");
+    write("pq/go.mod", "module github.com/lib/pq\n\ngo 1.27.4\n");
     write("pq/pq.go", "package pq\n");
     write(
       "go.mod",
