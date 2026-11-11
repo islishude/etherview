@@ -23,9 +23,9 @@
     },
     "controllerSourceSha256": "b1c99edcb0ecfb7c46fe0263ecf1b133192774900bc2fb0b3b89d815b337a4f9",
     "priceOracleSourceSha256": "f79df80b515465dec44cc6c42757134690cd7a427695743f56c275c5ca0dadc3",
-    "billingSourceSha256": "3e7371701f8aa1dc9e12f77cf8c6e6c4171e68b67347279e352f75ca828fee3a"
+    "billingSourceSha256": "2a56f8f11f45f4f62ed28542530b882fcb5dec61edc58603ad5bb25786e172a7"
   },
-  "allocationSha256": "cf7a367d56cabdf8b4cd89438c736f41cdd5649591e77fd4c5975b897a9886d9",
+  "allocationSha256": "768521f172477a8cb7aab2b6ee0fafee63543bc840be6734071673e2dfc87531",
   "sources": {
     "accountAbstraction": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410",
     "ens": "9b034936a42f462fc04bc0a929a419ede5e18d59"
@@ -6162,7 +6162,7 @@
     },
     "LocalBillingToken": {
       "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
-      "codeHash": "0xfa295b66d79ebb40ad21c6056706ff341481beec0caca0eaddfc6bf643793ebb",
+      "codeHash": "0xdd687d0c46ffc3a8fe956e753e25b154080a94081b6538c730b1a122254beb72",
       "abi": [
         {
           "inputs": [
@@ -6218,6 +6218,25 @@
             }
           ],
           "name": "Approval",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "authorizer",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "bytes32",
+              "name": "nonce",
+              "type": "bytes32"
+            }
+          ],
+          "name": "AuthorizationUsed",
           "type": "event"
         },
         {
@@ -6537,7 +6556,7 @@
     },
     "LocalBillingToken18": {
       "address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
-      "codeHash": "0xfa295b66d79ebb40ad21c6056706ff341481beec0caca0eaddfc6bf643793ebb",
+      "codeHash": "0xdd687d0c46ffc3a8fe956e753e25b154080a94081b6538c730b1a122254beb72",
       "abi": [
         {
           "inputs": [
@@ -6593,6 +6612,25 @@
             }
           ],
           "name": "Approval",
+          "type": "event"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "authorizer",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "bytes32",
+              "name": "nonce",
+              "type": "bytes32"
+            }
+          ],
+          "name": "AuthorizationUsed",
           "type": "event"
         },
         {

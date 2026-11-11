@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -815,7 +816,10 @@ func externalTopup(t *testing.T, client *http.Client, rpc *ethclient.Client, cod
 		if err := rpc.SendTransaction(t.Context(), original); err != nil {
 			t.Fatal(err)
 		}
-		receipt, err := rpc.TransactionReceipt(t.Context(), original.Hash())
+		// Broadcast acceptance does not imply that automining has published a receipt.
+		receiptCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		receipt, err := bind.WaitMined(receiptCtx, rpc, original.Hash())
+		cancel()
 		if err != nil || receipt.Status != types.ReceiptStatusFailed {
 			t.Fatal("original transaction must revert after external payment", receipt, err)
 		}

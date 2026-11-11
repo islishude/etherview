@@ -6,7 +6,7 @@
     "Multicall3.json": "ed8f8615c0b87a9156047daea7d93c6ba1bf831aacc4b387e4a471ea7bc05052",
     "Permit2.json": "63c4987af88078215c64bfea9d840482fec5bbb4869ee8fa0e04808975c39479",
     "SimpleAccountFactory.json": "b3df89bf47ba70ef6378d091dece8e3a044fe576e91f8f50d80b206e294be2b9",
-    "local.json": "faab326440a6480f51d77112a498f83226843660594f23ca13a5b81cdac2c4c3",
+    "local.json": "3a0d5dad5a7d0ee68e48a3c845fa972b05a5c5059c35131e8ec4c0f46bc2bb7a",
     "sys-asm.json": "f61078f4bd7bebfee6b70db5bf56399caaedf692bda25ce1cd8442383dcc532e",
     "x402ExactPermit2Proxy.json": "7be72d61a0e16623836587048cbe43f5343310f6040154dfdb2e2f9e7efecf8b"
   },
@@ -127,15 +127,15 @@
       "address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
       "name": "LocalBillingToken",
       "bundle": "local.json",
-      "codeHash": "0xfa295b66d79ebb40ad21c6056706ff341481beec0caca0eaddfc6bf643793ebb",
-      "codeSha256": "5371a7dee0f5832775eab2600a203990c6207b9edd4bb67e76dd03f0dac4e772"
+      "codeHash": "0xdd687d0c46ffc3a8fe956e753e25b154080a94081b6538c730b1a122254beb72",
+      "codeSha256": "47aa7bdaf87b83cc95f5053135fc9cd12bb47b5c1191daea390c786829971b16"
     },
     {
       "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
       "name": "LocalBillingToken",
       "bundle": "local.json",
-      "codeHash": "0xfa295b66d79ebb40ad21c6056706ff341481beec0caca0eaddfc6bf643793ebb",
-      "codeSha256": "5371a7dee0f5832775eab2600a203990c6207b9edd4bb67e76dd03f0dac4e772"
+      "codeHash": "0xdd687d0c46ffc3a8fe956e753e25b154080a94081b6538c730b1a122254beb72",
+      "codeSha256": "47aa7bdaf87b83cc95f5053135fc9cd12bb47b5c1191daea390c786829971b16"
     },
     {
       "address": "0x9ef4c86838638daea46d5517442f5c23fe1dd34c",

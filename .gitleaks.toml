@@ -12,6 +12,14 @@ targetRules = ["generic-api-key"]
 regexes = ['''^x402-facilitator-headers$''']
 
 [[allowlists]]
+description = "Public top-up reconciliation component name in API role registration"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^internal/app/billing\.go$''']
+regexTarget = "match"
+regexes = ['''^components\.RoleAPI, "21-topup-reconciliation"$''']
+
+[[allowlists]]
 description = "Ignored local runtime artifacts"
 paths = ['''^\.local/''']
 
