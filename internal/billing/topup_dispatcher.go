@@ -284,9 +284,15 @@ func (dispatcher *TopupDispatcher) Serve(
 				finishCtx, paymentID, owner, intent.ID, hash, dispatcher.now().UTC(),
 			) == nil {
 				outcome = "settlement_pending"
-				if header, encodeErr := dispatcher.codec.EncodePaymentResponse(*settled); encodeErr == nil {
-					writer.Header().Set(x402wire.PaymentResponseHeader, header)
+				header, encodeErr := dispatcher.codec.EncodePaymentResponse(*settled)
+				if encodeErr != nil {
+					// Keep the known transaction pending for reconciliation even when
+					// its response cannot be encoded. Never emit a headerless pending 402.
+					dispatcher.logger.Error("top-up payment response encoding failed", "payment_id", paymentID, "error_code", boundaryCode(encodeErr))
+					writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement response is unavailable")
+					return
 				}
+				writer.Header().Set(x402wire.PaymentResponseHeader, header)
 				writeError(writer, http.StatusPaymentRequired, x402wire.CodeSettlementPending, "payment settlement is pending")
 				return
 			}

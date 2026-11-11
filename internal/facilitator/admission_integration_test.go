@@ -29,7 +29,7 @@ func TestPendingCapacityRefusalAndExistingReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := dbgen.New(pool)
-	ch := &chainRuntime{adapter: &chainClient{signer: &localSigner{key: key}}, gate: make(chan struct{}, 1)}
+	ch := &chainRuntime{adapter: &chainClient{signer: &localSigner{key: key}}, submissionGate: make(chan struct{}, 1), gate: make(chan struct{}, 1)}
 	ch.healthy.Store(true)
 	s := &Service{queries: q, lock: lock}
 	s.active.Store(true)

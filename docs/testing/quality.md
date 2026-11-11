@@ -15,7 +15,7 @@
   `.github/scripts/compose-check.mjs`, with shared in-process assertions for
   compiler ownership, credentials and verification-suite isolation.
   Preview deployment behavior is exercised by its existing business E2E gates.
-- `make toolchain-check`: require at least Go 1.27.3, Node 26.13.0, and pnpm
+- `make toolchain-check`: require at least Go 1.27.4, Node 26.13.0, and pnpm
   12.18.0 before generating or validating artifacts. Compatible newer stable
   versions are supported, with pnpm restricted to the minimum version's major;
   older, malformed, prerelease, and higher-major pnpm versions fail. Full pnpm installation and compiler builds additionally

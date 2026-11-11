@@ -7,11 +7,18 @@
 
 ## RustFS trace-cache deployment
 
-The optional `accelerators` Compose profile uses `rustfs/rustfs:1.0.4` as
+The optional `accelerators` Compose profile uses `rustfs/rustfs:1.0.5` as
 `object-storage`. S3 listens on container port 9000 and the console on 9001;
 production Compose publishes neither port. RustFS runs as the image's default
 non-root user, with a new `rustfs-data` named volume. The `/health/ready` probe
 checks the store itself, never application readiness.
+
+When upgrading from 1.0.4, retain the existing volume and recreate
+`object-storage` with the pinned image. For multi-node deployments, the
+[1.0.5 release notes](https://github.com/rustfs/rustfs/releases/tag/1.0.5) require
+upgrading every node before pool changes or decommission retries. DELETE
+requests may return HTTP 503 while versions coexist; retry after all nodes
+are upgraded.
 
 To enable a local trace cache:
 

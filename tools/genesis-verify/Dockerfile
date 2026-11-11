@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.27.3 AS builder
+FROM golang:1.27.4 AS builder
 WORKDIR /src
 COPY go.mod ./
 COPY tools/genesis-verify ./tools/genesis-verify

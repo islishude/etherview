@@ -63,7 +63,7 @@ RUN node build-sea.mjs /opt/etherview/solcjs/etherview-solcjs \
     && find /solcjs-runtime-copy/python-wasm -type f -exec chmod 0444 {} + \
     && install -d -m 0750 /var/lib/etherview/compilers
 
-FROM golang:1.27.3 AS go-builder
+FROM golang:1.27.4 AS go-builder
 WORKDIR /src
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \

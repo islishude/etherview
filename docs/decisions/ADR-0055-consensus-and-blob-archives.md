@@ -94,9 +94,9 @@ incomplete material requires explicit destruction/reinitialization.
 The Preview RustFS bucket is durable across container recreation and separate
 from disposable caches. Idempotent provisioning grants API read-only access and
 enrich write/read access; the archive client uses conditional creates.
-RustFS 1.0.4 still does not enforce the conditional header through IAM, so storage-side
-enforcement remains deferred pending evaluation of 1.0.5 with the upstream policy
-fix and real-container rejection of unconditional writes and overwrites. See the
+Preview pins RustFS 1.0.5, but its writer policy does not require the conditional
+header. Storage-side enforcement remains deferred pending policy evaluation
+against that image and real-container rejection of unconditional writes and overwrites. See the
 [operator limitation](../../preview/docs/operations.md#preview-archive-iam-limitation) for policy
 key details and the release acceptance boundary. Administrator credentials stay
 in the storage and initialization services.

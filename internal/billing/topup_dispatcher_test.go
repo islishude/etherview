@@ -58,6 +58,7 @@ type topupAccountLedgerFake struct {
 	beginCalls   int
 	failCalls    int
 	pendingCalls int
+	pendingHash  common.Hash
 	unknownCalls int
 	creditCalls  int
 	intent       TopupIntent
@@ -78,9 +79,10 @@ func (fake *topupAccountLedgerFake) MarkTopupSettlementUnknown(
 }
 
 func (fake *topupAccountLedgerFake) MarkTopupSettlementPending(
-	context.Context, string, string, string, common.Hash, time.Time,
+	_ context.Context, _, _, _ string, hash common.Hash, _ time.Time,
 ) error {
 	fake.pendingCalls++
+	fake.pendingHash = hash
 	return nil
 }
 
@@ -222,7 +224,11 @@ func TestTopupDispatcherPersistsOnlyStrictSettlementPendingHash(t *testing.T) {
 			dispatcher.Serve(recorder, request, intent, func(http.ResponseWriter, Account, TopupIntent, Payment) {
 				t.Fatal("pending settlement succeeded")
 			}, nil)
-			if recorder.Code != http.StatusPaymentRequired && recorder.Code != http.StatusServiceUnavailable {
+			wantStatus := http.StatusServiceUnavailable
+			if test.wantPending == 1 {
+				wantStatus = http.StatusPaymentRequired
+			}
+			if recorder.Code != wantStatus {
 				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 			}
 			if payments.reserveCalls != 1 || payments.verifyCalls != 1 ||
@@ -230,8 +236,15 @@ func TestTopupDispatcherPersistsOnlyStrictSettlementPendingHash(t *testing.T) {
 				accounts.unknownCalls != test.wantUnknown || accounts.creditCalls != 0 {
 				t.Fatalf("payments=%+v accounts=%+v", payments, accounts)
 			}
-			if test.wantPending == 1 && recorder.Header().Get(x402wire.PaymentResponseHeader) == "" {
-				t.Fatal("valid pending response omitted PAYMENT-RESPONSE")
+			if test.wantPending == 1 {
+				var response x402.SettleResponse
+				raw, err := base64.StdEncoding.DecodeString(recorder.Header().Get(x402wire.PaymentResponseHeader))
+				if err != nil || json.Unmarshal(raw, &response) != nil || response.Success ||
+					response.ErrorReason != "settlement_pending" || response.Transaction != test.transaction ||
+					response.Payer != strings.ToLower(intent.Payer.Hex()) || string(response.Network) != intent.Network ||
+					accounts.pendingHash != common.HexToHash(test.transaction) {
+					t.Fatalf("pending response lost settlement identity: %+v hash=%s error=%v", response, accounts.pendingHash, err)
+				}
 			}
 			if test.wantPending == 0 && recorder.Header().Get(x402wire.PaymentResponseHeader) != "" {
 				t.Fatal("invalid pending response exposed PAYMENT-RESPONSE")

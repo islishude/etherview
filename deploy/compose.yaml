@@ -307,7 +307,7 @@ services:
     restart: unless-stopped
 
   object-storage:
-    image: rustfs/rustfs:1.0.4
+    image: rustfs/rustfs:1.0.5
     command: ["/data"]
     profiles: ["accelerators"]
     environment:

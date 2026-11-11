@@ -98,6 +98,14 @@ pending-chain admission, existing unsigned/signed owners, digest conflicts and
 PostgreSQL reservation/refusal races. A refused authorization must never obtain
 signed bytes; an existing transaction must retain its original hash.
 
+The monitor-overlap regression holds a real PostgreSQL journal scan behind a
+barrier and verifies bounded submission waiting, cancellation without journal
+mutation, and recovery of the original signed transaction after service recreation.
+HTTP/ledger regressions retain the pending hash through response encoding failure,
+reject replacement hashes and replay, and require exactly one reconciled credit.
+Encoding failure returns 503 rather than a pending 402 without its settlement
+header; the persisted payment remains pending and is never resubmitted.
+
 Facilitator configuration coverage includes mutually exclusive RPC sources, independent listener
 and RPC plaintext permissions, strict legacy/unknown/duplicate YAML rejection,
 bounded files, redacted field errors and offline `--check-config`. Credential

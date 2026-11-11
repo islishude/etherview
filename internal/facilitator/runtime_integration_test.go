@@ -40,6 +40,7 @@ type journalRPC struct {
 	mu            sync.Mutex
 	tx            *types.Transaction
 	sends         atomic.Int64
+	nonces        atomic.Int64
 	blocked       atomic.Bool
 	broadcast     chan struct{}
 	pauseVerify   atomic.Bool
@@ -94,6 +95,7 @@ func (m *journalRPC) handler(w http.ResponseWriter, r *http.Request) {
 			result = "0x"
 		}
 	case "eth_getTransactionCount":
+		m.nonces.Add(1)
 		result = "0x0"
 	case "eth_maxPriorityFeePerGas":
 		result = "0x1"
