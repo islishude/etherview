@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -281,9 +282,10 @@ func TestPreviewX402(t *testing.T) {
 	if decodeErr == nil {
 		decodeErr = json.Unmarshal(raw, &settled)
 	}
+	body, bodyErr := io.ReadAll(io.LimitReader(response.Body, 4096))
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusPaymentRequired || decodeErr != nil || settled.Success || settled.ErrorReason != "settlement_pending" || settled.Transaction == "" {
-		t.Fatalf("paused-chain response: status=%d settlement=%+v error=%v", response.StatusCode, settled, decodeErr)
+		t.Fatalf("paused-chain response: status=%d settlement=%+v error=%v body=%s body_error=%v", response.StatusCode, settled, decodeErr, body, bodyErr)
 	}
 	var intent gen.BillingTopupIntentResponse
 	doJSON(t, client, http.MethodGet, origin+"/api/v1/billing/topup-intents/"+pending.intentID, origin, "", nil, http.StatusOK, &intent)
