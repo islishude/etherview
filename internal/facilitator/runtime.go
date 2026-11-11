@@ -20,6 +20,7 @@ import (
 type chainRuntime struct {
 	adapter           *chainClient
 	scheme            *exact.ExactEvmScheme
+	submissionGate    chan struct{}
 	gate              chan struct{}
 	verifyGate        chan struct{}
 	healthy           atomic.Bool
@@ -95,7 +96,7 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		}
 		s.cleanups = append(s.cleanups, client.Close)
 		adapter := &chainClient{client: client, signer: signers[ch.Signer], config: ch, queries: s.queries, guard: s.guard}
-		runtime := &chainRuntime{adapter: adapter, gate: make(chan struct{}, 1), verifyGate: make(chan struct{}, 8)}
+		runtime := &chainRuntime{adapter: adapter, submissionGate: make(chan struct{}, 1), gate: make(chan struct{}, 1), verifyGate: make(chan struct{}, 8)}
 		s.chains[ch.Network] = runtime
 		id, e := client.ChainID(ctx)
 		expected, _ := networkID(ch.Network)

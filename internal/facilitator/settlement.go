@@ -44,11 +44,21 @@ func (s *Service) executePayment(parent context.Context, in paymentRequest, ch *
 		}
 		return result, nil
 	}
+	// Only another submission is a capacity refusal. Background reconciliation
+	// uses the execution gate too, including while scanning an empty journal.
+	select {
+	case ch.submissionGate <- struct{}{}:
+		defer func() { <-ch.submissionGate }()
+	default:
+		return s.rejectUnsubmitted(ctx, ch, in, id, payer, "chain_busy")
+	}
+	// Wait for maintenance within this attempt's existing deadline. Keep journal
+	// reads and signing under the same gate so recovery cannot fail a live owner.
 	select {
 	case ch.gate <- struct{}{}:
 		defer func() { <-ch.gate }()
-	default:
-		return s.rejectUnsubmitted(ctx, ch, in, id, payer, "chain_busy")
+	case <-ctx.Done():
+		return nil, &operationError{code: "chain_unavailable"}
 	}
 	body, _ := canonicalJSON(in)
 	digest := sha256.Sum256(body)

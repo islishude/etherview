@@ -95,6 +95,12 @@ journal, protocol and API-side credit semantics remain unchanged.
 
 ## Capacity refusals
 
+Submission admission is separate from the execution gate shared with background
+reconciliation. A payment waits for background journal scans within its existing
+deadline; maintenance alone must not create a durable capacity refusal. Cancellation
+while waiting leaves no reservation, refusal, signature or broadcast. Concurrent
+payment submissions retain the capacity-refusal behavior below.
+
 A new authorization refused because its chain is busy or has unresolved work is
 atomically inserted as a failed journal entry with an empty transaction and a
 standard settlement rejection. This fences later submission of the refused
