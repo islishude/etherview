@@ -121,6 +121,8 @@ type Querier interface {
 	CatalogValidateCanonicalSnapshot(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	CheckENSSyncJobCurrent(ctx context.Context, jobID int64) (bool, error)
 	ClaimBillingTopupIntent(ctx context.Context, arg ClaimBillingTopupIntentParams) (pgtype.UUID, error)
+	ClaimBillingTopupResult(ctx context.Context, owner pgtype.UUID, paymentID pgtype.UUID, attemptOwner pgtype.UUID) (BillingPayment, error)
+	ClaimBillingTopupResults(ctx context.Context, owner pgtype.UUID, chainID pgtype.Numeric) ([]BillingPayment, error)
 	ClaimENSSyncJob(ctx context.Context, leaseToken pgtype.UUID, leaseSeconds int32, sourceID int64) (EnsSyncJob, error)
 	CommitBillingUsage(ctx context.Context, arg CommitBillingUsageParams) (CommitBillingUsageRow, error)
 	CompleteENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
@@ -165,6 +167,7 @@ type Querier interface {
 	CreateUserAPIKey(ctx context.Context, arg CreateUserAPIKeyParams) error
 	CreateUserSession(ctx context.Context, arg CreateUserSessionParams) (UserSession, error)
 	CreditBillingTopup(ctx context.Context, arg CreditBillingTopupParams) (CreditBillingTopupRow, error)
+	CreditBillingTopupResult(ctx context.Context, arg CreditBillingTopupResultParams) (CreditBillingTopupResultRow, error)
 	DeleteExpiredAdapterObservations(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredAuthChallenges(ctx context.Context, chainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, deleteLimit int32) (int64, error)
 	DeleteExpiredENSEffectivePublications(ctx context.Context, targetChainID pgtype.Numeric, expiredBefore pgtype.Timestamptz, rowLimit int32) (int64, error)
@@ -399,16 +402,23 @@ type Querier interface {
 	ExportCoverage(ctx context.Context, arg ExportCoverageParams) (ExportCoverageRow, error)
 	ExportLock(ctx context.Context) error
 	ExportRelease(ctx context.Context, token pgtype.UUID) error
+	FacilitatorAbortUnsigned(ctx context.Context, authorizationID string, response []byte) (int64, error)
 	FacilitatorAcquireLock(ctx context.Context) (bool, error)
 	FacilitatorConfirmBroadcast(ctx context.Context, authorizationID string, transactionHash []byte) (int64, error)
+	FacilitatorConfirmTransaction(ctx context.Context, authorizationID string, transactionHash []byte) (int64, error)
 	FacilitatorFinish(ctx context.Context, authorizationID string, state string, response []byte) (int64, error)
 	FacilitatorGet(ctx context.Context, authorizationID string) (FacilitatorSettlement, error)
 	FacilitatorPending(ctx context.Context, network string) ([]FacilitatorSettlement, error)
 	FacilitatorPendingCount(ctx context.Context, network string) (int64, error)
+	FacilitatorReconcileUnsigned(ctx context.Context, authorizationID string) (int64, error)
 	FacilitatorRejectUnsubmitted(ctx context.Context, arg FacilitatorRejectUnsubmittedParams) (int64, error)
 	FacilitatorReserve(ctx context.Context, arg FacilitatorReserveParams) (int64, error)
 	FacilitatorSaveSigned(ctx context.Context, arg FacilitatorSaveSignedParams) (int64, error)
+	FacilitatorScanCursor(ctx context.Context, authorizationID string, scanCursor []byte) (int64, error)
+	FacilitatorSucceed(ctx context.Context, authorizationID string, response []byte, settlementEvidence []byte) (int64, error)
+	FacilitatorTouchRecovery(ctx context.Context, authorizationID string) (int64, error)
 	FailBillingTopupPayment(ctx context.Context, arg FailBillingTopupPaymentParams) (pgtype.UUID, error)
+	FailBillingTopupResult(ctx context.Context, arg FailBillingTopupResultParams) (pgtype.UUID, error)
 	FailBillingTopupSettlement(ctx context.Context, arg FailBillingTopupSettlementParams) (pgtype.UUID, error)
 	FailENSSyncCollection(ctx context.Context, arg FailENSSyncCollectionParams) (int64, error)
 	FindX402TestnetBillingPayments(ctx context.Context, arg FindX402TestnetBillingPaymentsParams) ([]pgtype.UUID, error)
@@ -689,6 +699,8 @@ type Querier interface {
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	RefreshENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64, expectedGeneration int64) (int64, error)
 	RegisterENSEffectivePolicy(ctx context.Context, arg RegisterENSEffectivePolicyParams) error
+	ReleaseBillingTopupResult(ctx context.Context, paymentID pgtype.UUID, owner pgtype.UUID) (int64, error)
+	ReleaseBillingTopupVerification(ctx context.Context, observedAt pgtype.Timestamptz, paymentID pgtype.UUID, owner pgtype.UUID) (int64, error)
 	ReleaseBillingUsage(ctx context.Context, arg ReleaseBillingUsageParams) (ReleaseBillingUsageRow, error)
 	ReleaseRuntimeSessionLock(ctx context.Context, lockName string) (bool, error)
 	RequestsListItems(ctx context.Context, arg RequestsListItemsParams) ([]RequestsListItemsRow, error)
@@ -698,6 +710,7 @@ type Querier interface {
 	RequestsWriteItems(ctx context.Context, arg RequestsWriteItemsParams) ([]int32, error)
 	RequestsWriteSet(ctx context.Context, arg RequestsWriteSetParams) (int64, error)
 	ReserveBillingUsage(ctx context.Context, arg ReserveBillingUsageParams) (ReserveBillingUsageRow, error)
+	RetryBillingTopupVerification(ctx context.Context, arg RetryBillingTopupVerificationParams) (BillingPayment, error)
 	RetryENSHistoryPending(ctx context.Context, sourceID int64, blockHash []byte, logIndex int64) error
 	RetryENSSyncJob(ctx context.Context, arg RetryENSSyncJobParams) (int64, error)
 	RevokeAllUserAPIKeys(ctx context.Context, revokedAt pgtype.Timestamptz, userID pgtype.UUID) error

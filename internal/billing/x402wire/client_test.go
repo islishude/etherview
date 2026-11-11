@@ -761,11 +761,11 @@ func TestClientSettlementFailureClassification(t *testing.T) {
 		wantClass FailureClass
 	}{
 		{
-			name:   "definite facilitator rejection",
+			name:   "unknown rejection remains uncertain",
 			status: http.StatusBadRequest,
 			body: `{"success":false,"errorReason":"insufficient_funds",` +
 				`"transaction":"","network":"eip155:84532"}`,
-			wantClass: FailureRejected,
+			wantClass: FailureSettlementUnknown,
 		},
 		{
 			name:      "failed response missing required fields",
@@ -844,6 +844,27 @@ func TestClientSettlementFailureClassification(t *testing.T) {
 	}
 }
 
+func TestClientKnownRejectionAndRevert(t *testing.T) {
+	_, requirement := testPaymentAndRequirement(t)
+	req, _, err := decodeRequirementJSON(requirement.JSON())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"invalid_exact_evm_signature", "chain_busy", "chain_pending", "settlement_rejected"} {
+		body, _ := json.Marshal(map[string]any{"success": false, "errorReason": code, "transaction": "", "network": req.Network})
+		if _, e := parseSettleResponse(http.StatusOK, body, testPayer, req); !IsFailure(e, FailureRejected) {
+			t.Fatal(code, e)
+		}
+	}
+	if _, e := parseVerifyResponse(http.StatusOK, []byte(`{"isValid":false,"invalidReason":"invalid_exact_evm_signature"}`), testPayer, req); !IsFailure(e, FailureRejected) {
+		t.Fatal(e)
+	}
+	body, _ := json.Marshal(map[string]any{"success": false, "errorReason": "settlement_rejected", "transaction": testTxHash, "network": req.Network, "payer": testPayer})
+	if response, e := parseSettleResponse(http.StatusOK, body, testPayer, req); !IsFailure(e, FailureTransactionReverted) || response == nil || response.Transaction != testTxHash {
+		t.Fatal(response, e)
+	}
+}
+
 func TestClientVerificationFailureClassification(t *testing.T) {
 	t.Parallel()
 	payment, requirement := testPaymentAndRequirement(t)
@@ -854,10 +875,10 @@ func TestClientVerificationFailureClassification(t *testing.T) {
 		wantClass FailureClass
 	}{
 		{
-			name:      "payment rejected",
+			name:      "unknown verification reason",
 			status:    http.StatusOK,
 			body:      `{"isValid":false,"invalidReason":"invalid_signature"}`,
-			wantClass: FailureRejected,
+			wantClass: FailureUnavailable,
 		},
 		{
 			name:      "server error",

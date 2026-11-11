@@ -132,7 +132,7 @@ func TestPreviewX402(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &http.Client{Jar: jar, Timeout: 40 * time.Second}
+	client := &http.Client{Jar: jar, Timeout: 110 * time.Second}
 	defer client.CloseIdleConnections()
 	codec, err := x402wire.NewCodec(x402wire.DefaultMaxHeaderBytes)
 	if err != nil {
@@ -309,7 +309,7 @@ func TestPreviewX402(t *testing.T) {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	run("exec", "-T", "api", "/etherview", "admin", "billing", "reconcile", "--config=/etc/etherview/config.yaml", "--id", intent.Data.PaymentId.String(), "--outcome", "settled", "--transaction-hash", hash.Hex())
+	waitTopupCredit(t, client, origin, csrf, pending.intentID)
 	replay := postTopupPayment(t, client, origin, csrf, pending.intentID, pending.header)
 	_ = replay.Body.Close()
 	if replay.StatusCode != http.StatusConflict {

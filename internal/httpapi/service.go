@@ -25,7 +25,7 @@ func NewService(cfg config.Config, handler http.Handler, loggers ...*slog.Logger
 	return &Service{
 		server: &http.Server{
 			Addr:              cfg.Server.Address,
-			Handler:           RequestBudget(handler, cfg.Server.RequestTimeout),
+			Handler:           handler,
 			ErrorLog:          observability.HTTPServerErrorLog(logger),
 			ReadHeaderTimeout: cfg.Server.ReadTimeout,
 			ReadTimeout:       cfg.Server.ReadTimeout,

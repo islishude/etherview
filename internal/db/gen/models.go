@@ -293,41 +293,50 @@ type BillingAccountEntry struct {
 }
 
 type BillingPayment struct {
-	ID                   pgtype.UUID        `db:"id" json:"id"`
-	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
-	Fingerprint          []byte             `db:"fingerprint" json:"fingerprint"`
-	ReservationOwner     pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
-	Method               string             `db:"method" json:"method"`
-	Operation            string             `db:"operation" json:"operation"`
-	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
-	RequirementDigest    []byte             `db:"requirement_digest" json:"requirement_digest"`
-	ProtocolVersion      int16              `db:"protocol_version" json:"protocol_version"`
-	Scheme               string             `db:"scheme" json:"scheme"`
-	Network              string             `db:"network" json:"network"`
-	Asset                []byte             `db:"asset" json:"asset"`
-	AmountAtomic         pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
-	Recipient            []byte             `db:"recipient" json:"recipient"`
-	Payer                []byte             `db:"payer" json:"payer"`
-	UserID               pgtype.UUID        `db:"user_id" json:"user_id"`
-	ApiKeyPrefix         *string            `db:"api_key_prefix" json:"api_key_prefix"`
-	FacilitatorDigest    []byte             `db:"facilitator_digest" json:"facilitator_digest"`
-	TransactionHash      []byte             `db:"transaction_hash" json:"transaction_hash"`
-	State                string             `db:"state" json:"state"`
-	FailureCode          *string            `db:"failure_code" json:"failure_code"`
-	ReservationExpiresAt pgtype.Timestamptz `db:"reservation_expires_at" json:"reservation_expires_at"`
-	HandlerStartedAt     pgtype.Timestamptz `db:"handler_started_at" json:"handler_started_at"`
-	VerifiedAt           pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
-	SettlingAt           pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
-	SettledAt            pgtype.Timestamptz `db:"settled_at" json:"settled_at"`
-	FailedAt             pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
-	ExpiredAt            pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
-	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-	Purpose              string             `db:"purpose" json:"purpose"`
-	AssetTransferMethod  string             `db:"asset_transfer_method" json:"asset_transfer_method"`
-	PaymentFlow          string             `db:"payment_flow" json:"payment_flow"`
-	FingerprintVersion   int16              `db:"fingerprint_version" json:"fingerprint_version"`
-	TopupIntentID        pgtype.UUID        `db:"topup_intent_id" json:"topup_intent_id"`
+	ID                        pgtype.UUID        `db:"id" json:"id"`
+	ChainID                   pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Fingerprint               []byte             `db:"fingerprint" json:"fingerprint"`
+	ReservationOwner          pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
+	AuthorizationID           *string            `db:"authorization_id" json:"authorization_id"`
+	RequestDigest             []byte             `db:"request_digest" json:"request_digest"`
+	VerificationOwner         pgtype.UUID        `db:"verification_owner" json:"verification_owner"`
+	VerificationExpiresAt     pgtype.Timestamptz `db:"verification_expires_at" json:"verification_expires_at"`
+	VerificationRetryable     bool               `db:"verification_retryable" json:"verification_retryable"`
+	ReconciliationOwner       pgtype.UUID        `db:"reconciliation_owner" json:"reconciliation_owner"`
+	ReconciliationExpiresAt   pgtype.Timestamptz `db:"reconciliation_expires_at" json:"reconciliation_expires_at"`
+	SettlementTransactionHash []byte             `db:"settlement_transaction_hash" json:"settlement_transaction_hash"`
+	SettlementEvidence        []byte             `db:"settlement_evidence" json:"settlement_evidence"`
+	Method                    string             `db:"method" json:"method"`
+	Operation                 string             `db:"operation" json:"operation"`
+	ResourceDigest            []byte             `db:"resource_digest" json:"resource_digest"`
+	RequirementDigest         []byte             `db:"requirement_digest" json:"requirement_digest"`
+	ProtocolVersion           int16              `db:"protocol_version" json:"protocol_version"`
+	Scheme                    string             `db:"scheme" json:"scheme"`
+	Network                   string             `db:"network" json:"network"`
+	Asset                     []byte             `db:"asset" json:"asset"`
+	AmountAtomic              pgtype.Numeric     `db:"amount_atomic" json:"amount_atomic"`
+	Recipient                 []byte             `db:"recipient" json:"recipient"`
+	Payer                     []byte             `db:"payer" json:"payer"`
+	UserID                    pgtype.UUID        `db:"user_id" json:"user_id"`
+	ApiKeyPrefix              *string            `db:"api_key_prefix" json:"api_key_prefix"`
+	FacilitatorDigest         []byte             `db:"facilitator_digest" json:"facilitator_digest"`
+	TransactionHash           []byte             `db:"transaction_hash" json:"transaction_hash"`
+	State                     string             `db:"state" json:"state"`
+	FailureCode               *string            `db:"failure_code" json:"failure_code"`
+	ReservationExpiresAt      pgtype.Timestamptz `db:"reservation_expires_at" json:"reservation_expires_at"`
+	HandlerStartedAt          pgtype.Timestamptz `db:"handler_started_at" json:"handler_started_at"`
+	VerifiedAt                pgtype.Timestamptz `db:"verified_at" json:"verified_at"`
+	SettlingAt                pgtype.Timestamptz `db:"settling_at" json:"settling_at"`
+	SettledAt                 pgtype.Timestamptz `db:"settled_at" json:"settled_at"`
+	FailedAt                  pgtype.Timestamptz `db:"failed_at" json:"failed_at"`
+	ExpiredAt                 pgtype.Timestamptz `db:"expired_at" json:"expired_at"`
+	CreatedAt                 pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	Purpose                   string             `db:"purpose" json:"purpose"`
+	AssetTransferMethod       string             `db:"asset_transfer_method" json:"asset_transfer_method"`
+	PaymentFlow               string             `db:"payment_flow" json:"payment_flow"`
+	FingerprintVersion        int16              `db:"fingerprint_version" json:"fingerprint_version"`
+	TopupIntentID             pgtype.UUID        `db:"topup_intent_id" json:"topup_intent_id"`
 }
 
 type BillingPaymentEvent struct {
@@ -355,6 +364,7 @@ type BillingTopupIntent struct {
 	State                     string             `db:"state" json:"state"`
 	ActivePaymentID           pgtype.UUID        `db:"active_payment_id" json:"active_payment_id"`
 	TransactionHash           []byte             `db:"transaction_hash" json:"transaction_hash"`
+	SettlementTransactionHash []byte             `db:"settlement_transaction_hash" json:"settlement_transaction_hash"`
 	SubmissionProgress        *string            `db:"submission_progress" json:"submission_progress"`
 	SubmissionTransactionHash []byte             `db:"submission_transaction_hash" json:"submission_transaction_hash"`
 	FailureCode               *string            `db:"failure_code" json:"failure_code"`
@@ -1762,19 +1772,22 @@ type ExternalMetadatum struct {
 }
 
 type FacilitatorSettlement struct {
-	AuthorizationID string             `db:"authorization_id" json:"authorization_id"`
-	RequestDigest   []byte             `db:"request_digest" json:"request_digest"`
-	RequestBody     []byte             `db:"request_body" json:"request_body"`
-	Network         string             `db:"network" json:"network"`
-	SignerAddress   []byte             `db:"signer_address" json:"signer_address"`
-	Nonce           pgtype.Numeric     `db:"nonce" json:"nonce"`
-	RawTransaction  []byte             `db:"raw_transaction" json:"raw_transaction"`
-	TransactionHash []byte             `db:"transaction_hash" json:"transaction_hash"`
-	State           string             `db:"state" json:"state"`
-	BroadcastStatus string             `db:"broadcast_status" json:"broadcast_status"`
-	Response        []byte             `db:"response" json:"response"`
-	CreatedAt       pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	AuthorizationID      string             `db:"authorization_id" json:"authorization_id"`
+	RequestDigest        []byte             `db:"request_digest" json:"request_digest"`
+	RequestBody          []byte             `db:"request_body" json:"request_body"`
+	Network              string             `db:"network" json:"network"`
+	SignerAddress        []byte             `db:"signer_address" json:"signer_address"`
+	Nonce                pgtype.Numeric     `db:"nonce" json:"nonce"`
+	RawTransaction       []byte             `db:"raw_transaction" json:"raw_transaction"`
+	TransactionHash      []byte             `db:"transaction_hash" json:"transaction_hash"`
+	State                string             `db:"state" json:"state"`
+	TransactionConfirmed bool               `db:"transaction_confirmed" json:"transaction_confirmed"`
+	SettlementEvidence   []byte             `db:"settlement_evidence" json:"settlement_evidence"`
+	ScanCursor           []byte             `db:"scan_cursor" json:"scan_cursor"`
+	BroadcastStatus      string             `db:"broadcast_status" json:"broadcast_status"`
+	Response             []byte             `db:"response" json:"response"`
+	CreatedAt            pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 type GenesisAccountObservation struct {

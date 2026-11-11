@@ -292,6 +292,10 @@ export type BillingTopupIntent = {
     payer: Address;
     state: BillingTopupIntentState;
     payment_id?: string | null;
+    /**
+     * Confirmed payment transaction; may differ from the original facilitator submission.
+     */
+    settlement_transaction_hash?: Hash | null;
     transaction_hash?: Hash | null;
     /**
      * Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
@@ -352,6 +356,10 @@ export type BillingPayment = {
     payer?: Address | null;
     user_id?: string | null;
     api_key_prefix?: string | null;
+    /**
+     * Confirmed payment transaction; may differ from the original facilitator submission.
+     */
+    settlement_transaction_hash?: Hash | null;
     transaction_hash?: Hash | null;
     failure_code?: string | null;
     created_at: string;

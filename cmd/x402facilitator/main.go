@@ -62,8 +62,8 @@ func runArgs(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer service.Close()
 	if *recoverID != "" {
+		defer service.Close()
 		ctx, stop := context.WithTimeout(context.Background(), 25*time.Second)
 		defer stop()
 		return service.Rebroadcast(ctx, *recoverID)
@@ -81,16 +81,38 @@ func runArgs(args []string) error {
 	}()
 	select {
 	case <-ctx.Done():
+	case <-service.Fatal():
+		err = errors.New("facilitator_lock_lost")
 	case err = <-failure:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return errors.New("facilitator_listener_failed")
+			err = errors.New("facilitator_listener_failed")
 		}
 	}
 	shutdown, done := context.WithTimeout(context.Background(), 30*time.Second)
 	defer done()
-	if err = server.Shutdown(shutdown); err != nil {
-		_ = server.Close()
+	if shutdownErr := shutdownRuntime(shutdown, server, service.Close); shutdownErr != nil {
 		return errors.New("facilitator_shutdown_timeout")
 	}
-	return nil
+	return err
+}
+
+// The same budget covers HTTP draining, monitors and database cleanup. A dead
+// lock connection must not leave the process waiting indefinitely on pool Close.
+func shutdownRuntime(ctx context.Context, server *http.Server, closeService func()) error {
+	finished := make(chan error, 1)
+	go func() {
+		err := server.Shutdown(ctx)
+		if err != nil {
+			_ = server.Close()
+		}
+		closeService()
+		finished <- err
+	}()
+	select {
+	case err := <-finished:
+		return err
+	case <-ctx.Done():
+		_ = server.Close()
+		return ctx.Err()
+	}
 }

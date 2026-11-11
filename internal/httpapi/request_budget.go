@@ -12,9 +12,13 @@ var errRequestBudget = errors.New("API request budget exhausted")
 
 // RequestBudget wraps authentication as well as the business handler. Work
 // cooperatively observes one deadline; no detached handler goroutine survives it.
-func RequestBudget(next http.Handler, budget time.Duration) http.Handler {
+func RequestBudget(next http.Handler, budget time.Duration, paymentBudgets ...time.Duration) http.Handler {
 	if budget <= 0 {
 		budget = 20 * time.Second
+	}
+	paymentBudget := 75 * time.Second
+	if len(paymentBudgets) > 0 && paymentBudgets[0] > 0 {
+		paymentBudget = paymentBudgets[0]
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		api := strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/v2/api"
@@ -23,7 +27,11 @@ func RequestBudget(next http.Handler, budget time.Duration) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ctx, cancel := context.WithTimeoutCause(r.Context(), budget, errRequestBudget)
+		selected := budget
+		if isTopupPaymentRequest(r) {
+			selected = paymentBudget
+		}
+		ctx, cancel := context.WithTimeoutCause(r.Context(), selected, errRequestBudget)
 		defer cancel()
 		request := r.WithContext(ctx)
 		writer := &budgetWriter{ResponseWriter: w, request: request}
@@ -32,6 +40,19 @@ func RequestBudget(next http.Handler, budget time.Duration) http.Handler {
 			writer.timeout()
 		}
 	})
+}
+
+// Match exactly one intent segment before authentication or mux dispatch.
+func isTopupPaymentRequest(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	id, ok := strings.CutPrefix(r.URL.Path, "/api/v1/billing/topup-intents/")
+	if !ok {
+		return false
+	}
+	id, ok = strings.CutSuffix(id, "/pay")
+	return ok && id != "" && id != "." && id != ".." && !strings.Contains(id, "/")
 }
 
 type budgetWriter struct {
@@ -76,6 +97,7 @@ func (w *budgetWriter) timeout() {
 	}
 	w.committed, w.timedOut = true, true
 	w.Header().Del("Content-Length")
+	w.Header().Del("PAYMENT-RESPONSE")
 	if w.request.URL.Path == "/v2/api" {
 		writeJSON(w.ResponseWriter, http.StatusGatewayTimeout, map[string]string{"status": "0", "message": "NOTOK", "result": "request_timeout"})
 		return

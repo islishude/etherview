@@ -6,6 +6,7 @@ import { appearanceCases, collectBrowserErrors, configureAppearance } from "./ap
 const address = "0x1111111111111111111111111111111111111111";
 const asset = "0x3333333333333333333333333333333333333333";
 const hash = `0x${"6".repeat(64)}`;
+const paymentHash = `0x${"7".repeat(64)}`;
 const timestamp = "2026-10-30T00:00:00Z";
 const largeAmount = "340282366920938463463374607431768211455";
 const envelope = (data: unknown) => ({
@@ -123,6 +124,7 @@ for (const appearance of appearanceCases) {
         recipient: address,
         payer: address,
         transaction_hash: hash,
+        settlement_transaction_hash: paymentHash,
         created_at: timestamp,
         updated_at: timestamp,
       };
@@ -348,6 +350,7 @@ for (const appearance of appearanceCases) {
     });
     let failPayment = false;
     let submissionProgress = "submitting";
+    const signedHeaders: string[] = [];
     let releasePayment!: () => void;
     const paymentGate = new Promise<void>((resolve) => {
       releasePayment = resolve;
@@ -382,10 +385,21 @@ for (const appearance of appearanceCases) {
             ).toString("base64"),
           },
         });
+      signedHeaders.push(route.request().headers()["payment-signature"]!);
+      if (signedHeaders.length === 1)
+        return route.fulfill({
+          status: 503,
+          json: { error: { code: "x402_verification_retryable" } },
+        });
       await paymentGate;
       return route.fulfill({
         json: envelope({
-          intent: { ...paymentIntent, state: "credited", transaction_hash: hash },
+          intent: {
+            ...paymentIntent,
+            state: "credited",
+            transaction_hash: hash,
+            settlement_transaction_hash: paymentHash,
+          },
           account: {},
         }),
       });
@@ -416,6 +430,13 @@ for (const appearance of appearanceCases) {
     );
     await checkView("topup-signing");
     await page.evaluate(() => window.dispatchEvent(new Event("release-topup-signature")));
+    const retryVerification = page.getByRole("button", {
+      name: appearance.language === "zh" ? "重试验证" : "Retry verification",
+    });
+    await expect(retryVerification).toBeVisible();
+    await expect(page.locator(".billing-topup-status.failure")).toBeVisible();
+    await checkView("topup-verification-retry");
+    await retryVerification.click();
     await expect(page.locator(".billing-topup-steps [aria-current=step]")).toContainText(
       appearance.language === "zh" ? "等待协调人提交交易" : "Waiting for the facilitator",
     );
@@ -427,8 +448,8 @@ for (const appearance of appearanceCases) {
     releasePayment();
     await expect(page.locator(".billing-topup-status.success")).toBeVisible();
     const resultHash = page.locator(".billing-topup-status.success code");
-    await expect(resultHash).toHaveText(`${hash.slice(0, 8)}…${hash.slice(-6)}`);
-    await expect(resultHash).toHaveAttribute("title", hash);
+    await expect(resultHash).toHaveText(`${paymentHash.slice(0, 8)}…${paymentHash.slice(-6)}`);
+    await expect(resultHash).toHaveAttribute("title", paymentHash);
     const hashBounds = await resultHash.boundingBox();
     const stepsBounds = await page.locator(".billing-topup-steps").boundingBox();
     expect(hashBounds).not.toBeNull();
@@ -456,7 +477,9 @@ for (const appearance of appearanceCases) {
     await checkView("topup-failure");
     await continueButton.click();
     await expect(amountInput).toBeFocused();
-    expect(writes).toHaveLength(5);
+    expect(writes).toHaveLength(6);
+    expect(signedHeaders).toHaveLength(2);
+    expect(signedHeaders[0]).toBe(signedHeaders[1]);
     await page.goto("/account");
     await expect(page.locator(".profile-details .account-address")).toHaveAttribute(
       "href",

@@ -41,6 +41,7 @@ import {
   type BillingPaymentOption,
   type BillingPayment,
   type BillingTopupIntent,
+  type BillingTopupReceipt,
   type BillingTransferMethod,
 } from "@/api/billing";
 import { usePrivateIdentity, usePrivateLifetime } from "@/api/privateAccount";
@@ -188,6 +189,7 @@ export function PersonalBilling() {
   const networkKey = fundingNetworkKey(identity, wallet.active, payment) + `:${viewRevision}`;
   const currentWalletKey = useRef(walletKey);
   currentWalletKey.current = walletKey;
+  const verification = useVerificationRetry(walletKey, method);
   const networkError = useFundingNetworkError(
     chainFailure,
     networkKey,
@@ -239,9 +241,17 @@ export function PersonalBilling() {
 
   const { panelState, setFocusAmount } = useTopupPanel(waiting, submitting, notice, error, view);
 
-  const submit = async (event?: SubmitEvent<HTMLFormElement>) => {
+  const submit = async (event?: SubmitEvent<HTMLFormElement>, retry = false) => {
     event?.preventDefault();
-    if (blocked || submittingRef.current || checkingBalanceRef.current || balanceBlocked) return;
+    if (
+      (!retry && (blocked || balanceBlocked)) ||
+      submittingRef.current ||
+      checkingBalanceRef.current
+    )
+      return;
+    const attempt = retry ? verification.current : undefined;
+    if (retry && (!attempt || attempt.key !== walletKey)) return;
+    verification.clear();
     setError(undefined);
     setNotice(undefined);
     setNotification(undefined);
@@ -257,7 +267,7 @@ export function PersonalBilling() {
     const atomic = topupAmount(amount, payment);
     if (!atomic) return;
     const signal = lifetime();
-    let executingIntentID: string | undefined;
+    let executingIntentID: string | undefined = attempt?.intentID;
     resetProgress();
     submittingRef.current = true;
     setSubmitting(true);
@@ -285,6 +295,7 @@ export function PersonalBilling() {
         setApprovalNetwork(intent.network);
         return await payBillingTopup({
           config: paymentConfig,
+          assertCurrent,
           intent,
           onProgress: (next) => {
             if (signal.aborted || completed.current.has(intent.id)) return;
@@ -297,9 +308,11 @@ export function PersonalBilling() {
           wallet: boundTopupWallet(wallet, selected, assertCurrent),
         });
       };
-      const receipt = wallet.withBillingChain
-        ? await wallet.withBillingChain(paymentConfig.network!, execute, true)
-        : await execute(wallet.active);
+      const receipt = attempt
+        ? await attempt.retry()
+        : wallet.withBillingChain
+          ? await wallet.withBillingChain(paymentConfig.network!, execute, true)
+          : await execute(wallet.active);
       signal.throwIfAborted();
       if (completed.current.has(receipt.intent.id)) return;
       completed.current.add(receipt.intent.id);
@@ -315,15 +328,12 @@ export function PersonalBilling() {
     } catch (cause) {
       if (signal.aborted || (executingIntentID && completed.current.has(executingIntentID))) return;
       setPendingID(undefined);
-      if (
-        cause instanceof Error &&
-        cause.name === "TopupPendingError" &&
-        "intentID" in cause &&
-        typeof cause.intentID === "string"
-      ) {
+      if (isTopupPending(cause)) {
         setProgress((previous) => ({ ...previous, stage: "unknown" }));
         setPendingID(cause.intentID);
         await refreshBilling();
+      } else if (verification.capture(cause)) {
+        setError(t("billing.topup.verificationUnavailable"));
       } else if (cause instanceof BillingChainError) {
         if (currentWalletKey.current === walletKey) {
           setChainFailure({ key: networkKey, error: cause });
@@ -369,11 +379,17 @@ export function PersonalBilling() {
                   finishing={submitting}
                   queryFailed={waiting && Boolean(pending.error)}
                   retry={() => void pending.refetch()}
+                  retryVerification={
+                    verification.current?.key === walletKey
+                      ? () => void submit(undefined, true)
+                      : undefined
+                  }
                   continueTopup={() => {
                     setNotice(undefined);
                     setError(undefined);
                     setAmount("");
                     resetProgress();
+                    verification.clear();
                     setFocusAmount(true);
                   }}
                   showHistory={() => {
@@ -451,17 +467,7 @@ export function PersonalBilling() {
           </Card>
         )}
         <PersonalHistory key={historyRevision} visible={view === "history"} config={config.data} />
-        {view === "prices" &&
-          (config.isPending ? (
-            <p role="status">{t("billing.workspace.loadingPayment")}</p>
-          ) : config.error ? (
-            <BillingError
-              title={t("billing.workspace.configFailed")}
-              retry={() => void config.refetch()}
-            />
-          ) : (
-            config.data && <BillingPrices config={config.data} />
-          ))}
+        {view === "prices" && <BillingPricesView config={config} />}
       </div>
     </div>
   );
@@ -505,7 +511,10 @@ function boundTopupWallet(
 }
 
 function topupTransaction(intent: BillingTopupIntent) {
-  return { hash: intent.transaction_hash ?? undefined, network: intent.network };
+  return {
+    hash: intent.settlement_transaction_hash ?? intent.transaction_hash ?? undefined,
+    network: intent.network,
+  };
 }
 
 function useTopupProgress(
@@ -609,6 +618,7 @@ function TopupStatus({
   queryFailed,
   retry,
   continueTopup,
+  retryVerification,
   showHistory,
 }: {
   state: Exclude<TopupPanelState, "form">;
@@ -622,6 +632,7 @@ function TopupStatus({
   queryFailed: boolean;
   retry: () => void;
   continueTopup: () => void;
+  retryVerification?: () => void;
   showHistory: () => void;
 }) {
   const { t } = useTranslation();
@@ -642,7 +653,11 @@ function TopupStatus({
         size={24}
         className={busy ? "query-loading-spinner" : undefined}
       />
-      {!busy && <h3>{t(`billing.result.${state}`)}</h3>}
+      {!busy && (
+        <h3>
+          {t(retryVerification ? "billing.topup.verificationTitle" : `billing.result.${state}`)}
+        </h3>
+      )}
       <p>{detail}</p>
       <TopupProgressSteps
         progress={progress}
@@ -658,10 +673,10 @@ function TopupStatus({
           <Button
             type="button"
             className="button primary"
-            onClick={continueTopup}
+            onClick={retryVerification ?? continueTopup}
             disabled={finishing}
           >
-            {t("billing.result.continue")}
+            {t(retryVerification ? "billing.topup.retryVerification" : "billing.result.continue")}
           </Button>
           <Button
             variant="outline"
@@ -1105,6 +1120,18 @@ function HistoryRecord({
               <dd>{record.operation}</dd>
             </div>
           )}
+          {record.settlement_transaction_hash &&
+            record.settlement_transaction_hash !== record.transaction_hash && (
+              <div>
+                <dt>{t("billing.fields.settlementTransactionHash")}</dt>
+                <dd>
+                  <BillingTransactionHash
+                    hash={record.settlement_transaction_hash}
+                    network={record.network}
+                  />
+                </dd>
+              </div>
+            )}
           <div>
             <dt>{t("billing.fields.transactionHash")}</dt>
             <dd>
@@ -1230,4 +1257,59 @@ function walletFundingState(
     wallet.waitForBillingTransaction,
   );
   return { onPaymentChain, crossChain, walletReady };
+}
+
+function isVerificationRetry(
+  cause: unknown,
+): cause is Error & { intentID: string; retry: () => Promise<BillingTopupReceipt> } {
+  return (
+    cause instanceof Error &&
+    cause.name === "TopupVerificationRetryError" &&
+    "retry" in cause &&
+    typeof cause.retry === "function" &&
+    "intentID" in cause &&
+    typeof cause.intentID === "string"
+  );
+}
+
+function useVerificationRetry(key: string, method: BillingTransferMethod) {
+  const [current, setCurrent] = useState<{
+    key: string;
+    intentID: string;
+    retry: () => Promise<BillingTopupReceipt>;
+  }>();
+  useEffect(() => {
+    setCurrent(undefined);
+  }, [key, method]);
+  return {
+    current,
+    clear: () => setCurrent(undefined),
+    capture: (cause: unknown) => {
+      if (!isVerificationRetry(cause)) return false;
+      setCurrent({ key, intentID: cause.intentID, retry: cause.retry });
+      return true;
+    },
+  };
+}
+
+function BillingPricesView({ config }: { config: ReturnType<typeof useQuery<BillingConfig>> }) {
+  const { t } = useTranslation();
+  if (config.isPending) return <p role="status">{t("billing.workspace.loadingPayment")}</p>;
+  if (config.error)
+    return (
+      <BillingError
+        title={t("billing.workspace.configFailed")}
+        retry={() => void config.refetch()}
+      />
+    );
+  return config.data && <BillingPrices config={config.data} />;
+}
+
+function isTopupPending(cause: unknown): cause is Error & { intentID: string } {
+  return (
+    cause instanceof Error &&
+    cause.name === "TopupPendingError" &&
+    "intentID" in cause &&
+    typeof cause.intentID === "string"
+  );
 }

@@ -49,29 +49,30 @@ func (state TopupIntentState) valid() bool {
 func (state TopupIntentState) Valid() bool { return state.valid() }
 
 type TopupIntent struct {
-	PaymentOption      paymentoption.Option
-	CreditAmountAtomic string
-	ID                 string
-	UserID             string
-	ChainID            uint64
-	Network            string
-	Asset              common.Address
-	AmountAtomic       string
-	Recipient          common.Address
-	Payer              common.Address
-	State              TopupIntentState
-	SubmissionProgress string
-	ActivePaymentID    *string
-	TransactionHash    *common.Hash
-	FailureCode        *string
-	ExpiresAt          time.Time
-	ProcessingAt       *time.Time
-	SettlingAt         *time.Time
-	CreditedAt         *time.Time
-	FailedAt           *time.Time
-	ExpiredAt          *time.Time
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	PaymentOption             paymentoption.Option
+	CreditAmountAtomic        string
+	ID                        string
+	UserID                    string
+	ChainID                   uint64
+	Network                   string
+	Asset                     common.Address
+	AmountAtomic              string
+	Recipient                 common.Address
+	Payer                     common.Address
+	State                     TopupIntentState
+	SubmissionProgress        string
+	ActivePaymentID           *string
+	TransactionHash           *common.Hash
+	SettlementTransactionHash *common.Hash
+	FailureCode               *string
+	ExpiresAt                 time.Time
+	ProcessingAt              *time.Time
+	SettlingAt                *time.Time
+	CreditedAt                *time.Time
+	FailedAt                  *time.Time
+	ExpiredAt                 *time.Time
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 }
 
 type UsageState string

@@ -11,7 +11,8 @@ user funds one durable balance, then user-owned API keys spend that balance on
 priced Etherscan V2 compatibility actions. Explorer reads must not prompt for or
 silently create payments.
 
-Top-up settlement remains an external one-shot boundary. API usage, however,
+Top-up settlement remains an external one-shot boundary; verification-only
+transient failures may retry the exact request under a new database attempt lease. API usage, however,
 is entirely PostgreSQL-local and can reserve, commit, release, and expire
 credit without a facilitator call. The two flows need separate state machines
 and failure semantics.
@@ -222,3 +223,31 @@ reload recovers only durable server observations. A hash alone does not prove
 broadcast. Unknown transport outcomes retain the original intent and never
 automatically resubmit payment. Only the existing atomic credit publication
 completes the top-up. Progress observation never credits or reconciles an account.
+
+## Automatic top-up result publication (P60-T32)
+
+Before settlement, the API stores a non-signing authorization lookup and exact
+request digest bound to its configured facilitator. The API/all role owns the
+result reconciler and existing facilitator credentials; maintenance receives none.
+Claim transactions close before authenticated /result calls. Publication rechecks
+lease, payment, intent, origin and monetary identity and atomically commits the
+payment, intent, account and unique credit entry. Original submission hashes remain
+immutable; confirmed payment hashes and evidence occupy separate write-once fields.
+Pending/unknown outcomes, absent journal rows and malformed evidence never authorize
+another settle call. Browser presence is not required for eventual credit.
+
+Before settlement only, a temporary verification failure releases the verification
+attempt for the same fingerprint, intent and exact request. A replacement lease
+fences the old owner without changing payment identity. The browser retains signed
+requests only in the live operation and offers explicit retry after the dedicated
+verification-retryable response. Session, wallet and network changes invalidate the
+operation. Once settling, clients only observe results. Approval-required retains
+its machine-readable code. This does not relax cross-intent replay protection.
+
+The payment POST selects its own finite configurable deadline before authentication.
+It covers sequential Verify/Settle calls and bounded ledger completion, independently
+of ordinary API execution deadlines. Configuration rejects an insufficient payment
+or socket-write budget. Budget expiry is an uncertain transport outcome, never
+permission to resubmit settlement or publish credit. HTTP observations record the
+final response after deadline enforcement. Operational values live in the
+[payment deadline procedure](../operations/billing.md#payment-request-deadlines).

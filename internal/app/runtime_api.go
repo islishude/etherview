@@ -276,10 +276,11 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
-		topupDispatcher, err := newTopupDispatcher(cfg, billingReader, prepaidLedger, logger, registry)
+		topupDispatcher, err := newRuntimeTopupDispatcher(cfg, billingReader, prepaidLedger, logger, registry, componentRegistry)
 		if err != nil {
 			return err
 		}
+
 		limiter := auth.Limiter(auth.NewMemoryLimiter(nil))
 		if redisAccelerator != nil {
 			limiter = redisAccelerator.Limiter(limiter)
@@ -333,6 +334,9 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
+		// Observe the final wire status, including budget-generated timeouts. The
+		// budget still encloses authentication, admission and the payment handler.
+		publicHandler = httpapi.RequestBudget(publicHandler, cfg.Server.RequestTimeout, cfg.Server.PaymentRequestTimeout)
 		publicHandler = observability.HTTPMiddleware(publicHandler, observability.HTTPOptions{
 			Registry: registry, Logger: logger, Component: "http-api", Telemetry: telemetry,
 			Route: handler.RoutePattern, PanicResponse: httpapi.WriteRecoveredPanicResponse,

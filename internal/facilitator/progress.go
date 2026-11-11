@@ -51,7 +51,7 @@ func journalProgress(row dbgen.FacilitatorSettlement) SettlementProgress {
 		hash := common.BytesToHash(row.TransactionHash).Hex()
 		result.Transaction = &hash
 		result.Stage = Unknown
-		if row.BroadcastStatus == "confirmed" || row.State == "succeeded" {
+		if row.BroadcastStatus == "confirmed" || row.TransactionConfirmed {
 			result.Stage = Confirming
 		}
 	}

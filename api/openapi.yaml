@@ -3560,6 +3560,11 @@ components:
           type: string
           format: uuid
           nullable: true
+        settlement_transaction_hash:
+          description: Confirmed payment transaction; may differ from the original facilitator submission.
+          allOf:
+            - $ref: "#/components/schemas/Hash"
+          nullable: true
         transaction_hash:
           allOf:
             - $ref: "#/components/schemas/Hash"
@@ -3726,6 +3731,11 @@ components:
           type: string
           minLength: 10
           maxLength: 10
+          nullable: true
+        settlement_transaction_hash:
+          description: Confirmed payment transaction; may differ from the original facilitator submission.
+          allOf:
+            - $ref: "#/components/schemas/Hash"
           nullable: true
         transaction_hash:
           allOf:

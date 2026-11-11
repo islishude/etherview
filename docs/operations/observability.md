@@ -119,7 +119,10 @@ error code.
 `server.request_timeout` (default 20 seconds) bounds ordinary API execution from
 authentication through pool waits, SQL and external calls. Expiry returns
 `504 request_timeout` before response commitment; it never appends JSON to an
-already-started response. The two GET SSE routes are exempt.
+already-started response. The two GET SSE routes are exempt. The top-up payment
+POST uses the separate finite `server.payment_request_timeout` before authentication
+(see [payment deadlines](billing.md#payment-request-deadlines)). HTTP logging and
+metrics enclose budget enforcement and therefore record its final wire status.
 `server.write_timeout` is the response-write budget for ordinary handlers and
 the per-write/flush budget for `/api/v1/events` and `/api/v1/home/stream`.
 Idle SSE connections intentionally outlive that duration; a 15-second

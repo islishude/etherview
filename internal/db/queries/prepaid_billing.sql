@@ -93,12 +93,12 @@ WITH candidate AS (
     JOIN billing_topup_intents AS intent
       ON intent.id = payment.topup_intent_id
     WHERE payment.id = sqlc.arg('payment_id')::uuid
-      AND payment.reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(payment.verification_owner, payment.reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND payment.purpose = 'account_topup'
       AND payment.topup_intent_id = sqlc.arg('intent_id')::uuid
       AND payment.state = 'verified'
       AND payment.handler_started_at IS NULL
-      AND payment.reservation_expires_at > sqlc.arg('transitioned_at')
+      AND COALESCE(payment.verification_expires_at, payment.reservation_expires_at) > sqlc.arg('transitioned_at')
       AND intent.state = 'processing'
       AND intent.active_payment_id = payment.id
     FOR UPDATE OF payment, intent
@@ -131,7 +131,7 @@ WITH payment_update AS (
     UPDATE billing_payments
     SET failure_code = 'settlement_unknown', updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('payment_id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'account_topup'
       AND topup_intent_id = sqlc.arg('intent_id')::uuid
       AND state = 'settling'
@@ -161,7 +161,7 @@ WITH payment_update AS (
     SET failure_code = 'settlement_pending', transaction_hash = sqlc.arg('transaction_hash'),
         updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('payment_id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'account_topup'
       AND topup_intent_id = sqlc.arg('intent_id')::uuid
       AND state = 'settling'
@@ -200,7 +200,7 @@ WITH candidate AS (
     FROM billing_payments AS payment
     JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
     WHERE payment.id = sqlc.arg('payment_id')::uuid
-      AND payment.reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(payment.verification_owner, payment.reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND payment.purpose = 'account_topup'
       AND payment.state = 'settling'
       AND payment.failure_code IS NULL
@@ -395,7 +395,7 @@ WITH payment_update AS (
     SET state = 'failed', failure_code = sqlc.arg('failure_code'),
         failed_at = sqlc.arg('transitioned_at'), updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('payment_id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'account_topup'
       AND topup_intent_id = sqlc.arg('intent_id')::uuid
       AND state IN ('reserved', 'verified')
@@ -434,7 +434,7 @@ WITH payment_update AS (
     SET state = 'failed', failure_code = sqlc.arg('failure_code'),
         failed_at = sqlc.arg('transitioned_at'), updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('payment_id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'account_topup'
       AND topup_intent_id = sqlc.arg('intent_id')::uuid
       AND state = 'settling'
@@ -763,7 +763,7 @@ WITH candidates AS (
     WHERE payment.chain_id = sqlc.arg('chain_id')::numeric
       AND payment.purpose = 'account_topup'
       AND payment.state IN ('reserved', 'verified')
-      AND payment.reservation_expires_at <= sqlc.arg('observed_at')
+      AND (CASE WHEN payment.state='reserved' AND payment.authorization_id IS NOT NULL THEN intent.expires_at ELSE COALESCE(payment.verification_expires_at, payment.reservation_expires_at) END) <= sqlc.arg('observed_at')::timestamptz
       AND intent.state = 'processing'
       AND intent.active_payment_id = payment.id
     ORDER BY payment.reservation_expires_at, payment.id
@@ -806,7 +806,7 @@ WITH candidate AS (
     FROM billing_payments AS payment
     JOIN billing_topup_intents AS intent ON intent.id = payment.topup_intent_id
     WHERE payment.id = sqlc.arg('payment_id')::uuid
-      AND payment.reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(payment.verification_owner, payment.reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND payment.purpose = 'account_topup'
       AND payment.state = 'settling' AND payment.failure_code IS NULL
       AND intent.id = sqlc.arg('intent_id')::uuid

@@ -34,7 +34,9 @@ import (
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/islishude/etherview/internal/testcompose"
 	x402 "github.com/x402-foundation/x402/go/v2"
+	"github.com/x402-foundation/x402/go/v2/mechanisms/evm"
 	exactclient "github.com/x402-foundation/x402/go/v2/mechanisms/evm/exact/client"
+	exactfacilitator "github.com/x402-foundation/x402/go/v2/mechanisms/evm/exact/facilitator"
 	evmsigners "github.com/x402-foundation/x402/go/v2/signers/evm"
 )
 
@@ -83,6 +85,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	apiPort := freePort(t)
 	anvilPort := freePort(t)
 	postgresPort := freePort(t)
+	facilitatorPort := freePort(t)
 	publicOrigin := "http://127.0.0.1:" + strconv.Itoa(apiPort)
 	project := testcompose.NewQuiet(
 		root,
@@ -93,11 +96,12 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 	project.ProjectDirectory = filepath.Join(root, "e2e/x402local")
 	project.Profiles = []string{mode}
 	project.Env = map[string]string{
-		"ETHERVIEW_IMAGE":          os.Getenv("IMAGE"),
-		"X402_LOCAL_PORT":          strconv.Itoa(apiPort),
-		"X402_LOCAL_ANVIL_PORT":    strconv.Itoa(anvilPort),
-		"X402_LOCAL_POSTGRES_PORT": strconv.Itoa(postgresPort),
-		"X402_LOCAL_PUBLIC_URL":    publicOrigin,
+		"ETHERVIEW_IMAGE":             os.Getenv("IMAGE"),
+		"X402_LOCAL_PORT":             strconv.Itoa(apiPort),
+		"X402_LOCAL_ANVIL_PORT":       strconv.Itoa(anvilPort),
+		"X402_LOCAL_POSTGRES_PORT":    strconv.Itoa(postgresPort),
+		"X402_LOCAL_PUBLIC_URL":       publicOrigin,
+		"X402_LOCAL_FACILITATOR_PORT": strconv.Itoa(facilitatorPort),
 	}
 	if project.Env["ETHERVIEW_IMAGE"] == "" {
 		project.Env["ETHERVIEW_IMAGE"] = "etherview:local"
@@ -122,13 +126,15 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		}
 		diagnostics, _ := project.Run(context.Background(), "logs", "--no-color", "x402-facilitator")
 		t.Logf("x402 local diagnostics:\n%s", diagnostics)
+		journal, _ := project.Run(context.Background(), "exec", "-T", "postgres", "psql", "-U", "etherview", "-c", "SELECT state,response,settlement_evidence,scan_cursor FROM facilitator_settlements ORDER BY created_at; SELECT state,failure_code,authorization_id FROM billing_payments ORDER BY created_at")
+		t.Logf("x402 recovery states:\n%s", journal)
 	})
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	httpClient := &http.Client{Jar: jar, Timeout: 20 * time.Second}
+	httpClient := &http.Client{Jar: jar, Timeout: 110 * time.Second}
 	ownerKey, err := crypto.HexToECDSA(ownerKeyHex)
 	if err != nil {
 		t.Fatal(err)
@@ -214,10 +220,23 @@ func runMode(t *testing.T, ctx context.Context, root, mode string) modeResult {
 		t.Fatalf("operator bypass changed user balance: %+v", account)
 	}
 
+	for _, race := range []bool{false, true} {
+		for _, method := range []string{"eip3009", "permit2"} {
+			if method == "permit2" {
+				approveExact(t, rpcClient, ownerKey, owner, big.NewInt(100))
+			}
+			externalTopup(t, httpClient, rpcClient, codec, publicOrigin, csrf, ownerKey, owner, method, race, "http://127.0.0.1:"+strconv.Itoa(facilitatorPort))
+		}
+	}
+	account = billingAccount(t, httpClient, publicOrigin)
+	if account.TotalCreditAtomic != "600" {
+		t.Fatalf("external payments were not credited exactly once: %+v", account)
+	}
 	recipient := tokenUint(t, rpcClient, "balanceOf", common.HexToAddress(recipientAddress))
 	if recipient.String() != account.TotalCreditAtomic {
 		t.Fatalf("chain/ledger mismatch recipient=%s credit=%s", recipient, account.TotalCreditAtomic)
 	}
+	assertFacilitatorLockLossExit(t, ctx, project)
 	return modeResult{
 		Credit: account.TotalCreditAtomic, Debit: account.TotalDebitAtomic,
 		Available: account.AvailableAtomic, Recipient: recipient.String(),
@@ -584,7 +603,7 @@ func tokenUintAt(t *testing.T, client *ethclient.Client, address common.Address,
 	return value
 }
 
-func sendTransaction(t *testing.T, client *ethclient.Client, key *ecdsa.PrivateKey, from, to common.Address, data []byte) {
+func sendTransaction(t *testing.T, client *ethclient.Client, key *ecdsa.PrivateKey, from, to common.Address, data []byte) common.Hash {
 	t.Helper()
 	chainID, err := client.ChainID(t.Context())
 	if err != nil {
@@ -628,11 +647,12 @@ func sendTransaction(t *testing.T, client *ethclient.Client, key *ecdsa.PrivateK
 			if receipt.Status != types.ReceiptStatusSuccessful {
 				t.Fatal("approval reverted")
 			}
-			return
+			return signed.Hash()
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("approval receipt timeout")
+	return common.Hash{}
 }
 
 func tokenABI(t *testing.T) abi.ABI {
@@ -707,3 +727,228 @@ func repositoryRoot(t *testing.T) string {
 }
 
 var _ = x402.PaymentPayload{}
+
+func externalTopup(t *testing.T, client *http.Client, rpc *ethclient.Client, codec *x402wire.Codec, origin, csrf string, key *ecdsa.PrivateKey, payer common.Address, method string, race bool, facilitatorOrigin string) {
+	t.Helper()
+	payment := authorizeTopup(t, client, rpc, codec, origin, csrf, payer, method, "100")
+	raw, err := base64.StdEncoding.DecodeString(payment.header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload x402.PaymentPayload
+	if err = json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	var target common.Address
+	var contract []byte
+	var args []any
+	function := ""
+	if method == "eip3009" {
+		body, e := evm.PayloadFromMap(payload.Payload)
+		if e != nil {
+			t.Fatal(e)
+		}
+		a, e := exactfacilitator.ParseEIP3009Authorization(body.Authorization)
+		if e != nil {
+			t.Fatal(e)
+		}
+		sig, e := evm.HexToBytes(body.Signature)
+		if e != nil || len(sig) != 65 {
+			t.Fatal(e)
+		}
+		var r, s [32]byte
+		copy(r[:], sig[:32])
+		copy(s[:], sig[32:64])
+		v := sig[64]
+		if v < 27 {
+			v += 27
+		}
+		target = common.HexToAddress(payload.Accepted.Asset)
+		contract = evm.TransferWithAuthorizationVRSABI
+		function = "transferWithAuthorization"
+		args = []any{a.From, a.To, a.Value, a.ValidAfter, a.ValidBefore, a.Nonce, v, r, s}
+	} else {
+		body, e := evm.Permit2PayloadFromMap(payload.Payload)
+		if e != nil {
+			t.Fatal(e)
+		}
+		a, e := exactfacilitator.BuildPermit2SettleArgs(body)
+		if e != nil {
+			t.Fatal(e)
+		}
+		target = common.HexToAddress(evm.X402ExactPermit2ProxyAddress)
+		contract = evm.X402ExactPermit2ProxySettleABI
+		function = "settle"
+		args = []any{a.Permit, a.Owner, a.Witness, a.Signature}
+	}
+	parsed, err := abi.JSON(bytes.NewReader(contract))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := parsed.Pack(function, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original *types.Transaction
+	var pending <-chan *http.Response
+	if race {
+		original, pending = holdOriginalTopup(t, client, rpc, origin, csrf, payment)
+	}
+	external := sendTransaction(t, rpc, key, payer, target, data)
+	if !race {
+		body, _ := json.Marshal(map[string]any{"x402Version": 2, "paymentPayload": payload, "paymentRequirements": payload.Accepted})
+		request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, facilitatorOrigin+"/verify", bytes.NewReader(body))
+		request.Header.Set("Authorization", "Bearer preview-only-facilitator-token-0000000000000000")
+		verified, e := client.Do(request)
+		if e != nil {
+			t.Fatal(e)
+		}
+		verification, _ := io.ReadAll(verified.Body)
+		_ = verified.Body.Close()
+		var result x402.VerifyResponse
+		if verified.StatusCode != http.StatusOK || json.Unmarshal(verification, &result) != nil || result.InvalidReason != "authorization_reconciliation_required" {
+			t.Fatalf("spent %s verification status=%d body=%s", method, verified.StatusCode, verification)
+		}
+	}
+	var response *http.Response
+	if race {
+		if err := rpc.SendTransaction(t.Context(), original); err != nil {
+			t.Fatal(err)
+		}
+		receipt, err := rpc.TransactionReceipt(t.Context(), original.Hash())
+		if err != nil || receipt.Status != types.ReceiptStatusFailed {
+			t.Fatal("original transaction must revert after external payment", receipt, err)
+		}
+		select {
+		case response = <-pending:
+		case <-time.After(20 * time.Second):
+			t.Fatal("original settlement response unavailable")
+		}
+	} else {
+		response = postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+	}
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusServiceUnavailable {
+		body, _ := io.ReadAll(response.Body)
+		t.Fatalf("external %s payment status=%d %s", method, response.StatusCode, body)
+	}
+	_ = response.Body.Close()
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		var result gen.BillingTopupIntentResponse
+		doJSON(t, client, http.MethodGet, origin+"/api/v1/billing/topup-intents/"+payment.intentID, origin, csrf, nil, http.StatusOK, &result)
+		if result.Data.State == "credited" {
+			if original != nil && (result.Data.TransactionHash == nil || string(*result.Data.TransactionHash) != original.Hash().Hex()) {
+				t.Fatal("original identity overwritten", result.Data)
+			}
+			if result.Data.SettlementTransactionHash == nil || string(*result.Data.SettlementTransactionHash) != external.Hex() {
+				t.Fatalf("external evidence identity %+v", result.Data)
+			}
+			replay := postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header)
+			_ = replay.Body.Close()
+			if replay.StatusCode != http.StatusConflict {
+				t.Fatal("external payment replay", replay.StatusCode)
+			}
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatal("external payment not credited", method)
+}
+
+// The external sender executes while the original signed transaction is absent
+// from the pool. Replaying those original bytes then produces a real revert.
+func holdOriginalTopup(t *testing.T, client *http.Client, rpc *ethclient.Client, origin, csrf string, payment topupPayment) (*types.Transaction, <-chan *http.Response) {
+	t.Helper()
+	if err := rpc.Client().CallContext(t.Context(), nil, "evm_setAutomine", false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = rpc.Client().CallContext(ctx, nil, "evm_setAutomine", true)
+	})
+	pending := make(chan *http.Response, 1)
+	go func() { pending <- postTopupPayment(t, client, origin, csrf, payment.intentID, payment.header) }()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		var result gen.BillingTopupIntentResponse
+		doJSON(t, client, http.MethodGet, origin+"/api/v1/billing/topup-intents/"+payment.intentID, origin, "", nil, http.StatusOK, &result)
+		if result.Data.TransactionHash != nil {
+			hash := common.HexToHash(string(*result.Data.TransactionHash))
+			tx, _, err := rpc.TransactionByHash(t.Context(), hash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := rpc.Client().CallContext(t.Context(), nil, "anvil_dropTransaction", hash); err != nil {
+				t.Fatal(err)
+			}
+			if err := rpc.Client().CallContext(t.Context(), nil, "evm_setAutomine", true); err != nil {
+				t.Fatal(err)
+			}
+			return tx, pending
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("original broadcast evidence unavailable")
+	return nil, nil
+}
+
+func assertFacilitatorLockLossExit(t *testing.T, ctx context.Context, project *testcompose.Project) {
+	t.Helper()
+	// Lock liveness must remain independent of an unhealthy chain RPC.
+	if _, err := project.Run(ctx, "stop", "anvil"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := project.Run(ctx, "exec", "-T", "postgres", "psql", "-U", "etherview", "-v", "ON_ERROR_STOP=1", "-c", "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype='advisory' AND classid=0 AND objid=402059 AND granted"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(32 * time.Second)
+	for time.Now().Before(deadline) {
+		body, err := project.Run(ctx, "ps", "--all", "--format", "json", "x402-facilitator")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var status struct {
+			State    string
+			ExitCode int
+		}
+		if len(bytes.TrimSpace(body)) > 0 && bytes.TrimSpace(body)[0] == '[' {
+			var rows []struct {
+				State    string
+				ExitCode int
+			}
+			if json.Unmarshal(body, &rows) == nil && len(rows) == 1 {
+				status = rows[0]
+			}
+		} else {
+			_ = json.Unmarshal(body, &status)
+		}
+		if status.State == "exited" {
+			if status.ExitCode == 0 {
+				t.Fatal("singleton loss exited successfully")
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("singleton loss did not stop process within shutdown budget")
+}
+
+// No further payment POST or operator command: a closed browser must not prevent
+// the API role from consuming durable facilitator evidence and crediting once.
+func waitTopupCredit(t *testing.T, client *http.Client, origin, csrf, intentID string) {
+	t.Helper()
+	deadline := time.Now().Add(45 * time.Second)
+	for time.Now().Before(deadline) {
+		var intent gen.BillingTopupIntentResponse
+		doJSON(t, client, http.MethodGet, origin+"/api/v1/billing/topup-intents/"+intentID, origin, csrf, nil, http.StatusOK, &intent)
+		if intent.Data.State == "credited" {
+			return
+		}
+		if intent.Data.State == "failed" || intent.Data.State == "expired" {
+			t.Fatal("payment terminated before background credit", intent.Data)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	t.Fatal("background top-up credit timed out")
+}

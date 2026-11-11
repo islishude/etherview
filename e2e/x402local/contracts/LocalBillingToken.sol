@@ -27,6 +27,7 @@ contract LocalBillingToken {
 
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
+    event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce);
 
     constructor(string memory name_, string memory version_, address owner, uint256 amount, uint8 decimals_) {
         decimals = decimals_;
@@ -75,6 +76,7 @@ contract LocalBillingToken {
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
         require(_recover(digest, v, r, s) == from, "authorization signature");
         authorizationState[from][nonce] = true;
+        emit AuthorizationUsed(from, nonce);
         _transfer(from, to, value);
     }
 

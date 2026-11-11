@@ -63,6 +63,16 @@ export class TopupPendingError extends Error {
   }
 }
 
+export class TopupVerificationRetryError extends Error {
+  constructor(
+    readonly intentID: string,
+    readonly retry: () => Promise<BillingTopupReceipt>,
+  ) {
+    super("Payment verification is temporarily unavailable");
+    this.name = "TopupVerificationRetryError";
+  }
+}
+
 export class TopupAuthorizationError extends Error {
   constructor() {
     super("Top-up authorization could not be completed");
@@ -77,6 +87,7 @@ export async function payBillingTopup(options: {
   csrfToken: string;
   wallet: TopupWallet;
   onProgress?: (progress: TopupProgress) => void;
+  assertCurrent?: () => void;
 }): Promise<BillingTopupReceipt> {
   const { intent, method, csrfToken, wallet } = options;
   const snapshot = intent.payment_option;
@@ -164,11 +175,13 @@ export async function payBillingTopup(options: {
       allowedAssets: [{ network, asset, maxAmountPerPayment: intent.amount_atomic }],
     });
   let paymentSubmitted = false;
+  let signedRequest: Request | undefined;
   const fetchWithPayment = wrapFetchWithPayment((input, init) => {
     const request = new Request(input, init);
     // Mark before transport: a lost response does not prove settlement failed.
     if (request.headers.has("PAYMENT-SIGNATURE")) {
       paymentSubmitted = true;
+      signedRequest = request.clone();
       options.onProgress?.({ stage: "submitting" });
     }
     return globalThis.fetch(request);
@@ -189,20 +202,54 @@ export async function payBillingTopup(options: {
     if (!paymentSubmitted) throw new TopupAuthorizationError();
     throw new TopupPendingError(intent.id);
   });
-  if (paymentSubmitted && response.status === 402 && response.headers.has("PAYMENT-RESPONSE")) {
-    throw new TopupPendingError(intent.id);
+  return readResponse(response);
+
+  async function readResponse(response: Response): Promise<BillingTopupReceipt> {
+    if (paymentSubmitted && response.status === 402 && response.headers.has("PAYMENT-RESPONSE")) {
+      throw new TopupPendingError(intent.id);
+    }
+    if (!response.ok) {
+      const errorBody: unknown = await response
+        .clone()
+        .json()
+        .catch(() => null);
+      if (
+        signedRequest &&
+        response.status === 503 &&
+        typeof errorBody === "object" &&
+        errorBody !== null &&
+        "error" in errorBody
+      ) {
+        const detail = errorBody.error;
+        if (
+          typeof detail === "object" &&
+          detail !== null &&
+          "code" in detail &&
+          detail.code === "x402_verification_retryable"
+        ) {
+          throw new TopupVerificationRetryError(intent.id, async () => {
+            options.assertCurrent?.();
+            if (Date.parse(intent.expires_at) <= Date.now()) throw new TopupAuthorizationError();
+            options.onProgress?.({ stage: "submitting" });
+            const next = await globalThis.fetch(signedRequest!.clone()).catch(() => {
+              throw new TopupPendingError(intent.id);
+            });
+            options.assertCurrent?.();
+            return readResponse(next);
+          });
+        }
+      }
+      if (paymentSubmitted && response.status >= 500) throw new TopupPendingError(intent.id);
+      throw new Error(`Top-up failed (${response.status})`);
+    }
+    const invalidResponse = () =>
+      paymentSubmitted ? new TopupPendingError(intent.id) : new TopupAuthorizationError();
+    const payload: unknown = await response.json().catch(() => {
+      throw invalidResponse();
+    });
+    if (!isReceiptEnvelope(payload)) throw invalidResponse();
+    return payload.data;
   }
-  if (!response.ok) {
-    if (paymentSubmitted && response.status >= 500) throw new TopupPendingError(intent.id);
-    throw new Error(`Top-up failed (${response.status})`);
-  }
-  const invalidResponse = () =>
-    paymentSubmitted ? new TopupPendingError(intent.id) : new TopupAuthorizationError();
-  const payload: unknown = await response.json().catch(() => {
-    throw invalidResponse();
-  });
-  if (!isReceiptEnvelope(payload)) throw invalidResponse();
-  return payload.data;
 }
 
 export async function ensureExactPermit2Allowance(

@@ -119,7 +119,7 @@ func setupRustack(t *testing.T, mode string) *rustackHarness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.client = &http.Client{Jar: jar, Timeout: 40 * time.Second}
+	h.client = &http.Client{Jar: jar, Timeout: 110 * time.Second}
 	t.Cleanup(h.client.CloseIdleConnections)
 	key, err := crypto.HexToECDSA(ownerKeyHex)
 	if err != nil {
@@ -275,6 +275,7 @@ func runRustackMode(t *testing.T, mode string) {
 	if account := billingAccount(t, h.client, h.origin); account.TotalCreditAtomic != "500" {
 		t.Fatalf("KMS outage credited account: %+v", account)
 	}
+	waitUnsignedAuthorizationExpiry(t, h, pending)
 	topup(t, h.client, h.chains[0], codec, h.origin, h.csrf, owner, "eip3009")
 	topupWithDelayedMining(t, h.client, h.chains[0], codec, h.origin, h.csrf, owner, "eip3009")
 	consumeBalance(t, h.client, h.origin, apiKey, owner)

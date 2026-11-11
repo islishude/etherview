@@ -16,19 +16,22 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/jsonstrict"
+	"github.com/islishude/etherview/internal/x402settlement"
 	x402 "github.com/x402-foundation/x402/go/v2"
 	"github.com/x402-foundation/x402/go/v2/mechanisms/evm"
 )
 
-type paymentRequest struct {
-	X402Version         int                      `json:"x402Version"`
-	PaymentPayload      x402.PaymentPayload      `json:"paymentPayload"`
-	PaymentRequirements x402.PaymentRequirements `json:"paymentRequirements"`
-}
+type paymentRequest = x402settlement.Request
 
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if !s.active.Load() {
+			http.Error(w, "facilitator_inactive", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		ready := s.active.Load()
 		for _, ch := range s.chains {
@@ -54,6 +57,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("POST /verify", authenticated(func(w http.ResponseWriter, r *http.Request) { s.payment(w, r, false) }))
 	mux.HandleFunc("POST /settle", authenticated(func(w http.ResponseWriter, r *http.Request) { s.payment(w, r, true) }))
 	mux.HandleFunc("POST /progress", authenticated(s.progress))
+	mux.HandleFunc("POST /result", authenticated(s.result))
 	mux.HandleFunc("GET /metrics", authenticated(s.metrics))
 	return mux
 }
@@ -107,9 +111,9 @@ func (s *Service) decode(r *http.Request) (paymentRequest, *chainRuntime, string
 	if !ok || amount.Sign() <= 0 || amount.BitLen() > 256 || amount.String() != req.Amount {
 		return in, nil, "", "", bad
 	}
-	method, _ := req.Extra["assetTransferMethod"].(string)
-	flow, _ := req.Extra["paymentFlow"].(string)
-	if flow != "authorization" {
+	method, methodOK := defaultString(req.Extra, "assetTransferMethod", "eip3009")
+	flow, flowOK := defaultString(req.Extra, "paymentFlow", "authorization")
+	if !methodOK || !flowOK || flow != "authorization" {
 		return in, nil, "", "", bad
 	}
 	allowed := false
@@ -223,4 +227,13 @@ func (s *Service) metrics(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = fmt.Fprintf(w, "etherview_facilitator_chain_healthy{network=%q} %d\netherview_facilitator_pending{network=%q} %d\netherview_facilitator_success_total{network=%q} %d\netherview_facilitator_failure_total{network=%q} %d\netherview_facilitator_low_balance{network=%q} %d\n", cfg.Network, health, cfg.Network, pending, cfg.Network, ch.successes.Load(), cfg.Network, ch.failures.Load(), cfg.Network, low)
 	}
+}
+
+func defaultString(extra map[string]any, key, fallback string) (string, bool) {
+	value, exists := extra[key]
+	if !exists {
+		return fallback, true
+	}
+	str, ok := value.(string)
+	return str, ok && str != ""
 }

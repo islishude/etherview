@@ -61,8 +61,9 @@ See [operator procedures](../operations/billing.md) and
   Permit2. Their replay HMACs use separate domains and exclude the signature;
   Permit2 material includes owner, token, amount, canonical proxy spender,
   nonce, deadline, and witness. A valid pending settlement stores its one
-  transaction hash immutably, and operator settlement reconciliation must
-  reuse that hash before the atomic payment/intent/credit/account commit.
+  transaction hash immutably, and ordinary operator settlement reconciliation must
+  reuse that hash. Automatic evidence publication records a separate payment hash
+  without replacing the original submission identity.
 
 ## Multi-payment funding policy
 
@@ -93,7 +94,7 @@ ADR-0059 introduces an independent authenticated x402 process. Explicit network
 and asset routing selects an RPC and keystore/KMS signer. PostgreSQL journals
 payment identity and immutable signed transactions before broadcast; a singleton
 connection lock and per-chain queues prevent concurrent nonce allocation. Restart
-only reconciles original transaction hashes. Account credits remain owned by the
+reconciles original transactions and independently validated external payments. Account credits remain owned by the
 existing API-side fenced ledger.
 Configuration decoding, bounded credential resolution and runtime construction are
 separate phases. Ordinary RPC URLs live in YAML; sensitive URLs use explicit
@@ -123,3 +124,20 @@ and session-protected detailed sync status. User settings and payment details
 use native modal drawers. Billing Overview and Payments fetch only their visible
 view, with separate filter and pagination state; amounts are grouped by network
 and asset. Public status authorization is specified in ADR-0020.
+
+## Automatic result reconciliation
+
+The API/all component `21-topup-reconciliation` claims up to 32 pending payments
+with two-minute PostgreSQL leases and queries authenticated facilitator results.
+Network calls run outside database snapshots. Synchronous success and background
+recovery use the same evidence-fenced, exactly-once credit statement. Result lookup
+references contain no signature and cannot initiate another settlement. A pending
+original transaction remains recoverable even when an external transfer paid the
+authorization. Verification retries rotate a separate pre-settlement attempt owner;
+original payment identity and terminal outcomes remain immutable.
+
+The payment POST has a separate finite request deadline selected before
+user authentication, outside the ordinary API budget. HTTP observations enclose
+budget enforcement, so timeout status agrees with the wire response. Configuration
+validates sequential facilitator calls and ledger/response margins against the
+payment and socket write budgets; see [payment deadlines](../operations/billing.md#payment-request-deadlines).

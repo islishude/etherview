@@ -303,7 +303,8 @@ config:
     tls_key_file: ""
     shutdown_timeout: 20s
     read_timeout: 15s
-    write_timeout: 30s
+    write_timeout: 100s
+    payment_request_timeout: 75s
     request_timeout: 20s
   chain:
     id: 1
@@ -430,7 +431,7 @@ config:
     # Each chain requires name (1–128 nonblank characters), network, facilitator_url and tokens.
     payment_chains: []
     facilitator_allowed_cidrs: []
-    facilitator_timeout: 10s
+    facilitator_timeout: 30s
     facilitator_max_response_bytes: 1048576
     facilitator_unsafe_allow_http: false
     requirement_max_timeout: 60s

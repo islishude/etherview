@@ -14,6 +14,7 @@ import {
   payBillingTopup,
   TopupAuthorizationError,
   TopupPendingError,
+  TopupVerificationRetryError,
   ensureExactPermit2Allowance,
   type TopupWallet,
 } from "./topup";
@@ -291,6 +292,39 @@ describe("x402 SDK top-up flow", () => {
     );
   });
 
+  it.each(["eip3009", "permit2"] as const)(
+    "retries %s verification using the exact signed request",
+    async (method) => {
+      const { options, fetch, wallet } = fixture(method);
+      const original = fetch.getMockImplementation()!;
+      const headers: string[] = [];
+      fetch.mockImplementation(async (request) => {
+        const signature = request.headers.get("PAYMENT-SIGNATURE");
+        if (signature) {
+          headers.push(signature);
+          if (headers.length === 1)
+            return Response.json(
+              { error: { code: "x402_verification_retryable" } },
+              { status: 503 },
+            );
+        }
+        return original(request);
+      });
+      const current = vi.fn();
+      const failure = await payBillingTopup({ ...options, assertCurrent: current }).catch((e) => e);
+      expect(failure).toBeInstanceOf(TopupVerificationRetryError);
+      await expect(failure.retry()).resolves.toHaveProperty("intent.state", "credited");
+      expect(headers).toHaveLength(2);
+      expect(headers[1]).toBe(headers[0]);
+      expect(wallet.signBillingTypedData).toHaveBeenCalledOnce();
+      current.mockImplementation(() => {
+        throw new Error("wallet changed");
+      });
+      await expect(failure.retry()).rejects.toThrow("wallet changed");
+      expect(headers).toHaveLength(2);
+    },
+  );
+
   it("reports signing and submission at the actual boundaries", async () => {
     const { options, fetch } = fixture("eip3009");
     const stages: string[] = [];
@@ -330,6 +364,22 @@ describe("x402 SDK top-up flow", () => {
     });
     await expect(payBillingTopup(options)).rejects.toBeInstanceOf(TopupPendingError);
   });
+
+  it.each(["eip3009", "permit2"] as const)(
+    "keeps a payment-budget timeout uncertain without resubmitting %s",
+    async (method) => {
+      const { options, wallet, fetch } = fixture(method);
+      const original = fetch.getMockImplementation()!;
+      fetch.mockImplementation(async (request) => {
+        if (request.headers.has("PAYMENT-SIGNATURE"))
+          return Response.json({ error: { code: "request_timeout" } }, { status: 504 });
+        return original(request);
+      });
+      await expect(payBillingTopup(options)).rejects.toBeInstanceOf(TopupPendingError);
+      expect(wallet.signBillingTypedData).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("preserves settlement-pending responses", async () => {
     const { options, fetch } = fixture("eip3009");

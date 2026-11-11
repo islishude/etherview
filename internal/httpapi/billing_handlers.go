@@ -358,6 +358,10 @@ func (h *Handler) billingPaymentModel(payment billing.Payment) (gen.BillingPayme
 		}
 		model.ApiKeyPrefix = cloneStringPointer(*payment.APIKeyPrefix)
 	}
+	if payment.SettlementTransactionHash != nil {
+		value := gen.Hash(payment.SettlementTransactionHash.Hex())
+		model.SettlementTransactionHash = &value
+	}
 	if payment.TransactionHash != nil {
 		value := gen.Hash("0x" + hex.EncodeToString(payment.TransactionHash[:]))
 		model.TransactionHash = &value

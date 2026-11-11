@@ -97,8 +97,31 @@
 
 https://app.etherview.localhost {
 	import tls_boundary
-	reverse_proxy {$PREVIEW_APP_UPSTREAM:api:8080} {
-		import transport
+	# Payment responses can include sequential Verify + Settle and ledger completion.
+	@payment {
+		method POST
+		path_regexp payment ^/api/v1/billing/topup-intents/[^/]+/pay$
+	}
+	handle @payment {
+		reverse_proxy {$PREVIEW_APP_UPSTREAM:api:8080} {
+			transport http {
+				compression off
+				dial_timeout 5s
+				response_header_timeout 100s
+				max_conns_per_host 64
+				max_response_header 1MB
+			}
+			lb_retries 0
+			header_up -Forwarded
+			header_up -X-Forwarded-For
+			header_up -X-Forwarded-Host
+			header_up -X-Forwarded-Proto
+		}
+	}
+	handle {
+		reverse_proxy {$PREVIEW_APP_UPSTREAM:api:8080} {
+			import transport
+		}
 	}
 }
 

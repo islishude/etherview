@@ -52,6 +52,13 @@ BEGIN
         RAISE EXCEPTION 'billing payment identity is immutable';
     END IF;
 
+    IF OLD.authorization_id IS NOT NULL AND NEW.authorization_id IS DISTINCT FROM OLD.authorization_id
+        OR OLD.request_digest IS NOT NULL AND NEW.request_digest IS DISTINCT FROM OLD.request_digest
+        OR OLD.settlement_transaction_hash IS NOT NULL AND NEW.settlement_transaction_hash IS DISTINCT FROM OLD.settlement_transaction_hash
+        OR OLD.settlement_evidence IS NOT NULL AND NEW.settlement_evidence IS DISTINCT FROM OLD.settlement_evidence
+        OR OLD.state <> 'reserved' AND (NEW.verification_owner IS DISTINCT FROM OLD.verification_owner OR NEW.verification_expires_at IS DISTINCT FROM OLD.verification_expires_at)
+    THEN RAISE EXCEPTION 'billing recovery binding is immutable'; END IF;
+
     IF OLD.payer IS NOT NULL AND NEW.payer IS DISTINCT FROM OLD.payer
         OR OLD.user_id IS NOT NULL AND NEW.user_id IS DISTINCT FROM OLD.user_id
         OR OLD.api_key_prefix IS NOT NULL AND NEW.api_key_prefix IS DISTINCT FROM OLD.api_key_prefix
@@ -215,6 +222,7 @@ CREATE TABLE billing_topup_intents (
     state text NOT NULL,
     active_payment_id uuid,
     transaction_hash bytea,
+    settlement_transaction_hash bytea CHECK (settlement_transaction_hash IS NULL OR octet_length(settlement_transaction_hash)=32),
     submission_progress text CHECK (submission_progress IN ('submitting','confirming','unknown')),
     submission_transaction_hash bytea CHECK (octet_length(submission_transaction_hash) = 32 AND submission_transaction_hash <> decode(repeat('00',32),'hex')),
     CONSTRAINT billing_topup_submission_evidence_check CHECK (submission_progress <> 'confirming' OR submission_transaction_hash IS NOT NULL),
@@ -231,7 +239,7 @@ CREATE TABLE billing_topup_intents (
     CONSTRAINT billing_topup_intents_asset_check CHECK ((octet_length(asset) = 20)),
     CONSTRAINT billing_topup_intents_check CHECK ((expires_at > created_at)),
     CONSTRAINT billing_topup_intents_check1 CHECK ((updated_at >= created_at)),
-    CONSTRAINT billing_topup_intents_check2 CHECK ((((state = 'open'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (processing_at IS NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'processing'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (active_payment_id IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'credited'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (active_payment_id IS NOT NULL) AND (failed_at IS NOT NULL) AND (credited_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (failure_code = 'topup_intent_expired'::text)))),
+    CONSTRAINT billing_topup_intents_check2 CHECK ((((state = 'open'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (processing_at IS NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'processing'::text) AND (active_payment_id IS NOT NULL) AND (transaction_hash IS NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (active_payment_id IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'credited'::text) AND (active_payment_id IS NOT NULL) AND (COALESCE(settlement_transaction_hash, transaction_hash) IS NOT NULL) AND (processing_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (credited_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (active_payment_id IS NOT NULL) AND (failed_at IS NOT NULL) AND (credited_at IS NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (active_payment_id IS NULL) AND (transaction_hash IS NULL) AND (credited_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (failure_code = 'topup_intent_expired'::text)))),
     CONSTRAINT billing_topup_intents_failure_code_check CHECK (((failure_code IS NULL) OR ((length(failure_code) >= 1) AND (length(failure_code) <= 128)))),
     CONSTRAINT billing_topup_intents_network_check CHECK (((network ~ '^eip155:[1-9][0-9]*$'::text) AND (length(network) <= 96))),
     CONSTRAINT billing_topup_intents_payer_check CHECK ((octet_length(payer) = 20)),
@@ -248,6 +256,16 @@ CREATE TABLE billing_payments (
     chain_id numeric(78,0) NOT NULL,
     fingerprint bytea NOT NULL,
     reservation_owner uuid NOT NULL,
+    authorization_id text,
+    request_digest bytea CHECK (request_digest IS NULL OR octet_length(request_digest)=32),
+    verification_owner uuid,
+    verification_expires_at timestamptz,
+    verification_retryable boolean NOT NULL DEFAULT false,
+    reconciliation_owner uuid,
+    reconciliation_expires_at timestamptz,
+    settlement_transaction_hash bytea CHECK (settlement_transaction_hash IS NULL OR octet_length(settlement_transaction_hash)=32),
+    settlement_evidence jsonb,
+    CONSTRAINT billing_payments_lookup_pair_check CHECK ((authorization_id IS NULL) = (request_digest IS NULL)),
     method text NOT NULL,
     operation text NOT NULL,
     resource_digest bytea NOT NULL,
@@ -305,7 +323,7 @@ CREATE TABLE billing_payments (
     CONSTRAINT billing_payments_resource_digest_check CHECK ((octet_length(resource_digest) = 32)),
     CONSTRAINT billing_payments_scheme_check CHECK ((scheme = 'exact'::text)),
     CONSTRAINT billing_payments_state_check CHECK ((state = ANY (ARRAY['reserved'::text, 'verified'::text, 'settling'::text, 'settled'::text, 'failed'::text, 'expired'::text]))),
-    CONSTRAINT billing_payments_state_facts_v2_check CHECK ((((state = 'reserved'::text) AND (verified_at IS NULL) AND (handler_started_at IS NULL) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NULL) AND (failure_code IS NULL)) OR ((state = 'verified'::text) AND (verified_at IS NOT NULL) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (verified_at IS NOT NULL) AND (handler_started_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'settled'::text) AND (verified_at IS NOT NULL) AND (handler_started_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (settled_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NOT NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (settled_at IS NULL) AND (failed_at IS NOT NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (transaction_hash IS NULL) AND (failure_code = 'reservation_expired'::text)))),
+    CONSTRAINT billing_payments_state_facts_v2_check CHECK ((((state = 'reserved'::text) AND (verified_at IS NULL) AND (handler_started_at IS NULL) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NULL) AND (failure_code IS NULL)) OR ((state = 'verified'::text) AND (verified_at IS NOT NULL) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (transaction_hash IS NULL) AND (failure_code IS NULL)) OR ((state = 'settling'::text) AND (verified_at IS NOT NULL) AND (handler_started_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (((failure_code IS NULL) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_unknown'::text) AND (transaction_hash IS NULL)) OR ((failure_code = 'settlement_pending'::text) AND (transaction_hash IS NOT NULL)))) OR ((state = 'settled'::text) AND (verified_at IS NOT NULL) AND (handler_started_at IS NOT NULL) AND (settling_at IS NOT NULL) AND (settled_at IS NOT NULL) AND (failed_at IS NULL) AND (expired_at IS NULL) AND (COALESCE(settlement_transaction_hash, transaction_hash) IS NOT NULL) AND (failure_code IS NULL)) OR ((state = 'failed'::text) AND (settled_at IS NULL) AND (failed_at IS NOT NULL) AND (expired_at IS NULL) AND (failure_code IS NOT NULL)) OR ((state = 'expired'::text) AND (settling_at IS NULL) AND (settled_at IS NULL) AND (failed_at IS NULL) AND (expired_at IS NOT NULL) AND (transaction_hash IS NULL) AND (failure_code = 'reservation_expired'::text)))),
     CONSTRAINT billing_payments_topup_binding_check CHECK ((((purpose = 'legacy_request'::text) AND (topup_intent_id IS NULL)) OR ((purpose = 'account_topup'::text) AND (topup_intent_id IS NOT NULL) AND (method = 'POST'::text)))),
     CONSTRAINT billing_payments_transaction_hash_check CHECK (((transaction_hash IS NULL) OR (octet_length(transaction_hash) = 32))),
     CONSTRAINT billing_payments_transfer_method_check CHECK ((asset_transfer_method = ANY (ARRAY['eip3009'::text, 'permit2'::text]))),
@@ -441,7 +459,11 @@ CREATE TABLE facilitator_settlements (
     nonce numeric(20,0),
     raw_transaction bytea,
     transaction_hash bytea CHECK (octet_length(transaction_hash) = 32),
-    state text NOT NULL DEFAULT 'reserved' CHECK (state IN ('reserved','signed','succeeded','failed')),
+    state text NOT NULL DEFAULT 'reserved' CHECK (state IN ('reserved','signed','reconciling','succeeded','failed')),
+    transaction_confirmed boolean NOT NULL DEFAULT false,
+    settlement_evidence jsonb,
+    scan_cursor jsonb,
+    CHECK (NOT transaction_confirmed OR transaction_hash IS NOT NULL),
     broadcast_status text NOT NULL DEFAULT 'unsubmitted' CHECK (broadcast_status IN ('unsubmitted','unknown','confirmed')),
     CHECK (broadcast_status = 'unsubmitted' OR transaction_hash IS NOT NULL),
     response jsonb,
@@ -449,12 +471,18 @@ CREATE TABLE facilitator_settlements (
     updated_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (network, signer_address, nonce),
     CHECK (nonce IS NULL OR nonce >= 0),
-    CHECK (state NOT IN ('signed','succeeded') OR transaction_hash IS NOT NULL),
+    CHECK (state <> 'signed' OR transaction_hash IS NOT NULL),
     CHECK (state <> 'reserved' OR transaction_hash IS NULL),
     CHECK (raw_transaction IS NULL OR octet_length(raw_transaction) BETWEEN 1 AND 1048576),
     CHECK ((raw_transaction IS NULL AND transaction_hash IS NULL AND nonce IS NULL) OR
            (raw_transaction IS NOT NULL AND transaction_hash IS NOT NULL AND nonce IS NOT NULL))
 );
 CREATE INDEX facilitator_pending_by_network
-    ON facilitator_settlements (network, created_at)
-    WHERE state IN ('reserved','signed');
+    ON facilitator_settlements (network, updated_at, authorization_id)
+    WHERE state IN ('reserved','signed','reconciling') OR (transaction_hash IS NOT NULL AND NOT transaction_confirmed);
+
+CREATE INDEX billing_payments_reconciliation_idx ON billing_payments (chain_id, updated_at, id) WHERE state='settling' AND authorization_id IS NOT NULL;
+
+CREATE UNIQUE INDEX billing_payment_transfer_evidence_unique
+ON billing_payments (network, settlement_transaction_hash, (settlement_evidence->>'logIndex'))
+WHERE settlement_evidence IS NOT NULL;

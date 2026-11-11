@@ -4,7 +4,8 @@ server:
   public_url: http://localhost:18080
   shutdown_timeout: 20s
   read_timeout: 15s
-  write_timeout: 30s
+  write_timeout: 100s
+  payment_request_timeout: 75s
 
 chain:
   id: 31337
@@ -88,7 +89,7 @@ user_auth:
 
 billing:
   facilitator_allowed_cidrs: [172.30.73.0/24, "fd00:402:73::/64"]
-  facilitator_timeout: 10s
+  facilitator_timeout: 30s
   facilitator_max_response_bytes: 1048576
   facilitator_unsafe_allow_http: true
   requirement_max_timeout: 60s

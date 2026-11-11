@@ -4,7 +4,8 @@ server:
   public_url: https://app.etherview.localhost
   shutdown_timeout: 20s
   read_timeout: 15s
-  write_timeout: 45s
+  write_timeout: 100s
+  payment_request_timeout: 75s
 
 chain:
   id: 48815

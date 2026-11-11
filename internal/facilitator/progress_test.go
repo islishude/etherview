@@ -15,7 +15,7 @@ func TestJournalProgressRequiresBroadcastEvidence(t *testing.T) {
 		{"reserved", "unsubmitted", nil, Submitting},
 		{"signed", "unknown", bytes.Repeat([]byte{1}, 32), Unknown},
 		{"signed", "confirmed", bytes.Repeat([]byte{1}, 32), Confirming},
-		{"succeeded", "unknown", bytes.Repeat([]byte{1}, 32), Confirming},
+		{"succeeded", "unknown", bytes.Repeat([]byte{1}, 32), Unknown},
 	} {
 		got := journalProgress(dbgen.FacilitatorSettlement{State: test.state, BroadcastStatus: test.broadcast, TransactionHash: test.hash})
 		if got.Stage != test.want {

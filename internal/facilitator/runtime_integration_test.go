@@ -137,7 +137,7 @@ func (m *journalRPC) handler(w http.ResponseWriter, r *http.Request) {
 		m.mu.Unlock()
 		if tx != nil && !m.blocked.Load() {
 			amount := common.LeftPadBytes(big.NewInt(100).Bytes(), 32)
-			result = &types.Receipt{Type: types.DynamicFeeTxType, TxHash: tx.Hash(), Status: 1, CumulativeGasUsed: 100000, GasUsed: 100000, BlockNumber: big.NewInt(1), BlockHash: header.Hash(), Logs: []*types.Log{{Address: common.HexToAddress(m.config.Tokens[0].Address), Topics: []common.Hash{crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)")), common.HexToHash("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"), common.HexToHash(m.config.Recipients[0])}, Data: amount}}}
+			result = &types.Receipt{Type: types.DynamicFeeTxType, TxHash: tx.Hash(), Status: 1, CumulativeGasUsed: 100000, GasUsed: 100000, BlockNumber: big.NewInt(1), BlockHash: header.Hash(), Logs: []*types.Log{{TxHash: tx.Hash(), BlockHash: header.Hash(), BlockNumber: 1, Address: common.HexToAddress(m.config.Tokens[0].Address), Topics: []common.Hash{crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)")), common.HexToHash("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"), common.HexToHash(m.config.Recipients[0])}, Data: amount}}}
 		}
 	default:
 		m.t.Errorf("unexpected RPC %s", in.Method)

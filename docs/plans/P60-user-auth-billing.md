@@ -28,6 +28,7 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 - [EIP-4361](https://eips.ethereum.org/EIPS/eip-4361)
 - [EIP-1193](https://eips.ethereum.org/EIPS/eip-1193)
 - [ADR-0044](../decisions/ADR-0044-prepaid-api-billing-and-x402-topups.md)
+- [ADR-0059](../decisions/ADR-0059-production-x402-facilitator.md)
 - [Etherscan V2 compatibility](../architecture/etherscan-v2-compatibility.md)
 - [x402 v2 specification](https://github.com/x402-foundation/x402/blob/270a08bfc787176816fa564d93662f2470b28225/specs/x402-specification-v2.md)
 - [ADR-0051](../decisions/ADR-0051-watchlist-notifications-csv.md)
@@ -54,8 +55,17 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 | P60-T26 | done   | P60-T25                             | Standalone multi-chain facilitator with keystore/KMS, durable settlement/progress, strict offline-checkable configuration, role-scoped secrets and bounded lifecycle | Protocol/config/CLI race, PostgreSQL journal/nonce/recovery, schema/runtime/Preview and deployment gates; local evidence                  |
 | P60-T27 | done   | P60-T26                             | Rustack KMS and two independent Anvil networks for local facilitator acceptance                                                                                      | AWS SDK HTTP signing compatibility, both payment methods on both networks, all/split recovery and independent chain/writer reconciliation |
 | P60-T31 | done   | P60-T03, P60-T05, P60-T16           | Administrator-only sync status, address-only users, default overview and empty-list pagination                                                                       | HTTP/API, PostgreSQL, bilingual browser and production all/split acceptance passed                                                        |
+| P60-T32 | done   | P60-T26, P60-T27                    | Fenced facilitator recovery, independently verified external settlement, automatic exactly-once top-up reconciliation and pre-settlement verification retry          | PostgreSQL handoff/lease regressions, hostile evidence, both methods, all/split runtime and browser acceptance                            |
 
 ## Acceptance
+
+- [x] P60-T32: Session-fenced journal writes, conditional unsigned termination,
+      separate original/payment identity, direct EIP-3009/Permit2 evidence,
+      read-only results and API-owned exactly-once background credit pass current
+      PostgreSQL, all/split, Preview and Rustack recovery acceptance. Verification
+      retries reuse the original request under a new attempt lease; settlement
+      never retries automatically. Inactive singleton loss exits nonzero within
+      the shared shutdown budget, including during a chain RPC outage.
 
 - [x] P60-T31: Sync status requires an active administrator session in both
       production layouts; anonymous, API-key-only, ordinary, disabled and invalid
@@ -132,13 +142,30 @@ private tools, and watch/notification/export limits do not debit prepaid credit.
 
 ## Current Blockers
 
-P60-T26 and P60-T27 local acceptance are complete. No P60 feature blocker
-remains. Rustack SDK compatibility and dual-Anvil all/split reconciliation passed;
+P60-T32 local recovery acceptance is complete. P60-T26 and P60-T27 retain
+their earlier scope. Rustack SDK compatibility and dual-Anvil all/split reconciliation passed;
 real AWS provisioning and public-testnet funding are outside T27's local scope.
 Earlier P60-T17 live evidence retains its original scope, and P70 release
 gates remain separate.
 
 ## Evidence
+
+### Facilitator and automatic payment recovery (P60-T32)
+
+Current Go/race and managed PostgreSQL tests pass, including both unsigned/signing
+orders, session loss, competing verification/result leases and exact-once credits.
+Production all/split E2E confirms both protocols paid externally before verification
+or before the original transaction reverts, preserving both hashes. Preview and
+Rustack `ffc10378c64280a78bf6b73fff51612bbba0eb66` prove automatic credit after paused
+mining, lost broadcast responses and facilitator restart without operator credit;
+Rustack independently reconciles eight unique credits totaling 800 per topology.
+KMS failures remain unresolved until canonical expiry with an unused authorization.
+
+OpenAPI, generation, Go/frontend lint, docs/plan, fresh production schema, runtime,
+Preview, Rustack and deployment gates pass. All 1,034 frontend tests and the full
+270-case browser suite pass; the updated 12 billing browser cases also pass with
+identical-header retry and separate hashes. Mobile English/light and desktop
+Chinese/dark recovery screenshots were inspected. This is local acceptance only.
 
 ### Management navigation and page hierarchy (P60-T31)
 

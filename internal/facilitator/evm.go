@@ -37,7 +37,9 @@ var _ evm.FacilitatorEvmSigner = (*chainClient)(nil)
 func (c *chainClient) GetAddresses() []string                           { return []string{c.signer.Address().Hex()} }
 func (c *chainClient) GetChainID(ctx context.Context) (*big.Int, error) { return c.client.ChainID(ctx) }
 func (c *chainClient) GetCode(ctx context.Context, address string) ([]byte, error) {
-	return c.client.CodeAt(ctx, common.HexToAddress(address), nil)
+	code, err := c.client.CodeAt(ctx, common.HexToAddress(address), nil)
+	recordRPCFailure(ctx, err)
+	return code, err
 }
 func (c *chainClient) ReadContract(ctx context.Context, address string, raw []byte, method string, args ...any) (any, error) {
 	a, err := abi.JSON(bytes.NewReader(raw))
@@ -51,10 +53,12 @@ func (c *chainClient) ReadContract(ctx context.Context, address string, raw []by
 	to := common.HexToAddress(address)
 	out, err := c.client.CallContract(ctx, ethereum.CallMsg{From: c.signer.Address(), To: &to, Data: data}, nil)
 	if err != nil {
+		recordRPCFailure(ctx, err)
 		return nil, err
 	}
 	values, err := a.Unpack(method, out)
 	if err != nil {
+		recordRPCFailure(ctx, err)
 		return nil, err
 	}
 	if len(values) == 1 {
@@ -189,7 +193,7 @@ func (c *chainClient) WriteContract(ctx context.Context, address string, raw []b
 	// The receipt wait and outer journal then report settlement_pending.
 	if c.guard(ctx) == nil {
 		if c.client.SendTransaction(ctx, signed) == nil {
-			_, _ = c.queries.FacilitatorConfirmBroadcast(ctx, id, signed.Hash().Bytes())
+			_ = confirmBroadcast(ctx, c.queries, id, signed.Hash().Bytes())
 		}
 	}
 	return signed.Hash().Hex(), nil
@@ -204,9 +208,6 @@ func (c *chainClient) WaitForTransactionReceipt(ctx context.Context, hash string
 			if e == nil && head >= r.BlockNumber.Uint64() && head-r.BlockNumber.Uint64()+1 >= c.config.Confirmations {
 				canonical, e := c.client.HeaderByNumber(ctx, r.BlockNumber)
 				if e == nil && canonical.Hash() == r.BlockHash && r.TxHash == common.HexToHash(hash) {
-					if id, ok := ctx.Value(authorizationContext{}).(string); ok && c.queries != nil {
-						_, _ = c.queries.FacilitatorConfirmBroadcast(ctx, id, r.TxHash.Bytes())
-					}
 					return &evm.TransactionReceipt{Status: r.Status, BlockNumber: r.BlockNumber.Uint64(), TxHash: r.TxHash.Hex(), Logs: r.Logs}, nil
 				}
 			}

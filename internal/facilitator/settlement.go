@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
+	"github.com/islishude/etherview/internal/x402settlement"
 	"github.com/jackc/pgx/v5"
 	x402 "github.com/x402-foundation/x402/go/v2"
 	"github.com/x402-foundation/x402/go/v2/mechanisms/evm"
@@ -34,15 +34,7 @@ func (s *Service) executePayment(parent context.Context, in paymentRequest, ch *
 		default:
 			return nil, &operationError{code: "chain_busy"}
 		}
-		result, e := ch.scheme.Verify(ctx, in.PaymentPayload, in.PaymentRequirements, nil)
-		if e != nil {
-			return x402.VerifyResponse{IsValid: false, InvalidReason: "verification_failed"}, nil
-		}
-		if !result.IsValid {
-			result.InvalidReason = "invalid_payload"
-			result.InvalidMessage = ""
-		}
-		return result, nil
+		return verifyPayment(ctx, ch, in)
 	}
 	// Only another submission is a capacity refusal. Background reconciliation
 	// uses the execution gate too, including while scanning an empty journal.
@@ -83,10 +75,15 @@ func (s *Service) executePayment(parent context.Context, in paymentRequest, ch *
 	if pending != 0 {
 		return s.rejectUnsubmitted(ctx, ch, in, id, payer, "chain_pending")
 	}
-	verified, e := ch.scheme.Verify(ctx, in.PaymentPayload, in.PaymentRequirements, nil)
-	if e != nil || !verified.IsValid {
-		return x402.SettleResponse{Success: false, ErrorReason: "verification_failed", Network: x402.Network(in.PaymentRequirements.Network)}, nil
+	verified, e := verifyPayment(ctx, ch, in)
+	if e != nil {
+		return nil, e
 	}
+	reconciliationOnly := !verified.IsValid && verified.InvalidReason == "authorization_reconciliation_required"
+	if !verified.IsValid && !reconciliationOnly {
+		return x402.SettleResponse{Success: false, ErrorReason: verified.InvalidReason, Network: x402.Network(in.PaymentRequirements.Network), Payer: payer}, nil
+	}
+
 	count, e := s.queries.FacilitatorReserve(ctx, dbgen.FacilitatorReserveParams{AuthorizationID: id, RequestDigest: digest[:], RequestBody: body, Network: in.PaymentRequirements.Network, SignerAddress: ch.adapter.signer.Address().Bytes()})
 	if e != nil {
 		return nil, &operationError{code: "reservation_failed"}
@@ -101,7 +98,9 @@ func (s *Service) executePayment(parent context.Context, in paymentRequest, ch *
 		return observedSettlement(row, in, payer, digest[:])
 	}
 	ctx = context.WithValue(ctx, authorizationContext{}, id)
-	_, _ = ch.scheme.Settle(ctx, in.PaymentPayload, in.PaymentRequirements, nil)
+	if !reconciliationOnly {
+		_, _ = ch.scheme.Settle(ctx, in.PaymentPayload, in.PaymentRequirements, nil)
+	}
 	// Never trust an SDK error to indicate whether broadcast occurred. The journal owns it.
 	finish, done := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer done()
@@ -109,15 +108,7 @@ func (s *Service) executePayment(parent context.Context, in paymentRequest, ch *
 	if e != nil {
 		return nil, &operationError{code: "journal_unavailable"}
 	}
-	if len(row.TransactionHash) == 0 {
-		response := x402.SettleResponse{Success: false, ErrorReason: "settlement_rejected", Network: x402.Network(in.PaymentRequirements.Network), Payer: payer}
-		encoded, _ := json.Marshal(response)
-		if _, e = s.queries.FacilitatorFinish(finish, id, "failed", encoded); e != nil {
-			return nil, &operationError{code: "journal_unavailable"}
-		}
-		ch.failures.Add(1)
-		return response, nil
-	}
+
 	response, e := s.reconcile(finish, ch, row, in)
 	if e != nil {
 		return nil, &operationError{code: "journal_unavailable"}
@@ -126,67 +117,151 @@ func (s *Service) executePayment(parent context.Context, in paymentRequest, ch *
 }
 
 func (s *Service) reconcile(ctx context.Context, ch *chainRuntime, row dbgen.FacilitatorSettlement, in paymentRequest) (*x402.SettleResponse, error) {
-	if len(row.Response) > 0 {
-		var response x402.SettleResponse
-		if json.Unmarshal(row.Response, &response) != nil {
-			return nil, errors.New("invalid_journal")
-		}
-		return &response, nil
-	}
-	response := &x402.SettleResponse{Success: false, ErrorReason: "settlement_rejected", Network: x402.Network(row.Network), Amount: in.PaymentRequirements.Amount}
-	var payer string
-	if p, e := evm.PayloadFromMap(in.PaymentPayload.Payload); e == nil {
-		payer = p.Authorization.From
-	}
-	if p, e := evm.Permit2PayloadFromMap(in.PaymentPayload.Payload); e == nil && p.Permit2Authorization.From != "" {
-		payer = p.Permit2Authorization.From
-	}
-	response.Payer = common.HexToAddress(payer).Hex()
-	if len(row.TransactionHash) == 0 {
-		encoded, _ := json.Marshal(response)
-		_, err := s.queries.FacilitatorFinish(ctx, row.AuthorizationID, "failed", encoded)
-		return response, err
-	}
-	response.Transaction = common.BytesToHash(row.TransactionHash).Hex()
-	response.ErrorReason = "settlement_pending"
-	receipt, err := ch.adapter.WaitForTransactionReceipt(ctx, response.Transaction)
-	if err != nil {
-		return response, nil
-	}
-	response.ErrorReason = "settlement_rejected"
-	topic := crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))
-	amount, _ := new(big.Int).SetString(in.PaymentRequirements.Amount, 10)
-	if receipt.Status == 1 {
-		for _, log := range receipt.Logs {
-			if log.Address == common.HexToAddress(in.PaymentRequirements.Asset) && len(log.Topics) == 3 && log.Topics[0] == topic && log.Topics[1] == common.BytesToHash(common.HexToAddress(payer).Bytes()) && log.Topics[2] == common.BytesToHash(common.HexToAddress(in.PaymentRequirements.PayTo).Bytes()) && len(log.Data) == 32 && new(big.Int).SetBytes(log.Data).Cmp(amount) == 0 {
-				response.Success = true
-				response.ErrorReason = ""
-				break
+	payer := paymentPayer(in)
+	response := &x402.SettleResponse{Success: false, ErrorReason: "authorization_reconciliation_required", Network: x402.Network(row.Network), Amount: in.PaymentRequirements.Amount, Payer: payer.Hex()}
+	if len(row.TransactionHash) > 0 {
+		response.Transaction = common.BytesToHash(row.TransactionHash).Hex()
+		response.ErrorReason = "settlement_pending"
+		receipt, _, err := confirmedReceipt(ctx, ch, common.BytesToHash(row.TransactionHash))
+		if err == nil {
+			count, e := s.queries.FacilitatorConfirmTransaction(ctx, row.AuthorizationID, row.TransactionHash)
+			if e != nil {
+				return nil, e
+			}
+			if count != 1 {
+				return nil, errors.New("journal_changed")
+			}
+			row.TransactionConfirmed = true
+			if len(row.Response) == 0 && receipt.Status == 1 {
+				if log := transferLog(receipt, in, payer); log != nil {
+					return s.publishEvidence(ctx, ch, row, in, evidenceFrom(receipt, log, in, payer, "original"))
+				}
 			}
 		}
 	}
-	if !response.Success && receipt.Status == 1 {
-		response.ErrorReason = "settlement_pending"
+	if len(row.Response) > 0 {
+		var result x402.SettleResponse
+		if json.Unmarshal(row.Response, &result) != nil {
+			return nil, errors.New("invalid_journal")
+		}
+		return &result, nil
+	}
+	proof, proofErr := proofFor(in)
+	if row.State == "reserved" {
+		var count int64
+		var err error
+		if proofErr != nil {
+			response.ErrorReason = "settlement_rejected"
+			encoded, _ := json.Marshal(response)
+			count, err = s.queries.FacilitatorAbortUnsigned(ctx, row.AuthorizationID, encoded)
+		} else {
+			count, err = s.queries.FacilitatorReconcileUnsigned(ctx, row.AuthorizationID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		current, err := s.queries.FacilitatorGet(ctx, row.AuthorizationID)
+		if err != nil {
+			return nil, err
+		}
+		if count == 0 && current.State == "reserved" {
+			return response, nil
+		}
+		return s.reconcile(ctx, ch, current, in)
+	}
+	if proofErr != nil {
 		return response, nil
 	}
-	if !response.Success {
-		response.Transaction = ""
+	headNow, err := ch.adapter.client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return response, nil
 	}
-	state := "failed"
-	if response.Success {
-		state = "succeeded"
+	usedNow, err := proof.consumed(ctx, ch, headNow.Hash())
+	if err != nil {
+		return response, nil
 	}
+	if usedNow {
+		evidence, err := s.scanExternal(ctx, ch, row, in, proof)
+		if err != nil {
+			return response, nil
+		}
+		if evidence != nil {
+			return s.publishEvidence(ctx, ch, row, in, evidence)
+		}
+		return response, nil
+	}
+	// Only an expired, demonstrably unused authorization can be rejected after
+	// submission. A consumed nonce without matching evidence remains unresolved.
+	head, err := ch.adapter.client.HeaderByNumber(ctx, nil)
+	if err != nil || head.Number.Uint64()+1 < ch.adapter.config.Confirmations {
+		return response, nil
+	}
+	final, err := ch.adapter.client.HeaderByNumber(ctx, new(big.Int).SetUint64(head.Number.Uint64()+1-ch.adapter.config.Confirmations))
+	if err != nil || new(big.Int).SetUint64(final.Time).Cmp(proof.before) <= 0 {
+		return response, nil
+	}
+	used, err := proof.consumed(ctx, ch, final.Hash())
+	if err != nil || used {
+		return response, nil
+	}
+	check, err := ch.adapter.client.HeaderByNumber(ctx, final.Number)
+	if err != nil || check.Hash() != final.Hash() {
+		return response, nil
+	}
+	response.ErrorReason = "settlement_rejected"
 	encoded, _ := json.Marshal(response)
-	count, err := s.queries.FacilitatorFinish(ctx, row.AuthorizationID, state, encoded)
+	count, err := s.queries.FacilitatorFinish(ctx, row.AuthorizationID, "failed", encoded)
 	if err != nil {
 		return nil, err
 	}
-	if count > 0 {
-		if response.Success {
-			ch.successes.Add(1)
-		} else {
-			ch.failures.Add(1)
-		}
+	if count == 0 {
+		return s.currentResponse(ctx, row.AuthorizationID, in, payer.Hex())
 	}
+	ch.failures.Add(1)
+	return response, nil
+}
+
+func paymentPayer(in paymentRequest) common.Address {
+	if p, e := evm.PayloadFromMap(in.PaymentPayload.Payload); e == nil && p.Authorization.From != "" {
+		return common.HexToAddress(p.Authorization.From)
+	}
+	if p, e := evm.Permit2PayloadFromMap(in.PaymentPayload.Payload); e == nil {
+		return common.HexToAddress(p.Permit2Authorization.From)
+	}
+	return common.Address{}
+}
+
+func (s *Service) currentResponse(ctx context.Context, id string, in paymentRequest, payer string) (*x402.SettleResponse, error) {
+	row, err := s.queries.FacilitatorGet(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	result, err := observedSettlement(row, in, payer, row.RequestDigest)
+	if err != nil {
+		return nil, err
+	}
+	response, ok := result.(x402.SettleResponse)
+	if !ok {
+		return nil, errors.New("invalid_journal")
+	}
+	return &response, nil
+}
+
+func (s *Service) publishEvidence(ctx context.Context, ch *chainRuntime, row dbgen.FacilitatorSettlement, in paymentRequest, evidence *x402settlement.Evidence) (*x402.SettleResponse, error) {
+	receipt, _, err := confirmedReceipt(ctx, ch, common.HexToHash(evidence.Transaction))
+	if err != nil || receipt.BlockHash != common.HexToHash(evidence.BlockHash) {
+		return nil, errors.New("evidence_noncanonical")
+	}
+	response := &x402.SettleResponse{Success: true, Transaction: evidence.Transaction, Network: x402.Network(row.Network), Payer: evidence.Payer, Amount: evidence.Amount}
+	encoded, _ := json.Marshal(response)
+	proof, _ := json.Marshal(evidence)
+	count, err := s.queries.FacilitatorSucceed(ctx, row.AuthorizationID, encoded, proof)
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		return s.currentResponse(ctx, row.AuthorizationID, in, evidence.Payer)
+	}
+	ch.successes.Add(1)
 	return response, nil
 }

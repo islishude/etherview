@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing/x402wire"
+	"github.com/islishude/etherview/internal/x402settlement"
 	x402 "github.com/x402-foundation/x402/go/v2"
 )
 
@@ -114,6 +115,7 @@ func (fake *topupAccountLedgerFake) TopupIntent(
 }
 
 type topupFacilitatorFake struct {
+	result      *x402settlement.Result
 	progressFn  func(context.Context) (*x402wire.SettlementProgress, error)
 	verifyCalls int
 	settleCalls int
@@ -388,4 +390,19 @@ func TestTopupProgressObserverCancelsWithoutResubmitting(t *testing.T) {
 	if facilitator.settleCalls != 0 || payments.reserveCalls != 0 || accounts.creditCalls != 0 {
 		t.Fatal("progress mutated settlement")
 	}
+}
+
+func (*topupPaymentLedgerFake) ReleaseVerification(context.Context, string, string, time.Time) error {
+	return nil
+}
+func (fake *topupAccountLedgerFake) CreditTopupResult(ctx context.Context, id, owner string, result *x402settlement.Result, _ [32]byte, at time.Time) (Account, error) {
+	return fake.CreditTopup(ctx, id, owner, common.HexToHash(result.Response.Transaction), at)
+}
+func (fake *topupFacilitatorFake) PaymentResult(_ context.Context, ref x402settlement.Reference) (*x402settlement.Result, error) {
+	if fake.result != nil {
+		result := *fake.result
+		result.Reference = ref
+		return &result, nil
+	}
+	return &x402settlement.Result{Reference: ref, State: "succeeded", Response: fake.settle}, nil
 }
