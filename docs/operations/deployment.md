@@ -12,7 +12,7 @@
 ## Repository build dependencies
 
 Run `pnpm install --frozen-lockfile` at the repository root to install all four pnpm workspaces from
-one lockfile. The compiler workspace requires Node 26.13.0; root pnpm policy
+one lockfile. The compiler workspace requires Node 26.13.1; root pnpm policy
 enforces engines and disables dependency lifecycle scripts. Production and
 Hardhat Docker builds use the same lock and install only their selected
 workspaces. Build the Hardhat client with `make hardhat3-client-image-build`;
