@@ -43,7 +43,7 @@ When switching an existing checkout from npm, remove the generated root and
 workspace `node_modules` directories before installing. Dependency changes use
 `pnpm add` in the owning workspace and commit the updated shared lockfile.
 Workspace manifests retain their runtime constraints: the compiler requires
-exactly Node 26.13.0 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
+exactly Node 26.13.1 and solc 0.8.37, while the Hardhat fixture keeps solc 0.8.30.
 
 The workspace policy enforces engines and disables dependency lifecycle scripts.
 Local pnpm must satisfy `engines.pnpm`: at least the pinned minimum, within
@@ -55,7 +55,7 @@ stable pnpm 12 release through the standalone installer and checks its major.
 Automatic peer installation is disabled, so the artifact-only Safe fixture's
 unused Ethers v5 peer is not installed. Required peers are explicit workspace
 dependencies, including the frontend test DOM library. API generation uses
-TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses `node:26.13.0-slim` and curl to download the
+TypeScript 6.0.3 for Hey API, while the Web type-checker remains on TypeScript 7.0.2. Docker uses `node:26.13.1-slim` and curl to download the
 [official standalone installer](https://pnpm.io/installation#using-a-standalone-script),
 with curl and CA certificates installed for the script and its package downloads,
 `PNPM_VERSION=12`, an explicit shell and `PNPM_HOME/bin` on `PATH`, then

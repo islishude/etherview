@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-const previewHelperImage = "node:26.13.0-slim";
+const previewHelperImage = "node:26.13.1-slim";
 const previewVerifierImage = "etherview-preview-genesis-verify:local";
 
 function fixture(t) {

@@ -2,7 +2,7 @@
 
 FROM gcr.io/distroless/base-debian13:nonroot AS production-base
 
-FROM node:26.13.0-slim AS node-builder
+FROM node:26.13.1-slim AS node-builder
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}/bin:${PATH}"
 RUN apt-get update \
