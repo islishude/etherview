@@ -382,7 +382,8 @@ func TestVerifierV2LeaseReclaimKeepsPinnedCompilerIdentity(t *testing.T) {
 	); err == nil {
 		t.Fatal("migration trigger accepted provenance binding without an active lease")
 	}
-	first, found, err := repository.Claim(ctx, "worker-a", 10*time.Millisecond)
+	// Expire the lease explicitly below so compiler binding is not timing-sensitive.
+	first, found, err := repository.Claim(ctx, "worker-a", time.Minute)
 	if err != nil || !found {
 		t.Fatalf("first claim: found=%t error=%v", found, err)
 	}
