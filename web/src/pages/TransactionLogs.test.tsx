@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import i18n from "@/i18n";
 import type { TransactionLog } from "@/api/types";
-import { TransactionLogCard } from "./TransactionLogs";
+import { TransactionLogCard } from "@/components/TransactionLogCard";
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <span>{children}</span>,

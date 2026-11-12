@@ -109,6 +109,8 @@ services:
     volumes:
       - ./facilitator.yaml:/etc/etherview/facilitator.yaml:ro
     secrets: [x402-db, x402-token, x402-key, x402-password]
+    ports:
+      - 127.0.0.1:${X402_LOCAL_FACILITATOR_PORT:-18081}:8081
     healthcheck:
       test: [CMD, /x402facilitator, --healthcheck=http://127.0.0.1:8081/healthz]
       interval: 2s

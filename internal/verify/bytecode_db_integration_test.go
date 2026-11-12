@@ -27,7 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func bytecodeDBPostgres(t *testing.T) *pgxpool.Pool {
+func bytecodeDBPostgres(t testing.TB) *pgxpool.Pool {
 	t.Helper()
 	raw := os.Getenv("ETHERVIEW_TEST_DATABASE_URL")
 	if raw == "" {

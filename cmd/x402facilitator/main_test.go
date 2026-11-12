@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func offlineConfig(t *testing.T) string {
@@ -162,5 +166,26 @@ func TestCLIEnvironment(t *testing.T) {
 				t.Fatalf("unexpected CLI result: %s (%v)", output, err)
 			}
 		})
+	}
+}
+
+func TestShutdownBudgetIncludesServiceCleanup(t *testing.T) {
+	entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	defer close(release)
+	err := shutdownRuntime(ctx, &http.Server{}, func() { close(entered); <-release; close(finished) })
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	default:
+		t.Fatal("cleanup was not attempted")
+	}
+	select {
+	case <-finished:
+		t.Fatal("test cleanup unexpectedly completed")
+	default:
 	}
 }

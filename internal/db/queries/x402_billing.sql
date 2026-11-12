@@ -3,7 +3,7 @@ INSERT INTO billing_payments (
     id,
     chain_id,
     fingerprint,
-    reservation_owner,
+    reservation_owner, authorization_id, request_digest,
     method,
     operation,
     resource_digest,
@@ -30,7 +30,7 @@ INSERT INTO billing_payments (
     sqlc.arg('id')::uuid,
     sqlc.arg('chain_id')::numeric,
     sqlc.arg('fingerprint'),
-    sqlc.arg('reservation_owner')::uuid,
+    sqlc.arg('reservation_owner')::uuid, sqlc.narg('authorization_id')::text, sqlc.narg('request_digest')::bytea,
     sqlc.arg('method'),
     sqlc.arg('operation'),
     sqlc.arg('resource_digest'),
@@ -113,9 +113,9 @@ WITH updated AS (
         verified_at = sqlc.arg('transitioned_at'),
         updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND state = 'reserved'
-      AND reservation_expires_at > sqlc.arg('transitioned_at')
+      AND COALESCE(verification_expires_at, reservation_expires_at) > sqlc.arg('transitioned_at')
       AND (
           sqlc.narg('user_id')::uuid IS NULL
           OR EXISTS (
@@ -143,11 +143,11 @@ WITH updated AS (
     SET handler_started_at = sqlc.arg('transitioned_at'),
         updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'legacy_request'
       AND state = 'verified'
       AND handler_started_at IS NULL
-      AND reservation_expires_at > sqlc.arg('transitioned_at')
+      AND COALESCE(verification_expires_at, reservation_expires_at) > sqlc.arg('transitioned_at')
     RETURNING *
 ), event AS (
     INSERT INTO billing_payment_events (
@@ -166,11 +166,11 @@ WITH updated AS (
         settling_at = sqlc.arg('transitioned_at'),
         updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'legacy_request'
       AND state = 'verified'
       AND handler_started_at IS NOT NULL
-      AND reservation_expires_at > sqlc.arg('transitioned_at')
+      AND COALESCE(verification_expires_at, reservation_expires_at) > sqlc.arg('transitioned_at')
     RETURNING *
 ), event AS (
     INSERT INTO billing_payment_events (
@@ -188,7 +188,7 @@ WITH updated AS (
     SET failure_code = 'settlement_unknown',
         updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'legacy_request'
       AND state = 'settling'
       AND failure_code IS NULL
@@ -210,7 +210,7 @@ WITH updated AS (
         transaction_hash = sqlc.arg('transaction_hash'),
         updated_at = sqlc.arg('transitioned_at')
     WHERE id = sqlc.arg('id')::uuid
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND purpose = 'legacy_request'
       AND state = 'settling'
       AND failure_code IS NULL
@@ -237,7 +237,7 @@ WITH updated AS (
     WHERE id = sqlc.arg('id')::uuid
       AND purpose = 'legacy_request'
       AND state = 'settling'
-      AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+      AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
       AND failure_code IS NULL
     RETURNING *
 ), event AS (
@@ -273,11 +273,11 @@ WITH updated AS (
       AND (
           (
               state IN ('reserved', 'verified')
-              AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+              AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
           )
           OR (
               state = 'settling'
-              AND reservation_owner = sqlc.arg('reservation_owner')::uuid
+              AND COALESCE(verification_owner, reservation_owner) = sqlc.arg('reservation_owner')::uuid
               AND failure_code IS NULL
           )
       )
@@ -409,7 +409,7 @@ WITH candidates AS (
     WHERE payment.chain_id = sqlc.arg('chain_id')::numeric
       AND payment.purpose = 'legacy_request'
       AND payment.state IN ('reserved', 'verified')
-      AND payment.reservation_expires_at <= sqlc.arg('observed_at')
+      AND COALESCE(payment.verification_expires_at, payment.reservation_expires_at) <= sqlc.arg('observed_at')
     ORDER BY payment.reservation_expires_at, payment.id
     FOR UPDATE SKIP LOCKED
     LIMIT sqlc.arg('expire_limit')

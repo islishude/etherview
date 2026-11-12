@@ -377,7 +377,7 @@ func (w *BytecodeDBWorker) tryCandidate(ctx context.Context, task dbgen.Bytecode
 		return "", err
 	}
 	request.BytecodeDB = &BytecodeDBProvenance{Provider: hex.EncodeToString(w.service), Candidate: hex.EncodeToString(candidate), Support: hex.EncodeToString(support)}
-	tx, err := w.repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := w.repository.beginCapacityTx(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -412,7 +412,7 @@ func (w *BytecodeDBWorker) tryCandidate(ctx context.Context, task dbgen.Bytecode
 // Retry the same immutable candidate/job association only after an infrastructure
 // failure has cooled down. Each retry wave retains its bound compiler identity.
 func (w *BytecodeDBWorker) retryUnavailable(ctx context.Context, task dbgen.BytecodeDbTarget, target VerificationTarget, attempt dbgen.BytecodeDBAttemptParams) (string, error) {
-	tx, err := w.repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := w.repository.beginCapacityTx(ctx)
 	if err != nil {
 		return "", err
 	}

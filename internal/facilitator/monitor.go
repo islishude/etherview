@@ -20,7 +20,7 @@ func (s *Service) guard(ctx context.Context) error {
 	ping, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	if err := s.lock.Ping(ping); err != nil {
-		s.active.Store(false)
+		s.loseLock()
 		return errors.New("facilitator_lock_lost")
 	}
 	return nil
@@ -52,10 +52,25 @@ func (s *Service) monitor(ctx context.Context, ch *chainRuntime) {
 			}
 			select {
 			case ch.gate <- struct{}{}:
-				work, done := context.WithTimeout(ctx, time.Second)
+				work, done := context.WithTimeout(ctx, 10*time.Second)
 				rows, e := s.queries.FacilitatorPending(work, ch.adapter.config.Network)
 				if e == nil {
 					for _, row := range rows {
+						// Rotate each attempted row before external work. A slow or
+						// permanently unresolved authorization must not pin the first
+						// page forever or starve rows beyond this round's time budget.
+						count, err := s.queries.FacilitatorTouchRecovery(work, row.AuthorizationID)
+						if err != nil {
+							break
+						}
+						if count == 0 {
+							// Re-read after a conditional miss; never reconcile an old
+							// snapshot that has already left the pending set.
+							if _, err := s.queries.FacilitatorGet(work, row.AuthorizationID); err != nil {
+								break
+							}
+							continue
+						}
 						var request paymentRequest
 						if json.Unmarshal(row.RequestBody, &request) == nil {
 							_, _ = s.reconcile(work, ch, row, request)

@@ -172,3 +172,28 @@ visible, then mines and verifies the existing exactly-once credit and all/split
 parity. These are local-chain and browser-fixture checks, not live-funded evidence.
 Schema changes also require `make test-schema-e2e`; run generation, Go lint,
 documentation and plan checks for the public/persistent contract changes.
+
+## Authorization recovery acceptance
+
+P60-T32 covers conditional unsigned termination in both SaveSigned/abort orders,
+physical singleton-session fencing, fatal liveness, independent broadcast evidence,
+protocol defaults and RPC/business error classification. Evidence tests bind both
+payment methods to direct calldata, authorization events and canonical transfers.
+PostgreSQL tests rotate verification leases, reject stale owners and publish an
+external payment once while preserving the original transaction. Browser tests
+reuse identical signed headers only for explicit verification-retryable responses.
+Run focused Go/race, managed facilitator/billing integration and billing frontend
+tests, followed by generation, schema, runtime, Preview, Rustack, deployment and
+browser gates. Local evidence does not replace funded production acceptance.
+
+## Payment deadline composition
+
+Run `go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run 'Test(PaymentRequestBudgetAndRecovery|RequestBudgetCancelsPostgresPoolAndLockWaits)$'`.
+The payment regression composes the production request-budget and HTTP observation
+middleware with the real facilitator HTTP client and PostgreSQL ledgers. Delayed
+authentication and serial Verify/Settle outlive the ordinary budget while preserving
+402 pending headers. Payment deadline expiry retains the observed original hash,
+rejects replay and allows only read-only background result queries to credit once.
+Ordinary API expiry remains 504; client status, completion logs and metrics agree.
+Run `make test-preview-x402` with its rebuilt image for the full 25s paused-mining
+settlement path, and `make test-preview-gateway` for the shipped Caddy routing.

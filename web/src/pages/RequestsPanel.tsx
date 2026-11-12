@@ -173,7 +173,7 @@ export function RequestsPanel({ hash }: { hash: string }) {
             <span className="requests-included">{t("requests.included")}</span>
           )}
         </header>
-        <QueryNotice loading={query.isPending} error={query.error} onReset={pager.reset} compact />
+        <QueryNotice loading={query.isLoading} error={query.error} onReset={pager.reset} compact />
         {data && !query.error && (
           <>
             {data.state !== "complete" ? (

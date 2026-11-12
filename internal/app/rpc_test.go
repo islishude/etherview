@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -260,4 +262,79 @@ func probeHeaderJSON(t *testing.T, number uint64) json.RawMessage {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+func TestBuildRPCQuarantinesTransientEndpointAndRevalidates(t *testing.T) {
+	t.Parallel()
+	good := newHistoryProbeServer(t, true)
+	var available atomic.Bool
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !available.Load() {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(200 * time.Millisecond):
+			}
+			return
+		}
+		good.Config.Handler.ServeHTTP(w, r)
+	}))
+	defer flaky.Close()
+	cfg := config.Default()
+	cfg.RPC.RequestTimeout = 50 * time.Millisecond
+	cfg.RPC.Endpoints = []config.RPCEndpoint{{Name: "flaky", URL: flaky.URL, Purposes: []string{"head", "history"}}, {Name: "healthy", URL: good.URL, Purposes: []string{"head", "history"}}}
+	built, err := buildRPC(t.Context(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := built.Pool.Names(ethrpc.PurposeHead); !slices.Equal(got, []string{"healthy"}) {
+		t.Fatalf("pool=%v", got)
+	}
+	if err = built.Recovery.runOnce(t.Context()); err != nil || len(built.Recovery.pending) != 1 {
+		t.Fatalf("transient retry=%v", err)
+	}
+	available.Store(true)
+	if err = built.Recovery.runOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if got := built.Pool.Names(ethrpc.PurposeHead); !slices.Equal(got, []string{"flaky", "healthy"}) {
+		t.Fatalf("recovered pool=%v", got)
+	}
+}
+
+func TestBuildRPCRejectsMalformedIdentityDespiteHealthyAlternative(t *testing.T) {
+	t.Parallel()
+	good := newHistoryProbeServer(t, true)
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var envelope struct {
+			ID json.RawMessage `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&envelope); err != nil {
+			t.Error(err)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": envelope.ID, "result": "0x2"})
+	}))
+	defer bad.Close()
+	cfg := config.Default()
+	cfg.RPC.Endpoints = []config.RPCEndpoint{{Name: "bad", URL: bad.URL, Purposes: []string{"head"}}, {Name: "good", URL: good.URL, Purposes: []string{"head"}}}
+	if _, err := buildRPC(t.Context(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+		t.Fatal("identity mismatch was quarantined")
+	}
+	// Recovery applies the same identity gate and must stop supervision on mismatch.
+	cfg.RPC.Endpoints = cfg.RPC.Endpoints[1:]
+	built, err := buildRPC(t.Context(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := ethrpc.NewClient(t.Context(), bad.URL, ethrpc.ClientOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	built.Recovery.pending = []ethrpc.Endpoint{{Name: "bad", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeHead: true}}}
+	if err = built.Recovery.runOnce(t.Context()); err == nil {
+		t.Fatal("recovery accepted wrong identity")
+	}
+	if len(built.Pool.Names(ethrpc.PurposeHead)) != 1 {
+		t.Fatal("invalid endpoint entered pool")
+	}
 }

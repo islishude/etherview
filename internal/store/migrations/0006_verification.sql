@@ -2,11 +2,36 @@
 
 -- Functions
 
+CREATE FUNCTION verification_request_metadata(payload bytea) RETURNS jsonb LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT (document - ARRAY['standard_json','standard_json_variants','variant_settings','bytecodes','sourcify_request','target','geas'])
+   || CASE WHEN document ? 'target' THEN jsonb_build_object('target', (document->'target')-ARRAY['CreationBytecode','RuntimeBytecode']) ELSE '{}'::jsonb END
+   || CASE WHEN document ? 'geas' THEN jsonb_build_object('geas',(document->'geas')-'sources') ELSE '{}'::jsonb END
+ FROM (SELECT convert_from(payload,'UTF8')::jsonb AS document) source
+$$;
+
+CREATE FUNCTION verification_outcome_summary(document jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE STRICT AS $$
+ SELECT jsonb_strip_nulls(jsonb_build_object('kind',document->'kind',
+  'verification_id',document->'verification_id','runtime_match',document->'runtime_match',
+  'creation_match',document->'creation_match'))
+$$;
+
+CREATE FUNCTION project_verification_request() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_TABLE_NAME='verification_jobs' THEN
+ NEW.request := verification_request_metadata(NEW.request_payload);
+ NEW.summary_chain_id := COALESCE(NEW.request #>> '{target,ChainID}',convert_from(NEW.request_payload,'UTF8')::jsonb #>> '{sourcify_request,chain_id}');
+ NEW.summary_address := COALESCE(NEW.request #>> '{target,Address}',convert_from(NEW.request_payload,'UTF8')::jsonb #>> '{sourcify_request,address}');
+ ELSE NEW.request := verification_request_metadata(NEW.payload); END IF;
+ RETURN NEW;
+END $$;
+
+
 CREATE FUNCTION verification_effective_request(job_id uuid, original_request jsonb) RETURNS jsonb
 LANGUAGE plpgsql STABLE AS $$
 DECLARE prepared jsonb;
 BEGIN
-    SELECT input.request INTO prepared FROM verification_import_inputs AS input WHERE input.job_id = verification_effective_request.job_id;
+    SELECT convert_from(input.payload,'UTF8')::jsonb INTO prepared FROM verification_import_inputs AS input WHERE input.job_id = verification_effective_request.job_id;
+    IF prepared IS NULL THEN SELECT convert_from(job.request_payload,'UTF8')::jsonb INTO prepared FROM verification_jobs job WHERE job.id=verification_effective_request.job_id; END IF;
     RETURN COALESCE(prepared, original_request);
 END $$;
 
@@ -422,7 +447,11 @@ CREATE TABLE verification_jobs (
     code_hash bytea,
     block_hash bytea,
     request jsonb NOT NULL,
-    request_payload bytea NOT NULL,
+    admission_principal text NOT NULL DEFAULT 'system:verification' CHECK(admission_principal ~ '^(user:|key:|system:)[A-Za-z0-9_-]{1,128}$'),
+    input_bytes bigint NOT NULL DEFAULT 0 CHECK(input_bytes>=0),
+    request_payload bytea,
+    summary_chain_id text,
+    summary_address text,
     request_digest bytea NOT NULL,
     status text DEFAULT 'queued'::text NOT NULL,
     leased_by text,
@@ -432,6 +461,7 @@ CREATE TABLE verification_jobs (
     max_attempts integer DEFAULT 3 NOT NULL,
     outcome_kind text,
     outcome jsonb,
+    summary_outcome jsonb GENERATED ALWAYS AS (verification_outcome_summary(outcome)) STORED,
     error_code text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -443,12 +473,12 @@ CREATE TABLE verification_jobs (
     CONSTRAINT verification_jobs_kind_check CHECK ((kind = ANY (ARRAY['address'::text, 'sourcify_import'::text, 'derived'::text, 'proxy'::text, 'sourcify'::text, 'sourcify_from_etherscan'::text, 'solidity_multipart'::text, 'solidity_standard_json'::text, 'solidity_batch_multipart'::text, 'solidity_batch_standard_json'::text, 'vyper_multipart'::text, 'vyper_standard_json'::text]))),
     CONSTRAINT verification_jobs_language_check CHECK (((language IS NULL) OR (language = ANY (ARRAY['solidity'::text, 'yul'::text, 'geas'::text, 'vyper'::text])))),
     CONSTRAINT verification_jobs_lease_check CHECK ((((leased_by IS NULL) = (lease_token IS NULL)) AND ((leased_by IS NULL) = (lease_expires_at IS NULL)) AND ((status = 'running'::text) = (leased_by IS NOT NULL)))),
-    CONSTRAINT verification_jobs_request_check CHECK (((jsonb_typeof(request) = 'object'::text) AND ((octet_length(request_payload) >= 2) AND (octet_length(request_payload) <= 67108864)) AND (request = (convert_from(request_payload, 'UTF8'::name))::jsonb) AND (octet_length(request_digest) = 32))),
+    CONSTRAINT verification_jobs_request_check CHECK (jsonb_typeof(request)='object' AND octet_length(request_digest)=32 AND ((request_payload IS NULL AND status IN ('failed','cancelled')) OR (request_payload IS NOT NULL AND octet_length(request_payload) BETWEEN 2 AND 67108864 AND request=verification_request_metadata(request_payload)))),
     CONSTRAINT verification_jobs_result_size_check CHECK (((outcome IS NULL) OR (octet_length((outcome)::text) <= 268435456))),
     CONSTRAINT verification_jobs_status_check CHECK ((status = ANY (ARRAY['queued'::text, 'running'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text]))),
     CONSTRAINT verification_jobs_target_check CHECK ((((kind = ANY (ARRAY['address'::text, 'sourcify_import'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NOT NULL) AND (octet_length(address) = 20) AND (octet_length(code_hash) = 32) AND (octet_length(block_hash) = 32)) OR ((kind <> ALL (ARRAY['address'::text, 'sourcify_import'::text, 'proxy'::text, 'derived'::text])) AND (chain_id IS NULL) AND (address IS NULL) AND (code_hash IS NULL) AND (block_hash IS NULL)))),
     CONSTRAINT verification_jobs_terminal_check CHECK ((((status = ANY (ARRAY['queued'::text, 'running'::text, 'cancelled'::text])) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND (error_code IS NULL)) OR ((status = 'succeeded'::text) AND (outcome_kind = ANY (ARRAY['compilation_failure'::text, 'verification_failure'::text, 'verification_success'::text, 'batch_results'::text, 'sourcify_success'::text, 'proxy_verification_success'::text])) AND (jsonb_typeof(outcome) = 'object'::text) AND (error_code IS NULL)) OR ((status = 'failed'::text) AND (outcome_kind IS NULL) AND (outcome IS NULL) AND ((length(error_code) >= 1) AND (length(error_code) <= 64))))),
-    CONSTRAINT verification_jobs_vyper_request_check CHECK ((((kind <> ALL (ARRAY['vyper_standard_json'::text, 'vyper_multipart'::text])) OR (language = 'vyper'::text)) AND ((kind = 'sourcify_import') OR (language IS DISTINCT FROM 'vyper'::text) OR ((((request ->> 'target_file'::text) IS NOT NULL) AND ((request #>> '{standard_json,language}'::text[]) = 'Vyper'::text) AND (jsonb_typeof((request #> '{standard_json,sources}'::text[])) = 'object'::text) AND ((request #> '{standard_json,sources}'::text[]) ? (request ->> 'target_file'::text))) IS TRUE)))),
+    CONSTRAINT verification_jobs_vyper_request_check CHECK ((((kind <> ALL (ARRAY['vyper_standard_json'::text, 'vyper_multipart'::text])) OR (language = 'vyper'::text)) AND ((request_payload IS NULL) OR (kind = 'sourcify_import') OR (language IS DISTINCT FROM 'vyper'::text) OR ((((request ->> 'target_file'::text) IS NOT NULL) AND ((convert_from(request_payload,'UTF8')::jsonb #>> '{standard_json,language}'::text[]) = 'Vyper'::text) AND (jsonb_typeof((convert_from(request_payload,'UTF8')::jsonb #> '{standard_json,sources}'::text[])) = 'object'::text) AND ((convert_from(request_payload,'UTF8')::jsonb #> '{standard_json,sources}'::text[]) ? (request ->> 'target_file'::text))) IS TRUE)))),
     CONSTRAINT verification_jobs_pkey PRIMARY KEY (id),
     CONSTRAINT verification_jobs_catalog_fk FOREIGN KEY (catalog_generation_id, catalog_language, compiler_version, compiler_platform, compiler_digest) REFERENCES compiler_catalog_entries(generation_id, language, version, platform, artifact_sha256) ON DELETE RESTRICT,
     CONSTRAINT verification_jobs_chain_id_fkey FOREIGN KEY (chain_id) REFERENCES chains(chain_id)
@@ -457,21 +487,27 @@ CREATE TABLE verification_jobs (
 CREATE TABLE verification_import_inputs (
     job_id uuid PRIMARY KEY REFERENCES verification_jobs(id) ON DELETE RESTRICT,
     request jsonb NOT NULL,
-    payload bytea NOT NULL,
+    payload bytea,
     digest bytea NOT NULL,
     CONSTRAINT verification_import_inputs_bounds CHECK (
         jsonb_typeof(request) = 'object' AND request->>'kind' = 'address' AND
-        octet_length(payload) BETWEEN 2 AND 67108864 AND
-        request = convert_from(payload, 'UTF8')::jsonb AND
-        octet_length(digest) = 32 AND sha256(payload) = digest
+        octet_length(digest) = 32 AND (payload IS NULL OR (octet_length(payload) BETWEEN 2 AND 67108864 AND
+        request = verification_request_metadata(payload) AND sha256(payload) = digest))
     )
 );
 
 CREATE TRIGGER verification_import_inputs_target BEFORE INSERT ON verification_import_inputs
 FOR EACH ROW EXECUTE FUNCTION enforce_verification_import_input();
 
+CREATE FUNCTION protect_verification_import_input() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='UPDATE' AND NEW.payload IS NULL AND NEW.job_id=OLD.job_id AND NEW.request=OLD.request AND NEW.digest=OLD.digest AND EXISTS(SELECT 1 FROM verification_jobs job WHERE job.id=OLD.job_id AND job.status IN ('failed','cancelled') AND job.updated_at<clock_timestamp()-INTERVAL '7 days')
+ AND NOT EXISTS(SELECT 1 FROM verification_results WHERE job_id=OLD.job_id)
+ AND NOT EXISTS(SELECT 1 FROM verification_compilation_units WHERE source_job_id=OLD.job_id) THEN RETURN NEW; END IF;
+ RAISE EXCEPTION 'immutable verification input';
+END $$;
 CREATE TRIGGER verification_import_inputs_immutable BEFORE DELETE OR UPDATE ON verification_import_inputs
-FOR EACH ROW EXECUTE FUNCTION reject_verification_compilation_mutation();
+FOR EACH ROW EXECUTE FUNCTION protect_verification_import_input();
 
 CREATE TABLE verification_results (
     job_id uuid NOT NULL,
@@ -738,3 +774,74 @@ CREATE TABLE bytecode_db_attempts (
 -- Serialize claim decisions so automatic work cannot occupy two compiler slots.
 CREATE TABLE verification_claim_gate (singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton));
 INSERT INTO verification_claim_gate (singleton) VALUES (true);
+
+CREATE TRIGGER a_verification_request_projection BEFORE INSERT ON verification_jobs
+FOR EACH ROW EXECUTE FUNCTION project_verification_request();
+CREATE TRIGGER a_verification_import_projection BEFORE INSERT ON verification_import_inputs
+FOR EACH ROW EXECUTE FUNCTION project_verification_request();
+
+-- All capacity transitions take this lock before touching a job row. The
+-- statement trigger also covers cancellation/exhaustion and direct SQL writers.
+CREATE FUNCTION lock_verification_budget() RETURNS void LANGUAGE sql VOLATILE AS $$
+ SELECT pg_advisory_xact_lock(hashtextextended('verification-budget',0))
+$$;
+CREATE FUNCTION verification_budget_statement_lock() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN PERFORM lock_verification_budget(); RETURN NULL; END $$;
+CREATE TRIGGER verification_budget_lock BEFORE INSERT OR UPDATE OR DELETE ON verification_jobs
+FOR EACH STATEMENT EXECUTE FUNCTION verification_budget_statement_lock();
+CREATE TRIGGER verification_import_budget_lock BEFORE INSERT OR UPDATE OR DELETE ON verification_import_inputs
+FOR EACH STATEMENT EXECUTE FUNCTION verification_budget_statement_lock();
+
+CREATE TABLE verification_budget (
+ singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+ jobs bigint NOT NULL DEFAULT 0 CHECK(jobs>=0), bytes bigint NOT NULL DEFAULT 0 CHECK(bytes>=0),
+ max_jobs bigint NOT NULL DEFAULT 100 CHECK(max_jobs>0), max_bytes bigint NOT NULL DEFAULT 268435456 CHECK(max_bytes>0),
+ max_user_jobs bigint NOT NULL DEFAULT 5 CHECK(max_user_jobs>0), max_input_bytes bigint NOT NULL DEFAULT 16777216 CHECK(max_input_bytes>0)
+);
+INSERT INTO verification_budget(singleton) VALUES(true);
+CREATE TABLE verification_principal_budget (
+ principal text PRIMARY KEY, jobs bigint NOT NULL DEFAULT 0 CHECK(jobs>=0)
+);
+
+CREATE INDEX verification_input_retention ON verification_jobs(updated_at,id) WHERE status IN ('failed','cancelled') AND request_payload IS NOT NULL;
+
+CREATE FUNCTION verification_measure_input() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='INSERT' THEN
+  NEW.input_bytes := CASE WHEN NEW.kind IN ('sourcify_import','sourcify','sourcify_from_etherscan')
+   THEN (SELECT max_input_bytes FROM verification_budget) ELSE octet_length(NEW.request_payload) END;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER b_verification_input_size BEFORE INSERT ON verification_jobs FOR EACH ROW EXECUTE FUNCTION verification_measure_input();
+
+CREATE FUNCTION verification_account_capacity() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE job_delta bigint:=0; byte_delta bigint:=0; v_principal text; budget verification_budget%ROWTYPE; owned bigint;
+BEGIN
+ IF TG_OP='UPDATE' AND NEW.admission_principal<>OLD.admission_principal THEN RAISE EXCEPTION 'immutable admission principal'; END IF;
+ IF TG_OP<>'INSERT' AND OLD.status IN ('queued','running') THEN job_delta:=-1; byte_delta:=-OLD.input_bytes; v_principal:=OLD.admission_principal; END IF;
+ IF TG_OP<>'DELETE' AND NEW.status IN ('queued','running') THEN job_delta:=job_delta+1; byte_delta:=byte_delta+NEW.input_bytes; v_principal:=NEW.admission_principal; END IF;
+ IF job_delta=0 AND byte_delta=0 THEN RETURN NULL; END IF;
+ SELECT * INTO budget FROM verification_budget WHERE singleton;
+ INSERT INTO verification_principal_budget(principal) VALUES(v_principal) ON CONFLICT DO NOTHING;
+ SELECT jobs INTO owned FROM verification_principal_budget WHERE verification_principal_budget.principal=v_principal;
+ IF job_delta>0 AND v_principal NOT LIKE 'system:%' AND owned+job_delta>budget.max_user_jobs THEN RAISE EXCEPTION 'verification_user_capacity' USING ERRCODE='P7501'; END IF;
+ IF (job_delta>0 OR byte_delta>0) AND (budget.jobs+job_delta>budget.max_jobs OR budget.bytes+byte_delta>budget.max_bytes) THEN RAISE EXCEPTION 'verification_global_capacity' USING ERRCODE='P7502'; END IF;
+ UPDATE verification_budget SET jobs=jobs+job_delta,bytes=bytes+byte_delta WHERE singleton;
+ UPDATE verification_principal_budget SET jobs=jobs+job_delta WHERE verification_principal_budget.principal=v_principal;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER verification_capacity AFTER INSERT OR UPDATE OR DELETE ON verification_jobs
+FOR EACH ROW EXECUTE FUNCTION verification_account_capacity();
+
+CREATE FUNCTION verification_import_input_capacity() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE actual bigint; maximum bigint;
+BEGIN
+ SELECT octet_length(request_payload)+octet_length(NEW.payload) INTO actual FROM verification_jobs WHERE id=NEW.job_id;
+ SELECT max_input_bytes INTO maximum FROM verification_budget;
+ IF actual>maximum THEN RAISE EXCEPTION 'verification_input_too_large' USING ERRCODE='P7503'; END IF;
+ UPDATE verification_jobs SET input_bytes=actual WHERE id=NEW.job_id;
+ RETURN NULL;
+END $$;
+CREATE TRIGGER verification_import_capacity AFTER INSERT ON verification_import_inputs
+FOR EACH ROW EXECUTE FUNCTION verification_import_input_capacity();

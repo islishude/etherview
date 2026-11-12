@@ -169,6 +169,9 @@ func (worker *RollupWorker) RunOnce(ctx context.Context) (RollupResult, error) {
 	if !locked {
 		return RollupResult{}, nil
 	}
+	if err := dbgen.New(tx).AnalyticsWriteReconcile(ctx, analyticsNumeric(chainID)); err != nil {
+		return RollupResult{}, fmt.Errorf("reconcile analytics sources: %w", err)
+	}
 	result := RollupResult{Locked: true}
 	err = func() error {
 		var queryValue0 pgtype.Numeric

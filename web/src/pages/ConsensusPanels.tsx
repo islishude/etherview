@@ -35,7 +35,7 @@ export function ConsensusPanel({ hash }: { hash: string }) {
         role="tabpanel"
         aria-label={t("consensus.title")}
       >
-        <QueryNotice loading={query.isPending} error={query.error} compact />
+        <QueryNotice loading={query.isLoading} error={query.error} compact />
         {data && (
           <>
             {data.state !== "complete" && (

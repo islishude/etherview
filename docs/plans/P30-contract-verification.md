@@ -99,8 +99,13 @@ availability does not gate core readiness.
 | P30-T153 | done   | P30-T10, P30-T141                                             | Independent verification role, optional NATS wake and PostgreSQL claims, fully asynchronous Sourcify import                                                                                                             | Multi-instance lease/recovery, immutable import input, all/split parity and production deployment gates                                                                 |
 | P30-T154 | done   | P30-T153                                                      | Session-owned polling and publication for live sync, maintenance, NFT source discovery, mempool and compiler catalogs; safe concurrent compiler-cache startup                                                           | PostgreSQL contention, lost-session takeover, stale-write and Docker cold-start regressions, common and production parity gates                                         |
 | P30-T155 | done   | P30-T154                                                      | Database-wide deadlock gates for managed integration and both runtime layouts, bounded diagnostics and cross-domain concurrency regressions                                                                             | Detector self-tests, PostgreSQL/race, runtime parity and generated/source/documentation gates                                                                           |
+| P30-T156 | done   | P30-T10, P30-T153                                             | Compact verification inputs, durable admission budgets, lightweight status and bounded input retention                                                                                                                  | Input boundaries, multi-replica quotas, retention, compiler and all/split acceptance                                                                                    |
 
 ## Acceptance
+
+- [x] Compact verification inputs, principal/global admission, source-free status
+      and bounded retention pass large-input, concurrent PostgreSQL/race and
+      real Hardhat/Foundry/Vyper all/split acceptance.
 
 - [x] Managed PostgreSQL integration and both runtime layouts reject new database
       deadlocks even when retries succeed, retain bounded diagnostics and reject
@@ -157,6 +162,15 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P70 release gates remain independent.
 
 ## Evidence
+
+P30-T156 passed 3 MiB Standard JSON and 1.5 MiB multipart reconstruction,
+concurrent deduplication/quota/release, unknown-input reservation and binding,
+lease takeover, bounded retention, source-free successful status and native
+result compatibility. Complete PostgreSQL integration/race, schema/runtime,
+Hardhat, Foundry, Vyper and browser gates passed locally. The
+[review completion report](../reviews/review-fixes-2026-11-11.md) retains commands,
+configuration defaults and measured-source evidence; P70's named reference
+environment and 500 RPS / 30-minute acceptance remain separate blockers.
 
 P30-T155 local acceptance completed on 2026-11-06 in the worktree based on
 `66fd3974`. `make test-integration`, the [focused PostgreSQL race command](../testing/integration.md#database-wide-deadlock-gate),

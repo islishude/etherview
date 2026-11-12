@@ -198,3 +198,35 @@ Tokens are at most 2048 characters, single-use and valid for five minutes.
 Secrets are environment/file-only and read by API/all roles; public runtime
 config exposes only the site key and shared switch when enabled. No database snapshot is held
 while validating, and tokens are never persisted in job inputs.
+
+### Input persistence and admission capacity
+
+Task metadata is separate from the sole compact source body. Standard JSON
+stores one base input; multipart alternatives store ordered settings differences
+and reconstruct the exact candidate inputs. PostgreSQL publication guards read
+the effective source body only when authenticating evidence. Status queries use
+projected target identity, outcome and timestamps without fetching source TOAST.
+The native API preserves its complete-result contract with a separate evidence
+read; browser and compatibility status polling use only the stored summary.
+
+Request-body, individual compiler-input and compact-task limits are independent
+(default 6 MiB, 5 MiB and 16 MiB). Admission validates every variant including
+the second, perturbed compiler input. Predictable bounds fail with a typed 4xx.
+
+PostgreSQL owns admission counters in the creation transaction. A shared budget
+lock precedes related job row locks for creation, terminal release, import binding
+and cleanup. Limits default to 100 queued/running jobs, 256 MiB compact input,
+and five jobs per user. Sessions and all keys owned by a user share that user
+principal; ownerless keys use the key prefix. Internal jobs use an explicit
+system principal and consume global capacity. Active/successful digest reuse
+allocates nothing and leaves the original owner and UUID read policy unchanged.
+Unknown asynchronous source inputs reserve the configured compact-input maximum;
+binding adjusts the reservation to actual retained bytes. Retry and takeover do
+not allocate again. User saturation returns 429, global saturation 503, both
+with Retry-After 30; compatibility responses retain their protocol envelope.
+
+The verification role cleans at most 100 old failed/cancelled inputs per hourly
+pass after seven days. It retains metadata, digest, target, timestamps and result
+identity, and never removes successful or referenced publication evidence.
+The same supervised component runs in all and split layouts. These are fresh
+schema contracts, without legacy adapters or startup backfills.

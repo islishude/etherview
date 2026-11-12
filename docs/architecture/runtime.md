@@ -107,3 +107,20 @@ connection loss cannot redirect stale results through a healthy pool session.
 Maintenance repair/reindex executors likewise use their existing claim session.
 Contenders skip polling and retry normally. Locks do not retain transactions
 across external requests; ordinary durable worker queues remain independent.
+
+## RPC recovery and API deadlines
+
+Transient transport/timeout failures quarantine an endpoint at startup only when
+verified endpoints still satisfy the enabled roles' required purposes. Identity,
+configuration and malformed-response failures remain fatal. The supervised
+`rpc-recovery` component retries quarantined endpoints after five seconds with
+exponential backoff capped at one minute, revalidating chain, genesis and
+capabilities before adding them to the pool. A recovered identity mismatch is a
+fatal component error. Shutdown cancels probes through the shared context.
+
+The public listener wraps authentication and business handlers in a configurable
+20-second execution context. Pool acquisition, SQL and RPC inherit cancellation.
+An uncommitted timeout returns `504 request_timeout`; an already committed response
+receives no additional error document. Only exact GET event/home SSE routes are
+exempt and retain their individual write deadlines. Compiler execution budgets
+are independent.

@@ -41,3 +41,7 @@ func rolesUseNATSWake(roles []components.Role, cfg config.Config) bool {
 	}
 	return false
 }
+
+func roleUsesRPC(role components.Role, cfg config.Config) bool {
+	return needsRPCForServe(map[components.Role]bool{role: true}, cfg) || role == components.RoleAPI && len(cfg.RPC.Endpoints) > 0
+}

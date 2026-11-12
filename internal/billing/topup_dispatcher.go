@@ -11,10 +11,12 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/billing/x402wire"
+	"github.com/islishude/etherview/internal/x402settlement"
 	x402 "github.com/x402-foundation/x402/go/v2"
 )
 
 type PaymentFacilitator interface {
+	PaymentResult(context.Context, x402settlement.Reference) (*x402settlement.Result, error)
 	VerifyPayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.VerifyResponse, error)
 	SettlePayment(context.Context, x402wire.Payment, x402wire.Requirement) (*x402.SettleResponse, error)
 	PaymentProgress(context.Context, x402wire.Payment, x402wire.Requirement) (*x402wire.SettlementProgress, error)
@@ -48,12 +50,14 @@ func boundaryCode(err error) string {
 }
 
 type TopupPaymentLedger interface {
+	ReleaseVerification(context.Context, string, string, time.Time) error
 	ReserveTopup(context.Context, ReserveInput) (Reservation, error)
 	MarkVerified(context.Context, VerifiedInput) (Payment, error)
 	Get(context.Context, string) (Payment, error)
 }
 
 type TopupAccountLedger interface {
+	CreditTopupResult(context.Context, string, string, *x402settlement.Result, [32]byte, time.Time) (Account, error)
 	ObserveTopupProgress(context.Context, string, string, string, x402wire.SettlementProgress, time.Time) error
 	BeginTopupSettlement(context.Context, string, string, string, time.Time) error
 	MarkTopupSettlementUnknown(context.Context, string, string, string, time.Time) error
@@ -169,7 +173,7 @@ func (dispatcher *TopupDispatcher) Serve(
 		writeError = writeUsageError
 	}
 	if dispatcher == nil || request == nil || request.Method != http.MethodPost ||
-		intent.State != TopupIntentOpen || intent.ExpiresAt.Before(dispatcher.now()) ||
+		(intent.State != TopupIntentOpen && intent.State != TopupIntentProcessing) || intent.ExpiresAt.Before(dispatcher.now()) ||
 		intent.Payer == (common.Address{}) || success == nil {
 		writeError(writer, http.StatusConflict, "topup_intent_unavailable", "top-up intent is not payable")
 		return
@@ -205,7 +209,13 @@ func (dispatcher *TopupDispatcher) Serve(
 	resourceDigest := requirement.ResourceDigest()
 	requirementDigest := requirement.RequirementDigest()
 	intentID, userID := intent.ID, intent.UserID
+	reference, err := x402wire.ResultReference(payment, requirement)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, x402wire.CodePaymentMismatch, "invalid payment lookup")
+		return
+	}
 	reservation, err := dispatcher.payments.ReserveTopup(request.Context(), ReserveInput{
+		Reference:   &reference,
 		Fingerprint: Digest(fingerprint), Operation: "createBillingTopup",
 		Method: http.MethodPost, Purpose: "account_topup",
 		AssetTransferMethod: payment.TransferMethod(), PaymentFlow: payment.PaymentFlow(),
@@ -231,28 +241,29 @@ func (dispatcher *TopupDispatcher) Serve(
 	}
 	paymentID, owner := reservation.Payment.ID, reservation.Owner
 	verified, verifyErr := dispatcher.facilitator.VerifyPayment(request.Context(), payment, requirement)
-	if verifyErr != nil || verified == nil || !verified.IsValid ||
-		!strings.EqualFold(verified.Payer, intent.Payer.Hex()) {
-		code, status := x402wire.CodeFacilitatorUnavailable, http.StatusServiceUnavailable
+	reconciliationOnly := x402wire.IsFailure(verifyErr, x402wire.FailureReconciliationRequired)
+	if (!reconciliationOnly && (verifyErr != nil || verified == nil || !verified.IsValid)) || verified == nil || !strings.EqualFold(verified.Payer, intent.Payer.Hex()) {
 		if x402wire.IsFailure(verifyErr, x402wire.FailureRejected) {
-			code, status = x402wire.CodeFacilitatorRejected, http.StatusPaymentRequired
+			code := boundaryCode(verifyErr)
+			if err := dispatcher.accounts.FailTopupPayment(request.Context(), paymentID, owner, intent.ID, code, dispatcher.now().UTC()); err != nil {
+				writeError(writer, http.StatusServiceUnavailable, "topup_ledger_unavailable", "top-up failure cannot be committed")
+				return
+			}
 			outcome = "verify_rejected"
-		} else {
-			outcome = "verify_unavailable"
-		}
-		if failErr := dispatcher.accounts.FailTopupPayment(
-			request.Context(), paymentID, owner, intent.ID, code, dispatcher.now().UTC(),
-		); failErr != nil {
-			writeError(writer, http.StatusServiceUnavailable, "topup_ledger_unavailable", "top-up failure cannot be committed")
-			return
-		}
-		if status == http.StatusPaymentRequired {
 			dispatcher.writeRequired(writer, requirements, code, writeError)
 			return
 		}
-		writeError(writer, status, code, "payment verification is unavailable")
+		finish, cancel := context.WithTimeout(context.WithoutCancel(request.Context()), 2*time.Second)
+		defer cancel()
+		if err := dispatcher.payments.ReleaseVerification(finish, paymentID, owner, dispatcher.now().UTC()); err != nil {
+			writeError(writer, http.StatusServiceUnavailable, "topup_ledger_unavailable", "verification retry cannot be committed")
+			return
+		}
+		outcome = "verify_unavailable"
+		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeVerificationRetryable, "payment verification is temporarily unavailable; retry the same request")
 		return
 	}
+
 	if _, err := dispatcher.payments.MarkVerified(request.Context(), VerifiedInput{
 		PaymentID: paymentID, Owner: owner, Payer: intent.Payer,
 		UserID: &intent.UserID, ObservedAt: dispatcher.now().UTC(),
@@ -329,9 +340,13 @@ func (dispatcher *TopupDispatcher) Serve(
 		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment settlement outcome is unknown")
 		return
 	}
-	account, err := dispatcher.accounts.CreditTopup(
-		finishCtx, paymentID, owner, transactionHash, dispatcher.now().UTC(),
-	)
+	result, resultErr := dispatcher.facilitator.PaymentResult(finishCtx, reference)
+	if resultErr != nil || result == nil || result.Response == nil || result.Response.Transaction != transactionHash.Hex() {
+		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
+		writeError(writer, http.StatusServiceUnavailable, x402wire.CodeSettlementUnknown, "payment evidence is pending reconciliation")
+		return
+	}
+	account, err := dispatcher.accounts.CreditTopupResult(finishCtx, paymentID, owner, result, dispatcher.facilitator.OriginDigest(), dispatcher.now().UTC())
 	if err != nil {
 		_ = dispatcher.accounts.MarkTopupSettlementUnknown(finishCtx, paymentID, owner, intent.ID, dispatcher.now().UTC())
 		outcome = "ledger_unavailable"

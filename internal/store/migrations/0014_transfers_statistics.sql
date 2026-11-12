@@ -420,3 +420,193 @@ CREATE TRIGGER native_transfer_outbox_coverage_trigger AFTER INSERT OR DELETE OR
 CREATE TRIGGER native_transfer_result_coverage_trigger AFTER INSERT OR DELETE OR UPDATE ON block_stage_results FOR EACH ROW EXECUTE FUNCTION native_transfer_result_coverage();
 
 CREATE TRIGGER token_events_chart_dirty_trigger AFTER INSERT OR DELETE OR UPDATE ON token_events FOR EACH ROW EXECUTE FUNCTION mark_chart_rollup_dirty();
+
+-- Incremental canonical source completeness. Raw rows never prove readiness;
+-- each refresh reads the exact published stage identities at transaction end.
+CREATE TABLE chart_source_blocks (
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    block_number numeric(78,0) NOT NULL,
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash)=32),
+    bucket_start timestamptz,
+    ready boolean NOT NULL,
+    PRIMARY KEY(chain_id,block_number)
+);
+CREATE INDEX chart_source_hour_idx ON chart_source_blocks(chain_id,bucket_start,block_number);
+CREATE INDEX chart_source_pending_idx ON chart_source_blocks(chain_id,block_number) WHERE NOT ready;
+CREATE INDEX chart_source_hour_pending_idx ON chart_source_blocks(chain_id,bucket_start,block_number) WHERE NOT ready;
+CREATE TABLE chart_source_totals (
+    chain_id numeric(78,0) PRIMARY KEY REFERENCES chains(chain_id),
+    total_blocks numeric(78,0) NOT NULL DEFAULT 0,
+    completed_blocks numeric(78,0) NOT NULL DEFAULT 0,
+    generation bigint NOT NULL DEFAULT 1,
+    CHECK (total_blocks >= completed_blocks AND completed_blocks >= 0)
+);
+CREATE TABLE chart_source_hours (
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    bucket_start timestamptz NOT NULL,
+    block_count bigint NOT NULL,
+    ready_count bigint NOT NULL,
+    first_block numeric(78,0),
+    last_block numeric(78,0),
+    first_pending numeric(78,0),
+    PRIMARY KEY(chain_id,bucket_start),
+    CHECK (block_count >= ready_count AND ready_count >= 0)
+);
+CREATE TABLE chart_dirty_totals (
+    chain_id numeric(78,0) PRIMARY KEY REFERENCES chains(chain_id),
+    dirty_hours bigint NOT NULL DEFAULT 0 CHECK (dirty_hours >= 0)
+);
+CREATE INDEX chart_dirty_oldest_idx ON chart_rollup_dirty_hours(chain_id,dirtied_at);
+CREATE TABLE chart_source_refresh_work (
+    transaction_id xid8 NOT NULL DEFAULT pg_current_xact_id(),
+    chain_id numeric(78,0) NOT NULL,
+    block_number numeric(78,0) NOT NULL,
+    PRIMARY KEY(transaction_id,chain_id,block_number)
+);
+CREATE TABLE chart_source_reconciliation (
+    chain_id numeric(78,0) PRIMARY KEY REFERENCES chains(chain_id),
+    next_block numeric(78,0) NOT NULL DEFAULT 0,
+    next_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE FUNCTION chart_current_source(target_chain numeric,target_number numeric)
+RETURNS TABLE(block_hash bytea,bucket_start timestamptz,ready boolean) LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN QUERY SELECT c.block_hash,
+        CASE WHEN b.timestamp BETWEEN 0 AND 253402300799
+             THEN date_trunc('hour',to_timestamp(b.timestamp::double precision),'UTC') END,
+        COALESCE(s.state='complete' AND t.state='complete' AND st.canonical
+            AND st.execution_gas_fee_wei IS NOT NULL AND st.priority_fee_wei IS NOT NULL
+            AND st.failed_transaction_count IS NOT NULL AND st.contract_creation_count IS NOT NULL, false)
+    FROM canonical_blocks c JOIN blocks b ON b.chain_id=c.chain_id AND b.number=c.number AND b.hash=c.block_hash
+    LEFT JOIN published_block_stage_results s ON s.chain_id=c.chain_id AND s.block_number=c.number AND s.block_hash=c.block_hash AND s.stage='stats' AND s.stage_version=4
+    LEFT JOIN published_block_stage_results t ON t.chain_id=c.chain_id AND t.block_number=c.number AND t.block_hash=c.block_hash AND t.stage='token' AND t.stage_version=2
+    LEFT JOIN block_statistics st ON st.chain_id=c.chain_id AND st.block_number=c.number AND st.block_hash=c.block_hash
+    WHERE c.chain_id=target_chain AND c.number=target_number;
+END
+$$;
+
+CREATE FUNCTION refresh_chart_source(target_chain numeric,target_number numeric) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE previous chart_source_blocks%ROWTYPE; current_source record; had_previous boolean; has_current boolean; hour_start timestamptz;
+BEGIN
+    -- Deferred projections share the prefix: proxy coverage, chart source, browsing.
+    PERFORM pg_advisory_xact_lock(hashtextextended('etherview:proxy-interaction-coverage:'||target_chain::text,0));
+    PERFORM pg_advisory_xact_lock(hashtextextended('chart-source:'||target_chain::text,0));
+    SELECT * INTO previous FROM chart_source_blocks WHERE chain_id=target_chain AND block_number=target_number;
+    had_previous := FOUND;
+    SELECT * INTO current_source FROM chart_current_source(target_chain,target_number);
+    has_current := FOUND;
+    IF had_previous=has_current AND (NOT has_current OR
+        ROW(previous.block_hash,previous.bucket_start,previous.ready) IS NOT DISTINCT FROM
+        ROW(current_source.block_hash,current_source.bucket_start,current_source.ready)) THEN RETURN; END IF;
+    IF had_previous THEN
+        DELETE FROM chart_source_blocks WHERE chain_id=target_chain AND block_number=target_number;
+        UPDATE chart_source_hours SET block_count=block_count-1,ready_count=ready_count-previous.ready::integer
+        WHERE chain_id=target_chain AND bucket_start=previous.bucket_start;
+    END IF;
+    IF has_current THEN
+        INSERT INTO chart_source_blocks VALUES(target_chain,target_number,current_source.block_hash,current_source.bucket_start,current_source.ready);
+        IF current_source.bucket_start IS NOT NULL THEN
+            INSERT INTO chart_source_hours(chain_id,bucket_start,block_count,ready_count)
+            VALUES(target_chain,current_source.bucket_start,1,current_source.ready::integer)
+            ON CONFLICT(chain_id,bucket_start) DO UPDATE SET block_count=chart_source_hours.block_count+1,ready_count=chart_source_hours.ready_count+EXCLUDED.ready_count;
+        END IF;
+    END IF;
+    INSERT INTO chart_source_totals(chain_id) VALUES(target_chain) ON CONFLICT DO NOTHING;
+    UPDATE chart_source_totals SET total_blocks=total_blocks+has_current::integer-had_previous::integer,
+        completed_blocks=completed_blocks+CASE WHEN has_current AND current_source.ready THEN 1 ELSE 0 END-CASE WHEN had_previous AND previous.ready THEN 1 ELSE 0 END,
+        generation=generation+1 WHERE chain_id=target_chain;
+    FOR hour_start IN SELECT DISTINCT hour FROM unnest(ARRAY[previous.bucket_start,current_source.bucket_start]) AS hours(hour) WHERE hour IS NOT NULL LOOP
+        DELETE FROM chart_source_hours WHERE chain_id=target_chain AND bucket_start=hour_start AND block_count=0;
+        UPDATE chart_source_hours SET
+            first_block=(SELECT block_number FROM chart_source_blocks WHERE chain_id=target_chain AND bucket_start=hour_start ORDER BY block_number LIMIT 1),
+            last_block=(SELECT block_number FROM chart_source_blocks WHERE chain_id=target_chain AND bucket_start=hour_start ORDER BY block_number DESC LIMIT 1),
+            first_pending=(SELECT block_number FROM chart_source_blocks WHERE chain_id=target_chain AND bucket_start=hour_start AND NOT ready ORDER BY block_number LIMIT 1)
+        WHERE chain_id=target_chain AND bucket_start=hour_start;
+    END LOOP;
+END
+$$;
+
+CREATE FUNCTION flush_chart_sources() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE target record;
+BEGIN
+    FOR target IN SELECT chain_id,block_number FROM chart_source_refresh_work
+        WHERE transaction_id=pg_current_xact_id() ORDER BY chain_id,block_number LOOP
+        DELETE FROM chart_source_refresh_work WHERE transaction_id=pg_current_xact_id() AND chain_id=target.chain_id AND block_number=target.block_number;
+        PERFORM refresh_chart_source(target.chain_id,target.block_number);
+    END LOOP;
+    RETURN NULL;
+END
+$$;
+CREATE CONSTRAINT TRIGGER chart_source_flush AFTER INSERT ON chart_source_refresh_work
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION flush_chart_sources();
+
+CREATE FUNCTION queue_chart_source() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE source jsonb; number numeric;
+BEGIN
+    IF TG_TABLE_NAME='durable_jobs' AND TG_OP='UPDATE' THEN
+        IF ROW(NEW.kind,NEW.chain_id,NEW.stage,NEW.stage_version,NEW.payload,NEW.status,
+            NEW.requested_generation,NEW.claimed_generation,NEW.completed_generation,NEW.leased_generation,
+            NEW.leased_by,NEW.lease_token,NEW.lease_expires_at IS NULL,NEW.result) IS NOT DISTINCT FROM
+           ROW(OLD.kind,OLD.chain_id,OLD.stage,OLD.stage_version,OLD.payload,OLD.status,
+            OLD.requested_generation,OLD.claimed_generation,OLD.completed_generation,OLD.leased_generation,
+            OLD.leased_by,OLD.lease_token,OLD.lease_expires_at IS NULL,OLD.result) THEN RETURN NULL; END IF;
+    END IF;
+    FOR source IN SELECT DISTINCT value FROM jsonb_array_elements(CASE TG_OP
+        WHEN 'INSERT' THEN jsonb_build_array(to_jsonb(NEW)) WHEN 'DELETE' THEN jsonb_build_array(to_jsonb(OLD))
+        ELSE jsonb_build_array(to_jsonb(OLD),to_jsonb(NEW)) END) LOOP
+        IF TG_TABLE_NAME IN ('durable_jobs','block_stage_results','block_journals') AND
+            NOT ((source->>'stage'='stats' AND source->>'stage_version'='4') OR (source->>'stage'='token' AND source->>'stage_version'='2')) THEN CONTINUE; END IF;
+        IF TG_TABLE_NAME='durable_jobs' AND source->>'kind'<>'enrichment' THEN CONTINUE; END IF;
+        number := COALESCE(source->>'number',source->>'block_number',source->'payload'->>'block_number')::numeric;
+        IF number IS NULL THEN CONTINUE; END IF;
+        INSERT INTO chart_source_refresh_work(chain_id,block_number) VALUES((source->>'chain_id')::numeric,number) ON CONFLICT DO NOTHING;
+    END LOOP;
+    RETURN NULL;
+END
+$$;
+CREATE TRIGGER chart_source_canonical AFTER INSERT OR UPDATE OR DELETE ON canonical_blocks FOR EACH ROW EXECUTE FUNCTION queue_chart_source();
+CREATE TRIGGER chart_source_jobs AFTER INSERT OR UPDATE OR DELETE ON durable_jobs FOR EACH ROW EXECUTE FUNCTION queue_chart_source();
+CREATE TRIGGER chart_source_results AFTER INSERT OR UPDATE OR DELETE ON block_stage_results FOR EACH ROW EXECUTE FUNCTION queue_chart_source();
+CREATE TRIGGER chart_source_statistics AFTER INSERT OR UPDATE OR DELETE ON block_statistics FOR EACH ROW EXECUTE FUNCTION queue_chart_source();
+CREATE TRIGGER chart_source_journals AFTER INSERT OR UPDATE OR DELETE ON block_journals FOR EACH ROW EXECUTE FUNCTION queue_chart_source();
+
+CREATE FUNCTION update_chart_dirty_total() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP='INSERT' THEN
+        INSERT INTO chart_dirty_totals VALUES(NEW.chain_id,1) ON CONFLICT(chain_id)
+        DO UPDATE SET dirty_hours=chart_dirty_totals.dirty_hours+1;
+    ELSE
+        UPDATE chart_dirty_totals SET dirty_hours=dirty_hours-1 WHERE chain_id=OLD.chain_id;
+    END IF;
+    RETURN NULL;
+END
+$$;
+CREATE TRIGGER chart_dirty_total AFTER INSERT OR DELETE ON chart_rollup_dirty_hours FOR EACH ROW EXECUTE FUNCTION update_chart_dirty_total();
+
+CREATE FUNCTION reconcile_chart_sources(target_chain numeric) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE cursor_row chart_source_reconciliation%ROWTYPE; target record; previous chart_source_blocks%ROWTYPE; current_source record; visited integer:=0; next_number numeric:=0;
+BEGIN
+    INSERT INTO chart_source_reconciliation(chain_id) VALUES(target_chain) ON CONFLICT DO NOTHING;
+    SELECT * INTO cursor_row FROM chart_source_reconciliation WHERE chain_id=target_chain AND next_at<=now() FOR UPDATE;
+    IF NOT FOUND THEN RETURN; END IF;
+    FOR target IN SELECT number FROM (
+        (SELECT number FROM canonical_blocks WHERE chain_id=target_chain AND number>=cursor_row.next_block ORDER BY number LIMIT 1000)
+        UNION
+        (SELECT block_number AS number FROM chart_source_blocks WHERE chain_id=target_chain AND block_number>=cursor_row.next_block ORDER BY block_number LIMIT 1000)
+    ) candidates ORDER BY number LIMIT 1000 LOOP
+        visited:=visited+1; next_number:=target.number+1;
+        SELECT * INTO previous FROM chart_source_blocks WHERE chain_id=target_chain AND block_number=target.number;
+        SELECT * INTO current_source FROM chart_current_source(target_chain,target.number);
+        IF ROW(previous.block_hash,previous.bucket_start,previous.ready) IS DISTINCT FROM
+           ROW(current_source.block_hash,current_source.bucket_start,current_source.ready) THEN
+            -- Invalidate before taking the deferred source lock, preserving the
+            -- publisher's dirty-hour -> source-summary lock order.
+            IF previous.block_hash IS NOT NULL THEN PERFORM mark_chart_rollup_dirty_for_block(target_chain,target.number,previous.block_hash); END IF;
+            IF current_source.block_hash IS NOT NULL THEN PERFORM mark_chart_rollup_dirty_for_block(target_chain,target.number,current_source.block_hash); END IF;
+            INSERT INTO chart_source_refresh_work(chain_id,block_number) VALUES(target_chain,target.number) ON CONFLICT DO NOTHING;
+        END IF;
+    END LOOP;
+    UPDATE chart_source_reconciliation SET next_block=CASE WHEN visited<1000 THEN 0 ELSE next_number END,next_at=now()+interval '15 minutes' WHERE chain_id=target_chain;
+END
+$$;

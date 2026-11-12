@@ -261,3 +261,62 @@ actual AWS SDK HTTP signing, both payment methods on both networks in all/split
 layouts, recovery checks and independent chain/writer reconciliation. Local
 simulation does not establish real AWS IAM enforcement, production key isolation
 or public-network production readiness; P70 release gates remain separate.
+
+## Pending payment and verification recovery
+
+A `x402_verification_retryable` response permits explicit reuse of the exact signed
+request only while the intent is still processing. The browser keeps this request
+in memory; it is not stored in browser storage. Other unknown outcomes must use
+intent polling. Do not send another authorization to resolve an uncertain payment.
+
+The API role automatically queries /result and publishes validated credits even
+when the user closes the page. Inspect the original transaction separately from
+`settlement_transaction_hash`: a third-party payment does not replace the original
+signer nonce or raw transaction. Stop the normal facilitator before exact-byte
+rebroadcast with its existing recovery command. No nonce replacement or fee bump
+is performed. Keep the original facilitator/network configuration available until
+pending authorizations and outstanding signer transactions are resolved.
+
+Monitor pending counts and age in the journal. Scans are bounded and can take
+multiple cycles to locate historical payments. Dense blocks, unavailable history,
+contract-internal relay calls and consumed nonces lacking matching evidence remain
+pending and require operator investigation; do not infer payment from Transfer
+alone. Deep reorgs after configured confirmations are an operational incident:
+stop affected settlement publication, retain both hashes and audit account entries,
+then use audited account adjustments after independently establishing chain facts.
+Automatic terminal-credit reversal is not implemented.
+
+Singleton connection loss causes permanent inactive health and nonzero bounded
+process exit. Configure the process supervisor to restart it; restart must acquire
+the lock before mutation. Never toggle active state in a running failed instance.
+
+## Payment request deadlines
+
+`server.request_timeout` remains 20s for ordinary APIs. Only
+`POST /api/v1/billing/topup-intents/{id}/pay` uses
+`server.payment_request_timeout` (default 75s, positive and at most 3m), selected
+before authentication. Its environment override is
+`ETHERVIEW_SERVER_PAYMENT_REQUEST_TIMEOUT`.
+
+With top-ups enabled, `billing.facilitator_timeout` is 30s–1m (default 30s).
+The payment budget must be at least twice that timeout plus 15s: sequential
+Verify and Settle calls, 10s for authentication/admission/database work, 2s for
+bounded result/ledger completion and 3s response margin. A facilitator settlement
+has a 25s execution deadline and up to 2s journal completion. A slow earlier stage
+still consumes the same finite total budget; this is not a guarantee of success.
+`server.write_timeout` (default 100s) must cover `server.read_timeout` plus the
+payment budget plus 5s, since net/http starts its write deadline before body reads.
+Invalid combinations fail configuration validation in both all and split roles.
+
+Configure ingress response-header deadlines above the payment budget and client
+deadlines above ingress. Preview uses 100s for this exact POST route while ordinary
+upstreams retain 30s; its acceptance client uses 110s. Changing the payment budget
+requires updating ingress/client limits too. The browser payment fetch has no
+independent short timer and retains its existing session/wallet invalidation checks.
+
+Paused mining returns `402` with `PAYMENT-RESPONSE`, `settlement_pending` and the
+original hash when the facilitator completes within budget. Exhausting the total
+budget returns `504 request_timeout`; durable settling/unknown state and any known
+hash remain available for polling and automatic result reconciliation. Neither
+case retries settlement or credits before confirmation. Recovery uses the original
+transaction identity and the existing exactly-once publication fence.

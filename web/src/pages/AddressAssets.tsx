@@ -68,7 +68,7 @@ export function AddressAssets({ address, asset }: { address: string; asset: Addr
               </p>
             </Alert>
           )}
-          <QueryNotice loading={query.isPending} error={query.error} onReset={pager.reset} />
+          <QueryNotice loading={query.isLoading} error={query.error} onReset={pager.reset} />
           {data?.items.length === 0 && (
             <p className="empty-result address-asset-empty" role="status">
               <BrowsingEmpty>

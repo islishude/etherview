@@ -321,3 +321,22 @@ func cloneEndpoint(endpoint Endpoint) Endpoint {
 	copy.Capabilities = endpoint.Capabilities.Clone()
 	return copy
 }
+
+// AddVerified makes a previously quarantined endpoint selectable only after its
+// caller has completed identity and capability verification. Existing entries
+// cannot be replaced underneath sticky operations.
+func (p *Pool) AddVerified(endpoint Endpoint) error {
+	validated, err := NewPool([]Endpoint{endpoint}, PoolOptions{})
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.find(endpoint.Name) != nil {
+		return errors.New("RPC endpoint already registered")
+	}
+	for purpose, states := range validated.byPurpose {
+		p.byPurpose[purpose] = append(p.byPurpose[purpose], states...)
+	}
+	return nil
+}

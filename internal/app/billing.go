@@ -9,6 +9,7 @@ import (
 
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/billing/x402wire"
+	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
 	"github.com/islishude/etherview/internal/etherscanops"
 )
@@ -102,4 +103,22 @@ func newPrepaidServices(
 		return nil, nil, err
 	}
 	return ledger, dispatcher, nil
+}
+
+func registerTopupReconciliation(registry *components.Registry, dispatcher *billing.TopupDispatcher) error {
+	if dispatcher == nil {
+		return nil
+	}
+	return registry.Register(components.RoleAPI, "21-topup-reconciliation", func() (components.Service, error) { return dispatcher, nil })
+}
+
+func newRuntimeTopupDispatcher(cfg config.Config, payments *billing.PostgresLedger, accounts *billing.PrepaidLedger, logger *slog.Logger, observer billing.PrepaidObserver, registry *components.Registry) (*billing.TopupDispatcher, error) {
+	dispatcher, err := newTopupDispatcher(cfg, payments, accounts, logger, observer)
+	if err != nil {
+		return nil, err
+	}
+	if err := registerTopupReconciliation(registry, dispatcher); err != nil {
+		return nil, err
+	}
+	return dispatcher, nil
 }

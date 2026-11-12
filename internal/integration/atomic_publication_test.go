@@ -158,17 +158,12 @@ func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
 		UPDATE durable_jobs
 		SET lease_expires_at = clock_timestamp() - INTERVAL '1 second'
 		WHERE id = $1`, enqueued.Job.ID)
-	type claimResult struct {
-		lease enrich.Lease
-		found bool
-		err   error
+	busyCtx, busyCancel := context.WithTimeout(ctx, time.Second)
+	_, busyFound, busyErr := queue.Claim(busyCtx, "replacement-publisher", []enrich.StageID{enrich.StatsStage}, time.Minute)
+	busyCancel()
+	if busyErr != nil || busyFound {
+		t.Fatalf("busy publication must be skipped: found=%v err=%v", busyFound, busyErr)
 	}
-	replacementResult := make(chan claimResult, 1)
-	go func() {
-		lease, claimFound, claimErr := queue.Claim(ctx, "replacement-publisher", []enrich.StageID{enrich.StatsStage}, time.Minute)
-		replacementResult <- claimResult{lease: lease, found: claimFound, err: claimErr}
-	}()
-	waitForAdvisoryWaiterCount(t, ctx, db, 2)
 	if _, err := lockConnection.Exec(ctx, `SELECT pg_advisory_unlock($1)`, outputBarrier); err != nil {
 		t.Fatal(err)
 	}
@@ -176,10 +171,9 @@ func TestExpiredWriterCannotPublishAfterReplacementLease(t *testing.T) {
 	if err := <-oldResult; !errors.Is(err, enrich.ErrLeaseLost) {
 		t.Fatalf("expired worker error=%v, want ErrLeaseLost", err)
 	}
-	replacementClaim := <-replacementResult
-	replacement := replacementClaim.lease
-	if replacementClaim.err != nil || !replacementClaim.found || replacement.Token == "" || replacement.Job.Attempt != 2 {
-		t.Fatalf("replacement lease=%+v found=%t err=%v", replacement, replacementClaim.found, replacementClaim.err)
+	replacement, found, err := queue.Claim(ctx, "replacement-publisher", []enrich.StageID{enrich.StatsStage}, time.Minute)
+	if err != nil || !found || replacement.Token == "" || replacement.Job.Attempt != 2 {
+		t.Fatalf("replacement=%+v found=%v err=%v", replacement, found, err)
 	}
 	assertAtomicStageAbsent(t, ctx, db, reference, enrich.StatsStage)
 	result, err := processor.ProcessLease(ctx, replacement, queue)
@@ -881,28 +875,6 @@ func waitForAdvisoryWaiter(t *testing.T, ctx context.Context, db *pgxpool.Pool, 
 		select {
 		case <-ctx.Done():
 			t.Fatalf("wait for advisory lock %d: %v", key, ctx.Err())
-		case <-ticker.C:
-		}
-	}
-}
-
-func waitForAdvisoryWaiterCount(t *testing.T, ctx context.Context, db *pgxpool.Pool, minimum int) {
-	t.Helper()
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		var waiting int
-		if err := db.QueryRow(ctx, `
-			SELECT count(*) FROM pg_locks
-			WHERE locktype = 'advisory' AND NOT granted`).Scan(&waiting); err != nil {
-			t.Fatal(err)
-		}
-		if waiting >= minimum {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("wait for %d advisory waiters: %v", minimum, ctx.Err())
 		case <-ticker.C:
 		}
 	}

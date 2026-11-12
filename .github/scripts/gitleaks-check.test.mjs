@@ -9,6 +9,51 @@ import test from "node:test";
 // Synthetic public values exercise scanner entropy checks without using credentials.
 const publicHash = createHash("sha256").update("etherview public scanner regression").digest("hex");
 
+test("top-up component exception retains path, field and value boundaries", () => {
+  const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-component-"));
+  const file = "internal/app/billing.go";
+  const component = "21-topup-reconciliation";
+  try {
+    for (const name of [file, `nested/${file}`, `${file}.bak`]) {
+      mkdirSync(dirname(join(root, name)), { recursive: true });
+      writeFileSync(
+        join(root, name),
+        `components.RoleAPI, "${component}"\ncomponents.RoleAPI, "${publicHash}"\napi_key = "${component}"\n`,
+      );
+    }
+    const result = spawnSync(
+      process.env.GITLEAKS ?? "gitleaks",
+      [
+        "dir",
+        "--no-banner",
+        "--redact",
+        "--config",
+        resolve(".gitleaks.toml"),
+        "--report-format",
+        "json",
+        "--report-path",
+        join(root, "report.json"),
+        ".",
+      ],
+      { cwd: root, encoding: "utf8" },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 1);
+    const findings = JSON.parse(readFileSync(join(root, "report.json"), "utf8"));
+    assert.deepEqual(
+      findings.map(({ File, StartLine }) => `${File}:${StartLine}`).sort(),
+      [
+        `${file}:2`,
+        `${file}:3`,
+        ...[1, 2, 3].map((line) => `nested/${file}:${line}`),
+        ...[1, 2, 3].map((line) => `${file}.bak:${line}`),
+      ].sort(),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("WebSocket sample nonce exception retains path, header and value boundaries", () => {
   const root = mkdtempSync(join(tmpdir(), "etherview-gitleaks-websocket-test-"));
   const canonical = "e2e/previewgateway/gateway_test.go";

@@ -252,6 +252,52 @@ func (q *Queries) VerifyV2GetJob(ctx context.Context, jobID pgtype.UUID) (Verify
 	return i, err
 }
 
+const verifyV2GetJobOutcome = `-- name: VerifyV2GetJobOutcome :one
+SELECT outcome FROM verification_jobs WHERE id=$1::uuid
+`
+
+func (q *Queries) VerifyV2GetJobOutcome(ctx context.Context, id pgtype.UUID) ([]byte, error) {
+	row := q.db.QueryRow(ctx, verifyV2GetJobOutcome, id)
+	var outcome []byte
+	err := row.Scan(&outcome)
+	return outcome, err
+}
+
+const verifyV2GetJobSummary = `-- name: VerifyV2GetJobSummary :one
+SELECT id::text,kind,status,summary_outcome AS outcome,error_code,created_at,updated_at,
+       summary_chain_id,summary_address
+FROM verification_jobs WHERE id=$1::uuid
+`
+
+type VerifyV2GetJobSummaryRow struct {
+	ID             string             `db:"id" json:"id"`
+	Kind           string             `db:"kind" json:"kind"`
+	Status         string             `db:"status" json:"status"`
+	Outcome        []byte             `db:"outcome" json:"outcome"`
+	ErrorCode      *string            `db:"error_code" json:"error_code"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	SummaryChainID *string            `db:"summary_chain_id" json:"summary_chain_id"`
+	SummaryAddress *string            `db:"summary_address" json:"summary_address"`
+}
+
+func (q *Queries) VerifyV2GetJobSummary(ctx context.Context, id pgtype.UUID) (VerifyV2GetJobSummaryRow, error) {
+	row := q.db.QueryRow(ctx, verifyV2GetJobSummary, id)
+	var i VerifyV2GetJobSummaryRow
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Status,
+		&i.Outcome,
+		&i.ErrorCode,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.SummaryChainID,
+		&i.SummaryAddress,
+	)
+	return i, err
+}
+
 const verifyV2LockRunningJob = `-- name: VerifyV2LockRunningJob :one
 SELECT id::text, kind, language, compiler_version, compiler_platform,
        catalog_generation_id, compiler_digest, executor_kind,
@@ -323,10 +369,10 @@ INSERT INTO verification_jobs (
     catalog_generation_id,
     compiler_digest, executor_kind, execution_policy, executor_digest,
     chain_id, address, code_hash, block_hash,
-    request, request_payload, request_digest, max_attempts
+    request, request_payload, request_digest, max_attempts, admission_principal
 ) VALUES (
     $1::uuid, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL,
-    $9::numeric, $10, $11, $12, $13::jsonb, $14, $15, $16
+    $9::numeric, $10, $11, $12, $13::jsonb, $14, $15, $16, $17
 )
 ON CONFLICT (request_digest) WHERE status IN ('queued', 'running', 'succeeded')
 DO NOTHING
@@ -354,6 +400,7 @@ type VerifyV2SubmitJobParams struct {
 	RequestPayload      []byte         `db:"request_payload" json:"request_payload"`
 	RequestDigest       []byte         `db:"request_digest" json:"request_digest"`
 	MaxAttempts         int32          `db:"max_attempts" json:"max_attempts"`
+	AdmissionPrincipal  string         `db:"admission_principal" json:"admission_principal"`
 }
 
 type VerifyV2SubmitJobRow struct {
@@ -397,6 +444,7 @@ func (q *Queries) VerifyV2SubmitJob(ctx context.Context, arg VerifyV2SubmitJobPa
 		arg.RequestPayload,
 		arg.RequestDigest,
 		arg.MaxAttempts,
+		arg.AdmissionPrincipal,
 	)
 	var i VerifyV2SubmitJobRow
 	err := row.Scan(

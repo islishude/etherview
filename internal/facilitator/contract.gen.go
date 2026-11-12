@@ -84,6 +84,45 @@ func (e FacilitatorProgressJSONBodyX402Version) Valid() bool {
 	}
 }
 
+// Defines values for FacilitatorResult200JSONResponseBodyEvidenceSource.
+const (
+	External FacilitatorResult200JSONResponseBodyEvidenceSource = "external"
+	Original FacilitatorResult200JSONResponseBodyEvidenceSource = "original"
+)
+
+// Valid indicates whether the value is a known member of the FacilitatorResult200JSONResponseBodyEvidenceSource enum.
+func (e FacilitatorResult200JSONResponseBodyEvidenceSource) Valid() bool {
+	switch e {
+	case External:
+		return true
+	case Original:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FacilitatorResult200JSONResponseBodyState.
+const (
+	Failed    FacilitatorResult200JSONResponseBodyState = "failed"
+	Pending   FacilitatorResult200JSONResponseBodyState = "pending"
+	Succeeded FacilitatorResult200JSONResponseBodyState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the FacilitatorResult200JSONResponseBodyState enum.
+func (e FacilitatorResult200JSONResponseBodyState) Valid() bool {
+	switch e {
+	case Failed:
+		return true
+	case Pending:
+		return true
+	case Succeeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FacilitatorSettleJSONBodyPaymentRequirementsScheme.
 const (
 	FacilitatorSettleJSONBodyPaymentRequirementsSchemeExact FacilitatorSettleJSONBodyPaymentRequirementsScheme = "exact"
@@ -227,6 +266,18 @@ type FacilitatorProgressJSONBodyPaymentRequirementsScheme string
 // FacilitatorProgressJSONBodyX402Version defines parameters for FacilitatorProgress.
 type FacilitatorProgressJSONBodyX402Version int
 
+// FacilitatorResultJSONBody defines parameters for FacilitatorResult.
+type FacilitatorResultJSONBody struct {
+	AuthorizationId string `json:"authorizationId"`
+	RequestDigest   string `json:"requestDigest"`
+}
+
+// FacilitatorResult200JSONResponseBodyEvidenceSource defines parameters for FacilitatorResult.
+type FacilitatorResult200JSONResponseBodyEvidenceSource string
+
+// FacilitatorResult200JSONResponseBodyState defines parameters for FacilitatorResult.
+type FacilitatorResult200JSONResponseBodyState string
+
 // FacilitatorSettleJSONBody defines parameters for FacilitatorSettle.
 type FacilitatorSettleJSONBody struct {
 	// PaymentPayload x402 v2 exact-EVM authorization payload. Integer amounts and nonces use strings.
@@ -279,6 +330,9 @@ type FacilitatorVerifyJSONBodyX402Version int
 
 // FacilitatorProgressJSONRequestBody defines body for FacilitatorProgress for application/json ContentType.
 type FacilitatorProgressJSONRequestBody FacilitatorProgressJSONBody
+
+// FacilitatorResultJSONRequestBody defines body for FacilitatorResult for application/json ContentType.
+type FacilitatorResultJSONRequestBody FacilitatorResultJSONBody
 
 // FacilitatorSettleJSONRequestBody defines body for FacilitatorSettle for application/json ContentType.
 type FacilitatorSettleJSONRequestBody FacilitatorSettleJSONBody

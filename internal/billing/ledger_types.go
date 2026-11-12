@@ -6,6 +6,7 @@ package billing
 import (
 	"errors"
 	"github.com/islishude/etherview/internal/billing/paymentoption"
+	"github.com/islishude/etherview/internal/x402settlement"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -54,35 +55,36 @@ var (
 type Digest [32]byte
 
 type Payment struct {
-	PaymentOption        *paymentoption.Option
-	ID                   string
-	ChainID              uint64
-	Operation            string
-	Method               string
-	Purpose              string
-	AssetTransferMethod  string
-	PaymentFlow          string
-	FingerprintVersion   int16
-	TopupIntentID        *string
-	Network              string
-	Asset                common.Address
-	AmountAtomic         string
-	Recipient            common.Address
-	Payer                *common.Address
-	UserID               *string
-	APIKeyPrefix         *string
-	TransactionHash      *common.Hash
-	State                State
-	FailureCode          *string
-	ReservationExpiresAt time.Time
-	HandlerStartedAt     *time.Time
-	VerifiedAt           *time.Time
-	SettlingAt           *time.Time
-	SettledAt            *time.Time
-	FailedAt             *time.Time
-	ExpiredAt            *time.Time
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	PaymentOption             *paymentoption.Option
+	ID                        string
+	ChainID                   uint64
+	Operation                 string
+	Method                    string
+	Purpose                   string
+	AssetTransferMethod       string
+	PaymentFlow               string
+	FingerprintVersion        int16
+	TopupIntentID             *string
+	Network                   string
+	Asset                     common.Address
+	AmountAtomic              string
+	Recipient                 common.Address
+	Payer                     *common.Address
+	UserID                    *string
+	APIKeyPrefix              *string
+	TransactionHash           *common.Hash
+	SettlementTransactionHash *common.Hash
+	State                     State
+	FailureCode               *string
+	ReservationExpiresAt      time.Time
+	HandlerStartedAt          *time.Time
+	VerifiedAt                *time.Time
+	SettlingAt                *time.Time
+	SettledAt                 *time.Time
+	FailedAt                  *time.Time
+	ExpiredAt                 *time.Time
+	CreatedAt                 time.Time
+	UpdatedAt                 time.Time
 
 	fingerprint       Digest
 	resourceDigest    Digest
@@ -99,6 +101,7 @@ type Reservation struct {
 }
 
 type ReserveInput struct {
+	Reference           *x402settlement.Reference
 	Fingerprint         Digest
 	Operation           string
 	Method              string

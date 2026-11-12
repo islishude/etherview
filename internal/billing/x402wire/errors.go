@@ -19,14 +19,18 @@ const (
 type FailureClass string
 
 const (
-	FailureInvalid           FailureClass = "invalid"
-	FailureRejected          FailureClass = "rejected"
-	FailureUnavailable       FailureClass = "unavailable"
-	FailureSettlementUnknown FailureClass = "settlement_unknown"
-	FailureSettlementPending FailureClass = "settlement_pending"
+	FailureReconciliationRequired FailureClass = "reconciliation_required"
+	FailureTransactionReverted    FailureClass = "transaction_reverted"
+	FailureInvalid                FailureClass = "invalid"
+	FailureRejected               FailureClass = "rejected"
+	FailureUnavailable            FailureClass = "unavailable"
+	FailureSettlementUnknown      FailureClass = "settlement_unknown"
+	FailureSettlementPending      FailureClass = "settlement_pending"
 )
 
 const (
+	CodeVerificationRetryable      = "x402_verification_retryable"
+	CodeAllowanceRequired          = "permit2_allowance_required"
 	CodeHeaderMissing              = "x402_payment_header_missing"
 	CodeHeaderMultiple             = "x402_payment_header_multiple"
 	CodeHeaderOversized            = "x402_payment_header_oversized"

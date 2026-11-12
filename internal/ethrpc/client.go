@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -129,11 +130,16 @@ func (transport *guardedRoundTripper) RoundTrip(request *http.Request) (*http.Re
 		if contextErr := request.Context().Err(); contextErr != nil {
 			return nil, contextErr
 		}
+		var certificate *tls.CertificateVerificationError
+		var record tls.RecordHeaderError
+		if errors.As(err, &certificate) || errors.As(err, &record) {
+			return nil, ErrInvalidResponse
+		}
 		return nil, ErrTransport
 	}
 	if response == nil {
 		scrubRequestURL(request)
-		return nil, ErrTransport
+		return nil, ErrInvalidResponse
 	}
 	response.Request = request
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {

@@ -278,7 +278,7 @@ func (repository *PostgresRepository) CompleteDerived(
 		!prepared.valid() {
 		return "", errors.New("derived verification trace identity is invalid")
 	}
-	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := repository.beginCapacityTx(ctx)
 	if err != nil {
 		return "", err
 	}

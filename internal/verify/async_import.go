@@ -3,7 +3,6 @@ package verify
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"reflect"
 
@@ -33,12 +32,15 @@ func (repository *PostgresRepository) SaveImportInput(ctx context.Context, lease
 	if input.Kind != JobAddress {
 		return VerificationJob{}, ErrSourcifyInvalidResponse
 	}
-	service := Service{maxInputBytes: repository.options.MaxRequestBytes}
+	service := Service{maxInputBytes: repository.options.MaxInputBytes}
 	if err := service.prepareV2(ctx, &input); err != nil {
 		return VerificationJob{}, ErrSourcifyInvalidResponse
 	}
+	if err := validateCompilerInputs(input, repository.options.MaxInputBytes); err != nil {
+		return VerificationJob{}, ErrSourcifyInvalidResponse
+	}
 	normalizeSolidityAnalysisVersion(&input)
-	payload, err := json.Marshal(input)
+	payload, metadata, err := encodeSubmission(input)
 	if err != nil || len(payload) > repository.options.MaxRequestBytes {
 		return VerificationJob{}, ErrSourcifyInvalidResponse
 	}
@@ -47,7 +49,7 @@ func (repository *PostgresRepository) SaveImportInput(ctx context.Context, lease
 	if err := id.Scan(lease.Job.ID); err != nil {
 		return VerificationJob{}, err
 	}
-	tx, err := repository.db.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := repository.beginCapacityTx(ctx)
 	if err != nil {
 		return VerificationJob{}, err
 	}
@@ -75,7 +77,7 @@ func (repository *PostgresRepository) SaveImportInput(ctx context.Context, lease
 		return VerificationJob{}, ErrVerificationTargetInvalid
 	}
 	if job.RequestV2.Kind == JobSourcifyImport {
-		count, err := q.VerifyImportSaveInput(ctx, dbgen.VerifyImportSaveInputParams{ID: id, Token: new(lease.Token), Request: payload, Payload: payload, Digest: digest[:]})
+		count, err := q.VerifyImportSaveInput(ctx, dbgen.VerifyImportSaveInputParams{ID: id, Token: new(lease.Token), Request: metadata, Payload: payload, Digest: digest[:]})
 		if err != nil {
 			return VerificationJob{}, err
 		}

@@ -13,7 +13,7 @@ import { BrowsingScope, BrowsingEmpty } from "@/components/BrowsingScope";
 import { QueryNotice } from "@/components/QueryNotice";
 import { formatInteger, formatRelativeTimestamp, shorten } from "@/components/format";
 import { CursorPagination } from "./pages";
-import { TransactionLogCard } from "./TransactionLogs";
+import { TransactionLogCard } from "@/components/TransactionLogCard";
 import { AddressLogFilters } from "./AddressLogFilters";
 import {
   appliedLogFilter,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/base32"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -121,12 +122,39 @@ func (ledger *PostgresLedger) reservePayment(
 		ReservationExpiresAt: postgresTime(createdAt.Add(ledger.reservationTTL)),
 		CreatedAt:            postgresTime(createdAt),
 	}
+	if input.Reference != nil {
+		digest, e := hex.DecodeString(input.Reference.RequestDigest)
+		if e != nil || len(digest) != 32 || input.Reference.AuthorizationID == "" {
+			return Reservation{}, ErrInvalidInput
+		}
+		params.AuthorizationID = &input.Reference.AuthorizationID
+		params.RequestDigest = digest
+	}
 	var row dbgen.BillingPayment
 	owned := false
 	err = dbaccess.WithTransaction(ctx, ledger.db, func(queries *dbgen.Queries) error {
 		var queryErr error
 		row, queryErr = queries.InsertBillingPayment(ctx, params)
 		if errors.Is(queryErr, pgx.ErrNoRows) {
+
+			if input.Reference != nil {
+				prior, e := queries.GetBillingPaymentByFingerprint(ctx, input.Fingerprint[:])
+				if e != nil {
+					return e
+				}
+				payment, e := ledger.paymentFromRow(prior)
+				if e != nil || !sameReservation(payment, input) {
+					return ErrIntegrity
+				}
+				row, queryErr = queries.RetryBillingTopupVerification(ctx, dbgen.RetryBillingTopupVerificationParams{Owner: uuidValue(owner), ExpiresAt: postgresTime(createdAt.Add(ledger.reservationTTL)), ObservedAt: postgresTime(createdAt), Fingerprint: input.Fingerprint[:], AuthorizationID: params.AuthorizationID, RequestDigest: params.RequestDigest})
+				if queryErr == nil {
+					owned = true
+					return nil
+				}
+				if !errors.Is(queryErr, pgx.ErrNoRows) {
+					return queryErr
+				}
+			}
 			row, queryErr = queries.GetBillingPaymentByFingerprint(ctx, input.Fingerprint[:])
 			return queryErr
 		}
@@ -941,6 +969,13 @@ func (ledger *PostgresLedger) paymentFromRow(row dbgen.BillingPayment) (Payment,
 		}
 		payment.UserID = &value
 	}
+	if len(row.SettlementTransactionHash) > 0 {
+		value, e := transactionHashFromBytes(row.SettlementTransactionHash)
+		if e != nil || zeroTransactionHash(value) {
+			return Payment{}, ErrIntegrity
+		}
+		payment.SettlementTransactionHash = &value
+	}
 	if len(row.TransactionHash) != 0 {
 		value, hashErr := transactionHashFromBytes(row.TransactionHash)
 		if hashErr != nil || zeroTransactionHash(value) {
@@ -1139,7 +1174,7 @@ func validPaymentStateFacts(payment Payment) bool {
 		return payment.Payer != nil && payment.VerifiedAt != nil &&
 			payment.HandlerStartedAt != nil && payment.SettlingAt != nil &&
 			payment.SettledAt != nil && payment.FailedAt == nil &&
-			payment.ExpiredAt == nil && payment.TransactionHash != nil &&
+			payment.ExpiredAt == nil && (payment.TransactionHash != nil || payment.SettlementTransactionHash != nil) &&
 			payment.FailureCode == nil &&
 			!payment.SettledAt.Before(*payment.SettlingAt)
 	case StateFailed:

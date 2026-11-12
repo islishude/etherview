@@ -75,7 +75,7 @@ export function VerificationResults({
       </h2>
       {auth.enabled && auth.session.authenticated && (
         <>
-          <QueryNotice loading={job.isPending} error={job.error} />
+          <QueryNotice loading={job.isLoading} error={job.error} />
           {job.error && (
             <Button
               variant="outline"

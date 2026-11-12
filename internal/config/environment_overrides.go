@@ -377,6 +377,21 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 	if err := setInt(lookup, "USER_AUTH_MAX_ACTIVE_API_KEYS", &cfg.UserAuth.MaxActiveAPIKeys); err != nil {
 		return err
 	}
+	if err := setInt(lookup, "VERIFICATION_MAX_REQUEST_BYTES", &cfg.Verification.MaxRequestBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_JOB_BYTES", &cfg.Verification.MaxJobBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_QUEUED_JOBS", &cfg.Verification.MaxQueuedJobs); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_QUEUED_BYTES", &cfg.Verification.MaxQueuedBytes); err != nil {
+		return err
+	}
+	if err := setInt(lookup, "VERIFICATION_MAX_USER_JOBS", &cfg.Verification.MaxUserJobs); err != nil {
+		return err
+	}
 	if err := setInt(lookup, "VERIFICATION_MAX_INPUT_BYTES", &cfg.Verification.MaxInputBytes); err != nil {
 		return err
 	}
@@ -439,46 +454,48 @@ func applyNumericEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 
 func applyDurationEnvironment(cfg *Config, lookup func(string) (string, bool)) error {
 	for name, target := range map[string]*time.Duration{
-		"SERVER_SHUTDOWN_TIMEOUT":       &cfg.Server.ShutdownTimeout,
-		"SERVER_READ_TIMEOUT":           &cfg.Server.ReadTimeout,
-		"SERVER_WRITE_TIMEOUT":          &cfg.Server.WriteTimeout,
-		"DATABASE_CONNECT_TIMEOUT":      &cfg.Database.ConnectTimeout,
-		"DATABASE_STATEMENT_TIMEOUT":    &cfg.Database.StatementTimeout,
-		"RPC_REQUEST_TIMEOUT":           &cfg.RPC.RequestTimeout,
-		"CHAIN_GENESIS_FETCH_TIMEOUT":   &cfg.Chain.GenesisFetchTimeout,
-		"POLL_INTERVAL":                 &cfg.Runtime.PollInterval,
-		"LEASE_DURATION":                &cfg.Runtime.LeaseDuration,
-		"MEMPOOL_POLL_INTERVAL":         &cfg.Mempool.PollInterval,
-		"MEMPOOL_RETENTION":             &cfg.Mempool.Retention,
-		"MAINTENANCE_INTERVAL":          &cfg.Maintenance.Interval,
-		"METADATA_FETCH_TIMEOUT":        &cfg.Metadata.FetchTimeout,
-		"ADAPTER_FETCH_TIMEOUT":         &cfg.Adapters.FetchTimeout,
-		"ADAPTER_CONNECT_TIMEOUT":       &cfg.Adapters.ConnectTimeout,
-		"ADAPTER_OPERATION_TIMEOUT":     &cfg.Adapters.OperationTimeout,
-		"REDIS_CACHE_TTL":               &cfg.Adapters.RedisCacheTTL,
-		"ADAPTER_PRICE_FRESHNESS":       &cfg.Adapters.PriceFreshness,
-		"ADAPTER_FAILURE_TTL":           &cfg.Adapters.FailureTTL,
-		"ENS_RESOLUTION_FRESHNESS":      &cfg.ENS.ResolutionFreshness,
-		"ENS_SNAPSHOT_TTL":              &cfg.ENS.SnapshotTTL,
-		"ENS_FAILURE_TTL":               &cfg.ENS.FailureTTL,
-		"ENS_REQUEST_TIMEOUT":           &cfg.ENS.RequestTimeout,
-		"VERIFICATION_TIMEOUT":          &cfg.Verification.Timeout,
-		"BYTECODE_DB_TIMEOUT":           &cfg.BytecodeDB.Timeout,
-		"BYTECODE_DB_REQUEST_INTERVAL":  &cfg.BytecodeDB.RequestInterval,
-		"BYTECODE_DB_COOLDOWN":          &cfg.BytecodeDB.Cooldown,
-		"SOURCIFY_TIMEOUT":              &cfg.Sourcify.Timeout,
-		"SOURCIFY_POLL_INTERVAL":        &cfg.Sourcify.PollInterval,
-		"TRACE_EXPORT_TIMEOUT":          &cfg.Observability.TraceExportTimeout,
-		"METRICS_REFRESH_INTERVAL":      &cfg.Observability.MetricsRefreshInterval,
-		"SYNC_PROGRESS_LOG_INTERVAL":    &cfg.Observability.SyncProgressLogInterval,
-		"USER_AUTH_CHALLENGE_TTL":       &cfg.UserAuth.ChallengeTTL,
-		"USER_AUTH_SESSION_TTL":         &cfg.UserAuth.SessionTTL,
-		"USER_AUTH_LAST_USED_INTERVAL":  &cfg.UserAuth.LastUsedInterval,
-		"X402_FACILITATOR_TIMEOUT":      &cfg.Billing.FacilitatorTimeout,
-		"X402_REQUIREMENT_MAX_TIMEOUT":  &cfg.Billing.RequirementMaxTimeout,
-		"X402_RESERVATION_TTL":          &cfg.Billing.ReservationTTL,
-		"BILLING_TOPUP_INTENT_TTL":      &cfg.Billing.TopupIntentTTL,
-		"BILLING_USAGE_RESERVATION_TTL": &cfg.Billing.UsageReservationTTL,
+		"SERVER_SHUTDOWN_TIMEOUT":        &cfg.Server.ShutdownTimeout,
+		"SERVER_READ_TIMEOUT":            &cfg.Server.ReadTimeout,
+		"SERVER_WRITE_TIMEOUT":           &cfg.Server.WriteTimeout,
+		"SERVER_REQUEST_TIMEOUT":         &cfg.Server.RequestTimeout,
+		"SERVER_PAYMENT_REQUEST_TIMEOUT": &cfg.Server.PaymentRequestTimeout,
+		"DATABASE_CONNECT_TIMEOUT":       &cfg.Database.ConnectTimeout,
+		"DATABASE_STATEMENT_TIMEOUT":     &cfg.Database.StatementTimeout,
+		"RPC_REQUEST_TIMEOUT":            &cfg.RPC.RequestTimeout,
+		"CHAIN_GENESIS_FETCH_TIMEOUT":    &cfg.Chain.GenesisFetchTimeout,
+		"POLL_INTERVAL":                  &cfg.Runtime.PollInterval,
+		"LEASE_DURATION":                 &cfg.Runtime.LeaseDuration,
+		"MEMPOOL_POLL_INTERVAL":          &cfg.Mempool.PollInterval,
+		"MEMPOOL_RETENTION":              &cfg.Mempool.Retention,
+		"MAINTENANCE_INTERVAL":           &cfg.Maintenance.Interval,
+		"METADATA_FETCH_TIMEOUT":         &cfg.Metadata.FetchTimeout,
+		"ADAPTER_FETCH_TIMEOUT":          &cfg.Adapters.FetchTimeout,
+		"ADAPTER_CONNECT_TIMEOUT":        &cfg.Adapters.ConnectTimeout,
+		"ADAPTER_OPERATION_TIMEOUT":      &cfg.Adapters.OperationTimeout,
+		"REDIS_CACHE_TTL":                &cfg.Adapters.RedisCacheTTL,
+		"ADAPTER_PRICE_FRESHNESS":        &cfg.Adapters.PriceFreshness,
+		"ADAPTER_FAILURE_TTL":            &cfg.Adapters.FailureTTL,
+		"ENS_RESOLUTION_FRESHNESS":       &cfg.ENS.ResolutionFreshness,
+		"ENS_SNAPSHOT_TTL":               &cfg.ENS.SnapshotTTL,
+		"ENS_FAILURE_TTL":                &cfg.ENS.FailureTTL,
+		"ENS_REQUEST_TIMEOUT":            &cfg.ENS.RequestTimeout,
+		"VERIFICATION_TIMEOUT":           &cfg.Verification.Timeout,
+		"BYTECODE_DB_TIMEOUT":            &cfg.BytecodeDB.Timeout,
+		"BYTECODE_DB_REQUEST_INTERVAL":   &cfg.BytecodeDB.RequestInterval,
+		"BYTECODE_DB_COOLDOWN":           &cfg.BytecodeDB.Cooldown,
+		"SOURCIFY_TIMEOUT":               &cfg.Sourcify.Timeout,
+		"SOURCIFY_POLL_INTERVAL":         &cfg.Sourcify.PollInterval,
+		"TRACE_EXPORT_TIMEOUT":           &cfg.Observability.TraceExportTimeout,
+		"METRICS_REFRESH_INTERVAL":       &cfg.Observability.MetricsRefreshInterval,
+		"SYNC_PROGRESS_LOG_INTERVAL":     &cfg.Observability.SyncProgressLogInterval,
+		"USER_AUTH_CHALLENGE_TTL":        &cfg.UserAuth.ChallengeTTL,
+		"USER_AUTH_SESSION_TTL":          &cfg.UserAuth.SessionTTL,
+		"USER_AUTH_LAST_USED_INTERVAL":   &cfg.UserAuth.LastUsedInterval,
+		"X402_FACILITATOR_TIMEOUT":       &cfg.Billing.FacilitatorTimeout,
+		"X402_REQUIREMENT_MAX_TIMEOUT":   &cfg.Billing.RequirementMaxTimeout,
+		"X402_RESERVATION_TTL":           &cfg.Billing.ReservationTTL,
+		"BILLING_TOPUP_INTENT_TTL":       &cfg.Billing.TopupIntentTTL,
+		"BILLING_USAGE_RESERVATION_TTL":  &cfg.Billing.UsageReservationTTL,
 	} {
 		if err := setDuration(lookup, name, target); err != nil {
 			return err

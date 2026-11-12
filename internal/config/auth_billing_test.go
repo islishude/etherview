@@ -21,7 +21,7 @@ func TestAuthAndBillingDefaultsAreDisabledAndBounded(t *testing.T) {
 	}
 	if cfg.UserAuth.ChallengeTTL.String() != "5m0s" ||
 		cfg.UserAuth.SessionTTL.String() != "168h0m0s" ||
-		cfg.Billing.FacilitatorTimeout.String() != "10s" ||
+		cfg.Billing.FacilitatorTimeout.String() != "30s" ||
 		cfg.Billing.RequirementMaxTimeout.String() != "1m0s" ||
 		cfg.Billing.ReservationTTL.String() != "2m0s" ||
 		cfg.UserAuth.APIKeyRate != 20 || cfg.UserAuth.APIKeyBurst != 40 ||

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -240,7 +241,16 @@ func multipartSubmission(language verify.Language, submission verifierSubmission
 }
 
 func (h *Handler) submitV2(w http.ResponseWriter, r *http.Request, request verify.SubmissionV2) {
-	job, _, err := h.verificationSubmitter.SubmitV2(r.Context(), request)
+	ctx := r.Context()
+	if ctx.Value(browserVerificationResponseKey{}) != true {
+		identity := auth.IdentityFrom(ctx)
+		principal := "key:" + identity.Prefix
+		if identity.OwnerUserID != nil {
+			principal = "user:" + *identity.OwnerUserID
+		}
+		ctx = verify.WithAdmissionPrincipal(ctx, principal)
+	}
+	job, _, err := h.verificationSubmitter.SubmitV2(ctx, request)
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
@@ -331,7 +341,15 @@ func (h *Handler) verificationJobAuthorized(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	job, found, err := h.verificationReader.Job(r.Context(), r.PathValue("id"))
+	readJob := h.verificationReader.Job
+	if r.Context().Value(browserVerificationResponseKey{}) != true {
+		if reader, ok := h.verificationReader.(interface {
+			JobWithOutcome(context.Context, string) (verify.VerificationJob, bool, error)
+		}); ok {
+			readJob = reader.JobWithOutcome
+		}
+	}
+	job, found, err := readJob(r.Context(), r.PathValue("id"))
 	if err != nil {
 		h.handleVerificationError(w, r, err)
 		return
@@ -609,6 +627,15 @@ func operationUsesAPIKeyScope(operation string) bool {
 
 func (h *Handler) handleVerificationError(w http.ResponseWriter, r *http.Request, err error) {
 	var serviceError verify.ServiceError
+	if errors.As(err, &serviceError) && (serviceError.Code == verify.ServiceUserCapacity || serviceError.Code == verify.ServiceGlobalCapacity) {
+		status := http.StatusTooManyRequests
+		if serviceError.Code == verify.ServiceGlobalCapacity {
+			status = http.StatusServiceUnavailable
+		}
+		w.Header().Set("Retry-After", "30")
+		writeError(w, r, status, string(serviceError.Code), serviceError.Error(), nil)
+		return
+	}
 	if errors.As(err, &serviceError) && serviceError.Code == verify.ServiceInvalidRequest {
 		writeError(w, r, http.StatusBadRequest, "invalid_verification_request", serviceError.Error(), nil)
 		return

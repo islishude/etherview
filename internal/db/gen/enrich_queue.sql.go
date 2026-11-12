@@ -229,7 +229,7 @@ WHERE exhausted_job.id = $1
       (exhausted_job.status = 'queued' AND exhausted_job.available_at <= clock_timestamp())
       OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
   )
-FOR UPDATE
+FOR UPDATE SKIP LOCKED
 `
 
 type EnrichLockExhaustedJobRow struct {
@@ -261,7 +261,7 @@ func (q *Queries) EnrichLockExhaustedJob(ctx context.Context, iD int64, supporte
 	return i, err
 }
 
-const enrichSelectClaimCandidate = `-- name: EnrichSelectClaimCandidate :one
+const enrichSelectClaimCandidate = `-- name: EnrichSelectClaimCandidate :many
 SELECT candidate_job.id, candidate_job.chain_id::text AS chain_id,
        candidate_job.stage, candidate_job.stage_version,
        candidate_job.attempts, candidate_job.max_attempts,
@@ -333,7 +333,7 @@ WHERE candidate_job.kind = 'enrichment'
   )
 ORDER BY candidate_job.priority DESC, candidate_job.available_at,
          candidate_job.id
-LIMIT 1
+LIMIT 32
 `
 
 type EnrichSelectClaimCandidateRow struct {
@@ -347,23 +347,36 @@ type EnrichSelectClaimCandidateRow struct {
 	RequestedGeneration int64  `db:"requested_generation" json:"requested_generation"`
 }
 
-func (q *Queries) EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (EnrichSelectClaimCandidateRow, error) {
-	row := q.db.QueryRow(ctx, enrichSelectClaimCandidate, supportedStages, stageVersion)
-	var i EnrichSelectClaimCandidateRow
-	err := row.Scan(
-		&i.ID,
-		&i.ChainID,
-		&i.Stage,
-		&i.StageVersion,
-		&i.Attempts,
-		&i.MaxAttempts,
-		&i.Payload,
-		&i.RequestedGeneration,
-	)
-	return i, err
+func (q *Queries) EnrichSelectClaimCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) ([]EnrichSelectClaimCandidateRow, error) {
+	rows, err := q.db.Query(ctx, enrichSelectClaimCandidate, supportedStages, stageVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []EnrichSelectClaimCandidateRow{}
+	for rows.Next() {
+		var i EnrichSelectClaimCandidateRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChainID,
+			&i.Stage,
+			&i.StageVersion,
+			&i.Attempts,
+			&i.MaxAttempts,
+			&i.Payload,
+			&i.RequestedGeneration,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const enrichSelectExhaustedCandidate = `-- name: EnrichSelectExhaustedCandidate :one
+const enrichSelectExhaustedCandidate = `-- name: EnrichSelectExhaustedCandidate :many
 SELECT exhausted_job.id
 FROM durable_jobs AS exhausted_job
 WHERE exhausted_job.kind = 'enrichment'
@@ -432,12 +445,48 @@ WHERE exhausted_job.kind = 'enrichment'
       OR (exhausted_job.status = 'leased' AND exhausted_job.lease_expires_at <= clock_timestamp())
   )
 ORDER BY exhausted_job.available_at, exhausted_job.id
-LIMIT 1
+LIMIT 32
 `
 
-func (q *Queries) EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) (int64, error) {
-	row := q.db.QueryRow(ctx, enrichSelectExhaustedCandidate, supportedStages, stageVersion)
+func (q *Queries) EnrichSelectExhaustedCandidate(ctx context.Context, supportedStages []byte, stageVersion int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, enrichSelectExhaustedCandidate, supportedStages, stageVersion)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const enrichTryClaimRow = `-- name: EnrichTryClaimRow :one
+SELECT id FROM durable_jobs WHERE id = $1::bigint
+FOR UPDATE SKIP LOCKED
+`
+
+func (q *Queries) EnrichTryClaimRow(ctx context.Context, jobID int64) (int64, error) {
+	row := q.db.QueryRow(ctx, enrichTryClaimRow, jobID)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const enrichTryPublicationLock = `-- name: EnrichTryPublicationLock :one
+SELECT pg_try_advisory_xact_lock(-($1::bigint))
+`
+
+func (q *Queries) EnrichTryPublicationLock(ctx context.Context, jobID int64) (bool, error) {
+	row := q.db.QueryRow(ctx, enrichTryPublicationLock, jobID)
+	var pg_try_advisory_xact_lock bool
+	err := row.Scan(&pg_try_advisory_xact_lock)
+	return pg_try_advisory_xact_lock, err
 }

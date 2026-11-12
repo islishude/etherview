@@ -4004,7 +4004,7 @@ type ABIValue struct {
 	Value interface{} `json:"value"`
 }
 
-// APIError defines model for APIError.
+// APIError Stable public error. Ordinary API execution is bounded by server.request_timeout; expiry returns HTTP 504 with code request_timeout.
 type APIError struct {
 	Code string `json:"code"`
 
@@ -4607,13 +4607,16 @@ type BillingPayment struct {
 	Purpose             BillingPaymentPurpose      `json:"purpose"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
-	Recipient       Address             `json:"recipient"`
-	SettledAt       *time.Time          `json:"settled_at,omitempty"`
-	State           BillingPaymentState `json:"state"`
-	TopupIntentId   *openapi_types.UUID `json:"topup_intent_id,omitempty"`
-	TransactionHash *Hash               `json:"transaction_hash,omitempty"`
-	UpdatedAt       time.Time           `json:"updated_at"`
-	UserId          *openapi_types.UUID `json:"user_id,omitempty"`
+	Recipient Address    `json:"recipient"`
+	SettledAt *time.Time `json:"settled_at,omitempty"`
+
+	// SettlementTransactionHash Confirmed payment transaction; may differ from the original facilitator submission.
+	SettlementTransactionHash *Hash               `json:"settlement_transaction_hash,omitempty"`
+	State                     BillingPaymentState `json:"state"`
+	TopupIntentId             *openapi_types.UUID `json:"topup_intent_id,omitempty"`
+	TransactionHash           *Hash               `json:"transaction_hash,omitempty"`
+	UpdatedAt                 time.Time           `json:"updated_at"`
+	UserId                    *openapi_types.UUID `json:"user_id,omitempty"`
 }
 
 // BillingPaymentMethod defines model for BillingPayment.Method.
@@ -4725,8 +4728,11 @@ type BillingTopupIntent struct {
 	PaymentOption BillingPaymentOption `json:"payment_option"`
 
 	// Recipient A 20-byte address; responses use the EIP-55 checksum form.
-	Recipient Address                 `json:"recipient"`
-	State     BillingTopupIntentState `json:"state"`
+	Recipient Address `json:"recipient"`
+
+	// SettlementTransactionHash Confirmed payment transaction; may differ from the original facilitator submission.
+	SettlementTransactionHash *Hash                   `json:"settlement_transaction_hash,omitempty"`
+	State                     BillingTopupIntentState `json:"state"`
 
 	// SubmissionProgress Durable submission observation, independent of settlement state. Confirming requires broadcast or receipt evidence; a hash alone is insufficient.
 	SubmissionProgress *BillingTopupIntentSubmissionProgress `json:"submission_progress,omitempty"`
@@ -5792,6 +5798,7 @@ type ERC20BalanceListResponse struct {
 
 // ErrorResponse defines model for ErrorResponse.
 type ErrorResponse struct {
+	// Error Stable public error. Ordinary API execution is bounded by server.request_timeout; expiry returns HTTP 504 with code request_timeout.
 	Error APIError `json:"error"`
 }
 

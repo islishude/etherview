@@ -182,7 +182,7 @@ function EventOptions({
         />
       </Label>
       <BrowsingScope status={events.data?.pages[0]?.meta.browsing}>
-        <QueryNotice loading={events.isPending} error={events.error} onReset={reset} />
+        <QueryNotice loading={events.isLoading} error={events.error} onReset={reset} />
         <div
           className="event-name-options"
           id={id}

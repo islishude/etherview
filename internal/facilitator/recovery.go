@@ -13,7 +13,7 @@ import (
 // The normal service must be stopped so this process can acquire the singleton lock.
 func (s *Service) Rebroadcast(ctx context.Context, id string) error {
 	row, err := s.queries.FacilitatorGet(ctx, id)
-	if err != nil || row.State != "signed" || len(row.RawTransaction) == 0 {
+	if err != nil || row.TransactionConfirmed || len(row.RawTransaction) == 0 {
 		return errors.New("recovery_unavailable")
 	}
 	ch := s.chains[row.Network]
@@ -44,7 +44,7 @@ func (s *Service) Rebroadcast(ctx context.Context, id string) error {
 	if err = ch.adapter.client.SendTransaction(ctx, &tx); err != nil {
 		return errors.New("recovery_pending")
 	}
-	_, err = s.queries.FacilitatorConfirmBroadcast(ctx, id, row.TransactionHash)
+	err = confirmBroadcast(ctx, s.queries, id, row.TransactionHash)
 	if err != nil {
 		return errors.New("recovery_pending")
 	}

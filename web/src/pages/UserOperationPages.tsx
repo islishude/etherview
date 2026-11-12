@@ -28,7 +28,7 @@ export function UserOperationsPage() {
     >
       <BrowsingScope status={operations.data?.meta.browsing}>
         <QueryNotice
-          loading={operations.isPending}
+          loading={operations.isLoading}
           error={operations.error}
           onReset={pager.reset}
         />
@@ -70,7 +70,7 @@ export function UserOperationDetailPage({ hash }: { hash: string }) {
   const nativeSymbol = config.data?.native_symbol ?? "";
   return (
     <Page title={t("page.userOperation")} description={hash} mono>
-      <QueryNotice loading={operation.isPending} error={operation.error} />
+      <QueryNotice loading={operation.isLoading} error={operation.error} />
       {operation.data && !withdrawn ? (
         <div className="page-stack user-operation-detail">
           {!operation.data.success ? <UserOperationFailure operation={operation.data} /> : null}

@@ -230,3 +230,49 @@ it("keeps invalid snapshots after a failed refresh and permits a deliberate retr
   expect(screen.queryByText(/snapshot may be out of date/)).toBeNull();
   expect(reads).toBe(2);
 });
+
+it("ends initial loading after publication cancellation and recovers only on explicit refresh", async () => {
+  vi.stubGlobal("EventSource", Events);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  let reads = 0;
+  let finish: ((value: string) => void) | undefined;
+  function Page() {
+    const query = useQuery({
+      queryKey: ["initial-cancel"],
+      meta: statusQueryMeta,
+      queryFn: async () =>
+        ++reads === 1
+          ? new Promise<string>((resolve) => {
+              finish = resolve;
+            })
+          : "fresh",
+    });
+    return <output>{query.isLoading ? "Loading" : query.data}</output>;
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <ChainEventInvalidation />
+      <BrowsingRefreshProvider location="initial">
+        <PageHeading title="Initial" actions={<BrowsingRefreshControl />} />
+        <Page />
+      </BrowsingRefreshProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("Loading")).toBeVisible();
+  act(() =>
+    Events.latest.emit(
+      "status",
+      JSON.stringify({ reason: "browsing_publication", block_number: "1" }),
+    ),
+  );
+  await waitFor(() => expect(screen.queryByText("Loading")).toBeNull());
+  expect(
+    screen.getByText(/snapshot may be out of date/, { selector: ".browsing-refresh-status" }),
+  ).toBeVisible();
+  await act(async () => finish!("obsolete"));
+  expect(reads).toBe(1);
+  expect(client.getQueryData(["initial-cancel"])).toBeUndefined();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(await screen.findByText("fresh")).toBeVisible();
+  expect(reads).toBe(2);
+});

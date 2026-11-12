@@ -287,25 +287,16 @@ func (s *Service) liveOnce(ctx context.Context) error {
 }
 
 func (s *Service) liveOnceOwned(ctx context.Context, repository store.Repository, canonicalizer *indexer.Canonicalizer) error {
-	head, err := s.Source.Head(ctx)
+	observation, err := observeLiveHead(ctx, s.Source)
 	if err != nil {
 		return fmt.Errorf("read authoritative head: %w", err)
 	}
+	reference := observation.Reference
+	head := reference.Number
 	s.latest.Store(head)
 	s.latestKnown.Store(true)
 	if head < s.StartBlock {
 		return fmt.Errorf("configured start block %d is above current head %d", s.StartBlock, head)
-	}
-	bundle, err := s.Source.BundleByNumber(ctx, ethrpc.PurposeHead, head)
-	if err != nil {
-		return fmt.Errorf("fetch authoritative head %d: %w", head, err)
-	}
-	reference, err := store.RefFromBundle(bundle)
-	if err != nil {
-		return fmt.Errorf("authoritative head bundle identity mismatch at %d: %w", head, err)
-	}
-	if reference.Number != head {
-		return fmt.Errorf("authoritative head bundle height is %d, expected %d", reference.Number, head)
 	}
 
 	tip, tipExists, err := repository.CanonicalTip(ctx, s.ChainID)
@@ -318,6 +309,10 @@ func (s *Service) liveOnceOwned(ctx context.Context, repository store.Repository
 	}
 	if canonicalExists && canonical.Hash == reference.Hash {
 		if tipExists && tip.Number > head {
+			bundle, err := observation.Fetch(ctx)
+			if err != nil {
+				return err
+			}
 			result, applyErr := canonicalizer.ApplyHead(ctx, bundle)
 			if applyErr != nil {
 				return applyErr
@@ -325,6 +320,10 @@ func (s *Service) liveOnceOwned(ctx context.Context, repository store.Repository
 			s.publish(result)
 		}
 		return s.updateAvailableFinality(ctx, repository, canonicalizer)
+	}
+	bundle, err := observation.Fetch(ctx)
+	if err != nil {
+		return fmt.Errorf("fetch authoritative head %d: %w", head, err)
 	}
 	coverage, configured, err := repository.Coverage(ctx, s.ChainID)
 	if err != nil {
@@ -1071,4 +1070,29 @@ func shouldResolveShallowLiveGap(
 		return false
 	}
 	return candidate.Number-tip.Number-1 <= maxDepth
+}
+
+func observeLiveHead(ctx context.Context, source Source) (HeadObservation, error) {
+	if observer, ok := source.(interface {
+		ObserveHead(context.Context) (HeadObservation, error)
+	}); ok {
+		return observer.ObserveHead(ctx)
+	}
+	// In-memory sources already own complete bundles; no RPC is issued here.
+	head, err := source.Head(ctx)
+	if err != nil {
+		return HeadObservation{}, err
+	}
+	bundle, err := source.BundleByNumber(ctx, ethrpc.PurposeHead, head)
+	if err != nil {
+		return HeadObservation{}, err
+	}
+	ref, err := store.RefFromBundle(bundle)
+	if err != nil {
+		return HeadObservation{}, err
+	}
+	if ref.Number != head {
+		return HeadObservation{}, errors.New("authoritative head bundle height mismatch")
+	}
+	return HeadObservation{Reference: ref, Fetch: func(context.Context) (chainbundle.Bundle, error) { return bundle, nil }}, nil
 }

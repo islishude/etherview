@@ -13,7 +13,7 @@ import { PageHeading } from "@/components/PageHeading";
 import { QueryNotice } from "@/components/QueryNotice";
 import "./HomePage.css";
 import { AddressIdentity } from "@/ens/AddressIdentity";
-import { IncludedTransactionStatus } from "./TransactionPage";
+import { IncludedTransactionStatus } from "@/components/TransactionStatus";
 import { FinalityBadge } from "./pages";
 
 export function HomePage() {

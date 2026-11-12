@@ -5,6 +5,7 @@ package x402locale2e
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -22,6 +24,8 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/billing/x402wire"
 	"github.com/jackc/pgx/v5/pgxpool"
+	x402 "github.com/x402-foundation/x402/go/v2"
+	"github.com/x402-foundation/x402/go/v2/mechanisms/evm"
 	"gopkg.in/yaml.v3"
 )
 
@@ -186,7 +190,7 @@ func assertRustackRecovery(t *testing.T, h *rustackHarness, codec *x402wire.Code
 	if intent.Data.PaymentId == nil || intent.Data.TransactionHash == nil || *intent.Data.TransactionHash != common.BytesToHash(hash).Hex() {
 		t.Fatalf("intent lost exact transaction: %+v", intent.Data)
 	}
-	h.run(t, "exec", "-T", h.apiService, "/etherview", "admin", "billing", "reconcile", "--config=/etc/etherview/config.yaml", "--id", intent.Data.PaymentId.String(), "--outcome", "settled", "--transaction-hash", common.BytesToHash(hash).Hex())
+	waitTopupCredit(t, h.client, h.origin, h.csrf, pending.intentID)
 	assertRustackReplay(t, h, pending)
 	t.Logf("uncertain broadcast recovered unchanged hash=%s nonce=%d; one-shot credit and replay passed", common.BytesToHash(hash), nonce)
 }
@@ -295,4 +299,49 @@ func reconcileRustack(t *testing.T, h *rustackHarness) {
 		t.Fatalf("writer/API/ledger mismatch: credit=%s debit=%s reserved=%s entries=%d unique=%d sum=%s account=%+v", credit, debit, reserved, entries, unique, sum, account)
 	}
 	t.Log("independent receipts, transfer logs, journal bytes/sender/nonces, 8 unique credits=800 and priced debit=2 reconciled")
+}
+
+// A KMS outage after entering settlement leaves a valid authorization unresolved.
+// It may fail only after a canonical block proves expiry with the nonce unused.
+func waitUnsignedAuthorizationExpiry(t *testing.T, h *rustackHarness, payment topupPayment) {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(payment.header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload x402.PaymentPayload
+	if err = json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	authorization, err := evm.PayloadFromMap(payload.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiry, err := strconv.ParseInt(authorization.Authorization.ValidBefore, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(75 * time.Second)
+	mined := false
+	for time.Now().Before(deadline) {
+		if !mined && time.Now().Unix() > expiry {
+			if err = h.chains[0].Client().CallContext(t.Context(), nil, "evm_mine"); err != nil {
+				t.Fatal(err)
+			}
+			mined = true
+		}
+		var intent gen.BillingTopupIntentResponse
+		doJSON(t, h.client, http.MethodGet, h.origin+"/api/v1/billing/topup-intents/"+payment.intentID, h.origin, "", nil, http.StatusOK, &intent)
+		if intent.Data.TransactionHash != nil || intent.Data.State == "credited" {
+			t.Fatal("KMS outage submitted or credited a payment", intent.Data)
+		}
+		if intent.Data.State == "failed" {
+			if !mined {
+				t.Fatal("unexpired authorization was rejected")
+			}
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Fatal("expired unused authorization not reconciled")
 }

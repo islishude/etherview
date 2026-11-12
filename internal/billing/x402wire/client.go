@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/islishude/etherview/internal/jsonstrict"
+	"github.com/islishude/etherview/internal/x402settlement"
 	x402 "github.com/x402-foundation/x402/go/v2"
 	"golang.org/x/net/http/httpguts"
 )
@@ -433,6 +434,20 @@ func parseVerifyResponse(
 	}
 	if status != http.StatusOK || !*wire.IsValid {
 		if !*wire.IsValid && boundedText(wire.InvalidReason, 1, 128) {
+			if wire.InvalidReason == "authorization_reconciliation_required" {
+				payer, ok := canonicalAddress(wire.Payer)
+				if !ok || payer != expectedPayer {
+					return nil, boundaryError(PhaseVerify, FailureUnavailable, CodeFacilitatorResponseInvalid)
+				}
+				return &x402.VerifyResponse{IsValid: false, InvalidReason: wire.InvalidReason, Payer: payer}, boundaryError(PhaseVerify, FailureReconciliationRequired, "authorization_reconciliation_required")
+			}
+			if wire.InvalidReason == CodeAllowanceRequired {
+				return &x402.VerifyResponse{IsValid: false, InvalidReason: CodeAllowanceRequired}, boundaryError(PhaseVerify, FailureRejected, CodeAllowanceRequired)
+			}
+
+			if x402settlement.BusinessReason(wire.InvalidReason) == "" {
+				return nil, boundaryError(PhaseVerify, FailureUnavailable, CodeFacilitatorResponseInvalid)
+			}
 			payer, _ := canonicalAddress(wire.Payer)
 			response := &x402.VerifyResponse{
 				IsValid:       false,
@@ -506,6 +521,9 @@ func parseSettleResponse(
 				)
 			}
 		}
+		if wire.ErrorReason == "authorization_reconciliation_required" {
+			return &x402.SettleResponse{Success: false, ErrorReason: wire.ErrorReason, Transaction: *wire.Transaction, Network: x402.Network(network), Payer: payer, Amount: amount}, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
+		}
 		if wire.ErrorReason == "settlement_pending" {
 			if payer == "" {
 				return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
@@ -525,6 +543,16 @@ func parseSettleResponse(
 			return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 		}
 		if *wire.Transaction != "" {
+
+			if wire.ErrorReason == "settlement_rejected" && payer != "" {
+				hash, ok := canonicalFixedHex(*wire.Transaction)
+				if ok {
+					return &x402.SettleResponse{Success: false, ErrorReason: wire.ErrorReason, Transaction: hash, Payer: payer, Network: x402.Network(network), Amount: amount}, boundaryError(PhaseSettle, FailureTransactionReverted, CodeSettlementUnknown)
+				}
+			}
+			return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
+		}
+		if x402settlement.BusinessReason(wire.ErrorReason) == "" && wire.ErrorReason != "settlement_rejected" && wire.ErrorReason != "chain_busy" && wire.ErrorReason != "chain_pending" {
 			return nil, boundaryError(PhaseSettle, FailureSettlementUnknown, CodeSettlementUnknown)
 		}
 		response := &x402.SettleResponse{

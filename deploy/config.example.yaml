@@ -8,7 +8,9 @@ server:
   tls_key_file: ""
   shutdown_timeout: 20s
   read_timeout: 15s
-  write_timeout: 30s
+  write_timeout: 100s
+  payment_request_timeout: 75s
+  request_timeout: 20s
 
 chain:
   id: 1
@@ -170,7 +172,7 @@ user_auth:
 # ETHERVIEW_X402_FACILITATOR_HEADERS(_FILE) only to all/api processes.
 billing:
   facilitator_allowed_cidrs: []
-  facilitator_timeout: 10s
+  facilitator_timeout: 30s
   facilitator_max_response_bytes: 1048576
   facilitator_unsafe_allow_http: false
   requirement_max_timeout: 60s
@@ -201,6 +203,11 @@ ens:
   max_concurrency: 8
 
 verification:
+  max_request_bytes: 6291456
+  max_job_bytes: 16777216
+  max_queued_jobs: 100
+  max_queued_bytes: 268435456
+  max_user_jobs: 5
   max_input_bytes: 5242880
   max_output_bytes: 67108864
   timeout: 2m

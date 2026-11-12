@@ -37,7 +37,7 @@ import {
   TransactionInternalTransactionsPanel,
   TransactionTokenTransfersPanel,
 } from "./TransactionPanels";
-import { TransactionLogCard } from "./TransactionLogs";
+import { TransactionLogCard } from "@/components/TransactionLogCard";
 import { TransactionTracePanel } from "./TransactionTrace";
 import {
   MempoolDetailExpired,
@@ -46,7 +46,7 @@ import {
   TransactionOverviewPanel,
   TransactionActionCard,
 } from "./TransactionOverview";
-export { TransactionStatusBadge, IncludedTransactionStatus } from "./TransactionOverview";
+export { TransactionStatusBadge, IncludedTransactionStatus } from "@/components/TransactionStatus";
 
 const TRANSACTION_TABS = [
   "overview",
@@ -200,7 +200,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
   if (detail?.kind === "pending" || detail?.kind === "replaced") {
     return (
       <Page title={t("page.transactionDetails")} description={hash} mono>
-        <QueryNotice loading={transactionDetail.isPending} error={transactionDetail.error} />
+        <QueryNotice loading={transactionDetail.isLoading} error={transactionDetail.error} />
         <MempoolTransactionOverview
           detail={detail}
           locale={locale}
@@ -213,7 +213,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
 
   return (
     <Page title={t("page.transactionDetails")} description={hash} mono>
-      <QueryNotice loading={transactionDetail.isPending} error={transactionDetail.error} />
+      <QueryNotice loading={transactionDetail.isLoading} error={transactionDetail.error} />
       {detailExpired && !transactionDetail.error ? <MempoolDetailExpired /> : null}
       {transaction.data && (
         <>
@@ -322,7 +322,11 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           )}
 
           {activeTab === "native-transfers" && (
-            <NativeTransfersPanel kind="transaction" identity={hash} />
+            <NativeTransfersPanel
+              kind="transaction"
+              identity={hash}
+              blockHash={transaction.data.block_hash}
+            />
           )}
           {activeTab === "user-operations" && (
             <TransactionUserOperationsPanel blockHash={transaction.data.block_hash} hash={hash} />
@@ -341,7 +345,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           {activeTab === "logs" && (
             <Card asChild>
               <section className="panel transaction-tab-panel" role="tabpanel">
-                <QueryNotice loading={logs.isPending} error={logs.error} />
+                <QueryNotice loading={logs.isLoading} error={logs.error} />
                 {logs.data && !logIdentityCurrent && (
                   <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
                 )}
@@ -386,7 +390,7 @@ export function TransactionDetailPage({ hash, tab }: { hash: string; tab: string
           {activeTab === "state-changes" && (
             <Card asChild>
               <section className="panel transaction-tab-panel" role="tabpanel">
-                <QueryNotice loading={stateChanges.isPending} error={stateChanges.error} />
+                <QueryNotice loading={stateChanges.isLoading} error={stateChanges.error} />
                 {stateChanges.data && !stateIdentityCurrent && (
                   <p className="capability-panel">{t("state.transactionIdentityChanged")}</p>
                 )}

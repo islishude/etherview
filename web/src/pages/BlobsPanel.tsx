@@ -58,7 +58,7 @@ export function BlobsPanel({
         role={transaction ? undefined : "tabpanel"}
         aria-label={t("consensus.blobs")}
       >
-        <QueryNotice loading={query.isPending} error={query.error} compact />
+        <QueryNotice loading={query.isLoading} error={query.error} compact />
         <BlobArchiveNotice data={query.data} />
         <div className="blob-list-heading">
           {!transaction && items && (

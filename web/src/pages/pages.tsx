@@ -42,8 +42,9 @@ import { AddressIdentity } from "@/ens/AddressIdentity";
 import { BrowsingRefreshControl } from "@/components/BrowsingRefreshControl";
 import { PageHeading } from "@/components/PageHeading";
 import { QueryNotice } from "@/components/QueryNotice";
-import { TransactionMethodCell } from "./AddressPage";
-import { IncludedTransactionStatus } from "./TransactionPage";
+import { TransactionMethodCell } from "@/components/TransactionMethodCell";
+import { IncludedTransactionStatus, finalityLabel } from "@/components/TransactionStatus";
+export { finalityLabel, transactionStatusLabel } from "@/components/TransactionStatus";
 
 export const CORE_PAGE_SIZE = 25;
 const SEARCH_PAGE_SIZE = 20;
@@ -103,7 +104,7 @@ export function BlocksPage() {
       title={t("page.blocks")}
       description={`${t("page.blocksDescription")} ${t("page.recentListLimit", { count: 1000 })}`}
     >
-      <QueryNotice loading={blocks.isPending} error={blocks.error} onReset={pager.reset} />
+      <QueryNotice loading={blocks.isLoading} error={blocks.error} onReset={pager.reset} />
       {blocks.data?.items.length === 0 && (
         <p className="empty-result" role="status">
           {t("state.noBlocks")}
@@ -179,7 +180,7 @@ export function GenesisPage() {
           {t("context.genesisAuthenticated")}
         </p>
       </Alert>
-      <QueryNotice loading={accounts.isPending} error={accounts.error} onReset={pager.reset} />
+      <QueryNotice loading={accounts.isLoading} error={accounts.error} onReset={pager.reset} />
       {accounts.data?.items.length === 0 && (
         <p className="empty-result" role="status">
           {t("state.noGenesisAccounts")}
@@ -255,7 +256,7 @@ export function TransactionsPage() {
       description={`${t("page.transactionsDescription")} ${t("page.recentListLimit", { count: 1000 })}`}
     >
       <QueryNotice
-        loading={transactions.isPending}
+        loading={transactions.isLoading}
         error={transactions.error}
         onReset={pager.reset}
       />
@@ -365,7 +366,7 @@ export function TokensPage() {
       description={`${t("page.tokensDescription")} ${t("page.recentListLimit", { count: 150 })}`}
     >
       <BrowsingScope status={tokens.data?.meta.browsing}>
-        <QueryNotice loading={tokens.isPending} error={tokens.error} onReset={pager.reset} />
+        <QueryNotice loading={tokens.isLoading} error={tokens.error} onReset={pager.reset} />
         {tokens.data && tokens.data.items.length === 0 && (
           <p className="empty-result" role="status">
             <BrowsingEmpty>{t("state.noTokens")}</BrowsingEmpty>
@@ -559,38 +560,6 @@ export function CapabilityDegraded({ stage, state }: { stage: string; state: str
 }
 
 export type Translate = ReturnType<typeof useTranslation>["t"];
-
-export function finalityLabel(value: string, t: Translate): string {
-  switch (value) {
-    case "pending":
-      return t("finality.pending");
-    case "latest":
-      return t("finality.latest");
-    case "safe":
-      return t("finality.safe");
-    case "finalized":
-      return t("finality.finalized");
-    case "orphan":
-      return t("finality.orphan");
-    default:
-      return value;
-  }
-}
-
-export function transactionStatusLabel(value: string | undefined, t: Translate): string {
-  switch (value) {
-    case "pending":
-      return t("transactionStatus.pending");
-    case "success":
-      return t("transactionStatus.success");
-    case "failed":
-      return t("transactionStatus.failed");
-    case "unknown":
-      return t("transactionStatus.unknown");
-    default:
-      return t("common.indexed");
-  }
-}
 
 export function transactionTypeLabel(value: string | undefined, t: Translate): string {
   if (!value) return "—";

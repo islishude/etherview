@@ -26,7 +26,7 @@ Validator browsing, MEV accounting and L2-specific batch semantics are not core 
 | P30 | [Contract Platform & Runtime Operations](docs/plans/P30-contract-verification.md) | done    | P00, P10, P20                | Local verification, Sourcify source import/publication, automatic source discovery, contract intelligence, runtime/deployment, telemetry, optional accelerators, Caddy HTTPS, Kubo and Lighthouse/archive Preview with genesis ERC-4337, local ENS and Rundler; ENS under enrich, local production parity and independent Mainnet acceptance |
 | P40 | [API & Data Exports](docs/plans/P40-api.md)                                       | done    | P10; incremental P20/P30     | Native REST/search/SSE, canonical NFT metadata/ENS snapshots, Etherscan V2, UserOperation/holder queries, consensus/requests/blob downloads, CSV, and bounded quotas; database-only ENS detail/search/history, publication snapshots and status/events                                                                                       |
 | P50 | [Web](docs/plans/P50-web.md)                                                      | done    | P40; incremental P20/P30     | Bilingual route-lazy embedded SPA, precompressed assets, manual explorer browsing with live home/status and task progress, guarded NFT links, ENS display, injected-wallet interaction, session-authenticated verification, and optional browser Turnstile protection; manual name/detail/history reads and expired-label hiding             |
-| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | done    | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups and standalone multi-chain facilitator (Rustack KMS and dual-Anvil local acceptance complete), private watches, and one-shot browser push                                                                                                    |
+| P60 | [User Accounts, Billing & Personal Tools](docs/plans/P60-user-auth-billing.md)    | done    | P10, P20, P30, P40, P50      | SIWE sessions, profiles, administration, scoped user API keys, prepaid API credit, x402 top-ups and standalone multi-chain facilitator with automatic payment reconciliation and verification retry (Rustack KMS and dual-Anvil local acceptance complete), private watches, and one-shot browser push                                       |
 | P70 | [Release](docs/plans/P70-release.md)                                              | blocked | P10, P20, P30, P40, P50, P60 | Security, conformance, performance, E2E, documentation, and v1 release                                                                                                                                                                                                                                                                       |
 
 Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
@@ -75,6 +75,8 @@ Preview storage-enforced writer IAM remains deferred under
 [P30](docs/plans/P30-contract-verification.md#current-blockers).
 ENS full-directory coverage remains measured deployment progress; representative
 Mainnet publication acceptance does not prove complete historical coverage.
+
+Incremental analytics (P20-T33) and verification admission/input lifecycle (P30-T156) are complete. Their local acceptance does not clear P70 release gates.
 
 ## Global Release Gates
 

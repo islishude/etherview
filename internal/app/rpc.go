@@ -22,6 +22,7 @@ type RPCBuild struct {
 	Reports     map[string]ethrpc.CapabilityReport
 	WakeURLs    []string
 	EndpointNum int
+	Recovery    *rpcRecovery
 }
 
 func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, observers ...ethrpc.Observer) (RPCBuild, error) {
@@ -39,6 +40,7 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, obser
 	}
 	result := RPCBuild{Reports: make(map[string]ethrpc.CapabilityReport)}
 	endpoints := make([]ethrpc.Endpoint, 0, len(cfg.RPC.Endpoints))
+	var pending []ethrpc.Endpoint
 	var firstHistoryUnavailable *ethrpc.HistoryUnavailableError
 	for _, item := range cfg.RPC.Endpoints {
 		parsed, err := url.Parse(item.URL)
@@ -75,6 +77,11 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, obser
 			StartBlock: cfg.Chain.StartBlock,
 		})
 		if err != nil {
+			if ctx.Err() == nil && transientRPCProbe(err) {
+				pending = append(pending, endpoint)
+				logger.WarnContext(ctx, "RPC endpoint temporarily unavailable", "rpc", item.Name, "error_code", "rpc_transport_unavailable")
+				continue
+			}
 			return RPCBuild{}, fmt.Errorf("probe RPC endpoint %q: %w", item.Name, err)
 		}
 		if expected.GenesisHash == (common.Hash{}) {
@@ -140,6 +147,7 @@ func buildRPC(ctx context.Context, cfg config.Config, logger *slog.Logger, obser
 	result.Pool = pool
 	result.Identity = expected
 	result.EndpointNum = len(endpoints)
+	result.Recovery = &rpcRecovery{pool: pool, pending: pending, expected: expected, startBlock: cfg.Chain.StartBlock, timeout: cfg.RPC.RequestTimeout, logger: logger}
 	return result, nil
 }
 

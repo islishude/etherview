@@ -100,7 +100,7 @@ export function ChartsPage() {
 
   return (
     <ChartsPageFrame title={t("page.charts")} description={t("page.chartsDescription")}>
-      <QueryNotice loading={overview.isPending} error={overview.error} />
+      <QueryNotice loading={overview.isLoading} error={overview.error} />
       {overview.data && (
         <>
           <section className="charts-overview" aria-labelledby="charts-overview-title">

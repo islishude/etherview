@@ -57,12 +57,12 @@ paths:
       requestBody: { $ref: "#/components/requestBodies/Payment" }
       responses:
         "200":
-          description: Durable settlement outcome. New authorizations refused for chain capacity are journaled as failed with an empty transaction; existing authorizations retain their recorded outcome. Pending results always contain the original transaction hash.
+          description: Durable settlement outcome. New authorizations refused for chain capacity are journaled as failed with an empty transaction; existing authorizations retain their recorded outcome. Pending results retain the original transaction hash when one exists. Consumed authorizations without a local transaction remain under reconciliation. Confirmed reverts retain their hash; success identifies the actual payment transaction.
           content:
             application/json:
               schema:
                 type: object
-                required: [success, network]
+                required: [success, network, transaction]
                 properties:
                   success: { type: boolean }
                   network: { type: string }
@@ -77,6 +77,68 @@ paths:
           {
             description: "Outcome unavailable or an existing unsigned authorization is still in flight; do not automatically resubmit.",
           }
+  /result:
+    post:
+      operationId: facilitatorResult
+      description: Authenticated read-only durable payment result. Does not sign, broadcast or reconcile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [authorizationId, requestDigest]
+              properties:
+                authorizationId: { type: string, minLength: 1, maxLength: 512 }
+                requestDigest: { type: string, pattern: "^[a-f0-9]{64}$" }
+      responses:
+        "200":
+          description: Original transaction identity and independently verified payment evidence.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  [authorizationId, requestDigest, state, originalTransaction, transactionConfirmed]
+                properties:
+                  authorizationId: { type: string }
+                  requestDigest: { type: string }
+                  state: { type: string, enum: [pending, succeeded, failed] }
+                  originalTransaction: { type: string }
+                  transactionConfirmed: { type: boolean }
+                  response: { type: object, additionalProperties: true }
+                  evidence:
+                    type: object
+                    required:
+                      [
+                        transaction,
+                        blockHash,
+                        blockNumber,
+                        logIndex,
+                        source,
+                        network,
+                        payer,
+                        recipient,
+                        asset,
+                        amount,
+                      ]
+                    properties:
+                      transaction: { type: string }
+                      blockHash: { type: string }
+                      blockNumber: { type: string, pattern: "^[0-9]+$" }
+                      logIndex: { type: string, pattern: "^[0-9]+$" }
+                      source: { type: string, enum: [original, external] }
+                      network: { type: string }
+                      payer: { type: string }
+                      recipient: { type: string }
+                      asset: { type: string }
+                      amount: { type: string, pattern: "^[0-9]+$" }
+        "400": { description: Invalid lookup. }
+        "401": { description: Invalid bearer credential. }
+        "404": { description: No recorded result. Never authorizes resubmission. }
+        "409": { description: Request digest mismatch. }
+        "503": { description: Journal unavailable. }
   /progress:
     post:
       operationId: facilitatorProgress
@@ -109,6 +171,7 @@ paths:
       security: []
       responses:
         "204": { description: Process is alive. }
+        "503": { description: Singleton ownership was permanently lost. }
   /readyz:
     get:
       operationId: facilitatorReadiness

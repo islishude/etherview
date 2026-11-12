@@ -192,7 +192,7 @@ export function VerifyPage({
 
   return (
     <Page title={t("page.verify")} description={t("page.verifyDescription")}>
-      <QueryNotice loading={publicConfig.isPending} error={publicConfig.error} />
+      <QueryNotice loading={publicConfig.isLoading} error={publicConfig.error} />
       {publicConfig.isSuccess && !submissionEnabled && (
         <UnavailablePanel
           title={t("verification.unavailable")}
@@ -299,7 +299,7 @@ export function VerifyPage({
                       />
                     )}
                     <QueryNotice
-                      loading={compilerCatalog.isPending}
+                      loading={compilerCatalog.isLoading}
                       error={compilerCatalog.error}
                     />
                   </div>

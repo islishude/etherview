@@ -22,6 +22,11 @@ func (assembly runtimeAssembly) registerVerificationComponents() error {
 	sourcify := assembly.sourcify
 	componentRegistry := assembly.componentRegistry
 	if roleSet[components.RoleVerification] && cfg.Features.Verification {
+		if err := componentRegistry.Register(components.RoleVerification, "36-verification-input-cleanup", func() (components.Service, error) {
+			return &verify.InputCleanup{Repository: verificationRepository}, nil
+		}); err != nil {
+			return err
+		}
 		compilerCacheLocker, err := verify.NewPostgresCompilerCacheInstallLocker(db)
 		if err != nil {
 			return err

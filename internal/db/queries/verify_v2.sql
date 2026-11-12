@@ -4,10 +4,10 @@ INSERT INTO verification_jobs (
     catalog_generation_id,
     compiler_digest, executor_kind, execution_policy, executor_digest,
     chain_id, address, code_hash, block_hash,
-    request, request_payload, request_digest, max_attempts
+    request, request_payload, request_digest, max_attempts, admission_principal
 ) VALUES (
     sqlc.arg('id')::uuid, sqlc.arg('kind'), sqlc.narg('language'), sqlc.narg('catalog_language'), sqlc.narg('compiler_version'), sqlc.narg('compiler_platform'), sqlc.narg('catalog_generation_id'), sqlc.arg('compiler_digest'), NULL, NULL, NULL,
-    sqlc.narg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('block_hash'), sqlc.arg('request')::jsonb, sqlc.arg('request_payload'), sqlc.arg('request_digest'), sqlc.arg('max_attempts')
+    sqlc.narg('chain_id')::numeric, sqlc.arg('address'), sqlc.arg('code_hash'), sqlc.arg('block_hash'), sqlc.arg('request')::jsonb, sqlc.arg('request_payload'), sqlc.arg('request_digest'), sqlc.arg('max_attempts'), sqlc.arg('admission_principal')
 )
 ON CONFLICT (request_digest) WHERE status IN ('queued', 'running', 'succeeded')
 DO NOTHING
@@ -96,3 +96,11 @@ SELECT id::text, kind, language, compiler_version, compiler_platform,
        max_attempts, created_at, updated_at
 FROM verification_jobs
 WHERE id = sqlc.arg('job_id')::uuid;
+
+-- name: VerifyV2GetJobSummary :one
+SELECT id::text,kind,status,summary_outcome AS outcome,error_code,created_at,updated_at,
+       summary_chain_id,summary_address
+FROM verification_jobs WHERE id=sqlc.arg('id')::uuid;
+
+-- name: VerifyV2GetJobOutcome :one
+SELECT outcome FROM verification_jobs WHERE id=sqlc.arg('id')::uuid;

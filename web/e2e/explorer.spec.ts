@@ -2,6 +2,7 @@ import { installAdminSession } from "./adminFixtures";
 import { installVerificationSession } from "./verification-session";
 import { expect, test, type Locator } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { configureAppearance } from "./appearance";
 
 const address = "0x1111111111111111111111111111111111111111";
 const unverifiedAddress = "0x1212121212121212121212121212121212121212";
@@ -1627,24 +1628,36 @@ test("token address links lead to shareable tabs with keyboard and history navig
   await assertA11yAndNoOverflow(page, "token details navigation");
 });
 
-test("authoritative ERC-20 holders remain accessible and bilingual at 390px", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/token/${holderToken}`);
-  await expect(page.getByRole("heading", { name: "Holder Token", level: 1 })).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Token summary" }).getByText("Holder count"),
-  ).toBeVisible();
-  await page.getByRole("link", { name: "Token holders", exact: true }).click();
-  const holders = page.getByRole("region", { name: "Token holders" });
-  await expect(holders.getByRole("link", { name: "0x222222…222222" })).toBeVisible();
-  await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in English");
-  await page.getByRole("button", { name: "切换到中文" }).click();
-  await expect(page.getByRole("region", { name: "代币持有人" })).toBeVisible();
-  await expect(page.getByText("持有人数量")).toBeVisible();
-  await page.getByRole("link", { name: "详情", exact: true }).click();
-  await expect(page.getByText("快照区块哈希", { exact: true })).toBeVisible();
-  await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in Chinese");
-});
+for (const theme of ["light", "dark"] as const) {
+  test(`authoritative ERC-20 holders remain accessible and bilingual at 390px ${theme}`, async ({
+    page,
+  }, testInfo) => {
+    await configureAppearance(page, { width: 390, language: "en", theme });
+    await page.goto(`/token/${holderToken}`);
+    await expect(page.getByRole("heading", { name: "Holder Token", level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Token summary" }).getByText("Holder count"),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Token holders", exact: true }).click();
+    const holders = page.getByRole("region", { name: "Token holders" });
+    await expect(holders.getByRole("link", { name: "0x222222…222222" })).toBeVisible();
+    await expect(
+      holders.locator(".table-secondary").getByRole("link", { name: "2", exact: true }),
+    ).toHaveAttribute("href", `/blocks/${secondBlockHash}`);
+    await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in English");
+    await page.screenshot({ path: testInfo.outputPath(`holders-en-${theme}.png`), fullPage: true });
+    await page.getByRole("button", { name: "切换到中文" }).click();
+    await expect(page.getByRole("region", { name: "代币持有人" })).toBeVisible();
+    await expect(page.getByText("持有人数量")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "代币持有人" }).getByText("快照区块:"),
+    ).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`holders-zh-${theme}.png`), fullPage: true });
+    await page.getByRole("link", { name: "详情", exact: true }).click();
+    await expect(page.getByText("快照区块哈希", { exact: true })).toBeVisible();
+    await assertA11yAndNoOverflow(page, "authoritative ERC-20 holders in Chinese");
+  });
+}
 
 test("compact proxy information supports independent actions and accessible bilingual layouts", async ({
   page,

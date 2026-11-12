@@ -386,7 +386,7 @@ export function ContractPage({ address }: { address: string }) {
                         <>
                           <QueryNotice
                             compact
-                            loading={proxy.isPending}
+                            loading={proxy.isLoading}
                             error={isUnverifiedArtifactError(proxy.error) ? undefined : proxy.error}
                           />
                           {showProxySummary && proxyDetail ? (
@@ -397,7 +397,7 @@ export function ContractPage({ address }: { address: string }) {
                               address={address}
                               artifact={artifact.data}
                               error={artifact.error}
-                              loading={artifact.isPending}
+                              loading={artifact.isLoading}
                             />
                           ) : null}
                         </>
@@ -439,7 +439,7 @@ export function ContractPage({ address }: { address: string }) {
                         <DiamondCutHistory
                           data={diamondCuts.data}
                           error={diamondCuts.error}
-                          loading={diamondCuts.isPending}
+                          loading={diamondCuts.isLoading}
                           page={diamondCutPager.page}
                           onNext={diamondCutPager.next}
                           onPrevious={diamondCutPager.previous}
@@ -450,7 +450,7 @@ export function ContractPage({ address }: { address: string }) {
                         <UpgradeHistory
                           data={upgrades.data}
                           error={upgrades.error}
-                          loading={upgrades.isPending}
+                          loading={upgrades.isLoading}
                           page={upgradePager.page}
                           onNext={upgradePager.next}
                           onPrevious={upgradePager.previous}
@@ -461,7 +461,7 @@ export function ContractPage({ address }: { address: string }) {
                         <InitializationHistory
                           data={initializations.data}
                           error={initializations.error}
-                          loading={initializations.isPending}
+                          loading={initializations.isLoading}
                           page={initializationPager.page}
                           onNext={initializationPager.next}
                           onPrevious={initializationPager.previous}
@@ -587,7 +587,7 @@ function DiamondFacetCard({
       ) : (
         <>
           <QueryNotice
-            loading={artifact.isPending}
+            loading={artifact.isLoading}
             error={unverified ? undefined : artifact.error}
           />
           {unverified ? (

@@ -9,7 +9,9 @@ server:
   public_url: ""
   shutdown_timeout: 30s
   read_timeout: 10s
-  write_timeout: 30s
+  write_timeout: 100s
+  payment_request_timeout: 75s
+  request_timeout: 20s
 
 database:
   url: ""
@@ -99,7 +101,7 @@ user_auth:
 
 billing:
   facilitator_allowed_cidrs: []
-  facilitator_timeout: 10s
+  facilitator_timeout: 30s
   facilitator_max_response_bytes: 1048576
   requirement_max_timeout: 60s
   reservation_ttl: 2m

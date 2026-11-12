@@ -22,7 +22,17 @@ const NotFoundPage = lazyRouteComponent(() => import("@/pages/pages"), "NotFound
 const SearchPage = lazyRouteComponent(() => import("@/pages/pages"), "SearchPage");
 const TokensPage = lazyRouteComponent(() => import("@/pages/pages"), "TokensPage");
 const TransactionsPage = lazyRouteComponent(() => import("@/pages/pages"), "TransactionsPage");
-const EntityPage = lazyRouteComponent(() => import("@/pages/EntityPage"), "EntityPage");
+const BlockDetailPage = lazyRouteComponent(() => import("@/pages/BlockPage"), "BlockDetailPage");
+const TransactionDetailPage = lazyRouteComponent(
+  () => import("@/pages/TransactionPage"),
+  "TransactionDetailPage",
+);
+const AddressDetailPage = lazyRouteComponent(
+  () => import("@/pages/AddressPage"),
+  "AddressDetailPage",
+);
+const TokenDetailPage = lazyRouteComponent(() => import("@/pages/TokenPage"), "TokenDetailPage");
+const NFTDetailPage = lazyRouteComponent(() => import("@/pages/NFTPage"), "NFTDetailPage");
 const VerifyPage = lazyRouteComponent(() => import("@/pages/VerifyPage"), "VerifyPage");
 const ChartsPage = lazyRouteComponent(() => import("@/pages/ChartsPages"), "ChartsPage");
 const ChartMetricPage = lazyRouteComponent(() => import("@/pages/ChartsPages"), "ChartMetricPage");
@@ -379,7 +389,7 @@ const routeTree = rootRoute.addChildren([
 function BlockRoutePage() {
   const { blockID } = blockRoute.useParams();
   const { tab } = blockRoute.useSearch();
-  return <EntityPage kind="block" identifier={blockID} blockTab={tab} />;
+  return <BlockDetailPage identifier={blockID} tab={tab ?? "overview"} />;
 }
 
 function BlobRoutePage() {
@@ -392,7 +402,7 @@ function BlobRoutePage() {
 function TransactionRoutePage() {
   const { hash } = transactionRoute.useParams();
   const { tab } = transactionRoute.useSearch();
-  return <EntityPage kind="transaction" identifier={hash} transactionTab={tab} />;
+  return <TransactionDetailPage hash={hash} tab={tab ?? "overview"} />;
 }
 
 function UserOperationRoutePage() {
@@ -403,25 +413,18 @@ function UserOperationRoutePage() {
 function AddressRoutePage() {
   const { address } = addressRoute.useParams();
   const { tab, asset } = addressRoute.useSearch();
-  return (
-    <EntityPage
-      kind="address"
-      identifier={address}
-      addressTab={tab ?? "transactions"}
-      addressAsset={asset}
-    />
-  );
+  return <AddressDetailPage address={address} tab={tab ?? "transactions"} asset={asset} />;
 }
 
 function TokenRoutePage() {
   const { address } = tokenRoute.useParams();
   const { tab } = tokenRoute.useSearch();
-  return <EntityPage kind="token" identifier={address} tokenTab={tab} />;
+  return <TokenDetailPage address={address} tab={tab} />;
 }
 
 function NFTRoutePage() {
   const { address, tokenID } = nftRoute.useParams();
-  return <EntityPage kind="nft" identifier={address} secondary={tokenID} />;
+  return <NFTDetailPage address={address} tokenID={tokenID} />;
 }
 
 function AccountRoutePage() {

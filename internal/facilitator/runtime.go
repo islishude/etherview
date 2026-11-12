@@ -42,6 +42,8 @@ type Service struct {
 	cancel    context.CancelFunc
 	workers   sync.WaitGroup
 	closeOnce sync.Once
+	fatalOnce sync.Once
+	fatal     chan struct{}
 	cleanups  []func()
 }
 
@@ -52,7 +54,7 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	}
 	defer resolved.clear()
 
-	s := &Service{config: c, token: bytes.Clone(bytes.TrimSpace(resolved.token)), chains: map[string]*chainRuntime{}}
+	s := &Service{config: c, token: bytes.Clone(bytes.TrimSpace(resolved.token)), chains: map[string]*chainRuntime{}, fatal: make(chan struct{})}
 	success := false
 	defer func() {
 		if !success {
@@ -64,7 +66,7 @@ func New(ctx context.Context, c Config) (*Service, error) {
 		return nil, errors.New("database_unavailable")
 	}
 	s.cleanups = append(s.cleanups, s.pool.Close)
-	s.queries = dbgen.New(s.pool)
+	s.queries = &lockedJournal{settlementJournal: dbgen.New(s.pool), service: s}
 	s.lock, err = pgx.Connect(ctx, strings.TrimSpace(string(resolved.database)))
 	if err != nil {
 		return nil, errors.New("database_unavailable")
@@ -126,6 +128,8 @@ func New(ctx context.Context, c Config) (*Service, error) {
 	s.active.Store(true)
 	workerCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	s.workers.Add(1)
+	go s.monitorLock(workerCtx)
 	for _, ch := range s.chains {
 		s.workers.Add(1)
 		go s.monitor(workerCtx, ch)

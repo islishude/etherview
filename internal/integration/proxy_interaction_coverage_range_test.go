@@ -349,3 +349,56 @@ func TestProxyInteractionCoverageBatchReplayLockOrder(t *testing.T) {
 	publishPendingEmptyProxyVerificationCoverage(t, ctx, db, second)
 	assertProxyInteractionCoverageRanges(t, ctx, db, [][2]store.BlockRef{{first, second}})
 }
+
+func TestDeferredBrowsingAndProxyCoverageShareLockOrder(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := testBundle(0, testHash(168_000), testHash(0), testHash(169_000), "projection-first")
+	second := testBundle(1, testHash(168_001), first.Block.Hash(), testHash(169_001), "projection-second")
+	commitCanonical(t, ctx, repository, first)
+	commitCanonical(t, ctx, repository, second)
+	owner, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = owner.Rollback(context.Background()) }()
+	if _, err := owner.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('etherview:proxy-interaction-coverage:1',0))`); err != nil {
+		t.Fatal(err)
+	}
+	other, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = other.Rollback(context.Background()) }()
+	// An earlier stage change queues browsing before an outbox mutation queues
+	// proxy coverage. The competing coverage publisher must still be able to
+	// refresh browsing while the outbox transaction waits for its coverage lock.
+	if _, err := other.Exec(ctx, `INSERT INTO browsing_refresh_work(chain_id,block_number,stage) VALUES(1,1,'core')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.Exec(ctx, `DELETE FROM transactional_outbox WHERE chain_id=1 AND topic='core.block.canonical' AND message_key=$1`, second.Block.Hash().Hex()); err != nil {
+		t.Fatal(err)
+	}
+	otherPID := int32(other.Conn().PgConn().PID())
+	finished := make(chan error, 1)
+	go func() { finished <- other.Commit(ctx) }()
+	if err := testdbguard.WaitBlocked(ctx, db, otherPID, int32(owner.Conn().PgConn().PID())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owner.Exec(ctx, `INSERT INTO browsing_refresh_work(chain_id,block_number,stage) VALUES(1,0,'core')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM browsing_refresh_work`, 0)
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM browsing_blocks WHERE stage='core' AND complete`, 2)
+}

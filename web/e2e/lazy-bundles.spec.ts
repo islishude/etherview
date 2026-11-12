@@ -43,3 +43,25 @@ test("verified source and chart bundles load only when their views are opened", 
   expect(scripts.some((path) => path.includes("zrender-vendor"))).toBe(true);
   expect(errors).toEqual([]);
 });
+
+for (const [entity, url] of [
+  ["Block", "/blocks/2"],
+  ["Transaction", `/tx/0x${"a".repeat(64)}`],
+  ["Address", `/address/0x${"1".repeat(40)}`],
+  ["Token", `/token/0x${"01".repeat(20)}`],
+  ["NFT", `/nft/0x${"02".repeat(20)}/1`],
+] as const) {
+  test(`${entity} details load only their own entity route`, async ({ page }) => {
+    const scripts: string[] = [];
+    page.on("request", (request) => {
+      if (request.resourceType() === "script") scripts.push(new URL(request.url()).pathname);
+    });
+    await page.goto(url);
+    await expect.poll(() => scripts.some((path) => path.includes(`${entity}Page-`))).toBe(true);
+    for (const other of ["Block", "Transaction", "Address", "Token", "NFT"].filter(
+      (name) => name !== entity,
+    )) {
+      expect(scripts.some((path) => path.includes(`${other}Page-`))).toBe(false);
+    }
+  });
+}

@@ -102,7 +102,7 @@ func TestEtherscanVerificationSubmitsDurableCanonicalJob(t *testing.T) {
 		t.Fatalf("verification GUID = %#v", result)
 	}
 
-	job, found, err := verificationService.Job(ctx, guid)
+	job, found, err := verificationRepository.Job(ctx, guid)
 	if err != nil || !found {
 		t.Fatalf("load durable verification job: found=%t error=%v", found, err)
 	}
@@ -185,7 +185,7 @@ func TestEtherscanVerificationSubmitsAuthenticatedGenesisRuntimeOnlyJob(t *testi
 	if !ok || guid == "" {
 		t.Fatalf("verification GUID = %#v", result)
 	}
-	job, found, err := verificationService.Job(ctx, guid)
+	job, found, err := verificationRepository.Job(ctx, guid)
 	if err != nil || !found || job.RequestV2 == nil || job.RequestV2.Target == nil {
 		t.Fatalf("durable Genesis job: found=%t job=%+v error=%v", found, job, err)
 	}

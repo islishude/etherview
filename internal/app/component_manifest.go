@@ -16,6 +16,9 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 	set := make(map[string]struct{})
 	add := func(key string) { set[key] = struct{}{} }
 	for _, role := range roles {
+		if roleUsesRPC(role, cfg) {
+			add("06-rpc-recovery")
+		}
 		add("00-operations-http")
 		add("02-durable-metrics")
 		if cfg.Observability.OTLPTraceEndpoint != "" {
@@ -29,9 +32,13 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 			add("08-runtime-event-relay")
 			add("09-home-snapshot-feed")
 			add("20-public-api")
+			if cfg.Features.X402Topups {
+				add("21-topup-reconciliation")
+			}
 		case components.RoleVerification:
 			if cfg.Features.Verification {
 				add("35-compiler-catalog-refresher")
+				add("36-verification-input-cleanup")
 				addWorkerComponentKeys(
 					add, "40-contract-verification", cfg.Verification.WorkerCount,
 				)

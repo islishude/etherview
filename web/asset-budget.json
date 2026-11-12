@@ -19,5 +19,43 @@
     "x402-vendor",
     "hooks-",
     "ui-tabs"
+  ],
+  "detailRoutes": [
+    {
+      "entry": "src/pages/BlockPage.tsx",
+      "maximumRawBytes": 1366770,
+      "maximumGzipBytes": 391509,
+      "exclusiveModules": ["src/pages/BlockPage.tsx"]
+    },
+    {
+      "entry": "src/pages/TransactionPage.tsx",
+      "maximumRawBytes": 1366770,
+      "maximumGzipBytes": 391509,
+      "exclusiveModules": [
+        "src/pages/TransactionPage.tsx",
+        "src/pages/TransactionOverview.tsx",
+        "src/pages/TransactionCalldata.tsx",
+        "src/pages/TransactionPanels.tsx",
+        "src/pages/TransactionTrace.tsx"
+      ]
+    },
+    {
+      "entry": "src/pages/AddressPage.tsx",
+      "maximumRawBytes": 1366770,
+      "maximumGzipBytes": 391509,
+      "exclusiveModules": ["src/pages/AddressPage.tsx"]
+    },
+    {
+      "entry": "src/pages/TokenPage.tsx",
+      "maximumRawBytes": 1366770,
+      "maximumGzipBytes": 391509,
+      "exclusiveModules": ["src/pages/TokenPage.tsx"]
+    },
+    {
+      "entry": "src/pages/NFTPage.tsx",
+      "maximumRawBytes": 1366770,
+      "maximumGzipBytes": 391509,
+      "exclusiveModules": ["src/pages/NFTPage.tsx"]
+    }
   ]
 }

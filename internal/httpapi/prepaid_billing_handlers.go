@@ -565,6 +565,10 @@ func billingTopupIntentModel(
 		}
 		model.PaymentId = &paymentID
 	}
+	if intent.SettlementTransactionHash != nil {
+		value := gen.Hash(intent.SettlementTransactionHash.Hex())
+		model.SettlementTransactionHash = &value
+	}
 	if transactionHash == nil {
 		transactionHash = intent.TransactionHash
 	}

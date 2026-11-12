@@ -905,8 +905,9 @@ func captureFoundryVerificationSnapshot(
 	}
 	if err := h.db.QueryRow(ctx, `
 		SELECT
-		  jsonb_typeof(job.request->'standard_json') = 'object'
-		    AND job.request->'standard_json'->>'language' = 'Solidity'
+		  NOT (job.request ? 'standard_json')
+		    AND jsonb_typeof(convert_from(job.request_payload,'UTF8')::jsonb->'standard_json') = 'object'
+		    AND convert_from(job.request_payload,'UTF8')::jsonb->'standard_json'->>'language' = 'Solidity'
 		    AND job.request->>'contract_name_hint' = $2,
 		  job.kind,
 		  job.language,

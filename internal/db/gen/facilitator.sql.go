@@ -11,6 +11,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const facilitatorAbortUnsigned = `-- name: FacilitatorAbortUnsigned :execrows
+UPDATE facilitator_settlements SET state='failed',response=$2,updated_at=now()
+WHERE authorization_id=$1 AND state='reserved'
+  AND nonce IS NULL AND raw_transaction IS NULL AND transaction_hash IS NULL
+`
+
+func (q *Queries) FacilitatorAbortUnsigned(ctx context.Context, authorizationID string, response []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorAbortUnsigned, authorizationID, response)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const facilitatorAcquireLock = `-- name: FacilitatorAcquireLock :one
 SELECT pg_try_advisory_lock(402059::bigint)
 `
@@ -35,9 +49,22 @@ func (q *Queries) FacilitatorConfirmBroadcast(ctx context.Context, authorization
 	return result.RowsAffected(), nil
 }
 
+const facilitatorConfirmTransaction = `-- name: FacilitatorConfirmTransaction :execrows
+UPDATE facilitator_settlements SET transaction_confirmed=true,broadcast_status='confirmed',updated_at=now()
+WHERE authorization_id=$1 AND transaction_hash=$2
+`
+
+func (q *Queries) FacilitatorConfirmTransaction(ctx context.Context, authorizationID string, transactionHash []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorConfirmTransaction, authorizationID, transactionHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const facilitatorFinish = `-- name: FacilitatorFinish :execrows
 UPDATE facilitator_settlements SET state=$2,response=$3,updated_at=now()
-WHERE authorization_id=$1 AND state IN ('reserved','signed')
+WHERE authorization_id=$1 AND state IN ('signed','reconciling') AND response IS NULL
 `
 
 func (q *Queries) FacilitatorFinish(ctx context.Context, authorizationID string, state string, response []byte) (int64, error) {
@@ -49,7 +76,7 @@ func (q *Queries) FacilitatorFinish(ctx context.Context, authorizationID string,
 }
 
 const facilitatorGet = `-- name: FacilitatorGet :one
-SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, broadcast_status, response, created_at, updated_at FROM facilitator_settlements WHERE authorization_id=$1
+SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, transaction_confirmed, settlement_evidence, scan_cursor, broadcast_status, response, created_at, updated_at FROM facilitator_settlements WHERE authorization_id=$1
 `
 
 func (q *Queries) FacilitatorGet(ctx context.Context, authorizationID string) (FacilitatorSettlement, error) {
@@ -65,6 +92,9 @@ func (q *Queries) FacilitatorGet(ctx context.Context, authorizationID string) (F
 		&i.RawTransaction,
 		&i.TransactionHash,
 		&i.State,
+		&i.TransactionConfirmed,
+		&i.SettlementEvidence,
+		&i.ScanCursor,
 		&i.BroadcastStatus,
 		&i.Response,
 		&i.CreatedAt,
@@ -74,7 +104,7 @@ func (q *Queries) FacilitatorGet(ctx context.Context, authorizationID string) (F
 }
 
 const facilitatorPending = `-- name: FacilitatorPending :many
-SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, broadcast_status, response, created_at, updated_at FROM facilitator_settlements WHERE network=$1 AND state IN ('reserved','signed') ORDER BY created_at LIMIT 32
+SELECT authorization_id, request_digest, request_body, network, signer_address, nonce, raw_transaction, transaction_hash, state, transaction_confirmed, settlement_evidence, scan_cursor, broadcast_status, response, created_at, updated_at FROM facilitator_settlements WHERE network=$1 AND (state IN ('reserved','signed','reconciling') OR (transaction_hash IS NOT NULL AND NOT transaction_confirmed)) ORDER BY updated_at, authorization_id LIMIT 32
 `
 
 func (q *Queries) FacilitatorPending(ctx context.Context, network string) ([]FacilitatorSettlement, error) {
@@ -96,6 +126,9 @@ func (q *Queries) FacilitatorPending(ctx context.Context, network string) ([]Fac
 			&i.RawTransaction,
 			&i.TransactionHash,
 			&i.State,
+			&i.TransactionConfirmed,
+			&i.SettlementEvidence,
+			&i.ScanCursor,
 			&i.BroadcastStatus,
 			&i.Response,
 			&i.CreatedAt,
@@ -112,7 +145,7 @@ func (q *Queries) FacilitatorPending(ctx context.Context, network string) ([]Fac
 }
 
 const facilitatorPendingCount = `-- name: FacilitatorPendingCount :one
-SELECT count(*) FROM facilitator_settlements WHERE network=$1 AND state IN ('reserved','signed')
+SELECT count(*) FROM facilitator_settlements WHERE network=$1 AND (state IN ('reserved','signed','reconciling') OR (transaction_hash IS NOT NULL AND NOT transaction_confirmed))
 `
 
 func (q *Queries) FacilitatorPendingCount(ctx context.Context, network string) (int64, error) {
@@ -120,6 +153,20 @@ func (q *Queries) FacilitatorPendingCount(ctx context.Context, network string) (
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const facilitatorReconcileUnsigned = `-- name: FacilitatorReconcileUnsigned :execrows
+UPDATE facilitator_settlements SET state='reconciling',updated_at=now()
+WHERE authorization_id=$1 AND state='reserved'
+  AND nonce IS NULL AND raw_transaction IS NULL AND transaction_hash IS NULL
+`
+
+func (q *Queries) FacilitatorReconcileUnsigned(ctx context.Context, authorizationID string) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorReconcileUnsigned, authorizationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const facilitatorRejectUnsubmitted = `-- name: FacilitatorRejectUnsubmitted :execrows
@@ -200,6 +247,45 @@ func (q *Queries) FacilitatorSaveSigned(ctx context.Context, arg FacilitatorSave
 		arg.RawTransaction,
 		arg.TransactionHash,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const facilitatorScanCursor = `-- name: FacilitatorScanCursor :execrows
+UPDATE facilitator_settlements SET scan_cursor=$2,updated_at=now()
+WHERE authorization_id=$1 AND state IN ('signed','reconciling') AND response IS NULL
+`
+
+func (q *Queries) FacilitatorScanCursor(ctx context.Context, authorizationID string, scanCursor []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorScanCursor, authorizationID, scanCursor)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const facilitatorSucceed = `-- name: FacilitatorSucceed :execrows
+UPDATE facilitator_settlements SET state='succeeded',response=$2,settlement_evidence=$3,updated_at=now()
+WHERE authorization_id=$1 AND state IN ('signed','reconciling') AND response IS NULL
+`
+
+func (q *Queries) FacilitatorSucceed(ctx context.Context, authorizationID string, response []byte, settlementEvidence []byte) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorSucceed, authorizationID, response, settlementEvidence)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const facilitatorTouchRecovery = `-- name: FacilitatorTouchRecovery :execrows
+UPDATE facilitator_settlements SET updated_at=now()
+WHERE authorization_id=$1 AND (state IN ('reserved','signed','reconciling') OR (transaction_hash IS NOT NULL AND NOT transaction_confirmed))
+`
+
+func (q *Queries) FacilitatorTouchRecovery(ctx context.Context, authorizationID string) (int64, error) {
+	result, err := q.db.Exec(ctx, facilitatorTouchRecovery, authorizationID)
 	if err != nil {
 		return 0, err
 	}

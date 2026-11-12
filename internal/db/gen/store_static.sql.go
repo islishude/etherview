@@ -227,6 +227,45 @@ func (q *Queries) StoreLockCanonicalBlock(ctx context.Context, chainID string, n
 	return i, err
 }
 
+const storeLockCanonicalSegment = `-- name: StoreLockCanonicalSegment :many
+SELECT canonical.number::text, canonical.block_hash, block.parent_hash
+FROM canonical_blocks AS canonical
+JOIN blocks AS block
+  ON block.chain_id = canonical.chain_id
+ AND block.number = canonical.number
+ AND block.hash = canonical.block_hash
+WHERE canonical.chain_id = $1::text::numeric
+  AND canonical.number BETWEEN $2::text::numeric AND $3::text::numeric
+ORDER BY canonical.number
+FOR UPDATE OF canonical
+`
+
+type StoreLockCanonicalSegmentRow struct {
+	CanonicalNumber string `db:"canonical_number" json:"canonical_number"`
+	BlockHash       []byte `db:"block_hash" json:"block_hash"`
+	ParentHash      []byte `db:"parent_hash" json:"parent_hash"`
+}
+
+func (q *Queries) StoreLockCanonicalSegment(ctx context.Context, chainID string, fromNumber string, toNumber string) ([]StoreLockCanonicalSegmentRow, error) {
+	rows, err := q.db.Query(ctx, storeLockCanonicalSegment, chainID, fromNumber, toNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []StoreLockCanonicalSegmentRow{}
+	for rows.Next() {
+		var i StoreLockCanonicalSegmentRow
+		if err := rows.Scan(&i.CanonicalNumber, &i.BlockHash, &i.ParentHash); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const storeLockCanonicalTip = `-- name: StoreLockCanonicalTip :one
 SELECT canonical.number::text, canonical.block_hash, block.parent_hash
 FROM canonical_blocks AS canonical

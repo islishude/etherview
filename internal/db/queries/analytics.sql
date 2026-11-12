@@ -12,9 +12,7 @@ LIMIT 1;
 SELECT backfill.available_from,
        backfill.available_to,
        COALESCE(backfill.complete, false)::boolean AS complete,
-       (SELECT count(*)::text
-        FROM chart_rollup_dirty_hours
-        WHERE chain_id = sqlc.arg('chain_id')::numeric)::text AS dirty_hours,
+       COALESCE((SELECT dirty_hours FROM chart_dirty_totals WHERE chain_id=sqlc.arg('chain_id')::numeric),0)::text AS dirty_hours,
        CASE
            WHEN COALESCE(backfill.total_blocks, 0) = 0 THEN '0'::text
            ELSE trim(trailing '.' FROM trim(trailing '0' FROM
@@ -26,71 +24,33 @@ LEFT JOIN chart_rollup_backfill AS backfill
   ON backfill.chain_id = sqlc.arg('chain_id')::numeric;
 
 -- name: CountDirtyAnalyticsHours :one
-SELECT count(*)::text AS dirty_count
-FROM chart_rollup_dirty_hours AS dirty
-WHERE dirty.chain_id = sqlc.arg('chain_id')::numeric
-  AND dirty.bucket_start < sqlc.arg('to_time')::timestamptz
-  AND dirty.bucket_start + interval '1 hour' > sqlc.arg('from_time')::timestamptz
-  AND NOT EXISTS (
-      SELECT 1 FROM chart_hourly_rollups AS rollup
-      WHERE rollup.chain_id = dirty.chain_id AND rollup.bucket_start = dirty.bucket_start
-  )
-  AND EXISTS (
-      SELECT 1 FROM canonical_blocks AS canonical
-      JOIN blocks AS block ON block.chain_id = canonical.chain_id
-       AND block.number = canonical.number AND block.hash = canonical.block_hash
-      WHERE canonical.chain_id = dirty.chain_id
-        AND canonical.number <= sqlc.arg('max_block_number')::numeric
-        AND block.timestamp >= extract(epoch FROM dirty.bucket_start)::numeric
-        AND block.timestamp < extract(epoch FROM dirty.bucket_start + interval '1 hour')::numeric
-  );
+SELECT CASE WHEN EXISTS(
+    SELECT 1 FROM chart_source_hours h
+    JOIN chart_rollup_dirty_hours d USING(chain_id,bucket_start)
+    LEFT JOIN chart_hourly_rollups r USING(chain_id,bucket_start)
+    WHERE h.chain_id=sqlc.arg('chain_id')::numeric
+      AND h.bucket_start<sqlc.arg('to_time')::timestamptz
+      AND h.bucket_start+interval '1 hour'>sqlc.arg('from_time')::timestamptz
+      AND h.first_block<=sqlc.arg('max_block_number')::numeric AND r.bucket_start IS NULL
+) THEN '1' ELSE '0' END::text AS dirty_count;
 
 -- name: CountPendingAnalyticsSources :one
-SELECT count(*)::text AS pending_count
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN published_block_stage_results AS stats_result
-  ON stats_result.chain_id = canonical.chain_id
- AND stats_result.block_number = canonical.number
- AND stats_result.block_hash = canonical.block_hash
- AND stats_result.stage = 'stats'
- AND stats_result.stage_version = 4
- AND stats_result.state = 'complete'
-LEFT JOIN published_block_stage_results AS token_result
-  ON token_result.chain_id = canonical.chain_id
- AND token_result.block_number = canonical.number
- AND token_result.block_hash = canonical.block_hash
- AND token_result.stage = 'token'
- AND token_result.stage_version = 2
- AND token_result.state = 'complete'
-WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
-  AND canonical.number <= sqlc.arg('max_block_number')::numeric
-  AND block.timestamp >= extract(epoch FROM sqlc.arg('from_time')::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM sqlc.arg('to_time')::timestamptz)::numeric
-  AND (stats_result.block_number IS NULL OR token_result.block_number IS NULL);
+SELECT CASE WHEN EXISTS(
+    SELECT 1 FROM chart_source_hours h WHERE h.chain_id=sqlc.arg('chain_id')::numeric
+      AND h.bucket_start<sqlc.arg('to_time')::timestamptz
+      AND h.bucket_start+interval '1 hour'>sqlc.arg('from_time')::timestamptz
+      AND h.first_pending<=sqlc.arg('max_block_number')::numeric
+) THEN '1' ELSE '0' END::text AS pending_count;
 
 -- name: CountMissingAnalyticsRollups :one
-SELECT count(*)::text AS missing_count
-FROM canonical_blocks AS canonical
-JOIN blocks AS block
-  ON block.chain_id = canonical.chain_id
- AND block.number = canonical.number
- AND block.hash = canonical.block_hash
-LEFT JOIN chart_hourly_rollups AS rollup
-  ON rollup.chain_id = canonical.chain_id
- AND rollup.bucket_start = date_trunc(
-     'hour',
-     to_timestamp(block.timestamp::double precision),
-     'UTC'
- )
-WHERE canonical.chain_id = sqlc.arg('chain_id')::numeric
-  AND canonical.number <= sqlc.arg('max_block_number')::numeric
-  AND block.timestamp >= extract(epoch FROM sqlc.arg('from_time')::timestamptz)::numeric
-  AND block.timestamp < extract(epoch FROM sqlc.arg('to_time')::timestamptz)::numeric
-  AND (rollup.bucket_start IS NULL OR canonical.number > rollup.to_block);
+SELECT CASE WHEN EXISTS(
+    SELECT 1 FROM chart_source_hours h LEFT JOIN chart_hourly_rollups r USING(chain_id,bucket_start)
+    WHERE h.chain_id=sqlc.arg('chain_id')::numeric
+      AND h.bucket_start<sqlc.arg('to_time')::timestamptz
+      AND h.bucket_start+interval '1 hour'>sqlc.arg('from_time')::timestamptz
+      AND h.first_block<=sqlc.arg('max_block_number')::numeric
+      AND (r.bucket_start IS NULL OR LEAST(h.last_block,sqlc.arg('max_block_number')::numeric)>r.to_block)
+) THEN '1' ELSE '0' END::text AS missing_count;
 
 -- name: ListAnalyticsHours :many
 WITH requested AS (

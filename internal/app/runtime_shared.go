@@ -21,6 +21,11 @@ func (assembly runtimeAssembly) registerSharedComponents() error {
 	componentRegistry := assembly.componentRegistry
 	databaseHealth := assembly.databaseHealth
 	for _, role := range roles {
+		if roleUsesRPC(role, cfg) && assembly.rpcBuild != nil && assembly.rpcBuild.Recovery != nil {
+			if err := componentRegistry.Register(role, "06-rpc-recovery", func() (components.Service, error) { return assembly.rpcBuild.Recovery, nil }); err != nil {
+				return err
+			}
+		}
 		if err := componentRegistry.Register(role, "00-operations-http", func() (components.Service, error) {
 			return &operationalService{
 				address: cfg.Server.MetricsAddress, shutdownTimeout: cfg.Server.ShutdownTimeout,

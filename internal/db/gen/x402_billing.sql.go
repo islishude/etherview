@@ -61,7 +61,7 @@ WITH candidates AS (
     WHERE payment.chain_id = $1::numeric
       AND payment.purpose = 'legacy_request'
       AND payment.state IN ('reserved', 'verified')
-      AND payment.reservation_expires_at <= $2
+      AND COALESCE(payment.verification_expires_at, payment.reservation_expires_at) <= $2
     ORDER BY payment.reservation_expires_at, payment.id
     FOR UPDATE SKIP LOCKED
     LIMIT $3
@@ -73,7 +73,7 @@ WITH candidates AS (
         updated_at = $2
     FROM candidates
     WHERE payment.id = candidates.id
-    RETURNING payment.id, payment.chain_id, payment.fingerprint, payment.reservation_owner, payment.method, payment.operation, payment.resource_digest, payment.requirement_digest, payment.protocol_version, payment.scheme, payment.network, payment.asset, payment.amount_atomic, payment.recipient, payment.payer, payment.user_id, payment.api_key_prefix, payment.facilitator_digest, payment.transaction_hash, payment.state, payment.failure_code, payment.reservation_expires_at, payment.handler_started_at, payment.verified_at, payment.settling_at, payment.settled_at, payment.failed_at, payment.expired_at, payment.created_at, payment.updated_at, payment.purpose, payment.asset_transfer_method, payment.payment_flow, payment.fingerprint_version, payment.topup_intent_id
+    RETURNING payment.id, payment.chain_id, payment.fingerprint, payment.reservation_owner, payment.authorization_id, payment.request_digest, payment.verification_owner, payment.verification_expires_at, payment.verification_retryable, payment.reconciliation_owner, payment.reconciliation_expires_at, payment.settlement_transaction_hash, payment.settlement_evidence, payment.method, payment.operation, payment.resource_digest, payment.requirement_digest, payment.protocol_version, payment.scheme, payment.network, payment.asset, payment.amount_atomic, payment.recipient, payment.payer, payment.user_id, payment.api_key_prefix, payment.facilitator_digest, payment.transaction_hash, payment.state, payment.failure_code, payment.reservation_expires_at, payment.handler_started_at, payment.verified_at, payment.settling_at, payment.settled_at, payment.failed_at, payment.expired_at, payment.created_at, payment.updated_at, payment.purpose, payment.asset_transfer_method, payment.payment_flow, payment.fingerprint_version, payment.topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, occurred_at
@@ -162,7 +162,7 @@ func (q *Queries) FindX402TestnetBillingPayments(ctx context.Context, arg FindX4
 }
 
 const getBillingPaymentByFingerprint = `-- name: GetBillingPaymentByFingerprint :one
-SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+SELECT id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE fingerprint = $1
 `
@@ -175,6 +175,15 @@ func (q *Queries) GetBillingPaymentByFingerprint(ctx context.Context, fingerprin
 		&i.ChainID,
 		&i.Fingerprint,
 		&i.ReservationOwner,
+		&i.AuthorizationID,
+		&i.RequestDigest,
+		&i.VerificationOwner,
+		&i.VerificationExpiresAt,
+		&i.VerificationRetryable,
+		&i.ReconciliationOwner,
+		&i.ReconciliationExpiresAt,
+		&i.SettlementTransactionHash,
+		&i.SettlementEvidence,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -211,7 +220,7 @@ func (q *Queries) GetBillingPaymentByFingerprint(ctx context.Context, fingerprin
 }
 
 const getBillingPaymentByID = `-- name: GetBillingPaymentByID :one
-SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+SELECT id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -225,6 +234,15 @@ func (q *Queries) GetBillingPaymentByID(ctx context.Context, iD pgtype.UUID, cha
 		&i.ChainID,
 		&i.Fingerprint,
 		&i.ReservationOwner,
+		&i.AuthorizationID,
+		&i.RequestDigest,
+		&i.VerificationOwner,
+		&i.VerificationExpiresAt,
+		&i.VerificationRetryable,
+		&i.ReconciliationOwner,
+		&i.ReconciliationExpiresAt,
+		&i.SettlementTransactionHash,
+		&i.SettlementEvidence,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -261,7 +279,7 @@ func (q *Queries) GetBillingPaymentByID(ctx context.Context, iD pgtype.UUID, cha
 }
 
 const getBillingPaymentForInspection = `-- name: GetBillingPaymentForInspection :one
-SELECT id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+SELECT id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 FROM billing_payments
 WHERE id = $1::uuid
   AND chain_id = $2::numeric
@@ -276,6 +294,15 @@ func (q *Queries) GetBillingPaymentForInspection(ctx context.Context, iD pgtype.
 		&i.ChainID,
 		&i.Fingerprint,
 		&i.ReservationOwner,
+		&i.AuthorizationID,
+		&i.RequestDigest,
+		&i.VerificationOwner,
+		&i.VerificationExpiresAt,
+		&i.VerificationRetryable,
+		&i.ReconciliationOwner,
+		&i.ReconciliationExpiresAt,
+		&i.SettlementTransactionHash,
+		&i.SettlementEvidence,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -336,7 +363,7 @@ INSERT INTO billing_payments (
     id,
     chain_id,
     fingerprint,
-    reservation_owner,
+    reservation_owner, authorization_id, request_digest,
     method,
     operation,
     resource_digest,
@@ -363,32 +390,32 @@ INSERT INTO billing_payments (
     $1::uuid,
     $2::numeric,
     $3,
-    $4::uuid,
-    $5,
-    $6,
+    $4::uuid, $5::text, $6::bytea,
     $7,
     $8,
-    2,
-    'exact',
     $9,
     $10,
-    $11::numeric,
+    2,
+    'exact',
+    $11,
     $12,
-    NULL::uuid,
-    $13::text,
+    $13::numeric,
     $14,
-    $15,
+    NULL::uuid,
+    $15::text,
     $16,
     $17,
     $18,
-    $19::uuid,
-    'reserved',
+    $19,
     $20,
-    $21,
-    $21
+    $21::uuid,
+    'reserved',
+    $22,
+    $23,
+    $23
 )
 ON CONFLICT (fingerprint) DO NOTHING
-RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 `
 
 type InsertBillingPaymentParams struct {
@@ -396,6 +423,8 @@ type InsertBillingPaymentParams struct {
 	ChainID              pgtype.Numeric     `db:"chain_id" json:"chain_id"`
 	Fingerprint          []byte             `db:"fingerprint" json:"fingerprint"`
 	ReservationOwner     pgtype.UUID        `db:"reservation_owner" json:"reservation_owner"`
+	AuthorizationID      *string            `db:"authorization_id" json:"authorization_id"`
+	RequestDigest        []byte             `db:"request_digest" json:"request_digest"`
 	Method               string             `db:"method" json:"method"`
 	Operation            string             `db:"operation" json:"operation"`
 	ResourceDigest       []byte             `db:"resource_digest" json:"resource_digest"`
@@ -421,6 +450,8 @@ func (q *Queries) InsertBillingPayment(ctx context.Context, arg InsertBillingPay
 		arg.ChainID,
 		arg.Fingerprint,
 		arg.ReservationOwner,
+		arg.AuthorizationID,
+		arg.RequestDigest,
 		arg.Method,
 		arg.Operation,
 		arg.ResourceDigest,
@@ -445,6 +476,15 @@ func (q *Queries) InsertBillingPayment(ctx context.Context, arg InsertBillingPay
 		&i.ChainID,
 		&i.Fingerprint,
 		&i.ReservationOwner,
+		&i.AuthorizationID,
+		&i.RequestDigest,
+		&i.VerificationOwner,
+		&i.VerificationExpiresAt,
+		&i.VerificationRetryable,
+		&i.ReconciliationOwner,
+		&i.ReconciliationExpiresAt,
+		&i.SettlementTransactionHash,
+		&i.SettlementEvidence,
 		&i.Method,
 		&i.Operation,
 		&i.ResourceDigest,
@@ -481,7 +521,7 @@ func (q *Queries) InsertBillingPayment(ctx context.Context, arg InsertBillingPay
 }
 
 const listAdminBillingPayments = `-- name: ListAdminBillingPayments :many
-SELECT p.id, p.chain_id, p.fingerprint, p.reservation_owner, p.method, p.operation, p.resource_digest, p.requirement_digest, p.protocol_version, p.scheme, p.network, p.asset, p.amount_atomic, p.recipient, p.payer, p.user_id, p.api_key_prefix, p.facilitator_digest, p.transaction_hash, p.state, p.failure_code, p.reservation_expires_at, p.handler_started_at, p.verified_at, p.settling_at, p.settled_at, p.failed_at, p.expired_at, p.created_at, p.updated_at, p.purpose, p.asset_transfer_method, p.payment_flow, p.fingerprint_version, p.topup_intent_id, i.payment_option
+SELECT p.id, p.chain_id, p.fingerprint, p.reservation_owner, p.authorization_id, p.request_digest, p.verification_owner, p.verification_expires_at, p.verification_retryable, p.reconciliation_owner, p.reconciliation_expires_at, p.settlement_transaction_hash, p.settlement_evidence, p.method, p.operation, p.resource_digest, p.requirement_digest, p.protocol_version, p.scheme, p.network, p.asset, p.amount_atomic, p.recipient, p.payer, p.user_id, p.api_key_prefix, p.facilitator_digest, p.transaction_hash, p.state, p.failure_code, p.reservation_expires_at, p.handler_started_at, p.verified_at, p.settling_at, p.settled_at, p.failed_at, p.expired_at, p.created_at, p.updated_at, p.purpose, p.asset_transfer_method, p.payment_flow, p.fingerprint_version, p.topup_intent_id, i.payment_option
 FROM billing_payments p
 LEFT JOIN billing_topup_intents i ON i.id = p.topup_intent_id AND i.chain_id = p.chain_id
 WHERE p.chain_id = $1::numeric
@@ -563,6 +603,15 @@ func (q *Queries) ListAdminBillingPayments(ctx context.Context, arg ListAdminBil
 			&i.BillingPayment.ChainID,
 			&i.BillingPayment.Fingerprint,
 			&i.BillingPayment.ReservationOwner,
+			&i.BillingPayment.AuthorizationID,
+			&i.BillingPayment.RequestDigest,
+			&i.BillingPayment.VerificationOwner,
+			&i.BillingPayment.VerificationExpiresAt,
+			&i.BillingPayment.VerificationRetryable,
+			&i.BillingPayment.ReconciliationOwner,
+			&i.BillingPayment.ReconciliationExpiresAt,
+			&i.BillingPayment.SettlementTransactionHash,
+			&i.BillingPayment.SettlementEvidence,
 			&i.BillingPayment.Method,
 			&i.BillingPayment.Operation,
 			&i.BillingPayment.ResourceDigest,
@@ -643,7 +692,7 @@ func (q *Queries) ListBillingPaymentEvents(ctx context.Context, paymentID pgtype
 }
 
 const listUserBillingPayments = `-- name: ListUserBillingPayments :many
-SELECT p.id, p.chain_id, p.fingerprint, p.reservation_owner, p.method, p.operation, p.resource_digest, p.requirement_digest, p.protocol_version, p.scheme, p.network, p.asset, p.amount_atomic, p.recipient, p.payer, p.user_id, p.api_key_prefix, p.facilitator_digest, p.transaction_hash, p.state, p.failure_code, p.reservation_expires_at, p.handler_started_at, p.verified_at, p.settling_at, p.settled_at, p.failed_at, p.expired_at, p.created_at, p.updated_at, p.purpose, p.asset_transfer_method, p.payment_flow, p.fingerprint_version, p.topup_intent_id, i.payment_option
+SELECT p.id, p.chain_id, p.fingerprint, p.reservation_owner, p.authorization_id, p.request_digest, p.verification_owner, p.verification_expires_at, p.verification_retryable, p.reconciliation_owner, p.reconciliation_expires_at, p.settlement_transaction_hash, p.settlement_evidence, p.method, p.operation, p.resource_digest, p.requirement_digest, p.protocol_version, p.scheme, p.network, p.asset, p.amount_atomic, p.recipient, p.payer, p.user_id, p.api_key_prefix, p.facilitator_digest, p.transaction_hash, p.state, p.failure_code, p.reservation_expires_at, p.handler_started_at, p.verified_at, p.settling_at, p.settled_at, p.failed_at, p.expired_at, p.created_at, p.updated_at, p.purpose, p.asset_transfer_method, p.payment_flow, p.fingerprint_version, p.topup_intent_id, i.payment_option
 FROM billing_payments p
 LEFT JOIN billing_topup_intents i ON i.id = p.topup_intent_id AND i.chain_id = p.chain_id
 WHERE p.chain_id = $1::numeric
@@ -692,6 +741,15 @@ func (q *Queries) ListUserBillingPayments(ctx context.Context, arg ListUserBilli
 			&i.BillingPayment.ChainID,
 			&i.BillingPayment.Fingerprint,
 			&i.BillingPayment.ReservationOwner,
+			&i.BillingPayment.AuthorizationID,
+			&i.BillingPayment.RequestDigest,
+			&i.BillingPayment.VerificationOwner,
+			&i.BillingPayment.VerificationExpiresAt,
+			&i.BillingPayment.VerificationRetryable,
+			&i.BillingPayment.ReconciliationOwner,
+			&i.BillingPayment.ReconciliationExpiresAt,
+			&i.BillingPayment.SettlementTransactionHash,
+			&i.BillingPayment.SettlementEvidence,
 			&i.BillingPayment.Method,
 			&i.BillingPayment.Operation,
 			&i.BillingPayment.ResourceDigest,
@@ -747,15 +805,15 @@ WITH updated AS (
       AND (
           (
               state IN ('reserved', 'verified')
-              AND reservation_owner = $4::uuid
+              AND COALESCE(verification_owner, reservation_owner) = $4::uuid
           )
           OR (
               state = 'settling'
-              AND reservation_owner = $4::uuid
+              AND COALESCE(verification_owner, reservation_owner) = $4::uuid
               AND failure_code IS NULL
           )
       )
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, occurred_at
@@ -805,9 +863,9 @@ WITH updated AS (
     WHERE id = $3::uuid
       AND purpose = 'legacy_request'
       AND state = 'settling'
-      AND reservation_owner = $4::uuid
+      AND COALESCE(verification_owner, reservation_owner) = $4::uuid
       AND failure_code IS NULL
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id,
@@ -856,12 +914,12 @@ WITH updated AS (
         transaction_hash = $1,
         updated_at = $2
     WHERE id = $3::uuid
-      AND reservation_owner = $4::uuid
+      AND COALESCE(verification_owner, reservation_owner) = $4::uuid
       AND purpose = 'legacy_request'
       AND state = 'settling'
       AND failure_code IS NULL
       AND transaction_hash IS NULL
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, transaction_hash, occurred_at
@@ -898,11 +956,11 @@ WITH updated AS (
     SET failure_code = 'settlement_unknown',
         updated_at = $1
     WHERE id = $2::uuid
-      AND reservation_owner = $3::uuid
+      AND COALESCE(verification_owner, reservation_owner) = $3::uuid
       AND purpose = 'legacy_request'
       AND state = 'settling'
       AND failure_code IS NULL
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, occurred_at
@@ -928,12 +986,12 @@ WITH updated AS (
         settling_at = $1,
         updated_at = $1
     WHERE id = $2::uuid
-      AND reservation_owner = $3::uuid
+      AND COALESCE(verification_owner, reservation_owner) = $3::uuid
       AND purpose = 'legacy_request'
       AND state = 'verified'
       AND handler_started_at IS NOT NULL
-      AND reservation_expires_at > $1
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+      AND COALESCE(verification_expires_at, reservation_expires_at) > $1
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, occurred_at
@@ -965,9 +1023,9 @@ WITH updated AS (
         verified_at = $4,
         updated_at = $4
     WHERE id = $5::uuid
-      AND reservation_owner = $6::uuid
+      AND COALESCE(verification_owner, reservation_owner) = $6::uuid
       AND state = 'reserved'
-      AND reservation_expires_at > $4
+      AND COALESCE(verification_expires_at, reservation_expires_at) > $4
       AND (
           $2::uuid IS NULL
           OR EXISTS (
@@ -978,7 +1036,7 @@ WITH updated AS (
                 AND matched_user.address = $1
           )
       )
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, occurred_at
@@ -1163,12 +1221,12 @@ WITH updated AS (
     SET handler_started_at = $1,
         updated_at = $1
     WHERE id = $2::uuid
-      AND reservation_owner = $3::uuid
+      AND COALESCE(verification_owner, reservation_owner) = $3::uuid
       AND purpose = 'legacy_request'
       AND state = 'verified'
       AND handler_started_at IS NULL
-      AND reservation_expires_at > $1
-    RETURNING id, chain_id, fingerprint, reservation_owner, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
+      AND COALESCE(verification_expires_at, reservation_expires_at) > $1
+    RETURNING id, chain_id, fingerprint, reservation_owner, authorization_id, request_digest, verification_owner, verification_expires_at, verification_retryable, reconciliation_owner, reconciliation_expires_at, settlement_transaction_hash, settlement_evidence, method, operation, resource_digest, requirement_digest, protocol_version, scheme, network, asset, amount_atomic, recipient, payer, user_id, api_key_prefix, facilitator_digest, transaction_hash, state, failure_code, reservation_expires_at, handler_started_at, verified_at, settling_at, settled_at, failed_at, expired_at, created_at, updated_at, purpose, asset_transfer_method, payment_flow, fingerprint_version, topup_intent_id
 ), event AS (
     INSERT INTO billing_payment_events (
         payment_id, from_state, to_state, code, actor, occurred_at

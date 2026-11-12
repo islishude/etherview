@@ -17,7 +17,9 @@ Signed bytes and transaction hash are committed before broadcast. Duplicate
 requests reconcile the same transaction; conflicting authorization reuse fails.
 Unknown broadcast outcomes never cause a new transaction or nonce allocation.
 A singleton database advisory lock excludes concurrent facilitator processes.
-Lock loss stops new work; a durable unique network/account/nonce constraint and
+All journal mutations use the lock-owning physical connection, serialized without
+holding transactions across external calls. Lock loss stops new work and signals
+fatal shutdown within the process shutdown budget; a durable unique network/account/nonce constraint and
 immutable signed bytes prevent a replacement process from issuing another
 transaction for a reserved nonce. No database snapshot spans RPC or KMS calls.
 The signing accounts must not be used by another transaction sender.
@@ -110,3 +112,42 @@ fail, recorded outcomes replay, signed transactions return their original pendin
 hash, and unsigned in-flight reservations remain uncertain. Database failures
 still preserve uncertainty. A submission that loses its reservation to a concurrent
 refusal replays that refusal and never signs. No automatic settlement retry is added.
+
+## Authorization reconciliation and result identity
+
+P60-T32 separates immutable outgoing transaction identity from payment evidence.
+Unsigned termination is conditional on reserved state and absent nonce, raw bytes
+and hash; zero affected rows require a fresh read. Signed bytes and nonce uniqueness
+remain immutable. A confirmed external payment does not release an outstanding
+local transaction from nonce admission or exact-byte operator recovery.
+
+A consumed authorization or reverted local transaction is not proof of nonpayment.
+For standard direct EIP-3009 and Permit2 proxy calls, reconciliation validates the
+signed authorization, complete call data, chain, token, payer, recipient, amount,
+execution-time validity, authorization/settlement event and Transfer in a successful
+canonical receipt with configured confirmations. Proxy-internal calls are not
+traced; insufficient evidence remains pending. Per-cycle historical and forward
+scans cover at most 2,048 blocks and 32 candidate receipts, checkpoint coverage,
+shrink oversized pages without skipping blocks, and reset on canonical mismatch.
+Page attempts alternate historical and forward work using a persisted direction,
+so continuous head growth cannot starve historical evidence across restarts. Failed
+pages retain coverage positions while allowing the other direction to proceed.
+The recovery queue orders by last update and rotates each attempted authorization
+before external work, so unresolved entries cannot monopolize its 32-row batch.
+Only an expired, confirmed-unused authorization permits post-submission failure.
+
+Authenticated POST /result reads the authorization ID and exact request digest,
+returning independent original transaction and payment evidence. It cannot sign,
+submit or reconcile. POST /progress remains observational. Successful settlement
+returns the actual payment hash; confirmed failure retains the original hash.
+The separate result contract carries the provenance needed by the API publisher.
+Missing protocol defaults mean eip3009/authorization; present invalid values fail.
+Only explicit business error codes may be exposed. RPC failures remain unavailable,
+including SDK errors that otherwise resemble invalid signatures. Consumed valid
+signatures report authorization_reconciliation_required for the one-shot settle
+path, even when their execution deadline has since elapsed.
+
+Liveness fails on permanent singleton loss; an independent lock monitor signals
+the main process to exit nonzero. Transient chain failures remain chain-local.
+The current signature-format policy remains 65-byte signatures; this change does
+not introduce wallet deployment or arbitrary smart-wallet signature support.

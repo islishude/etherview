@@ -23,8 +23,25 @@ func validateServerConfig(c Config) error {
 	if c.Server.Address != "" && c.Server.Address == c.Server.MetricsAddress {
 		errs = append(errs, errors.New("server.address and server.metrics_address must use different listeners"))
 	}
-	if c.Server.ShutdownTimeout <= 0 || c.Server.ReadTimeout <= 0 || c.Server.WriteTimeout <= 0 {
+	if c.Server.RequestTimeout <= 0 || c.Server.ShutdownTimeout <= 0 || c.Server.ReadTimeout <= 0 || c.Server.WriteTimeout <= 0 {
 		errs = append(errs, errors.New("server timeouts must be positive"))
+	}
+	if c.Server.PaymentRequestTimeout <= 0 || c.Server.PaymentRequestTimeout > 3*time.Minute {
+		errs = append(errs, errors.New("server.payment_request_timeout must be positive and at most 3m"))
+	}
+	if c.Features.X402Topups {
+		// Verify and Settle are sequential calls. Reserve 10s for authentication,
+		// admission and database work, 2s for ledger completion and 3s to respond.
+		if c.Billing.FacilitatorTimeout < 30*time.Second {
+			errs = append(errs, errors.New("x402 top-ups require billing.facilitator_timeout of at least 30s for settlement execution and journal completion"))
+		}
+		if c.Billing.FacilitatorTimeout <= time.Minute && c.Server.PaymentRequestTimeout < 2*c.Billing.FacilitatorTimeout+15*time.Second {
+			errs = append(errs, errors.New("server.payment_request_timeout must cover twice billing.facilitator_timeout plus 15s"))
+		}
+		// net/http starts the write deadline before reading the request body.
+		if c.Server.WriteTimeout < c.Server.ReadTimeout || c.Server.WriteTimeout-c.Server.ReadTimeout < c.Server.PaymentRequestTimeout+5*time.Second {
+			errs = append(errs, errors.New("server.write_timeout must cover server.read_timeout plus server.payment_request_timeout plus 5s"))
+		}
 	}
 	if c.Server.PublicURL != "" {
 		if err := validatePublicOrigin(c.Server.PublicURL); err != nil {
@@ -293,6 +310,9 @@ func validateFeatureSecurityConfig(c Config) error {
 
 func validateVerificationConfig(c Config) error {
 	var errs []error
+	if c.Verification.MaxRequestBytes <= 0 || c.Verification.MaxRequestBytes > 64<<20 || c.Verification.MaxJobBytes <= 0 || c.Verification.MaxJobBytes > 64<<20 || c.Verification.MaxQueuedJobs <= 0 || c.Verification.MaxQueuedBytes < c.Verification.MaxJobBytes || c.Verification.MaxUserJobs <= 0 {
+		errs = append(errs, errors.New("verification request, job and queue limits must be positive and queue bytes must fit one job"))
+	}
 	if c.Verification.MaxInputBytes <= 0 || c.Verification.MaxInputBytes > 64<<20 {
 		errs = append(errs, errors.New("verification.max_input_bytes must be between 1 and 67108864"))
 	}
