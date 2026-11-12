@@ -240,6 +240,12 @@ WITH input AS (
 ), update_state_changes AS (
     UPDATE transaction_state_changes AS target SET canonical = sqlc.arg('canonical')
     FROM input WHERE target.chain_id = sqlc.arg('chain_id')::numeric AND target.block_hash = input.hash
+), update_native_balance_changes AS (
+ UPDATE native_balance_changes AS target SET canonical=sqlc.arg(canonical) FROM input WHERE target.chain_id=sqlc.arg(chain_id)::numeric AND target.block_hash=input.hash
+), update_native_balance_observations AS (
+ UPDATE native_balance_observations AS target SET canonical=sqlc.arg(canonical) FROM input WHERE target.chain_id=sqlc.arg(chain_id)::numeric AND target.block_hash=input.hash
+), update_native_balance_blocks AS (
+ UPDATE native_balance_blocks AS target SET canonical=sqlc.arg(canonical) FROM input WHERE target.chain_id=sqlc.arg(chain_id)::numeric AND target.block_hash=input.hash
 ), update_native_transfers AS (
  UPDATE native_transfers AS target SET canonical=sqlc.arg(canonical) FROM input WHERE target.chain_id=sqlc.arg(chain_id)::numeric AND target.block_hash=input.hash
 ), update_user_operations AS (

@@ -71,7 +71,7 @@ func testPreviewConsensus(t *testing.T, full bool) {
 	report := map[string]any{
 		"mode": "smoke", "execution_hash": receipt.BlockHash.Hex(),
 		"beacon_root": observation.Root, "slot": observation.Slot,
-		"blob_sha256": refs[0].SHA256, "lighthouse": "v8.3.2", "geth": "v1.17.10",
+		"blob_sha256": refs[0].SHA256, "lighthouse": "v8.3.2", "execution": "v2.9.0",
 		"roles": []string{"distributed"}, "slot_duration_ms": previewSlotDurationMillis,
 		"finality": false, "restart": false, "archive_permissions": false, "execution_requests": true,
 	}
@@ -351,7 +351,7 @@ func (h *harness) assertPreviewRecovery(ctx context.Context, receipt rpcReceipt,
 		h.t.Fatal(err)
 	}
 	h.assertBlobDownload(ctx, receipt.BlockHash, blob)
-	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--force-recreate", "--wait", "--wait-timeout", "180", "geth", "lighthouse", "validator", "object-storage", "api", "enrich"); err != nil {
+	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--force-recreate", "--wait", "--wait-timeout", "180", "execution", "lighthouse", "validator", "object-storage", "api", "enrich"); err != nil {
 		h.t.Fatal(err)
 	}
 	h.initializeArchive(ctx)

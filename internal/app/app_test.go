@@ -68,7 +68,7 @@ func TestEnrichRoleRequiresRPC(t *testing.T) {
 
 func TestEnrichmentDispatcherAlwaysSchedulesABIStage(t *testing.T) {
 	t.Parallel()
-	if got, want := enrichmentDispatchStages(false, false), []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.HolderStage, enrich.StatsStage, enrich.NativeTransferStage}; !slices.Equal(got, want) {
+	if got, want := enrichmentDispatchStages(false, false), []enrich.StageID{enrich.ProxyStage, enrich.ABIStage, enrich.TokenStage, enrich.HolderStage, enrich.StatsStage, enrich.NativeTransferStage, enrich.NativeBalanceStage}; !slices.Equal(got, want) {
 		t.Fatalf("core enrichment stages=%v want=%v", got, want)
 	}
 	got := enrichmentDispatchStages(true, true)
@@ -748,6 +748,7 @@ func TestValidateMaintenanceOperationStage(t *testing.T) {
 		{"repair", "core", true},
 		{"repair", "token", false},
 		{"reindex", "token", true},
+		{"reindex", "native_balance", true},
 		{"reindex", "stats", true},
 		{"reindex", "trace", true},
 		{"reindex", "core", false},

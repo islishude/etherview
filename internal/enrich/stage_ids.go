@@ -6,6 +6,7 @@ var (
 	RequestsStage       = stagecontract.Requests
 	ConsensusStage      = stagecontract.Consensus
 	BlobStage           = stagecontract.Blob
+	NativeBalanceStage  = stagecontract.NativeBalance
 	NativeTransferStage = stagecontract.NativeTransfer
 	ProxyStage          = stagecontract.Proxy
 	ABIStage            = stagecontract.ABI

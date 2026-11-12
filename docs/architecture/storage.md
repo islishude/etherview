@@ -57,7 +57,8 @@ numbers. The partition manager covers `transaction_inclusions`, `receipts`,
 `eip7702_authorizations`, `transaction_execution_code_resolutions`,
 `erc4337_user_operations`, `erc4337_user_operation_events`,
 `erc4337_user_operation_participants`, `erc20_holder_snapshots`,
-`erc20_holder_balances`, `native_transfers`, and `address_activities`. Before a
+`erc20_holder_balances`, `native_transfers`, `native_balance_blocks`,
+`native_balance_changes`, `native_balance_observations`, and `address_activities`. Before a
 core bundle can write facts in a new range, its chain-locked database transaction takes the global
 partition lifecycle lock, rechecks the PostgreSQL catalog, creates every table
 in a fixed dependency order, evacuates any matching DEFAULT rows child-first,

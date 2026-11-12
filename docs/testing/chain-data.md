@@ -75,7 +75,9 @@ stream. Fixture coverage remains distinct from complete live history.
 ## Amsterdam acceptance
 
 `make test-preview-metadata` also sends a real EIP-7708 ETH transfer on the
-pinned Geth Amsterdam Preview chain and checks exact transaction/address API
+pinned Reth Amsterdam Preview chain, authenticates its BAL against the header,
+compares indexed native balances to exact EIP-1898 reads in all/split roles,
+and checks exact transaction/address API
 amounts above JavaScript's safe integer range. It then stops the split workers
 in its disposable project, recreates the API as `serve --roles=all`, and checks
 newly mined transfers through the same contracts. The normal production runtime,

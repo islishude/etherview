@@ -87,7 +87,7 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 	var runCLI func(args ...string) map[string]any
 	runCLI = func(args ...string) map[string]any {
 		t.Helper()
-		common := []string{"preview/contracts/tools/cli.mjs", "--json", "--dir", dir, "--rpc", "https://geth.etherview.localhost:" + port, "--bundler", "https://bundler.etherview.localhost:" + port, "--app", "https://app.etherview.localhost:" + port, "--project", h.project.Name, "--compose-files", strings.Join(h.project.Files, ","), "--blob-helper", helper, "--timeout", "180"}
+		common := []string{"preview/contracts/tools/cli.mjs", "--json", "--dir", dir, "--rpc", "https://execution.etherview.localhost:" + port, "--bundler", "https://bundler.etherview.localhost:" + port, "--app", "https://app.etherview.localhost:" + port, "--project", h.project.Name, "--compose-files", strings.Join(h.project.Files, ","), "--blob-helper", helper, "--timeout", "180"}
 		command := exec.CommandContext(ctx, "node", append(common, args...)...)
 		command.Dir = h.root
 		command.Env = append(os.Environ(), "NODE_EXTRA_CA_CERTS="+filepath.Join(h.root, ".local/preview-tls/rootCA.pem"))

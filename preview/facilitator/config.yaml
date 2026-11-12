@@ -14,7 +14,7 @@ signers:
 chains:
   - network: eip155:48815
     rpc:
-      url: http://geth:8545
+      url: http://execution:8545
       allow_insecure_http: true
     signer: preview
     max_gas: 500000

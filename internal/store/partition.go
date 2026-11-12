@@ -95,6 +95,9 @@ var blockPartitionSpecs = []blockPartitionSpec{
 		NameCode: "ehb", Dependencies: []string{"erc20_holder_snapshots"},
 		IntroducedBy: "0064_authoritative_erc20_holders",
 	},
+	{Parent: "native_balance_blocks", Default: "native_balance_blocks_default", NameCode: "nbb", IntroducedBy: "0014_transfers_statistics"},
+	{Parent: "native_balance_changes", Default: "native_balance_changes_default", NameCode: "nbc", IntroducedBy: "0014_transfers_statistics"},
+	{Parent: "native_balance_observations", Default: "native_balance_observations_default", NameCode: "nbo", IntroducedBy: "0014_transfers_statistics"},
 	{Parent: "native_transfers", Default: "native_transfers_default", NameCode: "nt", Dependencies: []string{"transaction_inclusions"}, IntroducedBy: "0071_native_transfers"},
 	{Parent: "address_activities", Default: "address_activities_default", NameCode: "act"},
 }
@@ -102,6 +105,9 @@ var blockPartitionSpecs = []blockPartitionSpec{
 // Rows must leave child tables before their referenced parents. This ordering
 // is the reverse dependency order of blockPartitionSpecs.
 var blockPartitionDeleteOrder = []string{
+	"native_balance_changes",
+	"native_balance_observations",
+	"native_balance_blocks",
 	"address_event_logs",
 	"address_event_blocks",
 	"native_transfers",

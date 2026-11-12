@@ -195,7 +195,7 @@ func newHarness(t *testing.T) *harness {
 		"PREVIEW_COMPILER_CACHE_DIR":         compilerDirectory,
 		"ETHERVIEW_IMAGE":                    image,
 		"ETHERVIEW_CONFIG_FILE":              filepath.Join(root, "preview", "config.yaml"),
-		"GETH_IMAGE":                         "ethereum/client-go:v1.17.10",
+		"PREVIEW_EXECUTION_IMAGE":            "ghcr.io/paradigmxyz/reth:v2.9.0",
 		"RUSTFS_ACCESS_KEY":                  "etherview",
 		"RUSTFS_SECRET_KEY":                  "etherview-dev-only",
 		"PREVIEW_BLOB_READ_SECRET":           "preview-read-dev-only",
@@ -204,8 +204,8 @@ func newHarness(t *testing.T) *harness {
 		"LIGHTHOUSE_HTTP_PORT":               "0",
 		"ETHERVIEW_METADATA_IPFS_GATEWAY":    metadataGateway,
 		"ETHERVIEW_METRICS_PORT":             "0",
-		"GETH_HTTP_PORT":                     "0",
-		"GETH_WS_PORT":                       "0",
+		"PREVIEW_EXECUTION_HTTP_PORT":        "0",
+		"PREVIEW_EXECUTION_WS_PORT":          "0",
 		"POSTGRES_PASSWORD":                  previewDatabasePassword,
 		"IPFS_API_PORT":                      "0",
 		"PREVIEW_HTTPS_PORT":                 "0",
@@ -392,7 +392,7 @@ func (h *harness) connect(ctx context.Context) {
 		}},
 	}
 	h.apiURL = "https://app.etherview.localhost"
-	h.rpc, err = rpc.DialOptions(ctx, "https://geth.etherview.localhost", rpc.WithHTTPClient(h.http))
+	h.rpc, err = rpc.DialOptions(ctx, "https://execution.etherview.localhost", rpc.WithHTTPClient(h.http))
 	if err != nil {
 		h.t.Fatal(err)
 	}

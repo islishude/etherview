@@ -39,6 +39,7 @@ var (
 	Requests       = ID{Name: "requests", Version: 1}
 	Consensus      = ID{Name: "consensus", Version: 1}
 	Blob           = ID{Name: "blob", Version: 1}
+	NativeBalance  = ID{Name: "native_balance", Version: 1}
 	NativeTransfer = ID{Name: "native_transfer", Version: 1}
 	Proxy          = ID{Name: "proxy", Version: 2}
 	ABI            = ID{Name: "abi", Version: 5}

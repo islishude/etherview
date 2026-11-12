@@ -614,6 +614,13 @@ type Querier interface {
 	MetadataWriteRecordMetadataRetry(ctx context.Context, arg MetadataWriteRecordMetadataRetryParams) (int64, error)
 	MetadataWriteRenewMetadataJob(ctx context.Context, leaseMicroseconds int64, iD int64, leaseToken *string) (int64, error)
 	MetadataWriteRetryMetadataJob(ctx context.Context, arg MetadataWriteRetryMetadataJobParams) (int64, error)
+	NativeBalanceBody(ctx context.Context, chainID pgtype.Numeric, blockHash []byte, blockNumber pgtype.Numeric) (NativeBalanceBodyRow, error)
+	NativeBalanceInsertBody(ctx context.Context, arg NativeBalanceInsertBodyParams) (int64, error)
+	NativeBalanceInsertChanges(ctx context.Context, arg NativeBalanceInsertChangesParams) (int64, error)
+	NativeBalanceInsertEnds(ctx context.Context, arg NativeBalanceInsertEndsParams) (int64, error)
+	NativeBalanceInsertObservation(ctx context.Context, arg NativeBalanceInsertObservationParams) (int64, error)
+	NativeBalanceLockCanonical(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([]byte, error)
+	NativeBalanceRead(ctx context.Context, arg NativeBalanceReadParams) ([]NativeBalanceReadRow, error)
 	NativeTransferActivation(ctx context.Context, chainID pgtype.Numeric, indexStart pgtype.Numeric, snapshotNumber pgtype.Numeric) (string, error)
 	NativeTransferClear(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) error
 	NativeTransferCoverage(ctx context.Context, chainID pgtype.Numeric, startNumber pgtype.Numeric, endNumber pgtype.Numeric) (bool, error)

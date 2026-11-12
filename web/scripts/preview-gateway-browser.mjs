@@ -35,7 +35,9 @@ try {
   assert.equal(await page.evaluate(() => isSecureContext), true);
   const config = await page.evaluate(async () => (await fetch("/api/v1/config")).json());
   assert(config.data, JSON.stringify(config));
-  assert.deepEqual(config.data.wallet_add_chain.rpc_urls, ["https://geth.etherview.localhost"]);
+  assert.deepEqual(config.data.wallet_add_chain.rpc_urls, [
+    "https://execution.etherview.localhost",
+  ]);
   assert.deepEqual(config.data.wallet_add_chain.block_explorer_urls, [
     "https://app.etherview.localhost",
   ]);
@@ -100,7 +102,7 @@ try {
     );
     await dev.goto(`${origin}/`);
     const result = await dev.evaluate(async () => {
-      const rpc = await fetch("https://geth.etherview.localhost", {
+      const rpc = await fetch("https://execution.etherview.localhost", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
@@ -112,7 +114,7 @@ try {
     await dev.evaluate(async () => {
       await Promise.all([
         new Promise((resolve, reject) => {
-          const ws = new WebSocket("wss://geth.etherview.localhost");
+          const ws = new WebSocket("wss://execution.etherview.localhost");
           const observed = [];
           const timer = setTimeout(() => {
             ws.close();

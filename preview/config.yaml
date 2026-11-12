@@ -23,7 +23,7 @@ chain:
 
 wallet:
   add_chain:
-    rpc_urls: ["https://geth.etherview.localhost"]
+    rpc_urls: ["https://execution.etherview.localhost"]
     block_explorer_urls: ["https://app.etherview.localhost"]
     icon_urls: []
 

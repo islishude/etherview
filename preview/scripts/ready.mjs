@@ -1,5 +1,5 @@
 import { runCompose } from "../../.github/scripts/compose.mjs";
-const execution = composeEndpoint("geth", 8545),
+const execution = composeEndpoint("execution", 8545),
   beacon = composeEndpoint("lighthouse", 5052);
 const deadline = Date.now() + 180_000;
 let first;
@@ -21,6 +21,17 @@ while (Date.now() < deadline) {
     if (block > 0n && BigInt(head.data.header.message.slot) > 0n) {
       if (first === undefined) first = block;
       if (block > first) {
+        const header = await executionRPC("eth_getBlockByNumber", [
+          `0x${block.toString(16)}`,
+          false,
+        ]);
+        if (!header?.blockAccessListHash || header.slotNumber == null) {
+          throw new Error("execution header does not advertise BAL");
+        }
+        const bal = await executionRPC("eth_getBlockAccessListRaw", [header.hash]);
+        if (typeof bal !== "string" || !/^0x[0-9a-f]+$/i.test(bal)) {
+          throw new Error("execution BAL body unavailable");
+        }
         console.log(
           `preview-ready: execution block ${block}, Beacon slot ${head.data.header.message.slot}`,
         );
@@ -38,4 +49,16 @@ throw new Error(`Preview did not produce successive real PoS blocks: ${last}`);
 function composeEndpoint(service, port) {
   const output = runCompose(["-f", "compose.yaml", "port", service, String(port)]);
   return `http://${output.trim().replace(/^0\.0\.0\.0:/, "127.0.0.1:")}`;
+}
+
+async function executionRPC(method, params) {
+  const response = await fetch(execution, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    signal: AbortSignal.timeout(3000),
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.error) throw new Error(`execution ${method} unavailable`);
+  return payload.result;
 }

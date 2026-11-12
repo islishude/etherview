@@ -73,6 +73,7 @@ availability does not gate core readiness.
 
 | ID       | Status | Depends on                                                    | Deliverable                                                                                                                                                                                                             | Verification                                                                                                                                                            |
 | -------- | ------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P30-T157 | done   | P30-T138                                                      | Reth/Lighthouse primary Preview chain and real BAL all/split acceptance                                                                                                                                                 | Reth/Lighthouse finality/restart, BAL, contracts/tools/x402, gateway, fresh schema, runtime and browser acceptance                                                      |
 | P30-T10  | done   | P10, P20                                                      | Dual compilation, automatic candidates, transformations, batch/blueprint/method lookup, asynchronous REST/Etherscan/Sourcify workflows, and lease-safe verification workers                                             | compiler/matcher fixtures, API/PostgreSQL, heartbeat/lease-loss/fatal-error race and production parity tests                                                            |
 | P30-T14  | done   | P30-T10                                                       | API-owned architecture-neutral solc-js executor, compiler catalog, checksum-addressed shared cache, Node SEA packaging, and exact provenance                                                                            | catalog/provenance, cache concurrency/restart, image, and production compiler regressions                                                                               |
 | P30-T15  | done   | P20-T13, P30-T14, P30-T64                                     | Exact/same-code artifacts and selectors, canonical Genesis runtime-only verification, immutable proxy/implementation binding and identity-fenced interaction                                                            | Publication/ABI, Genesis provenance, wallet authorization, PostgreSQL/reorg, browser and Hardhat tests                                                                  |
@@ -102,6 +103,10 @@ availability does not gate core readiness.
 | P30-T156 | done   | P30-T10, P30-T153                                             | Compact verification inputs, durable admission budgets, lightweight status and bounded input retention                                                                                                                  | Input boundaries, multi-replica quotas, retention, compiler and all/split acceptance                                                                                    |
 
 ## Acceptance
+
+- [x] Primary Preview uses pinned Reth/Lighthouse PoS with header-gated BAL;
+      native balances, contracts, safe Bundler validation, payments and role
+      parity pass using isolated network material and volumes.
 
 - [x] Compact verification inputs, principal/global admission, source-free status
       and bounded retention pass large-input, concurrent PostgreSQL/race and
@@ -162,6 +167,15 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P70 release gates remain independent.
 
 ## Evidence
+
+P30-T157 completed locally on 2026-11-12 in the working tree based on `ddacb5a5`.
+Reth v2.9.0/Lighthouse v8.3.2 passed metadata, full consensus/finality/restart,
+contracts, tools and x402 prebuilt gates, plus gateway, fresh-schema and runtime
+acceptance. `make preview-network-check preview-contracts-check`,
+`make test-rustfs` and all 270 `make test-e2e` browser cases passed. Rundler
+retains safe validation with zero private-chain priority floor and bounded
+factory-deployment gas. Tests used isolated macOS/Docker resources; existing
+operator volumes were preserved and public-network/remote-CI claims remain separate.
 
 P30-T156 passed 3 MiB Standard JSON and 1.5 MiB multipart reconstruction,
 concurrent deduplication/quota/release, unknown-input reservation and binding,

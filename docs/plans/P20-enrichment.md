@@ -50,6 +50,7 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 
 | ID      | Status | Depends on                     | Deliverable                                                                                                                                                                    | Verification                                                                                                                     |
 | ------- | ------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| P20-T34 | done   | P20-T01                        | Header-gated BAL native balance indexing, continuous publication coverage and exact RPC baselines                                                                              | Header gate, authenticated raw/JSON, exact baselines, coverage/replay/reorg, PostgreSQL race and real PoS parity                 |
 | P20-T01 | done   | P10                            | Durable bounded stages, retry budgets, reattach-safe generations and lease-fenced atomic output/journal/job publication                                                        | Crash/replay, stale-worker, publication-window, lease and retry regressions                                                      |
 | P20-T02 | done   | P20-T01                        | ABI selector/event/error decoding, confidence, and global ABI/Trace resource budgets including builtin and large-batch boundaries                                              | ABI/trace fixture/fuzz and adversarial-budget tests                                                                              |
 | P20-T04 | done   | P20-T01                        | ERC-20/721/1155 discovery, transfers, ownership, balances, supply, and separate EIP-7708 protocol-transfer publication                                                         | standard/nonstandard token tests                                                                                                 |
@@ -67,6 +68,10 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 | P20-T33 | done   | P20-T06                        | Incremental analytics source/hour completeness, constant-work idle progress and bounded reconciliation                                                                         | Publication/reorg/replay, PostgreSQL concurrency and representative query plans                                                  |
 
 ## Acceptance
+
+- [x] Header-gated BAL balances authenticate the full commitment, retain exact
+      changes and require continuous publication coverage; request-driven exact
+      RPC baselines, replay, reorg and all/split parity pass.
 
 - [x] Incremental analytics source/hour/chain projections preserve reorg/replay and
       prefix completeness; bounded resumable reconciliation and idle query plans
@@ -103,6 +108,14 @@ Full directory coverage remains separately reported deployment progress; P70
 retains its release security, capacity, recovery and other existing gates.
 
 ## Evidence
+
+P20-T34 completed locally on 2026-11-12 in the working tree based on `ddacb5a5`.
+BAL/state regressions and `make test-integration-race` passed, including partition
+maintenance, immutable evidence, missing coverage, outbox/journal withdrawal,
+lease fencing, CLI maintenance replay and reorg. RPC regressions cover healthy
+endpoint failover without changing the block hash. Real Reth raw/JSON bodies authenticate against
+the header and indexed balances equal exact EIP-1898 reads in both Preview
+layouts. These private-network results do not establish public BAL retention.
 
 P20-T33 passed complete PostgreSQL integration/race, schema/runtime all/split and
 multi-scale publication/query-plan checks on the reviewed working tree. Reconciliation

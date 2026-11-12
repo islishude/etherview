@@ -69,7 +69,7 @@
 }
 
 # Local wallet RPC accepts browser extensions and arbitrary development origins.
-(geth_origin) {
+(execution_origin) {
 	header {
 		Access-Control-Allow-Origin "*"
 		Access-Control-Allow-Methods "GET, POST, OPTIONS"
@@ -125,17 +125,17 @@ https://app.etherview.localhost {
 	}
 }
 
-https://geth.etherview.localhost {
+https://execution.etherview.localhost {
 	import tls_boundary
 	route {
-		import geth_origin
+		import execution_origin
 		@websocket {
 			method GET
 			header_regexp Connection "(?i)(^|,)[[:blank:]]*upgrade[[:blank:]]*(,|$)"
 			header_regexp Upgrade "(?i)^websocket$"
 			path /
 		}
-		reverse_proxy @websocket {$PREVIEW_GETH_WS_UPSTREAM:geth:8546} {
+		reverse_proxy @websocket {$PREVIEW_EXECUTION_WS_UPSTREAM:execution:8546} {
 			import transport
 			import node_response
 		}
@@ -143,7 +143,7 @@ https://geth.etherview.localhost {
 			method POST
 			path /
 		}
-		reverse_proxy @rpc {$PREVIEW_GETH_UPSTREAM:geth:8545} {
+		reverse_proxy @rpc {$PREVIEW_EXECUTION_UPSTREAM:execution:8545} {
 			import transport
 			import node_response
 		}
@@ -155,7 +155,7 @@ https://geth.etherview.localhost {
 https://reth.etherview.localhost {
 	import tls_boundary
 	route {
-		import geth_origin
+		import execution_origin
 		@websocket {
 			method GET
 			header_regexp Connection "(?i)(^|,)[[:blank:]]*upgrade[[:blank:]]*(,|$)"

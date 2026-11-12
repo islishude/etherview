@@ -34,6 +34,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P20-T34 delivers header-gated BAL native balances. P30-T157 replaces the
+primary Preview execution client with Reth; both have completed isolated
+PostgreSQL and real-node all/split acceptance.
+
 P60-T31 extends administrator management with a default user-count/billing
 overview, address-only user identity and search, and empty-list pagination.
 Its child plan records completed browser, PostgreSQL and production all/split

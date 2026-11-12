@@ -123,6 +123,10 @@ test("root .local artifacts are ignored while source exceptions retain path and 
     }
     const canonical = "internal/chainbundle/testdata/amsterdam-block.json";
     write(canonical, { blockAccessListHash: `0x${publicHash}`, api_key: publicHash });
+    const reth = "internal/ethrpc/testdata/reth-bal/header.json";
+    write(reth, { blockAccessListHash: `0x${publicHash}`, api_key: publicHash });
+    write(`nested/${reth}`, { blockAccessListHash: `0x${publicHash}` });
+    write(`${reth}.bak`, { blockAccessListHash: `0x${publicHash}` });
     write(".local/amsterdam-probe/block-latest.json", {
       blockAccessListHash: `0x${publicHash}`,
       api_key: publicHash,
@@ -171,6 +175,9 @@ test("root .local artifacts are ignored while source exceptions retain path and 
       findings.map(({ File, RuleID }) => `${File}:${RuleID}`).sort(),
       [
         `${canonical}:generic-api-key`,
+        `${reth}:generic-api-key`,
+        `nested/${reth}:generic-api-key`,
+        `${reth}.bak:generic-api-key`,
         "elsewhere.json:generic-api-key",
         ".locality/credentials.json:generic-api-key",
         "nested/.local/credentials.json:generic-api-key",
@@ -180,7 +187,7 @@ test("root .local artifacts are ignored while source exceptions retain path and 
         `nested/${ensReport}:generic-api-key`,
       ].sort(),
     );
-    assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 1);
+    assert.equal(findings.filter(({ Match }) => Match.startsWith("blockAccessListHash")).length, 3);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

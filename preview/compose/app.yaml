@@ -17,7 +17,7 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
   # Keep authoritative HTTP polling and add a newHeads wake hint so locally
   # mined blocks do not wait for the normal polling interval.
-  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://geth:8545,ws://geth:8546}
+  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://execution:8545,ws://execution:8546}
   ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
@@ -67,7 +67,7 @@ x-etherview-runtime-depends-on: &etherview-runtime-depends-on
     condition: service_healthy
   migration:
     condition: service_completed_successfully
-  geth:
+  execution:
     condition: service_started
 
 services:

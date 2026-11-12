@@ -305,7 +305,7 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 
 func enrichmentDispatchStages(trace, userOperations bool) []stagecontract.ID {
 	stages := []stagecontract.ID{
-		stagecontract.Proxy, stagecontract.ABI, stagecontract.Token, stagecontract.Holder, stagecontract.Stats, stagecontract.NativeTransfer,
+		stagecontract.Proxy, stagecontract.ABI, stagecontract.Token, stagecontract.Holder, stagecontract.Stats, stagecontract.NativeTransfer, stagecontract.NativeBalance,
 	}
 	if userOperations {
 		stages = append(stages, stagecontract.UserOperation)

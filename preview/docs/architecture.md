@@ -17,9 +17,9 @@ genesis contract. The verification role performs normal pinned local compilation
 ADR-0024 and ADR-0039; no ABI or source is published directly by the helper.
 
 The independent Preview Rundler process simulates and bundles signed operations
-against internal Geth. Its public HTTPS RPC exposes only standard ERC-4337
+against internal execution node. Its public HTTPS RPC exposes only standard ERC-4337
 methods. Compose runs the pinned official Rundler image as a non-root user,
-after Geth becomes healthy, without a startup wrapper or Bundler healthcheck.
+after Reth becomes healthy, without a startup wrapper or Bundler healthcheck.
 The Go genesis-verification tool has its own minimal image; the compiler-cache
 helper uses an official Node image.
 It is not an Etherview runtime component or an indexing data source;
@@ -34,10 +34,16 @@ there is no official/custom classification or fallback policy.
 Preview Bundler release identity and safe-validation boundaries are owned by
 [ADR-0057](../../docs/decisions/ADR-0057-preview-rundler.md).
 
+The primary Reth transaction pool uses `--txpool.minimal-protocol-fee 1` to
+match the reviewed genesis's 1 wei base fee. Its default 7 wei pool floor would
+reject otherwise valid locally estimated settlement transactions. Rundler accepts
+the private chain's zero priority-fee recommendation while retaining safe
+validation and the execution base fee.
+
 ## Second payment network
 
 The Preview Compose stack also runs Reth with chain ID 31337. It is a payment
-fixture only: the explorer and SIWE identity continue using Geth chain 48815.
+fixture only: the explorer and SIWE identity continue using Reth chain 48815.
 `preview/reth/generate.mjs` derives a deterministic payment genesis from the
 reviewed token allocations, including both six- and eighteen-decimal tokens and
 public development accounts. No contracts are deployed during startup.
@@ -49,19 +55,19 @@ database without funding accounts again. Changed genesis, missing database or
 missing identity fails closed until an explicit reset. Native snapshots are not
 used. Health checks require the expected chain, recent Amsterdam headers and a
 non-genesis head; halted mining becomes unhealthy when the head grows stale.
-One internal production facilitator serves both Geth and Reth, with independent
+One internal production facilitator serves both Reth chains, with independent
 chain queues and a shared PostgreSQL journal. Each chain enforces token and
 recipient whitelists; standard Permit2 and x402 proxy contracts are predeployed.
 
 The existing Caddy gateway exposes HTTP JSON-RPC and WebSocket RPC on
 `reth.etherview.localhost`. Reth has no host port. Gateway policy matches the
-local Geth wallet endpoint, including wildcard local-development CORS, bounded
+local Reth wallet endpoint, including wildcard local-development CORS, bounded
 requests, scrubbed errors and no retries. Neither payment network is a core
 readiness dependency. Multi-option account funding is tracked by P60-T25.
 
 ## Gateway and local service boundaries
 
-Preview uses pinned Kubo, Geth and Lighthouse nodes behind the official Caddy
+Preview uses pinned Kubo, Reth and Lighthouse nodes behind the official Caddy
 `preview-gateway`. Explicit `*.etherview.localhost` hosts route app/API,
 read-only IPFS, execution JSON-RPC/WSS, Beacon REST/SSE and Bundler JSON-RPC. TLS terminates at
 Caddy; API traffic inside the container network uses HTTP. The gateway is not
@@ -70,7 +76,7 @@ Only Caddy holds its wildcard private key. Metadata trusts the public CA and
 explicitly permits its private IPFS host; API media policy remains strict.
 Preview separately allowlists the exact IPFS HTTPS origin for confirmed image
 navigation; production defaults to no navigation exceptions.
-The local Geth host accepts arbitrary Origins for JSON-RPC/WSS and returns
+The local Reth host accepts arbitrary Origins for JSON-RPC/WSS and returns
 wildcard CORS without credentials, allowing browser-extension wallets. Beacon
 and Bundler retain the exact configurable Origin allowlist. The SPA continues
 using the generated same-origin client and injected wallet boundary.
@@ -79,7 +85,7 @@ The independent `preview/cmd/ipfs` operator tool uses Kubo's loopback management
 which is never forwarded through Caddy. See ADR-0005 and the Preview runbook.
 
 Preview also runs the standalone x402 Facilitator and Local USD token on its
-Geth/Lighthouse chain. Token code, constructor storage, initial owner balance
+Reth/Lighthouse chain. Token code, constructor storage, initial owner balance
 and Facilitator funding are predeployed in genesis. Startup validates the
 network bundle without deploying or funding contracts; recreation preserves
 chain and account state. The Facilitator is not a core role dependency;

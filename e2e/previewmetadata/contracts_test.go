@@ -73,7 +73,7 @@ func TestPreviewContracts(t *testing.T) {
 		if phase == "all" {
 			h.contractsAllRoles(ctx)
 		}
-		rpcBinding, err := h.project.Port(ctx, "geth", 8545)
+		rpcBinding, err := h.project.Port(ctx, "execution", 8545)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -41,7 +41,7 @@ Preview management CLI.
 
 | Address                                      | Contract             | Purpose and caller                                                                                                 |
 | -------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `0x00000961ef480eb55e80d19ad83579a64c007002` | WithdrawalQueue      | EIP-7002 execution-triggered validator withdrawal requests; Geth drains the queue into execution requests.         |
+| `0x00000961ef480eb55e80d19ad83579a64c007002` | WithdrawalQueue      | EIP-7002 execution-triggered validator withdrawal requests; Reth drains the queue into execution requests.         |
 | `0x0000bbddc7ce488642fb579f8b00f3a590007251` | ConsolidationQueue   | EIP-7251 validator consolidation requests, processed with the consensus layer.                                     |
 | `0x0000bff46984e3725691fa540a8c7589300d8282` | BuilderDeposit       | EIP-8282 builder deposit requests for the Amsterdam/Gloas Preview.                                                 |
 | `0x000064d678505ad48f8ccb093bc65613800e8282` | BuilderExit          | EIP-8282 builder exit requests.                                                                                    |
@@ -144,7 +144,7 @@ preview_contracts addresses
 | `aa send --state FILE [--salt INTEGER] [--to ADDRESS] [--value ETH] [--data HEX]` | Estimates/signs a new UserOperation, saves its exact hash and signed payload before sending once to Rundler. The first successful operation deploys the account through the factory.                                                                        |
 | `aa receipt --state FILE`                                                         | Queries the saved UserOperation hash. A null result means no receipt is available yet; query again without generating another operation.                                                                                                                    |
 
-Common options are `--rpc URL` (default Geth HTTPS origin), `--bundler URL`
+Common options are `--rpc URL` (default execution HTTPS origin), `--bundler URL`
 (default Bundler HTTPS origin), `--index INTEGER` (default 0), and `--key-file
 PATH` (a file containing a 0x-prefixed private key; overrides --index). Keep key
 files private with mode 0600. The Bundler endpoint is only contacted by AA
@@ -215,7 +215,7 @@ read-only inspection. The same commands work for contracts without a dedicated
 CLI subcommand (Foundry `cast` must trust the Preview CA):
 
 ```sh
-export ETH_RPC_URL=https://geth.etherview.localhost
+export ETH_RPC_URL=https://execution.etherview.localhost
 cast code 0x433709009b8330fda32311df1c2afa402ed8d009 --block 0
 cast nonce 0x433709009b8330fda32311df1c2afa402ed8d009 --block 0
 cast balance 0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199 --block 0
@@ -231,8 +231,15 @@ nonces and initializer state must remain together.
 ENS sources are pinned to the official v1.7.0 GitHub commit and compiled locally;
 the ENS npm package is deliberately absent because of its package-wide malware
 advisory. Rundler uses the official image with an explicit version tag in
-`preview/compose/chain.yaml`. Compose runs Rundler directly after Geth becomes
+`preview/compose/chain.yaml`. Compose runs Rundler directly after Reth becomes
 healthy, enables only v0.9 and standard eth RPC, and never enables unsafe fallback.
 Chain ID and EntryPoint code at block zero are checked by acceptance tests. See
 [ADR-0057](../../docs/decisions/ADR-0057-preview-rundler.md). Ordinary startup uses
 checked-in genesis bytecode and storage without compilation or deployment.
+
+The Preview AA client retains Rundler's safe estimation and validation. For an
+undeployed account it additionally estimates the canonical factory creation
+from EntryPoint's `senderCreator`, so Amsterdam state-creation gas is included
+in the verification allowance. This read-only estimate uses no state override;
+the resulting verification budget remains capped at Rundler's 5,000,000 gas
+limit. The final operation hash and signature cover the adjusted allowance.

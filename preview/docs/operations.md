@@ -33,9 +33,20 @@ it prepares `.local/preview-network/` using the pinned
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
 validator keys. The checked-in `preview/genesis.json` template remains
 unchanged. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
-active at genesis. Geth v1.17.10 uses full sync and archive state; Lighthouse
+active at genesis. Reth v2.9.0 retains archive state; Lighthouse
 v8.3.2 runs both the Beacon node and validator client. These clients form an
 isolated local PoS network with no public bootnodes or external builders.
+
+The primary service is `execution`, with persistent `execution-data` and wallet
+RPC at `https://execution.etherview.localhost`. Reth replaces the former primary
+Geth process; its database format cannot reuse `geth-data`. Existing bundles
+fail configuration fingerprint verification. Reconcile pending local payments
+before an intentional reset of the application database and both chains, or use
+a new Compose project with a new `PREVIEW_NETWORK_DIR`. The retained old
+`geth-data` volume is never imported or automatically deleted; after an explicit
+reset, remove that old project volume separately only when its data is no longer
+needed. Network preparation rejects leftover project volumes without matching
+network material. `make recreate-preview` does not perform this migration.
 
 `make start-preview` reuses an intact bundle, validating every file against its
 manifest and the current configuration fingerprint. Partial or changed material
@@ -65,14 +76,14 @@ The template retains its pre-funded development addresses and system contracts.
 Transactions are signed locally with the standard Hardhat development account
 `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` (the first account from
 `test test test test test test test test test test test junk`) and submitted
-through `eth_sendRawTransaction`. Geth no longer unlocks accounts or provides
+through `eth_sendRawTransaction`. Reth does not unlocks accounts or provides
 the `dev` RPC namespace. Never fund these public development keys on external
 networks. The browser wallet flow is unchanged.
 
 Preview enables consensus enrichment and blob archival. Lighthouse runs as a
 supernode with blob pruning disabled. Its Beacon API is published only on
 `127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}`; Engine RPC is internal, with its JWT
-mounted only into Geth and Lighthouse. Validator keys are isolated from
+mounted only into Reth and Lighthouse. Validator keys are isolated from
 application roles. Startup waits for successive real execution/Beacon blocks.
 
 RustFS 1.0.5 stores blobs in the persistent `blob-data` volume. The one-shot
@@ -105,7 +116,7 @@ mixed-version DELETE requests may return HTTP 503 until the upgrade completes.
 ### Preview x402 billing
 
 `make start-preview` and `make recreate-preview` build the test-only
-Facilitator image and enable Account billing on the Geth/Lighthouse chain ID
+Facilitator image and enable Account billing on the Reth/Lighthouse chain ID
 **48815**; no public testnet or external payment Facilitator is involved.
 Local USD code, constructor storage, the owner's initial token balance and
 10 local ETH for the settlement account are already included in genesis.
@@ -116,7 +127,7 @@ require an explicit fresh-network reset, as described in the
 [contract lifecycle](contracts.md#preview-erc-4337-and-local-ens).
 
 Open `https://app.etherview.localhost/account`, add the configured Preview
-network (`https://geth.etherview.localhost`, chain ID 48815), and import the
+network (`https://execution.etherview.localhost`, chain ID 48815), and import the
 public development wallet below. Never use this key for real assets:
 
 ```text
@@ -186,7 +197,7 @@ regression alone.
 
 ### Preview recovery
 
-If blocks stop advancing, inspect Geth/Beacon/validator logs and Engine JWT
+If blocks stop advancing, inspect Reth/Beacon/validator logs and Engine JWT
 identity before changing data. An archive outage affects collection/downloads;
 existing consensus metadata remains queryable. Restart the failed service and
 use the existing `reindex --stage blob` procedure if a job reached an unavailable
@@ -337,7 +348,7 @@ does not resolve these names to loopback, configure these explicit mappings
 ```text
 127.0.0.1 app.etherview.localhost
 127.0.0.1 ipfs.etherview.localhost
-127.0.0.1 geth.etherview.localhost
+127.0.0.1 execution.etherview.localhost
 127.0.0.1 beacon.etherview.localhost
 127.0.0.1 bundler.etherview.localhost
 ```
@@ -350,8 +361,8 @@ edit system hosts.
 | --------------------------------------------- | ----------------------------------- |
 | `https://app.etherview.localhost`             | API and embedded SPA, internal HTTP |
 | `https://ipfs.etherview.localhost/ipfs/<cid>` | Kubo read-only content              |
-| `https://geth.etherview.localhost`            | Geth JSON-RPC POST                  |
-| `wss://geth.etherview.localhost`              | Geth subscriptions                  |
+| `https://execution.etherview.localhost`       | Reth JSON-RPC POST                  |
+| `wss://execution.etherview.localhost`         | Reth subscriptions                  |
 | `https://beacon.etherview.localhost/eth/…`    | Beacon REST and SSE                 |
 | `https://bundler.etherview.localhost`         | Rundler ERC-4337 JSON-RPC POST      |
 
@@ -361,7 +372,7 @@ plus allowed Origins for Beacon/Bundler in an operator config. The gateway does 
 automatically issue certificates, or expose an administration API. Its internal
 loopback health check reports serving readiness independently of upstreams.
 
-`geth.etherview.localhost` accepts any Origin for JSON-RPC and WSS, including
+`execution.etherview.localhost` accepts any Origin for JSON-RPC and WSS, including
 MetaMask/browser-extension origins, `null` and requests without Origin. HTTP
 responses use `Access-Control-Allow-Origin: *`; OPTIONS preflight returns 204.
 Cross-origin credentials are not enabled.
@@ -370,7 +381,7 @@ Cross-origin credentials are not enabled.
 their complete space-separated list; defaults are
 `https://app.etherview.localhost http://localhost:5173 http://127.0.0.1:5173`.
 Those hosts reject unlisted/null Origins and accept CLI clients without Origin.
-Changing this variable does not restrict Geth. Browsers may separately prompt
+Changing this variable does not restrict Reth. Browsers may separately prompt
 for local-network access; grant it for the trusted local development page. Node
 CORS does not grant application sessions or relax the app's CSP. Node request
 bodies are limited to 32 MiB; subscriptions end after 24 hours and should
@@ -395,7 +406,7 @@ Do not use `stop-preview` for migration because that command deletes volumes.
 
 Preview genesis predeploys the system contracts from the pinned Geth developer
 allocation, including withdrawal, consolidation and builder request queues.
-Activating a fork without its contracts can prevent Geth from building any
+Activating a fork without its contracts can prevent Reth from building any
 blocks. Changes to these allocations change the genesis hash: use a fresh
 Compose project for validation, and do not initialize existing chain volumes
 with a different genesis. `recreate-preview` preserves the same runtime genesis
@@ -461,7 +472,7 @@ for publication, credential and verification boundaries.
 ## Verification recovery
 
 For an existing Preview deployment, rebuild and recreate only the application
-services with `make recreate-preview`; do not remove the PostgreSQL or Geth
+services with `make recreate-preview`; do not remove the PostgreSQL or execution
 volumes. Then run the [address-scoped recovery command](../../docs/operations/verification.md#factory-derived-verification-rollout-and-backfill) inside the API container. This
 repairs scans created by an older binary whose cursor began at verification
 publication rather than at the creator code epoch.
@@ -477,7 +488,7 @@ remove their volumes as part of an application update.
 `make start-preview` runs source verification after real PoS readiness.
 `make recreate-preview` preserves existing publications and does not run this step. The `genesis-verify` Compose profile uses the existing
 Go tool at `tools/genesis-verify`, packaged in its own non-root image, a read-only
-source bundle, and the internal API and Geth endpoints. Its service definition
+source bundle, and the internal API and Reth endpoints. Its service definition
 lives in `preview/compose/chain.yaml`, extended by the root `compose.yaml`.
 Host mounts remain in the root file so relative network overrides keep the same base. It does not deploy contracts or change chain state.
 
@@ -506,7 +517,7 @@ sources is an explicit reviewed development operation; see
 
 Reth uses chain ID `31337`; wallets connect through
 `https://reth.etherview.localhost` (WebSocket: `wss://reth.etherview.localhost`).
-The explorer and SIWE login still use Preview Geth chain `48815`. The existing
+The explorer and SIWE login still use Preview Reth chain `48815`. The existing
 wildcard gateway certificate covers the new name. The node and its facilitator
 have no direct host ports. Use only the public local development accounts.
 
@@ -534,8 +545,8 @@ Reth seed. These materials are never regenerated during ordinary startup.
 
 ### Four payment options
 
-The Preview billing configuration exposes `default` (Geth 6 decimals, rate 1),
-`preview-usd18` (Geth 18 decimals, two credits per token), `reth-usd6`
+The Preview billing configuration exposes `default` (Reth 6 decimals, rate 1),
+`preview-usd18` (Reth 18 decimals, two credits per token), `reth-usd6`
 (Reth 6 decimals, three credits per token) and `reth-usd18` (Reth 18 decimals,
 four credits per token). All fund the same SIWE/explorer-chain account on 48815.
 The chain and token selectors clear the draft amount when changed; history uses

@@ -49,18 +49,13 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 	chainID := assembly.chainID
 	if roleSet[components.RoleAPI] {
 		var (
-			canonicalState state.CanonicalSource
+			canonicalState state.CanonicalSource = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
 			nftState       catalog.NFTStateReconciler
 			erc20State     catalog.ERC20StateReconciler
 			namePolicy     common.Hash
 			addressNames   httpapi.AddressNameReader
 			priceProvider  etherscan.PriceProvider
 		)
-		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
-			// Canonical state is a correctness fence around external RPC reads
-			// and exact observation writes. It must not inherit replica lag.
-			canonicalState = state.PostgresCanonicalSource{DB: db, ChainID: chainID}
-		}
 		ensService, err := newENSReader(db, cfg)
 		if err != nil {
 			return err
@@ -155,15 +150,17 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			compatibilityState etherscan.StateProvider
 			delegationBindings httpapi.DelegationBindingReader
 		)
-		if canonicalState != nil {
-			stateReader := &state.Reader{
-				Base: baseReader, Pool: rpcBuild.Pool, Completeness: completeness,
-				Canonical: canonicalState, Origin: reader, DelegationHistory: writerReader,
-			}
-			publicReader = stateReader
-			compatibilityState = stateReader
-			delegationBindings = stateReader
+		stateReader := &state.Reader{
+			Base: baseReader, Completeness: completeness,
+			Balances:  state.PostgresNativeBalances{DB: db, ChainID: chainID},
+			Canonical: canonicalState, Origin: reader, DelegationHistory: writerReader,
 		}
+		if rpcBuild != nil {
+			stateReader.Pool = rpcBuild.Pool
+		}
+		publicReader = stateReader
+		compatibilityState = stateReader
+		delegationBindings = stateReader
 		readinessStatus := publicReader.Status
 		if redisAccelerator != nil {
 			cachedReader := redisStatusReader{Reader: publicReader, cache: redisAccelerator, chainID: cfg.Chain.ID}

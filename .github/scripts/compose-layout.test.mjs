@@ -127,7 +127,7 @@ for (const mode of ["monolith", "distributed"]) {
       assertApplicationPaths(config.services[role], "deploy/config.example.yaml");
     }
     for (const name of [
-      "geth",
+      "execution",
       "lighthouse",
       "validator",
       "ipfs",
@@ -401,7 +401,7 @@ test("only standalone facilitator explicitly inherits X402 credential environmen
   }
 });
 
-test("Preview runs Rundler directly after Geth health, with an independent Go verification helper", () => {
+test("Preview runs Rundler directly after Reth health, with an independent Go verification helper", () => {
   const config = render(["-f", "compose.yaml", "--profile", "genesis-verify"]);
   const bundler = config.services.bundler;
   assert.match(bundler.image, /^alchemyplatform\/rundler:v/);
@@ -412,7 +412,7 @@ test("Preview runs Rundler directly after Geth health, with an independent Go ve
   assert.deepEqual(bundler.command, [
     "node",
     "--node_http",
-    "http://geth:8545",
+    "http://execution:8545",
     "--chain_spec",
     "/config/rundler.toml",
     "--enabled_entry_points",
@@ -424,14 +424,11 @@ test("Preview runs Rundler directly after Geth health, with an independent Go ve
     "--rpc.api",
     "eth",
   ]);
-  assert.equal(bundler.depends_on.geth.condition, "service_healthy");
-  assert.deepEqual(config.services.geth.healthcheck.test, [
+  assert.equal(bundler.depends_on.execution.condition, "service_healthy");
+  assert.deepEqual(config.services.execution.healthcheck.test, [
     "CMD",
-    "geth",
-    "attach",
-    "--exec",
-    "eth.blockNumber",
-    "http://127.0.0.1:8545",
+    "bash",
+    "/usr/local/bin/execution-healthcheck.sh",
   ]);
   assert.deepEqual(
     bundler.volumes.map((mount) => mount.target),

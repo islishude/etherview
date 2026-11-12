@@ -13,8 +13,13 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/state"
+	"github.com/jackc/pgx/v5"
 )
 
 func (h *harness) assertAmsterdam(ctx context.Context, recipient string) {
@@ -29,6 +34,46 @@ func (h *harness) assertAmsterdam(ctx context.Context, recipient string) {
 	if header == nil || header.SlotNumber == nil || header.BlockAccessListHash == nil {
 		h.t.Fatal("Preview did not produce an Amsterdam header")
 	}
+	var blockRaw json.RawMessage
+	h.rpcCall(ctx, &blockRaw, "eth_getBlockByHash", receipt.BlockHash, true)
+	var body struct {
+		Transactions []*types.Transaction `json:"transactions"`
+	}
+	if err := json.Unmarshal(blockRaw, &body); err != nil {
+		h.t.Fatal(err)
+	}
+	block := types.NewBlockWithHeader(header).WithBody(types.Body{Transactions: body.Transactions})
+	var raw json.RawMessage
+	h.rpcCall(ctx, &raw, ethrpc.BALRawMethod, receipt.BlockHash)
+	if _, err := ethrpc.DecodeBAL(raw, ethrpc.BALRawMethod, block); err != nil {
+		h.t.Fatalf("Reth BAL authentication: %v", err)
+	}
+	h.rpcCall(ctx, &raw, ethrpc.BALJSONMethod, receipt.BlockHash)
+	if _, err := ethrpc.DecodeBAL(raw, ethrpc.BALJSONMethod, block); err != nil {
+		h.t.Fatalf("Reth JSON BAL authentication: %v", err)
+	}
+	waitFor(h.t, ctx, "published BAL balance", func() (bool, string, error) {
+		var balance string
+		err := h.db.QueryRow(ctx, `SELECT o.balance::text FROM native_balance_observations o
+     JOIN published_block_stage_results p ON p.chain_id=o.chain_id AND p.block_hash=o.block_hash
+     WHERE o.chain_id=48815 AND o.block_hash=$1 AND o.address=$2 AND NOT o.rpc_exact
+       AND p.stage='native_balance' AND p.state='complete' AND p.details->>'outcome'='indexed'`, receipt.BlockHash.Bytes(), destination.Bytes()).Scan(&balance)
+		if err == pgx.ErrNoRows {
+			return false, "BAL publication pending", nil
+		}
+		if err != nil {
+			return false, "", err
+		}
+		var exact hexutil.Big
+		h.rpcCall(ctx, &exact, "eth_getBalance", destination, rpc.BlockNumberOrHashWithHash(receipt.BlockHash, true))
+		if balance != (*big.Int)(&exact).String() {
+			return false, "", fmt.Errorf("BAL balance %s differs from exact RPC %s", balance, (*big.Int)(&exact))
+		}
+		cache := state.PostgresNativeBalances{DB: h.db, ChainID: previewChainID}
+		values, err := cache.Read(ctx, state.CanonicalRef{Number: uint64(receipt.BlockNumber), Hash: receipt.BlockHash}, []common.Address{destination})
+		return values[destination] == balance, "database balance reader pending", err
+	})
+
 	for _, path := range []string{"/transactions/" + hash.Hex() + "/native-transfers", "/addresses/" + destination.Hex() + "/native-transfers"} {
 		waitFor(h.t, ctx, "Amsterdam indexed native transfer", func() (bool, string, error) {
 			request, err := http.NewRequestWithContext(ctx, http.MethodGet, h.apiURL+"/api/v1"+path, nil)

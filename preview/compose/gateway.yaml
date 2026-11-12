@@ -11,7 +11,7 @@ services:
           [
             app.etherview.localhost,
             ipfs.etherview.localhost,
-            geth.etherview.localhost,
+            execution.etherview.localhost,
             reth.etherview.localhost,
             beacon.etherview.localhost,
             bundler.etherview.localhost,

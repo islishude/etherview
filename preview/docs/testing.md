@@ -8,7 +8,7 @@
 `caddy:2.11.9-alpine` image with isolated upstreams and a test-only trusted CA.
 It covers domain routing, raw IPFS paths, CORS, TLS, request limits, streaming,
 cancellation, deadlines and WSS/SSE idle connections. Origin regressions cover
-arbitrary website, extension, null and absent Origins for Geth RPC/preflight/WSS,
+arbitrary website, extension, null and absent Origins for Reth RPC/preflight/WSS,
 plus the unchanged Beacon/Bundler allowlist and its override. These checks do
 not establish an actual MetaMask extension connection. The official image is
 pulled through `make preview-images`; no custom gateway binary is built.
@@ -35,7 +35,7 @@ still owns same-origin browser security and session checks.
 
 `go test ./e2e/previewmetadata -run TestPreviewGenesisSystemContracts` checks
 the Preview template against the pinned Geth system contract allocations in the
-ordinary Go test suite. Receipt polling retries only null results and Geth's
+ordinary Go test suite. Receipt polling retains compatibility with null results and Geth's
 specific transaction-indexing RPC error within the existing three-minute wait;
 other RPC/transport failures and mismatched transaction hashes remain fatal.
 
@@ -68,7 +68,7 @@ remain host-owned and outside this cache. The existing Preview CI gates verify
 this lifecycle on native Linux; Docker Desktop evidence alone does not establish
 native Linux host cleanup behavior.
 
-`make test-preview-consensus` runs the fixed Geth v1.17.10 / Lighthouse v8.3.2
+`make test-preview-consensus` runs the fixed Reth v2.9.0 / Lighthouse v8.3.2
 combination with Gloas at genesis and the durable RustFS archive. Daily Preview,
 metadata acceptance and consensus acceptance share three-second slots. Both
 acceptance suites verify the live Beacon slot duration and record it in their
@@ -136,7 +136,7 @@ transfer/reclaim, permissions and reverse/forward mismatch. Time advancement is
 confined to this contract test; it does not establish PoS or Bundler acceptance.
 
 `make test-preview-contracts` builds the production image and pulls the pinned official Rundler image,
-then runs the Go-owned real Geth/Lighthouse Preview gate. The prebuilt equivalent
+then runs the Go-owned real Reth/Lighthouse Preview gate. The prebuilt equivalent
 is `make test-preview-contracts-prebuilt` after loading the production image and
 running `make preview-images-prebuilt`.
 It checks block-zero code/storage/nonces/balances and authenticated genesis import,
@@ -193,7 +193,7 @@ cloud acceptance milestones.
 ## x402 billing gate
 
 `make test-preview-x402` builds the production image and local helper images,
-then exercises the same Preview Geth/Lighthouse deployment in a disposable
+then exercises the same Preview Reth/Lighthouse deployment in a disposable
 project with isolated ports, network material and volumes. The prebuilt form
 is `make test-preview-x402-prebuilt` after loading the production image and
 running `make preview-images-prebuilt`.
@@ -230,7 +230,7 @@ OpenZeppelin version; it must not replace the matching checked-in input.
 Local compilation of the system assembly bundle must match the actual genesis
 bytes exactly.
 
-Real acceptance runs `make verify-preview-genesis` against Geth/Lighthouse and
+Real acceptance runs `make verify-preview-genesis` against Reth/Lighthouse and
 the production API, requiring all 24 non-empty allocations to publish, then
 repeats it to prove reuse. This check is additive to existing Preview chain,
 Bundler, ENS and billing acceptance; a mocked helper test does not establish

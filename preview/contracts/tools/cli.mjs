@@ -97,7 +97,7 @@ export async function main(argv = process.argv.slice(2)) {
   const origin = (host) =>
     "https://" + host + ".etherview.localhost" + (port && port !== "443" ? ":" + port : "");
   const endpoints = {
-    rpc: o.rpc ?? origin("geth"),
+    rpc: o.rpc ?? origin("execution"),
     bundler: o.bundler ?? origin("bundler"),
     app: o.app ?? origin("app"),
   };

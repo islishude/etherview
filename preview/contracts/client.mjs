@@ -50,7 +50,7 @@ export async function connect(options = {}) {
   const account = options.keyFile
     ? privateKeyToAccount(fs.readFileSync(options.keyFile, "utf8").trim())
     : mnemonicToAccount(mnemonic, { addressIndex: Number(options.index ?? 0) });
-  const transport = http(options.rpc ?? "https://geth.etherview.localhost", {
+  const transport = http(options.rpc ?? "https://execution.etherview.localhost", {
     retryCount: 0,
     timeout: 30000,
   });
@@ -267,6 +267,20 @@ export async function prepareOperation(ctx, { to, value = 0n, data = "0x", salt 
   });
   for (const key of ["callGasLimit", "verificationGasLimit", "preVerificationGas"])
     op[key] = (BigInt(estimate[key]) * 120n + 99n) / 100n;
+  if (op.factory) {
+    // Amsterdam state creation can exceed the execution-gas estimate returned
+    // by Rundler. Budget the real factory creation separately, using the only
+    // caller permitted by the canonical v0.9 factory. This is a read-only call.
+    const creator = await ctx.read("EntryPoint", "senderCreator", []);
+    const deploymentGas = await ctx.rpc.estimateGas({
+      account: creator,
+      to: op.factory,
+      data: op.factoryData,
+    });
+    op.verificationGasLimit += (deploymentGas * 120n + 99n) / 100n;
+    if (op.verificationGasLimit > 5_000_000n)
+      throw new Error("Account deployment exceeds Preview verification gas budget");
+  }
   const hash = getUserOperationHash({
     chainId: 48815,
     entryPointAddress: ep,

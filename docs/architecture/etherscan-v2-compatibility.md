@@ -46,17 +46,17 @@ this matrix and the compatibility golden tests in the same change.
 
 ## Capability Terms
 
-| Term                | Required production fact or service                                                                                                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Core                | Canonical PostgreSQL block, transaction, receipt, log, and withdrawal facts. A Core-backed list additionally requires one continuous durable Core coverage range over its tip-clamped request range. |
-| State               | A state-purpose RPC endpoint, one exact canonical EIP-1898 block-hash observation, and a successful post-call canonicality recheck. Event-derived balances do not qualify.                           |
-| Trace               | After the Core coverage proof, a `complete` published Trace stage result for every canonical block in the selected range.                                                                            |
-| Token               | After the Core coverage proof, a `complete` published Token stage result for every canonical block in the selected range.                                                                            |
-| Holdings            | Genesis-through-tip Core and Token coverage, followed by bounded ERC-20 `balanceOf` or ERC-721 `ownerOf` observations at one exact canonical block hash. Event deltas only discover candidates.      |
-| Verified            | The newest canonical code observation for the address and a durable verified artifact for that exact code hash whose validity range covers the canonical tip.                                        |
-| Price               | An enabled pricing adapter with a fresh, valid USD/BTC observation.                                                                                                                                  |
-| Public verification | Verification is enabled, `security.public_verification` is enabled, and the durable public verification service is usable.                                                                           |
-| Supply provider     | An explicit authoritative execution-currency supply provider. Ethereum JSON-RPC and Etherview's core index do not provide this fact.                                                                 |
+| Term                | Required production fact or service                                                                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Core                | Canonical PostgreSQL block, transaction, receipt, log, and withdrawal facts. A Core-backed list additionally requires one continuous durable Core coverage range over its tip-clamped request range.   |
+| State               | Native ETH uses an exact saved balance or authenticated BAL with uninterrupted coverage; otherwise state-purpose RPC uses EIP-1898 with a canonicality recheck. Event-derived balances do not qualify. |
+| Trace               | After the Core coverage proof, a `complete` published Trace stage result for every canonical block in the selected range.                                                                              |
+| Token               | After the Core coverage proof, a `complete` published Token stage result for every canonical block in the selected range.                                                                              |
+| Holdings            | Genesis-through-tip Core and Token coverage, followed by bounded ERC-20 `balanceOf` or ERC-721 `ownerOf` observations at one exact canonical block hash. Event deltas only discover candidates.        |
+| Verified            | The newest canonical code observation for the address and a durable verified artifact for that exact code hash whose validity range covers the canonical tip.                                          |
+| Price               | An enabled pricing adapter with a fresh, valid USD/BTC observation.                                                                                                                                    |
+| Public verification | Verification is enabled, `security.public_verification` is enabled, and the durable public verification service is usable.                                                                             |
+| Supply provider     | An explicit authoritative execution-currency supply provider. Ethereum JSON-RPC and Etherview's core index do not provide this fact.                                                                   |
 
 An unavailable prerequisite produces `status: "0"` with a controlled
 capability message. Before a Core-backed list reads rows, it clamps the

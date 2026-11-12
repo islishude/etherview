@@ -16,7 +16,7 @@ services:
     command:
       - node
       - --node_http
-      - http://geth:8545
+      - http://execution:8545
       - --chain_spec
       - /config/rundler.toml
       - --enabled_entry_points
@@ -32,41 +32,25 @@ services:
       # Public development identity: mnemonic index 9, prefunded in Preview genesis.
       SIGNER_PRIVATE_KEYS: "2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"
     depends_on:
-      geth:
+      execution:
         condition: service_healthy
     restart: unless-stopped
 
-  geth:
-    image: ${GETH_IMAGE:-ethereum/client-go:v1.17.10}
-    entrypoint: ["/bin/sh", "/usr/local/bin/etherview-geth-entrypoint.sh"]
-    command:
-      - --networkid=48815
-      - --nodiscover
-      - --maxpeers=0
-      - --authrpc.addr=0.0.0.0
-      - --authrpc.port=8551
-      - --authrpc.vhosts=geth
-      - --authrpc.jwtsecret=/run/engine/jwt.hex
-      - --syncmode=full
-      - --gcmode=archive
-      - --http
-      - --http.addr=0.0.0.0
-      - --http.port=8545
-      - --http.api=eth,net,web3,debug,txpool
-      - --http.vhosts=*
-      - --ws
-      - --ws.addr=0.0.0.0
-      - --ws.port=8546
-      - --ws.api=eth,net,web3,debug,txpool
+  execution:
+    image: ${PREVIEW_EXECUTION_IMAGE:-ghcr.io/paradigmxyz/reth:v2.9.0}
+    user: "0:0"
+    entrypoint: [sh, /usr/local/bin/execution-entrypoint.sh]
     ports:
-      - "127.0.0.1:${GETH_HTTP_PORT:-8545}:8545"
-      - "127.0.0.1:${GETH_WS_PORT:-8546}:8546"
+      - "127.0.0.1:${PREVIEW_EXECUTION_HTTP_PORT:-8545}:8545"
+      - "127.0.0.1:${PREVIEW_EXECUTION_WS_PORT:-8546}:8546"
     healthcheck:
-      test: ["CMD", "geth", "attach", "--exec", "eth.blockNumber", "http://127.0.0.1:8545"]
+      test: [CMD, bash, /usr/local/bin/execution-healthcheck.sh]
       interval: 5s
       timeout: 4s
       retries: 36
       start_period: 10s
+    stop_signal: SIGINT
+    stop_grace_period: 30s
     restart: unless-stopped
 
   lighthouse:
@@ -76,7 +60,7 @@ services:
       - --testnet-dir=/network
       - bn
       - --datadir=/beacon
-      - --execution-endpoint=http://geth:8551
+      - --execution-endpoint=http://execution:8551
       - --execution-jwt=/run/engine/jwt.hex
       - --http
       - --http-address=0.0.0.0
@@ -90,7 +74,7 @@ services:
     ports:
       - "127.0.0.1:${LIGHTHOUSE_HTTP_PORT:-5052}:5052"
     depends_on:
-      geth:
+      execution:
         condition: service_started
     restart: unless-stopped
 

@@ -38,6 +38,8 @@ func encodeDerivedJournal(stage StageID) ([]byte, error) {
 		relations = []string{"consensus_observations"}
 	case BlobStage:
 		relations = []string{"blob_manifests"}
+	case NativeBalanceStage:
+		relations = []string{"native_balance_blocks", "native_balance_changes", "native_balance_observations"}
 	case NativeTransferStage:
 		relations = []string{"native_transfers"}
 	case ProxyStage:

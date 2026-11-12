@@ -133,8 +133,8 @@ test("CLI rejects unsafe inputs before network operations", () => {
   ])
     assert.throws(() => endpoint(url));
   assert.equal(
-    endpoint("https://geth.etherview.localhost:8443"),
-    "https://geth.etherview.localhost:8443",
+    endpoint("https://execution.etherview.localhost:8443"),
+    "https://execution.etherview.localhost:8443",
   );
 });
 test("run IDs, permissions and writer locks isolate durable state", (t) => {

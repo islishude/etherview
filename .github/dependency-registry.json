@@ -990,6 +990,11 @@
       "reason": "Preview Amsterdam chain changes require persistence and payment acceptance.",
       "pins": [
         {
+          "path": "preview/compose/chain.yaml",
+          "template": "    image: ${PREVIEW_EXECUTION_IMAGE:-ghcr.io/paradigmxyz/reth:v{{version}}}",
+          "count": 1
+        },
+        {
           "path": "preview/compose/x402.yaml",
           "template": "    image: ghcr.io/paradigmxyz/reth:v{{version}}",
           "count": 1
@@ -1008,6 +1013,8 @@
         ]
       },
       "reviewFiles": [
+        "preview/execution/entrypoint.sh",
+        "preview/execution/healthcheck.sh",
         "preview/reth/entrypoint.sh",
         "preview/reth/healthcheck.sh",
         "preview/reth/generate.mjs",

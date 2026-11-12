@@ -610,3 +610,67 @@ BEGIN
     UPDATE chart_source_reconciliation SET next_block=CASE WHEN visited<1000 THEN 0 ELSE next_number END,next_at=now()+interval '15 minutes' WHERE chain_id=target_chain;
 END
 $$;
+
+-- Authenticated BAL facts and exact native-balance baselines. Hash identity is
+-- immutable; canonical visibility also requires the current publication.
+CREATE TABLE native_balance_blocks (
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    block_number numeric(78,0) NOT NULL CHECK (block_number >= 0),
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash)=32),
+    raw jsonb NOT NULL,
+    method text NOT NULL CHECK (method IN ('eth_getBlockAccessListRaw','eth_getBlockAccessList')),
+    canonical boolean NOT NULL,
+    PRIMARY KEY(chain_id,block_number,block_hash),
+    FOREIGN KEY(chain_id,block_number,block_hash) REFERENCES blocks(chain_id,number,hash)
+) PARTITION BY RANGE(block_number);
+CREATE TABLE native_balance_blocks_default PARTITION OF native_balance_blocks DEFAULT;
+CREATE TABLE native_balance_blocks_p_0_1000000 PARTITION OF native_balance_blocks FOR VALUES FROM (0) TO (1000000);
+CREATE TABLE native_balance_changes (
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    block_number numeric(78,0) NOT NULL CHECK (block_number >= 0),
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash)=32),
+    address bytea NOT NULL CHECK (octet_length(address)=20),
+    access_index bigint NOT NULL CHECK (access_index BETWEEN 0 AND 4294967295),
+    balance numeric(78,0) NOT NULL CHECK (balance>=0 AND balance<115792089237316195423570985008687907853269984665640564039457584007913129639936),
+    canonical boolean NOT NULL,
+    PRIMARY KEY(chain_id,block_number,block_hash,address,access_index),
+    FOREIGN KEY(chain_id,block_number,block_hash) REFERENCES blocks(chain_id,number,hash)
+) PARTITION BY RANGE(block_number);
+CREATE TABLE native_balance_changes_default PARTITION OF native_balance_changes DEFAULT;
+CREATE TABLE native_balance_changes_p_0_1000000 PARTITION OF native_balance_changes FOR VALUES FROM (0) TO (1000000);
+CREATE INDEX native_balance_changes_address_idx ON native_balance_changes(chain_id,address,block_number DESC,access_index DESC) WHERE canonical;
+CREATE TABLE native_balance_observations (
+    chain_id numeric(78,0) NOT NULL REFERENCES chains(chain_id),
+    block_number numeric(78,0) NOT NULL CHECK (block_number >= 0),
+    block_hash bytea NOT NULL CHECK (octet_length(block_hash)=32),
+    address bytea NOT NULL CHECK (octet_length(address)=20),
+    balance numeric(78,0) NOT NULL CHECK (balance>=0 AND balance<115792089237316195423570985008687907853269984665640564039457584007913129639936),
+    rpc_exact boolean NOT NULL,
+    canonical boolean NOT NULL,
+    PRIMARY KEY(chain_id,block_number,block_hash,address),
+    FOREIGN KEY(chain_id,block_number,block_hash) REFERENCES blocks(chain_id,number,hash)
+) PARTITION BY RANGE(block_number);
+CREATE TABLE native_balance_observations_default PARTITION OF native_balance_observations DEFAULT;
+CREATE TABLE native_balance_observations_p_0_1000000 PARTITION OF native_balance_observations FOR VALUES FROM (0) TO (1000000);
+CREATE INDEX native_balance_observations_address_idx ON native_balance_observations(chain_id,address,block_number DESC) WHERE canonical;
+
+-- Exact evidence may gain canonicality or an independent RPC confirmation,
+-- but its identity and value never change in place.
+CREATE FUNCTION guard_native_balance_evidence() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog AS $$
+BEGIN
+    IF (to_jsonb(NEW) - ARRAY['canonical','rpc_exact']) IS DISTINCT FROM
+       (to_jsonb(OLD) - ARRAY['canonical','rpc_exact'])
+       OR (to_jsonb(OLD)->>'rpc_exact' = 'true' AND to_jsonb(NEW)->>'rpc_exact' <> 'true') THEN
+        RAISE EXCEPTION 'native balance evidence is immutable'
+            USING ERRCODE = 'integrity_constraint_violation';
+    END IF;
+    RETURN NEW;
+END
+$$;
+CREATE TRIGGER native_balance_body_immutable BEFORE UPDATE ON native_balance_blocks
+FOR EACH ROW EXECUTE FUNCTION guard_native_balance_evidence();
+CREATE TRIGGER native_balance_change_immutable BEFORE UPDATE ON native_balance_changes
+FOR EACH ROW EXECUTE FUNCTION guard_native_balance_evidence();
+CREATE TRIGGER native_balance_observation_immutable BEFORE UPDATE ON native_balance_observations
+FOR EACH ROW EXECUTE FUNCTION guard_native_balance_evidence();
