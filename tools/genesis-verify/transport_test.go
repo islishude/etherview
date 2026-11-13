@@ -112,7 +112,7 @@ func TestRunThroughHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if posts != 27 || !strings.Contains(logs.String(), "27/27 contracts verified (27 reused)") {
+	if posts != 46 || !strings.Contains(logs.String(), "46/46 contracts verified (46 reused)") {
 		t.Fatalf("not idempotent: %d posts", posts)
 	}
 	if strings.Contains(logs.String(), "test-credential") {

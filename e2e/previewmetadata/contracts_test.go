@@ -150,6 +150,7 @@ func (h *harness) contractsAllRoles(ctx context.Context) {
     volumes:
       - ${PREVIEW_COMPILER_CACHE_DIR}:/var/lib/etherview/compilers
       - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
+      - ${PREVIEW_NETWORK_DIR}/metadata/defi.json:/etc/etherview/defi/current.json:ro
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
       ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"

@@ -15,6 +15,7 @@ import { generatePrivateKey, privateKeyToAccount, mnemonicToAccount } from "viem
 import { runCompose } from "../../../.github/scripts/compose.mjs";
 import { connect, contracts, stringify } from "../client.mjs";
 import { digest, root } from "./artifacts.mjs";
+import { checkDeFi } from "./defi.mjs";
 import { checkEventPages, registerEventRanges } from "./events.mjs";
 import { acquireLock } from "./state.mjs";
 
@@ -124,7 +125,7 @@ export function receiptView(r) {
 export class Engine {
   apiKeyAdmin(args) {
     return JSON.parse(
-      runCompose([
+      this.compose([
         "exec",
         "-T",
         "api",
@@ -269,6 +270,12 @@ export class Engine {
           account,
           ...(expected === "reverted" && !input.gas ? { gas: 6000000n } : {}),
         });
+        // At Preview's one-wei base fee, fractional estimator headroom rounds
+        // away. Reserve integer headroom before journaling; never reprice a saved hash.
+        if (input.maxFeePerGas === undefined && typeof p.maxFeePerGas === "bigint")
+          p.maxFeePerGas = p.maxFeePerGas * 2n + 1n;
+        if (input.gasPrice === undefined && typeof p.gasPrice === "bigint")
+          p.gasPrice = p.gasPrice * 2n + 1n;
         raw = await wallet.signTransaction(p);
         hash = keccak256(raw);
       }
@@ -668,7 +675,7 @@ export class Engine {
             address: this.account.address,
             blockTag: "pending",
           }),
-          fee: fees.maxFeePerGas,
+          fee: fees.maxFeePerGas * 2n + 1n,
           tip: fees.maxPriorityFeePerGas > 0n ? fees.maxPriorityFeePerGas : 1n,
           blobFee: blobBaseFee * 2n + 1000000000n,
           count,
@@ -794,6 +801,7 @@ export async function checkScenario(engine, s) {
   }
   registerEventRanges(engine, s);
   for (const c of s.checks) {
+    if (c.label === "DeFi exact-block accounting") continue;
     c.status = "pending";
     s.activeStep = "check:" + c.label;
     engine.run.save();
@@ -811,6 +819,7 @@ export async function checkScenario(engine, s) {
     engine.run.save();
   }
   await checkEventPages(engine, s, request);
+  await checkDeFi(engine, s, request);
   if (!s.setupComplete || s.actions.some((a) => a.status !== "complete"))
     throw Error("Scenario has unfinished steps; use resume after checking the saved operations");
   s.status = "api_published";

@@ -1,9 +1,12 @@
 package defi
 
 import (
+	"bytes"
 	"encoding/json"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/deficontract"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -31,5 +34,33 @@ func TestManifestStrictIdentity(t *testing.T) {
 	m.Deployments[0].Contracts[0].Implementation = common.HexToAddress("0x2")
 	if m.Validate() == nil {
 		t.Fatal("unbound proxy accepted")
+	}
+}
+
+func TestCustomManifestExampleAndRequiredRoles(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/operations/defi.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := ReadManifest(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ChainID != "77777" || len(m.Deployments) != 6 {
+		t.Fatal("example must cover six custom deployments")
+	}
+	for i, d := range m.Deployments {
+		for _, role := range requiredRoles(d.Protocol) {
+			t.Run(string(d.Protocol)+"/"+role, func(t *testing.T) {
+				copy, err := ReadManifest(bytes.NewReader(raw))
+				if err != nil {
+					t.Fatal(err)
+				}
+				copy.Deployments[i].Contracts = slices.DeleteFunc(copy.Deployments[i].Contracts, func(c Contract) bool { return c.Role == role })
+				if copy.Validate() == nil {
+					t.Fatal("accepted missing role")
+				}
+			})
+		}
 	}
 }

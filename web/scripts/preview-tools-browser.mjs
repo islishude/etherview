@@ -35,15 +35,17 @@ try {
     for (const scenario of report.scenarios) {
       assert.equal(scenario.status, "api_published", scenario.name);
       const preferred =
-        scenario.name === "events"
-          ? scenario.links.find((l) => l.label === "verified event logs")
-          : scenario.name === "blob"
-            ? scenario.links.find((l) => l.label.endsWith(" blobs"))
-            : scenario.name === "aa"
-              ? scenario.links.find((l) => l.url.includes("/user-op/"))
-              : scenario.name === "contracts"
-                ? scenario.links.find((l) => l.label === "verified source")
-                : undefined;
+        scenario.name === "defi"
+          ? scenario.links.find((l) => l.label === "DeFi assets")
+          : scenario.name === "events"
+            ? scenario.links.find((l) => l.label === "verified event logs")
+            : scenario.name === "blob"
+              ? scenario.links.find((l) => l.label.endsWith(" blobs"))
+              : scenario.name === "aa"
+                ? scenario.links.find((l) => l.url.includes("/user-op/"))
+                : scenario.name === "contracts"
+                  ? scenario.links.find((l) => l.label === "verified source")
+                  : undefined;
       const link =
         preferred ??
         scenario.links.find(
@@ -81,6 +83,24 @@ try {
           await expect(
             page.locator('a[href^="/address/' + implementation + '" i]').first(),
           ).toBeVisible({ timeout: 2000 });
+        if (scenario.name === "defi") {
+          await expect(page.locator(".defi-protocol-group")).toHaveCount(6);
+          await expect(page.locator(".defi-position")).toHaveCount(
+            6 + 3 * Object.keys(scenario.entities.batches).length,
+          );
+          await expect(
+            page.locator(".defi-quantity").filter({ hasText: "49.99625031247265871" }).first(),
+          ).toBeVisible();
+          await expect(page.locator(".address-defi")).toContainText(
+            mobile
+              ? phase.endsWith("final")
+                ? "可领取"
+                : "等待退出"
+              : phase.endsWith("final")
+                ? "Ready to claim"
+                : "Withdrawal pending",
+          );
+        }
         if (scenario.name === "ens")
           await expect(page.locator("h1")).toContainText(scenario.entities.name);
         if (scenario.name === "events") {
@@ -142,6 +162,29 @@ try {
           ".png",
         fullPage: true,
       });
+      if (scenario.name === "defi") {
+        await page.locator("#defi-protocol").selectOption("aave-v3");
+        await expect(page.locator(".defi-position")).toHaveCount(2);
+        await page.locator("#defi-protocol").selectOption("");
+        await expect(page.locator(".defi-position")).toHaveCount(
+          6 + 3 * Object.keys(scenario.entities.batches).length,
+        );
+        await page
+          .getByRole("button", { name: mobile ? "切换颜色主题" : "Switch color theme" })
+          .click();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+        await expect(page.locator(".defi-protocol-group")).toHaveCount(6);
+        await expect(page.locator(".defi-position")).toHaveCount(
+          6 + 3 * Object.keys(scenario.entities.batches).length,
+        );
+        await page.screenshot({
+          path: `${artifacts}/tools-${phase}-defi-dark-${mobile ? "mobile" : "desktop"}.png`,
+          fullPage: true,
+        });
+        await page
+          .getByRole("button", { name: mobile ? "切换颜色主题" : "Switch color theme" })
+          .click();
+      }
       if (scenario.name === "events") {
         await page
           .getByRole("button", { name: mobile ? /^事件签名:/ : /^Event signature:/ })

@@ -34,6 +34,10 @@ Allowed plan states are `planned`, `in_progress`, `blocked`, `done`, and
 
 ## Current Work
 
+P30-T159 delivers custom-chain manifest examples and six-protocol Preview
+assets, with the complete tool catalog passing all/split acceptance on Reth
+v2.11.0. Real-protocol acceptance remains separate in P30-T158.
+
 DeFi indexing, API and browsing are implemented in P20-T35, P40-T36 and
 P50-T90. P30-T158 retains real-contract production all/split and live deployment
 acceptance. The implementation is governed by

@@ -143,6 +143,12 @@ export function links(state, s) {
     )
       add(label + " source", "/address/" + entity + "#code");
   }
+  if (s.name === "defi" && s.entities.recipient) {
+    add("DeFi assets", "/address/" + s.entities.recipient + "?tab=assets&asset=defi");
+    for (const [protocol, roles] of Object.entries(s.entities.projects ?? {}))
+      for (const [role, address] of Object.entries(roles))
+        add(protocol + " " + role, "/address/" + address);
+  }
   if (s.entities.name) add("ENS", "/name/" + encodeURIComponent(s.entities.name));
   if (s.name === "events") {
     const block = s.steps["verified-events"]?.receipt?.blockNumber;

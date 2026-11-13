@@ -176,4 +176,5 @@ and generated OpenAPI clients. Browser acceptance covers 390/768/1440px,
 Chinese/English, light/dark, exact quantities, protocol filtering and accessibility.
 Publication events preserve manual refresh; reorgs withdraw old snapshots.
 Production real-contract all/split and live deployment reconciliation remain
-separate P30-T158 acceptance; no deployment is implicitly enabled.
+separate P30-T158 acceptance; no production deployment is implicitly enabled.
+P30-T159 owns explicitly local Preview demonstration deployments.

@@ -40,6 +40,18 @@ reject otherwise valid locally estimated settlement transactions. Rundler accept
 the private chain's zero priority-fee recommendation while retaining safe
 validation and the execution base fee.
 
+## DeFi demonstrations
+
+The deterministic genesis inventory also contains six families of local DeFi
+adapter demonstration contracts. `preview/cmd/previewdefimanifest` validates
+all configured root, receipt and Curve pool code identities against the final
+execution genesis and produces `metadata/defi.json`. Network fingerprints and
+file integrity checks include it. API/enrich and all-role acceptance use that
+same manifest; ordinary Preview startup submits no position transactions.
+The explicit `preview-tool run defi` scenario creates Transfer evidence and
+uses the unchanged enrich/publication/read path. Local fixture accounting does
+not close ADR-0060's independent real-protocol acceptance in P30-T158.
+
 ## Second payment network
 
 The Preview Compose stack also runs Reth with chain ID 31337. It is a payment
@@ -48,7 +60,7 @@ fixture only: the explorer and SIWE identity continue using Reth chain 48815.
 reviewed token allocations, including both six- and eighteen-decimal tokens and
 public development accounts. No contracts are deployed during startup.
 
-Reth v2.9.0 runs in dev mode with a three-second block interval and Amsterdam
+Reth v2.11.0 runs in dev mode with a three-second block interval and Amsterdam
 active from genesis, including the reviewed system allocations shared with Geth.
 The Reth volume records its genesis digest and full database. Restarts reuse the
 database without funding accounts again. Changed genesis, missing database or

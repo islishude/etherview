@@ -50,6 +50,38 @@ Use earliest relevant protocol activity, including older pool activity for Curve
 registry additions. Current root code identity does not certify a historical
 upgrade path: only reviewed compatible deployment histories may share a manifest.
 
+## Custom-chain addresses
+
+Use the [six-protocol example](defi.example.json) as a structural template.
+Every address and hash in that file is illustrative; replace them with reviewed
+identities from your chain before enabling it. Change `chain_id`, `genesis_hash`
+and each deployment's `id`, start anchor, contract addresses and code hashes.
+The example starts at genesis only to illustrate genesis-predeployed contracts;
+ordinary deployments use their actual deployment block and hash. Omit protocols
+that are not deployed. Multiple compatible deployments of a protocol may have
+different IDs. A custom address does not add support for a new protocol ABI.
+
+The role table above applies equally to public networks, private chains and
+Preview. `code_hash` is Keccak-256 of deployed runtime code, including resolved
+immutables, not a source or creation-bytecode checksum. Use a single pinned
+endpoint and exact block hash when reviewing code and proxy storage. For a proxy,
+supply its shell code hash plus `implementation`, `implementation_code_hash`
+and `implementation_slot`; an implementation address alone is insufficient.
+List each Aave supply/debt receipt separately, including its own proxy identity.
+List reviewed Curve pool runtime hashes in `pool_code_hashes`. Registry
+membership is not a substitute for either of these identity checks.
+
+Mount the same reviewed file in API/enrich or all-role processes, set the existing
+`defi.manifest` path, then restart those processes together. There is no built-in
+mainnet address fallback or address-only trust mode. A wrong chain/genesis is
+rejected; changed runtime/implementation identities cannot publish quantities.
+After changing a manifest, its digest selects a new source generation and old
+publications remain retained but are not returned through the new configuration.
+
+Preview automatically generates its actual manifest from the final genesis.
+See [Preview DeFi tools](../../preview/docs/tools.md#defi-demonstrations) for
+local demonstration assets. Those contracts are not production deployments.
+
 ## Progress and recovery
 
 The worker first enumerates instruments, then scans canonical Transfer evidence,

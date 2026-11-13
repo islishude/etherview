@@ -23,7 +23,7 @@ func sourceFixture(t *testing.T) (inventory, bundles) {
 
 func TestInventoryAndSubmissions(t *testing.T) {
 	inv, sources := sourceFixture(t)
-	if len(inv.Contracts) != 27 {
+	if len(inv.Contracts) != 46 {
 		t.Fatalf("inventory count: %d", len(inv.Contracts))
 	}
 	names := map[string]bool{}

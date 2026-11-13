@@ -7,7 +7,9 @@ import { isAddress } from "viem";
 import { stringify, contracts } from "../client.mjs";
 import { compile, root } from "./artifacts.mjs";
 import { catalog, lifecycle, actionProblem } from "./catalog.mjs";
+import { defiAvailability } from "./defi.mjs";
 import { Engine, preflight, checkScenario, endpoint } from "./engine.mjs";
+import { request } from "./engine.mjs";
 import { setup, action } from "./scenarios.mjs";
 import { createRun, openRun, acquireLock, writeReport } from "./state.mjs";
 
@@ -113,6 +115,7 @@ export async function main(argv = process.argv.slice(2)) {
     } catch {
       /* Report isolated capability failure. */
     }
+    const defi = await defiAvailability(ctx.rpc, endpoints.app, request);
     const tools = {};
     for (const [name, args] of [
       ["go", ["version"]],
@@ -141,13 +144,15 @@ export async function main(argv = process.argv.slice(2)) {
         scenarios: Object.fromEntries(
           Object.entries(catalog).map(([id, c]) => [
             id,
-            id === "aa" && !bundlerReady
-              ? "bundler unavailable"
-              : id === "blob" && tools.go === "unavailable" && !o["blob-helper"]
-                ? "blob signing helper unavailable"
-                : c.requires.every((f) => features[f])
-                  ? "available"
-                  : "missing capability",
+            id === "defi"
+              ? defi
+              : id === "aa" && !bundlerReady
+                ? "bundler unavailable"
+                : id === "blob" && tools.go === "unavailable" && !o["blob-helper"]
+                  ? "blob signing helper unavailable"
+                  : c.requires.every((f) => features[f])
+                    ? "available"
+                    : "missing capability",
           ]),
         ),
       }),
@@ -204,6 +209,10 @@ export async function main(argv = process.argv.slice(2)) {
     }
     const e = new Engine(run, o, command === "check" ? {} : compile(path.join(o.dir, "build")));
     await e.init(command === "check");
+    if (selected.some((s) => s.name === "defi")) {
+      const availability = await defiAvailability(e.rpc, run.state.endpoints.app, request);
+      if (availability !== "available") throw Error(availability);
+    }
     if (command === "check") {
       for (const step of Object.values(run.state.funding.steps))
         if (!(await e.reconcile(step))) throw Error("Funding outcome is unknown: " + step.hash);

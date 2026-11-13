@@ -98,6 +98,10 @@ mnemonic `test test test test test test test test test test test junk` and
 | `0xa0ee7a142d267c1f36714e4a8f75612f20a79720` | 1000 ETH / 0                                     | Index 9: dedicated Bundler executor, signing bundle transactions. Its development key is supplied only to the Bundler service.                     |
 | `0x8626f6940e2eb28930efb4cef49b2d1f2c9c1199` | 1000 ETH / 22                                    | Index 19: ENS administrator and deterministic contract-construction account. Nonce 22 is the exported post-construction nonce; do not reset it.    |
 
+The separate DeFi construction account `0xdD2FD4581271e230360230F9337D5c0430Bf44C0` (mnemonic index 18)
+has 1000 ETH and exported nonce 20. Scenario users use independent run accounts;
+this construction identity is not needed to mint demonstration positions.
+
 The x402 Facilitator account `0x70997970c51812dc3a010c7d01b50e0d17dc79c8`
 (index 1) has 10 ETH and nonce 1 in genesis. Local USD at
 `0x8464135c8f25da09e49bc8782676a84730c318bc` is also a genesis allocation,
@@ -243,3 +247,14 @@ from EntryPoint's `senderCreator`, so Amsterdam state-creation gas is included
 in the verification allowance. This read-only estimate uses no state override;
 the resulting verification budget remains capped at Rundler's 5,000,000 gas
 limit. The final operation hash and signature cover the adjusted allowance.
+
+## Local DeFi contracts
+
+The generated application manifest also lists 19 `PreviewDeFi*` demonstration
+contracts: asset/receipt tokens, V2/V3/V4 roots and positions, Aave supply/debt,
+Curve registry/LP and Lido staking/withdrawals. Their source is
+[PreviewDeFi.sol](../contracts/PreviewDeFi.sol); addresses, ABIs and code hashes
+are generated with the existing genesis pipeline and included in the normal
+source-verification inventory. They are not upstream protocol deployments.
+Use [DeFi demonstrations](tools.md#defi-demonstrations) to create owner positions
+through real post-genesis transactions.

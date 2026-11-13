@@ -19,6 +19,7 @@ make preview-tool ARGS='run blob'
 make preview-tool ARGS='run aa'
 make preview-tool ARGS='run proxy.uups'
 make preview-tool ARGS='run events'
+make preview-tool ARGS='run defi --to 0xYOUR_WALLET'
 make preview-tool ARGS='act --run RUN_ID upgrade'
 make preview-tool ARGS='run eip7702'
 make preview-tool ARGS='act --run RUN_ID redelegate'
@@ -44,6 +45,7 @@ funded by public development account 0. Only use these tools on Preview.
 
 | Scenario            | Initial data                                                                                                        | Explicit actions                                                                 |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `defi`              | Local demonstration V2/V3/V4 LPs, Aave supply/debt, Curve LP and Lido staking/withdrawals                           | `activity`, `finalize`                                                           |
 | `events`            | Verified/unverified emitters, 33 direct logs, overloaded and anonymous events, four topics and an upgradeable proxy | `emit`, `upgrade`                                                                |
 | `transactions`      | Legacy, access-list and EIP-1559 transfers; creation, internal transfer, state/log changes and revert               | `activity`                                                                       |
 | `blob`              | Real one-blob and two-blob transactions, cell proofs, archive readback                                              | None                                                                             |
@@ -109,6 +111,45 @@ unchecked: inspect name search, mutually exclusive mode switching, URL reload,
 next/previous pages, raw data and provenance in both languages and mobile layout.
 An ordinary EOA must not show the new tab.
 
+## DeFi demonstrations
+
+`make preview-tool ARGS='run defi'` creates six-protocol positions for the run's
+new disposable account. `--to ADDRESS` creates them for that wallet without its
+private key. `run all` includes DeFi and retains its existing recipient default.
+Open the report's **DeFi assets** link to Assets → DeFi. These are explicitly
+local demonstration contracts, not upstream Uniswap, Aave, Curve or Lido
+compatibility evidence. They accept no real funds and intentionally allow minting.
+
+Preview starts with authenticated genesis contracts but no owner positions.
+The tool emits real Transfer transactions; the enrich worker discovers and
+publishes their positions through the normal PostgreSQL pipeline. `doctor`
+checks the six deployment IDs and genesis code identities. If the bundle is old
+or the manifest differs, it reports the mismatch; it never resets the network
+or changes the manifest. Reinitialize only through the documented explicit
+[network procedure](operations.md).
+
+`act --run RUN_ID activity` adds another batch. `act --run RUN_ID finalize`
+finalizes that run's existing withdrawal NFTs; `--lifecycle` performs both in
+that order. Request IDs and issuer checks isolate runs, including when several
+runs target the same wallet. LP reserve ratios and conversion rates are fixed
+for demonstrations, so another run does not change earlier position accounting.
+Fungible receipts accumulate on the selected wallet; `check` compares the current
+aggregate balance at the publication's exact block, while checking only this
+run's NFT IDs. Publications must include every recorded transaction.
+
+Checks traverse cursor pages, verify all six completed deployments, and compare
+asset/debt/claimable quantities against hash-pinned RPC state and fixed fixture
+accounting. Reports retain these expected quantities and publication hashes.
+`check` and `report` send no transactions; `resume` preserves recorded hashes.
+A newer publication may update read-only accounting evidence in a report.
+Use `--timeout 600` for slower local hosts; a timeout leaves the run recoverable.
+
+Inspect initial pending withdrawals before `finalize`, then click Refresh to
+see claimable ETH. Review Aave debt separately from assets, V3 recorded claimable
+amounts separately from fees, and exact quantities/IDs in the details. Check
+protocol filtering, both languages/themes and mobile layout. No USD portfolio
+sum or recursive vault positions are provided.
+
 ## Reports and recovery
 
 Runs live in `.local/preview-tools/runs/RUN_ID/`. `report.json` and `report.md`
@@ -153,6 +194,8 @@ It cannot mark unfinished setup or actions complete; those still require `resume
 `resume` reuses the recorded identities and continues only after previous
 transactions are confirmed. A submitted or prepared operation with no known
 receipt remains uncertain: the tool does not replace it or allocate a new nonce.
+New transactions reserve integer fee headroom for Preview’s tiny base fee;
+explicit fee inputs and already-journaled payloads are unchanged.
 Investigate the recorded hash. Start a new run only after deciding that new
 chain activity is intended. An expired ENS commitment likewise requires an
 explicit new run, not a silently replaced secret.

@@ -20,7 +20,7 @@ services:
     stop_grace_period: 35s
 
   reth:
-    image: ghcr.io/paradigmxyz/reth:v2.9.0
+    image: ghcr.io/paradigmxyz/reth:v2.11.0
     user: "0:0"
     entrypoint: [sh, /usr/local/bin/reth-entrypoint.sh]
     healthcheck:

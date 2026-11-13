@@ -23,6 +23,7 @@ import {
   rpcOperation,
   smartAddress,
 } from "../client.mjs";
+import { setupDeFi, actionDeFi } from "./defi.mjs";
 import { actor, request, matches } from "./engine.mjs";
 import { setupEvents, actionEvents } from "./events.mjs";
 
@@ -511,6 +512,9 @@ export async function setup(e, s) {
   if (s.name.startsWith("proxy.")) await proxies(e, s);
   else
     switch (s.name) {
+      case "defi":
+        await setupDeFi(e, s);
+        break;
       case "events":
         await setupEvents(e, s);
         break;
@@ -547,6 +551,7 @@ export async function setup(e, s) {
   e.run.save();
 }
 export async function action(e, s, name, id) {
+  if (s.name === "defi") return actionDeFi(e, s, name, id);
   if (s.name === "events") return actionEvents(e, s, name, id);
   const entity = s.entities;
   if (name === "activity") {

@@ -316,5 +316,5 @@ turnstile:
   site_key: ""
 
 defi:
-  enabled: false
-  manifest: ""
+  enabled: true
+  manifest: /etc/etherview/defi/current.json

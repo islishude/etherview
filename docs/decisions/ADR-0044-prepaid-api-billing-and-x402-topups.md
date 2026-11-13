@@ -172,7 +172,7 @@ dual-Anvil local acceptance.
 
 Preview additionally runs a payment-only Reth dev network (31337), leaving indexing
 and SIWE on 48815. Both networks predeploy six- and eighteen-decimal local tokens.
-Reth v2.9.0 uses three-second blocks and activates Amsterdam with its prerequisite
+Reth v2.11.0 uses three-second blocks and activates Amsterdam with its prerequisite
 forks and system contracts at genesis. It is reachable at
 `reth.etherview.localhost`, with the same local-wallet HTTP/WSS policy as Geth.
 Its facilitator stays internal. Genesis initializes only a new volume; restarts

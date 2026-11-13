@@ -734,3 +734,86 @@ test("ambiguous shared funding retains its writer lock across independent runs",
   assert.equal(released, false);
   assert.throws(() => b.lockSender(address), /Another writer/);
 });
+
+test("temporary API key creation and revocation use the selected isolated Compose project", (t) => {
+  const { run } = fixture(t);
+  const wrapper = path.join(run.dir, "compose-arguments");
+  fs.writeFileSync(
+    wrapper,
+    "#!/usr/bin/env node\nconsole.log(JSON.stringify({args:process.argv.slice(2)}));\n",
+    { mode: 0o700 },
+  );
+  const previous = process.env.COMPOSE;
+  process.env.COMPOSE = wrapper;
+  t.after(() => {
+    if (previous === undefined) delete process.env.COMPOSE;
+    else process.env.COMPOSE = previous;
+  });
+  const engine = new Engine(
+    run,
+    { project: "isolated-preview", "compose-files": "compose.yaml,/tmp/isolated override.yaml" },
+    {},
+  );
+  for (const operation of [
+    ["create", "--name", "fixture"],
+    ["revoke", "fixture-prefix"],
+  ]) {
+    const result = engine.apiKeyAdmin(operation);
+    assert.deepEqual(result.args, [
+      "-f",
+      "compose.yaml",
+      "-f",
+      "/tmp/isolated override.yaml",
+      "-p",
+      "isolated-preview",
+      "exec",
+      "-T",
+      "api",
+      "/etherview",
+      "admin",
+      "api-key",
+      ...operation,
+      "--config=/etc/etherview/config.yaml",
+    ]);
+  }
+});
+
+test("new Preview transactions reserve integer fee headroom without replacing saved or explicit fees", async (t) => {
+  const { keccak256 } = await import("viem");
+  for (const field of ["maxFeePerGas", "gasPrice"]) {
+    for (const explicit of [false, true]) {
+      const { run } = fixture(t);
+      const engine = new Engine(run, {}, {});
+      const scenario = run.state.scenarios.transactions;
+      const input = explicit ? { [field]: 1n } : {};
+      let signed = 0,
+        sent = 0;
+      engine.account = { address: "0x1111111111111111111111111111111111111111" };
+      engine.wallet = () => ({
+        prepareTransactionRequest: async () => ({ [field]: 1n }),
+        signTransaction: async (prepared) => {
+          signed++;
+          assert.equal(prepared[field], explicit ? 1n : 3n);
+          return "0xdead";
+        },
+      });
+      engine.rpc = {
+        async sendRawTransaction({ serializedTransaction }) {
+          sent++;
+          return keccak256(serializedTransaction);
+        },
+      };
+      engine.reconcile = async (step) => {
+        step.status = "mined";
+        step.receipt = { blockNumber: "1" };
+        return true;
+      };
+      await engine.tx(scenario, "fee", input);
+      const hash = scenario.steps.fee.hash;
+      await engine.tx(scenario, "fee", input);
+      assert.equal(scenario.steps.fee.hash, hash);
+      assert.equal(signed, 1);
+      assert.equal(sent, 1);
+    }
+  }
+});

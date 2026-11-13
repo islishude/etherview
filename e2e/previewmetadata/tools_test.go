@@ -34,7 +34,27 @@ func TestPreviewToolsFull(t *testing.T) {
 	}
 }
 
+// Keep focused DeFi acceptance independent of unrelated tool scenarios, while
+// preserving the complete catalog gate above unchanged.
+func TestPreviewDeFi(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 18*time.Minute)
+	defer cancel()
+	for _, phase := range []string{"all", "split"} {
+		if !t.Run(phase, func(t *testing.T) { testPreviewToolScenarioLayout(t, ctx, phase, true, "defi") }) {
+			return
+		}
+	}
+}
+
 func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full bool) {
+	scenario := "transactions"
+	if full {
+		scenario = "all"
+	}
+	testPreviewToolScenarioLayout(t, ctx, phase, full, scenario)
+}
+
+func testPreviewToolScenarioLayout(t *testing.T, ctx context.Context, phase string, full bool, scenario string) {
 	h := newHarness(t)
 	t.Cleanup(h.cleanup)
 	data, err := os.ReadFile(filepath.Join(h.root, "preview/config.yaml"))
@@ -74,6 +94,9 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 	if phase == "all" {
 		h.toolsStrictMetadataGateway(ctx)
 		h.contractsAllRoles(ctx)
+		// The gateway recreation may change its ephemeral host port. Bind the
+		// Go evidence reader to the same final gateway used by the CLI/browser.
+		h.connect(ctx)
 	}
 	binding, err := h.project.Port(ctx, "preview-gateway", 443)
 	if err != nil {
@@ -121,10 +144,6 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 		}
 		return report
 	}
-	scenario := "transactions"
-	if full {
-		scenario = "all"
-	}
 	args := []string{"run", scenario}
 	if !full {
 		args = append(args, "--no-verify")
@@ -152,6 +171,9 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 	initialTransactions := toolTransactionIdentities(report)
 	runCLI("resume", "--run", id, "--lifecycle")
 	before := runCLI("report", "--run", id)
+	if full && scenario == "all" {
+		h.assertToolsClearEvidence(ctx, before, phase)
+	}
 	for step, hash := range initialTransactions {
 		if toolTransactionIdentities(before)[step] != hash {
 			t.Fatalf("lifecycle replaced transaction %s", step)
@@ -166,9 +188,37 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 			t.Fatal("completed resume changed transactions")
 		}
 	}
+	if full {
+		services := []string{"api", "enrich"}
+		if phase == "all" {
+			services = []string{"api"}
+		}
+		if _, err := h.project.Run(ctx, append([]string{"restart"}, services...)...); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.project.Run(ctx, append([]string{"up", "-d", "--no-build", "--no-deps", "--wait", "--wait-timeout", "180"}, services...)...); err != nil {
+			t.Fatal(err)
+		}
+	}
 	runCLI("check", "--run", id)
 	after := runCLI("report", "--run", id)
-	if fmt.Sprint(before["scenarios"]) != fmt.Sprint(after["scenarios"]) {
+	// DeFi checks reconcile the newest published hash; identity and transactions
+	// remain unchanged even when a newer publication refreshes read-only evidence.
+	stableScenarios := func(report map[string]any) string {
+		var result []any
+		for _, item := range report["scenarios"].([]any) {
+			s := item.(map[string]any)
+			copy := make(map[string]any, len(s))
+			for k, v := range s {
+				if s["name"] != "defi" || k != "checks" {
+					copy[k] = v
+				}
+			}
+			result = append(result, copy)
+		}
+		return fmt.Sprint(result)
+	}
+	if stableScenarios(before) != stableScenarios(after) {
 		t.Fatal("read-only check changed public scenario outcomes")
 	}
 	retainReport("final")
@@ -180,7 +230,80 @@ func testPreviewToolLayout(t *testing.T, ctx context.Context, phase string, full
 	}
 	if full {
 		h.assertToolsBrowser(ctx, binding, reportPath, phase+"-final")
+		// A second run may add fungible balances to the same wallet. The old run
+		// must still reconcile its own NFT IDs and the new exact-block totals.
+		var recipient string
+		for _, item := range report["scenarios"].([]any) {
+			s := item.(map[string]any)
+			if s["name"] == "defi" {
+				recipient = s["entities"].(map[string]any)["recipient"].(string)
+			}
+		}
+		if recipient == "" {
+			t.Fatal("missing DeFi recipient")
+		}
+		repeated := runCLI("run", "defi", "--to", recipient)
+		if repeated["id"] == id {
+			t.Fatal("repeated run reused identity")
+		}
+		runCLI("check", "--run", id)
+		checked := runCLI("report", "--run", id)
+		if !reflect.DeepEqual(toolTransactionIdentities(after), toolTransactionIdentities(checked)) {
+			t.Fatal("read-only DeFi recheck changed transaction identities")
+		}
+		retainReport("repeated-wallet")
 	}
+}
+
+func (h *harness) assertToolsClearEvidence(ctx context.Context, report map[string]any, phase string) {
+	h.t.Helper()
+	for _, item := range report["scenarios"].([]any) {
+		s := item.(map[string]any)
+		if s["name"] != "eip7702" {
+			continue
+		}
+		authority := strings.ToLower(s["entities"].(map[string]any)["authority"].(string))
+		for _, item := range s["transactions"].([]any) {
+			tx := item.(map[string]any)
+			if !strings.HasSuffix(tx["step"].(string), "-clear") {
+				continue
+			}
+			block := tx["receipt"].(map[string]any)["blockHash"].(string)
+			var raw json.RawMessage
+			if err := h.rpc.CallContext(ctx, &raw, "debug_traceBlockByHash", block, map[string]any{"tracer": "prestateTracer", "tracerConfig": map[string]any{"diffMode": true}}); err != nil {
+				h.t.Fatal(err)
+			}
+			var traces []struct {
+				Hash   string `json:"txHash"`
+				Result struct {
+					Pre map[string]struct {
+						Code *string `json:"code"`
+					} `json:"pre"`
+					Post map[string]struct {
+						Code *string `json:"code"`
+					} `json:"post"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(raw, &traces); err != nil {
+				h.t.Fatal(err)
+			}
+			for _, trace := range traces {
+				if !strings.EqualFold(trace.Hash, tx["hash"].(string)) {
+					continue
+				}
+				pre, post := trace.Result.Pre[authority].Code, trace.Result.Post[authority].Code
+				if pre == nil || !strings.HasPrefix(*pre, "0xef0100") || post == nil || *post != "0x" {
+					h.t.Fatal("clearing must have explicit transaction-bound pre/post code evidence")
+				}
+				if err := os.WriteFile(filepath.Join(h.artifacts, "tools-"+phase+"-clear-evidence.json"), raw, 0600); err != nil {
+					h.t.Fatal(err)
+				}
+				return
+			}
+			h.t.Fatal("clearing transaction missing from exact-block trace")
+		}
+	}
+	h.t.Fatal("missing clear-delegation lifecycle transaction")
 }
 
 // ADR-0005 forbids the private-network exception in all-role processes. Like

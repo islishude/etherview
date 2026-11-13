@@ -6,7 +6,7 @@
     "Multicall3.json": "ed8f8615c0b87a9156047daea7d93c6ba1bf831aacc4b387e4a471ea7bc05052",
     "Permit2.json": "63c4987af88078215c64bfea9d840482fec5bbb4869ee8fa0e04808975c39479",
     "SimpleAccountFactory.json": "b3df89bf47ba70ef6378d091dece8e3a044fe576e91f8f50d80b206e294be2b9",
-    "local.json": "3a0d5dad5a7d0ee68e48a3c845fa972b05a5c5059c35131e8ec4c0f46bc2bb7a",
+    "local.json": "49d7934a7d9b77afa911c1ffd2e97365692815d21593b8f1bc0b609920f62e0d",
     "sys-asm.json": "f61078f4bd7bebfee6b70db5bf56399caaedf692bda25ce1cd8442383dcc532e",
     "x402ExactPermit2Proxy.json": "7be72d61a0e16623836587048cbe43f5343310f6040154dfdb2e2f9e7efecf8b"
   },
@@ -74,11 +74,39 @@
       "codeSha256": "c595adabcf5209e80dc8885eded4a1f460396a16f7e79c0fe5a81a92c0d5911b"
     },
     {
+      "address": "0x13093e4a28b977aafd892538dc06573857e1cbbb",
+      "name": "PreviewDeFiReceipt",
+      "bundle": "local.json",
+      "codeHash": "0xb0c14ec8fc4bd85fbae9ef6aa7518883d96757702c23ed66126d995ffbb091a9",
+      "codeSha256": "ec4015ae40a3c313d46a2d572872cc2bfd52f951c7c5563ad78fc03a43d32673"
+    },
+    {
+      "address": "0x155d8226b743a57634d3a8919edff3f58cc8da14",
+      "name": "PreviewDeFiWstETH",
+      "bundle": "local.json",
+      "codeHash": "0xe97e5a713ccb8533a94c16e0b81b383c2a956aa4c0444f1231197fbcfaab6941",
+      "codeSha256": "f85043f7fb1472a40e960f8bf8f351cd40e1cd3e9d8974ec799de1c8375616e0"
+    },
+    {
       "address": "0x1820a4b7618bde71dce8cdc73aab6c95905fad24",
       "name": "ERC1820Registry",
       "bundle": "ERC1820Registry.json",
       "codeHash": "0xf0aa940bb32e37c5f7268b53acc48c7cdd148cd0fc196f30faa00a4d66c0443a",
       "codeSha256": "50a56a9328a01aa001d63b6ba351d6c2144e63c8275cf1bdf54382f019f7bc94"
+    },
+    {
+      "address": "0x1accbd355245aba93ce46d33ab1d0152ce33fd00",
+      "name": "PreviewDeFiToken",
+      "bundle": "local.json",
+      "codeHash": "0xa3659aa853b04f507ce1d1294d49957aeece438738129278cc7ee78c70f9a636",
+      "codeSha256": "fcd98388baa5c39342b0ff39a38c751f24b2552412f6440864bf121eda57987e"
+    },
+    {
+      "address": "0x2d1309fde5d8c1ab2c8036c26fadfe9d933ce9e4",
+      "name": "PreviewDeFiV3Pool",
+      "bundle": "local.json",
+      "codeHash": "0x42bcdfc49bd311a9480ace93b3accd5a9ff4510551126eba051603565743c59b",
+      "codeSha256": "8cd7fe3ffed4144502b9f8924fdadecd9a0dacc344139019a9fccf082d580ab3"
     },
     {
       "address": "0x402085c248eea27d92e8b30b2c58ed07f9e20001",
@@ -117,11 +145,46 @@
       "codeSha256": "e0af82ad2e5188285db8ba0b2ae054d13f0fd4fe325c48c7f2dace48454404b9"
     },
     {
+      "address": "0x54f569a3d4e9b68ea1fd9a226954093ac76b2475",
+      "name": "PreviewDeFiV4View",
+      "bundle": "local.json",
+      "codeHash": "0x747ab810e81137212db5b5fc50605ddffcebe208ac824d714dafd8bbb9325b25",
+      "codeSha256": "fedb574c53f775d7ddb7b9c8cf636ff533617a32a9dd8786b06c9eda60f168d9"
+    },
+    {
+      "address": "0x5b6eda1d916bb28efffdf18601c7f5b4021e72ab",
+      "name": "PreviewDeFiWithdrawals",
+      "bundle": "local.json",
+      "codeHash": "0xca82122c9cb021f918e7e8da80a21dc29296a9067eda5ae253b0d418cb6d75f3",
+      "codeSha256": "aa884c6cb63c68b7d031c0b7b0fa2d7caa31aaf0dd97390db2b98bdf5c287ba0"
+    },
+    {
+      "address": "0x5d2794535c726d65f04244fcf5893ffb0b70a0d2",
+      "name": "PreviewDeFiV4Positions",
+      "bundle": "local.json",
+      "codeHash": "0x54dfb934636d1d9439213d16e7ebd13d16f472f5b50d78f84820ac5f4fda4cde",
+      "codeSha256": "79f4ed3d57fab845c209f4b3c0b7f60b4da8eb8481a632ecfa39ba94aee34bc5"
+    },
+    {
+      "address": "0x601d086ee8f66192523f6d47da9e453daa75bb9e",
+      "name": "PreviewDeFiV4Manager",
+      "bundle": "local.json",
+      "codeHash": "0x4c889621a164873b2899c8b6f7d1fef2ffafc2f309394e066b9ae3a18cb36581",
+      "codeSha256": "a886339c7a3c4f2c61d8ae5960fe70651c35e04b9ce60f7928be5884cc280021"
+    },
+    {
       "address": "0x6d925938edb8a16b3035a4cf34faa090f490202a",
       "name": "DefaultReverseRegistrar",
       "bundle": "local.json",
       "codeHash": "0x109646e7c50d71ed2e7a7d5139ca7690659f5ca83de8afbd9ae4339561292fc0",
       "codeSha256": "5451dadf85d2888f8235d921a98b6e533033c1cffe6081e21c38d207c600ca9d"
+    },
+    {
+      "address": "0x6df8650a3ba32ad04f19c92f833536d0ad91df7a",
+      "name": "PreviewDeFiCurveRegistry",
+      "bundle": "local.json",
+      "codeHash": "0xa6bf617dd74ea96dc63a8776265993fae9670f9646132a724a0be645cf3a9be4",
+      "codeSha256": "44c922dcf1768eb92f23d6e052cf18671c8edb44b06da96f94467786af96fbf7"
     },
     {
       "address": "0x71c95911e9a5d330f4d621842ec243ee1343292e",
@@ -131,11 +194,53 @@
       "codeSha256": "47aa7bdaf87b83cc95f5053135fc9cd12bb47b5c1191daea390c786829971b16"
     },
     {
+      "address": "0x7350bb2a6da976dfc0bc79976782776ff07de490",
+      "name": "PreviewDeFiReceipt",
+      "bundle": "local.json",
+      "codeHash": "0xb0c14ec8fc4bd85fbae9ef6aa7518883d96757702c23ed66126d995ffbb091a9",
+      "codeSha256": "ec4015ae40a3c313d46a2d572872cc2bfd52f951c7c5563ad78fc03a43d32673"
+    },
+    {
+      "address": "0x8359124064b53e8620bb0fef3ea0fa6fb10ab5fc",
+      "name": "PreviewDeFiAaveProvider",
+      "bundle": "local.json",
+      "codeHash": "0xbe601f20a0b769cd7e978996b55acc8fe5cdc6701e20a279eb9f26e74297b1bb",
+      "codeSha256": "41b640bacf649672acc0dfef888654bfd65ccbd34262fe32a196a827a6461670"
+    },
+    {
       "address": "0x8464135c8f25da09e49bc8782676a84730c318bc",
       "name": "LocalBillingToken",
       "bundle": "local.json",
       "codeHash": "0xdd687d0c46ffc3a8fe956e753e25b154080a94081b6538c730b1a122254beb72",
       "codeSha256": "47aa7bdaf87b83cc95f5053135fc9cd12bb47b5c1191daea390c786829971b16"
+    },
+    {
+      "address": "0x850ec3780cedfdb116e38b009d0bf7a1ef1b8b38",
+      "name": "PreviewDeFiToken",
+      "bundle": "local.json",
+      "codeHash": "0xa3659aa853b04f507ce1d1294d49957aeece438738129278cc7ee78c70f9a636",
+      "codeSha256": "fcd98388baa5c39342b0ff39a38c751f24b2552412f6440864bf121eda57987e"
+    },
+    {
+      "address": "0x8649a7614a18e5fd0b352edc9b33bfeb63ec66db",
+      "name": "PreviewDeFiToken",
+      "bundle": "local.json",
+      "codeHash": "0xa3659aa853b04f507ce1d1294d49957aeece438738129278cc7ee78c70f9a636",
+      "codeSha256": "fcd98388baa5c39342b0ff39a38c751f24b2552412f6440864bf121eda57987e"
+    },
+    {
+      "address": "0x87b6a0ab90d826189cc004dc2ff16e2b472309db",
+      "name": "PreviewDeFiV2Pair",
+      "bundle": "local.json",
+      "codeHash": "0xbe4f7e01ac16568df23471a63420e3d0e15a135852c352ed53464e01aa15dae3",
+      "codeSha256": "f93b33151ff08d4a001cc9ff345ace87071a8c20ab3d1d2985d0c38abdd01bd3"
+    },
+    {
+      "address": "0x8e4763e76c106c699903796818aa786d687f9fa3",
+      "name": "PreviewDeFiV3Factory",
+      "bundle": "local.json",
+      "codeHash": "0x0066ff2fcd7da4ba648d4c4a04d51957392631bc261a9b7ed2877394c1963689",
+      "codeSha256": "38a79cbea20058d8bf3cb05580a4f7d8f88bd81abdd656d1650e3097dee3e646"
     },
     {
       "address": "0x9ef4c86838638daea46d5517442f5c23fe1dd34c",
@@ -159,6 +264,13 @@
       "codeSha256": "03a891ad80ca67aca774b0c807017e3358f71ea6774e66a350603701000f3c0b"
     },
     {
+      "address": "0xae3f29b8782db1132ad8d4505075830f96e584b2",
+      "name": "PreviewDeFiV3Positions",
+      "bundle": "local.json",
+      "codeHash": "0xf06d9a0eb3d7fcf93c7c8fa5875021803b5ffe9c8b6cd9927704cf4835feb9ca",
+      "codeSha256": "feffaedaf3ad2e504abda7925174fae9ad560fb835e639ec66c13207b71f8c9c"
+    },
+    {
       "address": "0xb09da8a5b236fe0295a345035287e80bb0008290",
       "name": "ReverseRegistrar",
       "bundle": "local.json",
@@ -173,6 +285,13 @@
       "codeSha256": "ec6912e150c2bc5621ffc1199e7dd144cfb2faaf06d183b6595d48d37bb1a72d"
     },
     {
+      "address": "0xc5888275e0a1ca13a26463318105957aa4d1fed7",
+      "name": "PreviewDeFiV2Factory",
+      "bundle": "local.json",
+      "codeHash": "0xf4d02cb1fb89d80095aebac803ec7f3a7ceaf36df852c212bb09748a04c01d74",
+      "codeSha256": "edbde14be5e9438c2966460f15f2cebcbc02d4ef9520d3d72eb7ef4190d2f1f6"
+    },
+    {
       "address": "0xc92b72ecf468d2642992b195bea99f9b9bb4a838",
       "name": "PublicResolver",
       "bundle": "local.json",
@@ -185,6 +304,20 @@
       "bundle": "Multicall3.json",
       "codeHash": "0xd5c15df687b16f2ff992fc8d767b4216323184a2bbc6ee2f9c398c318e770891",
       "codeSha256": "2756d7c52baee85cacb504f6ee1df7aad6809ac8d94a4a111d76991f90d36d6e"
+    },
+    {
+      "address": "0xcf69d3f1b5b7824abb377ba1f0421b325ff8b471",
+      "name": "PreviewDeFiToken",
+      "bundle": "local.json",
+      "codeHash": "0xa3659aa853b04f507ce1d1294d49957aeece438738129278cc7ee78c70f9a636",
+      "codeSha256": "fcd98388baa5c39342b0ff39a38c751f24b2552412f6440864bf121eda57987e"
+    },
+    {
+      "address": "0xd59aeacf5214d2fc9acd5e4810965071436b7d7d",
+      "name": "PreviewDeFiAavePool",
+      "bundle": "local.json",
+      "codeHash": "0x44db2a6ee8f2f7e0fdf8ab01d2d403ae3f83fe4cb23862cc4032af65fb8675ca",
+      "codeSha256": "f7dfe2a4f6fb41158c49876bc1d9cf2ce5323acd5438adf4af1fd1b997095351"
     },
     {
       "address": "0xe9061f92ba9a3d9ef3f4eb8456ac9e552b3ff5c8",

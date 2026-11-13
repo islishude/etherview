@@ -71,8 +71,9 @@ func testPreviewConsensus(t *testing.T, full bool) {
 	report := map[string]any{
 		"mode": "smoke", "execution_hash": receipt.BlockHash.Hex(),
 		"beacon_root": observation.Root, "slot": observation.Slot,
-		"blob_sha256": refs[0].SHA256, "lighthouse": "v8.3.2", "execution": "v2.9.0",
-		"roles": []string{"distributed"}, "slot_duration_ms": previewSlotDurationMillis,
+		"blob_sha256": refs[0].SHA256, "lighthouse": "v8.3.2",
+		"execution": "v2.11.0",
+		"roles":     []string{"distributed"}, "slot_duration_ms": previewSlotDurationMillis,
 		"finality": false, "restart": false, "archive_permissions": false, "execution_requests": true,
 	}
 	if full {
