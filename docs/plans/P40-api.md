@@ -74,6 +74,7 @@ canonical snapshot with explicit admission, size, time, and coverage limits.
 | P40-T33 | done   | P40-T07, P40-T25                   | Indexed address event logs, historical event directory, topic0–3 search and publication-fenced pagination                                                                              | Publication/replay/reorg, partition, indexed-query, generation and production all/split checks                           |
 | P40-T34 | done   | P40-T33                            | Inclusive address-log block ranges and range-scoped event directory, coverage and cursors                                                                                              | Inclusive ranges, revision/cursor isolation, indexed plans, integration race and all/split runtime                       |
 | P40-T35 | done   | P40-T34                            | Multi-topic AND filters and publication-bound historical event definitions with recursive indexed ABI metadata                                                                         | Typed encoding, historical identity, pagination, database/browser and all/split acceptance                               |
+| P40-T36 | done   | P20-T35                            | Read-only address DeFi positions with publication-bound pagination and explicit coverage                                                                                               | OpenAPI, typed errors, read-only and cursor regressions                                                                  |
 
 ## Acceptance
 
@@ -186,3 +187,13 @@ positions, historical layouts sharing a signature, publication/reorg/replay and
 ordered cross-partition query plans. Independent Solidity logs pass through the
 real ABI worker to verify definition identity and exact result membership.
 These are local feature gates, not P70 production capacity or live-chain coverage.
+
+### DeFi implementation
+
+P40-T36 has passed adapter/RPC fixtures, the PostgreSQL race
+suite for durable publication and restart, read-only cursor/canonical fences,
+and generated OpenAPI clients. Browser acceptance covers 390/768/1440px,
+Chinese/English, light/dark, exact quantities, protocol filtering and accessibility.
+Publication events preserve manual refresh; reorgs withdraw old snapshots.
+Production real-contract all/split and live deployment reconciliation remain
+separate P30-T158 acceptance; no deployment is implicitly enabled.

@@ -162,7 +162,7 @@ const addressRoute = createRoute({
     search: Record<string, unknown>,
   ): {
     tab?: string;
-    asset?: "tokens" | "nfts";
+    asset?: "tokens" | "nfts" | "defi";
     log_mode?: "name" | "topic";
     event_signature?: string;
     event_id?: string;
@@ -209,7 +209,10 @@ const addressRoute = createRoute({
     }
     if (tab === "transactions") return {};
     if (tab === "assets") {
-      return { tab, asset: search.asset === "nfts" ? "nfts" : "tokens" };
+      return {
+        tab,
+        asset: search.asset === "defi" ? "defi" : search.asset === "nfts" ? "nfts" : "tokens",
+      };
     }
     return [
       "native-transfers",

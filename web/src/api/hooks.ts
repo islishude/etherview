@@ -942,3 +942,36 @@ export function useCompilerCatalog(language: VerificationSubmission["language"],
     staleTime: 60_000,
   });
 }
+
+export function useAddressDeFiPositions(
+  address: string,
+  page: CursorRequest = firstPage,
+  protocol?: import("./heyapi/types.gen").DeFiProtocol,
+  enabled = true,
+  limit = 25,
+) {
+  return useQuery({
+    queryKey: [
+      "address",
+      address,
+      "defi-positions",
+      protocol ?? null,
+      page.cursor ?? null,
+      limit,
+      page.refreshGeneration,
+    ],
+    meta: { ...statusQueryMeta, pagination: page.identity },
+    queryFn: async ({ signal }) =>
+      requireEnvelope(
+        await sdk.listAddressDeFiPositions({
+          client: apiClient,
+          signal,
+          path: { address },
+          query: { limit, cursor: page.cursor, protocol },
+        }),
+      ),
+    enabled,
+    retry: false,
+    staleTime: 10_000,
+  });
+}

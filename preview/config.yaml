@@ -314,3 +314,7 @@ bytecode_db:
 turnstile:
   enabled: false
   site_key: ""
+
+defi:
+  enabled: false
+  manifest: ""

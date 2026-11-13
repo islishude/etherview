@@ -946,6 +946,73 @@ export type NftBalance = {
     confidence: StateConfidence;
 };
 
+export type DeFiProtocol = 'uniswap-v2' | 'uniswap-v3' | 'uniswap-v4' | 'aave-v3' | 'curve' | 'lido';
+
+export type DeFiAsset = {
+    kind: 'native' | 'erc20';
+    address?: Address;
+    amount: Quantity;
+    decimals?: number;
+    symbol?: string;
+};
+
+export type DeFiRange = {
+    lower_tick: number;
+    upper_tick: number;
+    current_tick: number;
+    sqrt_price_x96: Quantity;
+    in_range: boolean;
+};
+
+export type DeFiPosition = {
+    id: string;
+    protocol: DeFiProtocol;
+    deployment: string;
+    owner: Address;
+    kind: 'liquidity' | 'liquidity-nft' | 'lending' | 'supply' | 'borrow' | 'staking' | 'withdrawal';
+    contract: Address;
+    token_id?: Quantity;
+    pool?: Address;
+    pool_id?: Hash;
+    hook?: Address;
+    fee?: number;
+    tick_spacing?: number;
+    liquidity?: Quantity;
+    receipt_amount?: Quantity;
+    range?: DeFiRange;
+    collateral?: boolean;
+    state: 'available' | 'pending' | 'claimable' | 'unsupported' | 'unavailable';
+    limitations: Array<string>;
+    block_number: Quantity;
+    block_hash: Hash;
+    assets: Array<DeFiAsset>;
+    debts: Array<DeFiAsset>;
+    claimable: Array<DeFiAsset>;
+    unsettled_fees: Array<DeFiAsset>;
+};
+
+export type DeFiDeploymentStatus = {
+    protocol: DeFiProtocol;
+    deployment: string;
+    state: 'not_configured' | 'scanning' | 'complete' | 'partial' | 'unavailable';
+    block_number?: Quantity;
+    block_hash?: Hash;
+    coverage_start?: Quantity;
+    coverage_end?: Quantity;
+    updated_at?: string;
+    failure_code?: string;
+};
+
+export type DeFiPositionsPage = {
+    positions: Array<DeFiPosition>;
+    deployments: Array<DeFiDeploymentStatus>;
+};
+
+export type DeFiPositionsResponse = {
+    data: DeFiPositionsPage;
+    meta: Meta;
+};
+
 export type Erc20Balance = {
     chain_id: Quantity;
     owner: Address;
@@ -4932,6 +4999,37 @@ export type ListAddressErc20BalancesResponses = {
 };
 
 export type ListAddressErc20BalancesResponse = ListAddressErc20BalancesResponses[keyof ListAddressErc20BalancesResponses];
+
+export type ListAddressDeFiPositionsData = {
+    body?: never;
+    path: {
+        address: Address;
+    };
+    query?: {
+        cursor?: OpaqueCursor;
+        limit?: number;
+        protocol?: DeFiProtocol;
+    };
+    url: '/addresses/{address}/defi-positions';
+};
+
+export type ListAddressDeFiPositionsErrors = {
+    /**
+     * Machine-readable error.
+     */
+    default: ErrorResponse;
+};
+
+export type ListAddressDeFiPositionsError = ListAddressDeFiPositionsErrors[keyof ListAddressDeFiPositionsErrors];
+
+export type ListAddressDeFiPositionsResponses = {
+    /**
+     * Published canonical direct DeFi positions with explicit per-deployment coverage. Reads never initiate RPC or indexing.
+     */
+    200: DeFiPositionsResponse;
+};
+
+export type ListAddressDeFiPositionsResponse = ListAddressDeFiPositionsResponses[keyof ListAddressDeFiPositionsResponses];
 
 export type ListTokensData = {
     body?: never;

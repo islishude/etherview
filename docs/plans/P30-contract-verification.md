@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Final release gates belong to P70.
@@ -101,6 +101,7 @@ availability does not gate core readiness.
 | P30-T154 | done   | P30-T153                                                      | Session-owned polling and publication for live sync, maintenance, NFT source discovery, mempool and compiler catalogs; safe concurrent compiler-cache startup                                                           | PostgreSQL contention, lost-session takeover, stale-write and Docker cold-start regressions, common and production parity gates                                         |
 | P30-T155 | done   | P30-T154                                                      | Database-wide deadlock gates for managed integration and both runtime layouts, bounded diagnostics and cross-domain concurrency regressions                                                                             | Detector self-tests, PostgreSQL/race, runtime parity and generated/source/documentation gates                                                                           |
 | P30-T156 | done   | P30-T10, P30-T153                                             | Compact verification inputs, durable admission budgets, lightweight status and bounded input retention                                                                                                                  | Input boundaries, multi-replica quotas, retention, compiler and all/split acceptance                                                                                    |
+| P30-T158 | todo   | P20-T35, P40-T36, P50-T90                                     | DeFi production all/split parity and independent deployed-protocol reconciliation                                                                                                                                       | Pinned real-contract runtime fixtures and separate live coverage evidence                                                                                               |
 
 ## Acceptance
 

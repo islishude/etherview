@@ -143,3 +143,7 @@ bytecode_db:
 # Sourcify network exceptions require an explicit local development opt-in.
 sourcify:
   unsafe_allow_private_networks: false
+
+defi:
+  enabled: false
+  manifest: ""

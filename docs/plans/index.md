@@ -74,10 +74,10 @@ change. New plan IDs start at P80; all lower gaps and retired prefixes stay rese
 | ------------- | ----------------------------- |
 | P00           | 14                            |
 | P10           | 7                             |
-| P20           | 34                            |
-| P30           | 157                           |
-| P40           | 35                            |
-| P50           | 89                            |
+| P20           | 35                            |
+| P30           | 158                           |
+| P40           | 36                            |
+| P50           | 90                            |
 | P60           | 32                            |
 | P70           | 52                            |
 | P55 (retired) | 4                             |

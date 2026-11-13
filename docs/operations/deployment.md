@@ -94,7 +94,7 @@ per-file input limit does not increase the allowed initial page weight.
 ## Fresh database initialization
 
 The fresh-database baseline consists of numbered domain migrations from
-`0001_core.sql` through `0018_browsing.sql` in
+`0001_core.sql` through `0019_defi.sql` in
 `internal/store/migrations/`. Initialize an empty PostgreSQL database with
 `etherview migrate up`, then verify it with `etherview migrate status`. The
 runner applies all pending files in one transaction under an advisory lock;

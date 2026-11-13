@@ -112,3 +112,13 @@ This overview and its topic documents describe current architecture. Accepted
 [operations](../operations.md) owns deployment, telemetry interpretation and recovery.
 [Plans](../plans/index.md) retain substantial delivery milestones, acceptance and
 unresolved blockers. Routine change evidence belongs in PRs and Git.
+
+## DeFi positions
+
+The optional enrich-owned DeFi index uses reviewed current-chain deployment
+identities, canonical Transfer candidates and exact-block RPC reconciliation.
+PostgreSQL retains resumable runs, immutable observations and lease-fenced
+publications. API readers consume completed canonical publications without
+calling RPC. Address Assets presents protocol quantities and explicit coverage
+states. See [ADR-0060](../decisions/ADR-0060-background-defi-positions.md) and
+[operations](../operations/defi.md).

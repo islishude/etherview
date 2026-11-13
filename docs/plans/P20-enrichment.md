@@ -66,6 +66,7 @@ complete relevant history. NFT metadata retains its own refresh boundary.
 | P20-T21 | done   | P10, P20-T19                   | Authenticated five-type execution requests, independent requests@1 publication and replay                                                                                      | protocol/SSZ, PostgreSQL race, replay/fencing and real Preview role parity                                                       |
 | P20-T27 | done   | P10, P20-T01                   | Current-chain ENS v1/v2 core-backed discovery, lifecycle/recovery, independent resolution and registration profiles, canonical name directory and event-time operation history | Pinned protocol fixtures, coverage/expiry/lease/publication fences and PostgreSQL race; separate runtime/Mainnet evidence in P30 |
 | P20-T33 | done   | P20-T06                        | Incremental analytics source/hour completeness, constant-work idle progress and bounded reconciliation                                                                         | Publication/reorg/replay, PostgreSQL concurrency and representative query plans                                                  |
+| P20-T35 | done   | P10, P20-T09                   | Current-chain DeFi deployment identity, autonomous discovery, six protocol adapters and exact lease-fenced publications                                                        | Protocol arithmetic, coverage, restart, reorg and PostgreSQL race tests                                                          |
 
 ## Acceptance
 
@@ -166,3 +167,13 @@ all/split publication and nonzero finality. Local EIP-3009/Permit2 settlement an
 debit passed separately from live payments. These results do not prove public
 Beacon retention, production backup/restore or storage-enforced writer IAM;
 P30-T138 retains that limitation.
+
+### DeFi implementation
+
+P20-T35 has passed adapter/RPC fixtures, the PostgreSQL race
+suite for durable publication and restart, read-only cursor/canonical fences,
+and generated OpenAPI clients. Browser acceptance covers 390/768/1440px,
+Chinese/English, light/dark, exact quantities, protocol filtering and accessibility.
+Publication events preserve manual refresh; reorgs withdraw old snapshots.
+Production real-contract all/split and live deployment reconciliation remain
+separate P30-T158 acceptance; no deployment is implicitly enabled.
