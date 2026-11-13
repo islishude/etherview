@@ -222,7 +222,27 @@ hashes.
 
 Amsterdam block responses expose exact decimal `slot_number` and
 `block_access_list_hash` when present in the authenticated execution header.
-Pre-upgrade blocks omit them. BAL bodies are not fetched or indexed.
+Pre-upgrade blocks omit them and cause no BAL RPC or capability probes.
+The always-on `native_balance@1` stage fetches BAL only after authenticating a
+header with `BlockAccessListHash`. It requests `eth_getBlockAccessListRaw` by
+hash and falls back to `eth_getBlockAccessList` only for method-not-found.
+Endpoint selection honors pool health. A transport failure or missing body
+tries another state endpoint with the same exact hash; transport failures
+remain retryable when no endpoint supplies a valid body.
+The body must match the header hash and pass protocol validation before atomic
+publication of balance changes and block-end values. Empty valid BALs contribute
+coverage; unsupported, missing, malformed and pre-BAL bodies do not.
+
+Address summaries and Etherscan native balance methods use published exact
+observations or a baseline followed by uninterrupted BAL coverage. Unknown
+addresses and coverage gaps trigger an exact EIP-1898 state request; zero values
+are persisted too. This is request-driven, not a periodic balance scan. Token
+balances, nonce and code retain their existing state paths. Unsupported BAL
+methods are cached per endpoint for one minute without disabling state RPC.
+After enabling a BAL-capable endpoint, use `reindex --stage native_balance`
+for a reviewed canonical range to retry unavailable blocks. Replay and reorg
+revoke coverage; retained authenticated bodies can be replayed without RPC.
+No Engine JWT is supplied to Etherview.
 Block gas utilization uses the maximum of the execution/state dimensions;
 execution fees and base-fee burn use
 receipt charged gas. The active enrichment versions are stats@4, token@2,

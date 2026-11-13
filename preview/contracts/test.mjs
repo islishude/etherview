@@ -16,6 +16,7 @@ import {
 
 import {
   connect,
+  prepareOperation,
   contracts,
   manifest,
   quote,
@@ -207,4 +208,45 @@ test("Preview x402 code, constructor storage and settlement funds exist at genes
     BigInt(genesis.alloc["70997970c51812dc3a010c7d01b50e0d17dc79c8"].balance),
     10n ** 19n,
   );
+});
+
+test("UserOperation deployment includes gross state creation gas without bypassing validation", async () => {
+  const address = "0x0000000000000000000000000000000000000001";
+  const creator = "0x0000000000000000000000000000000000000002";
+  for (const deployed of [false, true]) {
+    let deploymentCalls = 0;
+    let deploymentGas = 600000n;
+    const ctx = {
+      account: { address, sign: async () => "0x" + "11".repeat(65) },
+      read: async (_, method) =>
+        method === "getAddress" ? address : method === "senderCreator" ? creator : 0n,
+      rpc: {
+        estimateFeesPerGas: async () => ({ maxFeePerGas: 1n, maxPriorityFeePerGas: 0n }),
+        getCode: async () => (deployed ? "0x6000" : undefined),
+        estimateGas: async (request) => {
+          deploymentCalls++;
+          assert.equal(request.account, creator);
+          assert.equal(request.to, contracts.SimpleAccountFactory.address);
+          return deploymentGas;
+        },
+      },
+      bundler: {
+        request: async ({ method }) => {
+          assert.equal(method, "eth_estimateUserOperationGas");
+          return {
+            callGasLimit: "0x1000",
+            verificationGasLimit: "0x20000",
+            preVerificationGas: "0x10000",
+          };
+        },
+      },
+    };
+    const { operation } = await prepareOperation(ctx);
+    assert.equal(deploymentCalls, deployed ? 0 : 1);
+    if (!deployed) {
+      assert.ok(operation.verificationGasLimit > deploymentGas);
+      deploymentGas = 5_000_000n;
+      await assert.rejects(prepareOperation(ctx), /exceeds Preview verification gas budget/);
+    }
+  }
 });

@@ -38,6 +38,7 @@ type integrationBundleOptions struct {
 	Difficulty    *big.Int
 	BaseFee       *big.Int
 	Amsterdam     bool
+	BALHash       *common.Hash
 	RequestsHash  *common.Hash
 	GrossGasExtra uint64
 	Number        uint64
@@ -136,6 +137,9 @@ func newIntegrationBundle(options integrationBundleOptions) (chainbundle.Bundle,
 	if options.Amsterdam {
 		slot := options.Number
 		bal := common.Hash{}
+		if options.BALHash != nil {
+			bal = *options.BALHash
+		}
 		header.SlotNumber = &slot
 		header.BlockAccessListHash = &bal
 		header.GasUsed += options.GrossGasExtra

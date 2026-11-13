@@ -1923,6 +1923,93 @@ type MempoolTransactionReplacement struct {
 	ReplacementHash []byte         `db:"replacement_hash" json:"replacement_hash"`
 }
 
+type NativeBalanceBlock struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Raw         []byte         `db:"raw" json:"raw"`
+	Method      string         `db:"method" json:"method"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceBlocksDefault struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Raw         []byte         `db:"raw" json:"raw"`
+	Method      string         `db:"method" json:"method"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceBlocksP01000000 struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Raw         []byte         `db:"raw" json:"raw"`
+	Method      string         `db:"method" json:"method"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceChange struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	AccessIndex int64          `db:"access_index" json:"access_index"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceChangesDefault struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	AccessIndex int64          `db:"access_index" json:"access_index"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceChangesP01000000 struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	AccessIndex int64          `db:"access_index" json:"access_index"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceObservation struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceObservationsDefault struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
+type NativeBalanceObservationsP01000000 struct {
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Address     []byte         `db:"address" json:"address"`
+	Balance     pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
+	Canonical   bool           `db:"canonical" json:"canonical"`
+}
+
 type NativeTransfer struct {
 	ChainID          pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber      pgtype.Numeric `db:"block_number" json:"block_number"`

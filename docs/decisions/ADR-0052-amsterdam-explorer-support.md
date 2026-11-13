@@ -6,8 +6,9 @@ Status: accepted
 
 The selected Geth protocol types remain authoritative. Amsterdam is identified
 by the paired slot number and block access list hash in the authenticated header;
-a partial pair is invalid. Slot zero is present, not absent. BAL contents are not
-fetched, parsed or stored and no Engine API credentials are added.
+a partial pair is invalid. Slot zero is present, not absent. BAL fetching is permitted only after an authenticated header has a non-nil
+`BlockAccessListHash`; pre-fork blocks perform no BAL request or capability
+probe. No Engine API credentials are added.
 
 Before Amsterdam, receipt cumulative gas equals header gas. Amsterdam uses
 EIP-7778 refund accounting and EIP-8037 execution/state dimensions: header gas
@@ -59,3 +60,24 @@ Fresh-schema migrations and generated query/API outputs implement these
 contracts. All roles use identical processors and persistence. Preview activation
 is tested using new disposable volumes without resetting existing operator data.
 Local fixtures do not establish live network or remote CI acceptance.
+
+## Native balance publication
+
+`native_balance@1` fetches by exact hash through ordinary execution RPC, preferring
+`eth_getBlockAccessListRaw` and using `eth_getBlockAccessList` only when the raw
+method is unsupported. Geth BAL types validate canonical encoding, limits and
+the header commitment. Raw bodies, indexed post-balances and block-end
+observations commit with the existing lease/generation publication fence.
+Not-applicable blocks never establish BAL coverage or endpoint incapability.
+
+Publication-aware browsing coverage tracks this stage independently. A known
+canonical balance may carry forward only through continuously published BAL
+blocks. Exact EIP-1898 RPC observations (including zero) and authenticated
+Genesis allocations can seed balances; absence is never zero. Conflicting
+observations fail closed. Reorgs retain orphan facts and withdraw publications.
+Address and Etherscan reads share this index; nonce/code and token state remain
+separate. There is no periodic account scan or new history API.
+
+Preview uses Reth v2.9.0 with Lighthouse for the primary 48815 PoS chain; the
+31337 Reth payment fixture remains independent. Existing Geth databases are not
+converted or automatically erased. Fresh isolated volumes establish acceptance.

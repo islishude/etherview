@@ -82,7 +82,7 @@ BEGIN
     IF target_chain IS NULL OR target_number IS NULL THEN RETURN; END IF;
     singleton := nummultirange(numrange(target_number, target_number + 1, '[)'));
     -- A stable order is shared by every trigger and role.
-    FOR target IN SELECT * FROM (VALUES ('core', 1), ('abi', 5), ('native_transfer', 1), ('token', 2), ('trace', 4), ('userop', 1)) AS stages(name, version) WHERE name = target_stage ORDER BY name LOOP
+    FOR target IN SELECT * FROM (VALUES ('core', 1), ('abi', 5), ('native_transfer', 1), ('native_balance', 1), ('token', 2), ('trace', 4), ('userop', 1)) AS stages(name, version) WHERE name = target_stage ORDER BY name LOOP
         PERFORM pg_advisory_xact_lock(hashtextextended('browsing:' || target_chain::text || ':' || target.name, 0));
         SELECT block_hash INTO canonical_hash FROM canonical_blocks
         WHERE chain_id = target_chain AND number = target_number;
@@ -94,7 +94,8 @@ BEGIN
             -- Canonical Core bundles and receipts commit atomically; Core has no enrichment job.
             publication.state := CASE WHEN canonical_hash IS NOT NULL THEN 'complete' ELSE 'pending' END;
         END IF;
-        is_complete := COALESCE(publication.state = 'complete', false);
+        is_complete := COALESCE(publication.state = 'complete', false)
+            AND (target.name <> 'native_balance' OR COALESCE(publication.details->>'outcome' = 'indexed', false));
         new_digest := COALESCE(publication.details->>'configuration_digest', '');
         new_identity := COALESCE(encode(canonical_hash, 'hex'), '') || ':' ||
             COALESCE(publication.state, 'pending') || ':' ||
@@ -190,8 +191,8 @@ BEGIN
                 OLD.completed_generation, OLD.leased_generation, OLD.leased_by,
                 OLD.lease_token, OLD.lease_expires_at IS NULL, OLD.result) THEN RETURN NULL; END IF;
         ELSIF TG_TABLE_NAME = 'transactional_outbox' THEN
-            IF ROW(NEW.id, NEW.chain_id, NEW.topic, NEW.message_key) IS NOT DISTINCT FROM
-               ROW(OLD.id, OLD.chain_id, OLD.topic, OLD.message_key) THEN RETURN NULL; END IF;
+            IF ROW(NEW.id, NEW.chain_id, NEW.topic, NEW.message_key, NEW.published_at IS NULL) IS NOT DISTINCT FROM
+               ROW(OLD.id, OLD.chain_id, OLD.topic, OLD.message_key, OLD.published_at IS NULL) THEN RETURN NULL; END IF;
         ELSIF to_jsonb(OLD) - 'updated_at' IS NOT DISTINCT FROM to_jsonb(NEW) - 'updated_at' THEN
             RETURN NULL;
         END IF;
@@ -213,9 +214,11 @@ BEGIN
         IF target_number IS NULL THEN CONTINUE; END IF;
         INSERT INTO browsing_refresh_work(chain_id, block_number, stage)
         SELECT (source->>'chain_id')::numeric, target_number, name
-        FROM (VALUES ('core',1),('abi',5),('native_transfer',1),('token',2),('trace',4),('userop',1)) AS stages(name,version)
+        FROM (VALUES ('core',1),('abi',5),('native_transfer',1),('native_balance',1),('token',2),('trace',4),('userop',1)) AS stages(name,version)
         WHERE TG_TABLE_NAME = 'canonical_blocks'
-           OR (TG_TABLE_NAME = 'transactional_outbox' AND name = 'core')
+           OR (TG_TABLE_NAME = 'transactional_outbox' AND name IN ('core','native_balance'))
+           OR (TG_TABLE_NAME = 'block_journals' AND name = 'native_balance'
+               AND source->>'stage' = name || '@' || version::text)
            OR (source->>'stage' = name AND (source->>'stage_version')::integer = version)
         ON CONFLICT DO NOTHING;
     END LOOP;

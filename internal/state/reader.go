@@ -119,6 +119,7 @@ func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference Cano
 }
 
 type Reader struct {
+	Balances          NativeBalanceCache
 	Base              publicquery.Reader
 	Origin            AddressOriginReader
 	DelegationHistory AddressDelegationHistoryReader
@@ -174,32 +175,16 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		return gen.AddressSummary{}, CapabilityError{Code: "endpoint_unavailable"}
 	}
 	selector := rpc.BlockNumberOrHashWithHash(reference.Hash, true)
-	var balance, nonce hexutil.Big
+	var nonce hexutil.Big
 	var code hexutil.Bytes
-	elements := []rpc.BatchElem{
-		{Method: "eth_getBalance", Args: []any{address, selector}, Result: &balance},
+	balances, err := r.nativeStateBatch(ctx, reference, []common.Address{address}, []rpc.BatchElem{
 		{Method: "eth_getTransactionCount", Args: []any{address, selector}, Result: &nonce},
 		{Method: "eth_getCode", Args: []any{address, selector}, Result: &code},
-	}
-	if err := endpoint.BatchCallContext(ctx, elements); err != nil {
-		r.Pool.ReportFailure(endpoint.Name)
-		return gen.AddressSummary{}, stateUnavailable(err)
-	}
-	for _, element := range elements {
-		if element.Error != nil {
-			r.Pool.ReportFailure(endpoint.Name)
-			return gen.AddressSummary{}, stateUnavailable(element.Error)
-		}
-	}
-	canonical, err := r.Canonical.IsCanonical(ctx, reference)
+	}, endpoint)
 	if err != nil {
-		return gen.AddressSummary{}, fmt.Errorf("recheck account state block: %w", err)
+		return gen.AddressSummary{}, err
 	}
-	if !canonical {
-		return gen.AddressSummary{}, fmt.Errorf("%w: canonical block changed during state query", publicquery.ErrNotReady)
-	}
-	r.Pool.ReportSuccess(endpoint.Name)
-	balanceDecimal := decimal(balance)
+	balanceDecimal := balances[0]
 	nonceDecimal := decimal(nonce)
 	checksummed, err := query.ChecksumAddress(address.Hex())
 	if err != nil {
@@ -217,7 +202,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		if err != nil {
 			return gen.AddressSummary{}, err
 		}
-		canonical, err = r.Canonical.IsCanonical(ctx, reference)
+		canonical, err := r.Canonical.IsCanonical(ctx, reference)
 		if err != nil {
 			return gen.AddressSummary{}, fmt.Errorf("recheck delegation history block: %w", err)
 		}
@@ -232,7 +217,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 			binding = unavailableDelegationBinding(r, address, reference)
 		}
 		delegation = &binding
-		canonical, err = r.Canonical.IsCanonical(ctx, reference)
+		canonical, err := r.Canonical.IsCanonical(ctx, reference)
 		if err != nil {
 			return gen.AddressSummary{}, fmt.Errorf("recheck delegation summary block: %w", err)
 		}
@@ -258,7 +243,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		if err != nil {
 			return gen.AddressSummary{}, err
 		}
-		canonical, err = r.Canonical.IsCanonical(ctx, reference)
+		canonical, err := r.Canonical.IsCanonical(ctx, reference)
 		if err != nil {
 			return gen.AddressSummary{}, fmt.Errorf("recheck account origin block: %w", err)
 		}

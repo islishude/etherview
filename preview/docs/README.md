@@ -1,6 +1,6 @@
 # Preview documentation
 
-Preview is the disposable local Geth/Lighthouse environment started by the
+Preview is the disposable local Reth/Lighthouse environment started by the
 repository-root `compose.yaml`. Run all commands from the repository root.
 
 - [Setup](setup.md): prerequisites, endpoints, images and persistent data.

@@ -170,7 +170,7 @@ database rechecks canonical identity and finality inside one chain-locked
 transaction. Refreshing a finalized height requires an explicit audited
 override and still cannot replace its hash or parent.
 
-`reindex --stage requests|consensus|blob|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` schedules or
+`reindex --stage requests|consensus|blob|native_balance|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` schedules or
 replays immutable block-hash-scoped jobs. Existing queued or leased jobs remain
 owned by their current worker; only terminal jobs may be reset. A proxy/ABI
 cutover is run in dependency order, `proxy` before `abi`. Repair does not
@@ -213,3 +213,18 @@ applies when an earlier source mutation queues browsing ahead of outbox work.
 Heartbeat expiry extensions do not refresh publication; changing
 whether the expiry is null still does. Canonical switches cover every stage,
 while outbox changes affect core only. Revision, coverage and events remain atomic.
+
+## Native balance publication
+
+`native_balance@1` authenticates an exact block header before any BAL request.
+Only `BlockAccessListHash` presence enables fetching. The validated body and its
+balance projection publish together under the job lease and generation fence.
+`native_balance_changes` retains every post-balance by block access index;
+`native_balance_observations` stores the final balance per address and exact
+request-driven RPC baselines. Orphan history remains available internally.
+Publication-aware `browsing_coverage` proves continuity from a known observation
+to the requested canonical hash. A read-only BAL account supplies no baseline.
+Missing coverage falls back to EIP-1898 and saves the exact observation; conflicting
+values fail closed. No balance polling task is introduced. See
+[ADR-0052](../decisions/ADR-0052-amsterdam-explorer-support.md) and the
+[chain-data runbook](../operations/chain-data.md#amsterdam-protocol-data).

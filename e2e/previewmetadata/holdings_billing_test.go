@@ -188,7 +188,13 @@ func (u *holdingsUser) request(ctx context.Context, path string, body any, payme
 	}
 	defer response.Body.Close() //nolint:errcheck
 	if response.StatusCode != status {
-		u.h.t.Fatalf("%s %s: status=%d want=%d", method, path, response.StatusCode, status)
+		var settlement struct {
+			ErrorReason string `json:"errorReason"`
+			Transaction string `json:"transaction"`
+		}
+		raw, _ := base64.StdEncoding.DecodeString(response.Header.Get(x402wire.PaymentResponseHeader))
+		_ = json.Unmarshal(raw, &settlement)
+		u.h.t.Fatalf("%s %s: status=%d want=%d settlement=%+v", method, path, response.StatusCode, status, settlement)
 	}
 	if result != nil {
 		if err := json.NewDecoder(response.Body).Decode(result); err != nil {

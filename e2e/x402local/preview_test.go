@@ -60,7 +60,7 @@ func TestPreviewX402(t *testing.T) {
 		"ETHERVIEW_IMAGE":            os.Getenv("IMAGE"),
 		"ETHERVIEW_CONFIG_FILE":      filepath.Join(root, "preview/config.yaml"),
 		"PREVIEW_NETWORK_DIR":        filepath.Join(artifacts, "network"),
-		"PREVIEW_HTTPS_PORT":         "0", "GETH_HTTP_PORT": "0", "GETH_WS_PORT": "0",
+		"PREVIEW_HTTPS_PORT":         "0", "PREVIEW_EXECUTION_HTTP_PORT": "0", "PREVIEW_EXECUTION_WS_PORT": "0",
 		"LIGHTHOUSE_HTTP_PORT": "0", "IPFS_API_PORT": "0", "ETHERVIEW_METRICS_PORT": "0",
 		"ETHERVIEW_PUSH_ENABLED": "false", "ETHERVIEW_TURNSTILE_ENABLED": "false",
 	}
@@ -71,7 +71,7 @@ func TestPreviewX402(t *testing.T) {
 		cleanup, stop := context.WithTimeout(context.Background(), 90*time.Second)
 		defer stop()
 		if t.Failed() {
-			output, _ := project.Run(cleanup, "logs", "--no-color", "api", "migration", "geth", "reth", "x402-facilitator")
+			output, _ := project.Run(cleanup, "logs", "--no-color", "api", "migration", "execution", "reth", "x402-facilitator")
 			t.Log(string(output))
 		}
 		if err := project.Down(cleanup); err != nil {
@@ -97,7 +97,7 @@ func TestPreviewX402(t *testing.T) {
 	}
 	run("up", "-d", "--no-build", "--wait", "--wait-timeout", "180")
 	run("run", "--rm", "archive-init")
-	binding, err := project.Port(ctx, "geth", 8545)
+	binding, err := project.Port(ctx, "execution", 8545)
 	if err != nil {
 		t.Fatal(err)
 	}

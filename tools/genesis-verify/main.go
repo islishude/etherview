@@ -29,7 +29,7 @@ func run(parent context.Context, args []string, stdin io.Reader, stdout io.Write
 	directory := flags.String("inventory-dir", "/verification", "read-only source inventory directory")
 	genesisFile := flags.String("genesis", "/config/genesis.json", "runtime genesis file")
 	api := flags.String("api", "http://api:8080", "internal API origin")
-	rpc := flags.String("rpc", "http://geth:8545", "internal Geth endpoint")
+	rpc := flags.String("rpc", "http://execution:8545", "internal execution node endpoint")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil

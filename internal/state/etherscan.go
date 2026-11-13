@@ -75,50 +75,28 @@ func (r *Reader) NativeBalance(ctx context.Context, address string) (string, err
 }
 
 // NativeBalances returns one coherent fixed-block observation for every
-// address. A batch-capable endpoint is preferred, but the fallback still uses
-// the same EIP-1898 selector and performs one final canonicality check.
+// address. Published balances are read first; only missing proof triggers an
+// EIP-1898 batch and persistence of exact baselines.
 func (r *Reader) NativeBalances(ctx context.Context, addresses []string) ([]string, error) {
-	if len(addresses) == 0 {
-		return nil, errors.New("native balance address list is empty")
+	if r == nil || r.Canonical == nil {
+		return nil, CapabilityError{Code: "not_configured"}
+	}
+	if len(addresses) == 0 || len(addresses) > maxBalanceCandidates {
+		return nil, errors.New("invalid native balance batch size")
 	}
 	parsed := make([]common.Address, len(addresses))
-	for index, address := range addresses {
-		value, err := ethrpc.ParseAddress(address)
+	for i, a := range addresses {
+		value, err := ethrpc.ParseAddress(a)
 		if err != nil {
-			return nil, fmt.Errorf("invalid native balance address %d: %w", index, err)
+			return nil, errors.New("invalid native balance address")
 		}
-		parsed[index] = value
+		parsed[i] = value
 	}
-	reference, endpoint, err := r.fixedStateEndpoint(ctx)
+	reference, err := r.Canonical.Tip(ctx)
 	if err != nil {
 		return nil, err
 	}
-	selector := canonicalSelector(reference)
-	results := make([]hexutil.Big, len(parsed))
-	elements := make([]rpc.BatchElem, len(parsed))
-	for index := range parsed {
-		elements[index] = rpc.BatchElem{
-			Method: "eth_getBalance", Args: []any{parsed[index], selector}, Result: &results[index],
-		}
-	}
-	if err := endpoint.BatchCallContext(ctx, elements); err != nil {
-		r.Pool.ReportFailure(endpoint.Name)
-		return nil, stateUnavailable(err)
-	}
-	for _, element := range elements {
-		if element.Error != nil {
-			r.Pool.ReportFailure(endpoint.Name)
-			return nil, stateUnavailable(element.Error)
-		}
-	}
-	if err := r.confirmCanonical(ctx, endpoint, reference); err != nil {
-		return nil, err
-	}
-	balances := make([]string, len(results))
-	for index, result := range results {
-		balances[index] = decimal(result)
-	}
-	return balances, nil
+	return r.nativeStateBatch(ctx, reference, parsed, nil, nil)
 }
 
 // ERC20Balance returns balanceOf(owner) at one fixed canonical block.

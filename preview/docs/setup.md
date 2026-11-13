@@ -4,7 +4,7 @@
 
 ## Full-stack Preview
 
-`compose.yaml` runs a local Geth/Lighthouse PoS chain and all six
+`compose.yaml` runs a local Reth/Lighthouse PoS chain and all six
 application roles. It enables consensus, blob archives, public
 verification, Sourcify, NFT metadata, prepaid billing and local x402 top-ups.
 Core NATS is enabled by default for runtime wake notifications. Redis and the
@@ -21,11 +21,16 @@ before these genesis allocations require an explicit fresh-network reset;
 See [Preview contracts](contracts.md#preview-erc-4337-and-local-ens) for the
 reset procedure and signed UserOperation CLI.
 
-The Preview Geth container mounts `preview/geth-entrypoint.sh` and initializes
-the read-only Genesis file into the persistent `geth-data` volume before every
-start, then `exec`s Geth with Lighthouse driving block production. Override the
-execution image or published ports with `GETH_IMAGE`, `GETH_HTTP_PORT`, and
-`GETH_WS_PORT`; use a complete network bundle when changing genesis.
+The primary `execution` service runs Reth through `preview/execution/entrypoint.sh`.
+It initializes a new `execution-data` volume once and verifies the Genesis
+fingerprint on every restart. Lighthouse drives block production; Reth runs in
+archive mode. Override the image or published ports with `PREVIEW_EXECUTION_IMAGE`,
+`PREVIEW_EXECUTION_HTTP_PORT`, and `PREVIEW_EXECUTION_WS_PORT`.
+An existing Geth volume cannot be opened by Reth. Existing network bundles fail
+fingerprint validation after this migration; explicitly reset the disposable
+Preview network or choose a new Compose project and network directory. Old
+volumes are never converted or removed automatically. See the
+[runbook](operations.md#setup-and-lifecycle) for retained-volume handling.
 
 ```sh
 make start-preview
@@ -43,7 +48,7 @@ explicit name resolution, add the hosts entries from the
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
 `make start-preview` builds images, then prepares or verifies an ignored
-`.local/preview-network/` bundle. It starts Geth v1.17.10, Lighthouse v8.3.2
+`.local/preview-network/` bundle. It starts Reth v2.9.0, Lighthouse v8.3.2
 Beacon/validator clients and a scoped RustFS blob archive. Chain ID remains
 48815 with Amsterdam/Gloas at genesis, 64 validators and three-second slots.
 The checked-in genesis template remains unchanged. Network files, Engine JWT
@@ -56,7 +61,7 @@ Old Geth dev Preview installations require this reset before the first PoS run.
 file overrides are rejected. Custom bundles are never deleted automatically.
 
 Use the pre-funded Hardhat account and local signing with
-`eth_sendRawTransaction`; there is no unlocked Geth account or `dev` namespace.
+`eth_sendRawTransaction`; there is no unlocked execution account or `dev` namespace.
 The public development mnemonic is documented in the
 [Preview runbook](operations.md#setup-and-lifecycle).
 Never use these keys on an external network. Beacon HTTP defaults to loopback
@@ -70,8 +75,8 @@ listener is
 `https://app.etherview.localhost`; health and metrics on the operations listener remain
 plain HTTP at `http://localhost:9090`. Browsers use the installed system trust;
 the checked-in command path also works for curl builds that do not consult it.
-The add-network control advertises the local Geth endpoint as
-`https://geth.etherview.localhost`. Production RPC URLs and every block
+The add-network control advertises the local Reth endpoint as
+`https://execution.etherview.localhost`. Production RPC URLs and every block
 explorer or icon URL remain HTTPS-only.
 
 ## Images, readiness and persistence
@@ -88,7 +93,7 @@ endpoint. The command loads no configuration or Secrets and needs no shell,
 Node process, `curl`, helper image, auxiliary container, or Docker socket.
 Compose's `--wait --wait-timeout 180` invocation waits for container health.
 Both lifecycle targets then run `archive-init` and `preview/scripts/ready.mjs`, which
-checks successive real execution/Beacon blocks. Container readiness alone does
+checks successive real execution/Beacon blocks and BAL availability. Container readiness alone does
 not establish chain progress. Preview E2E gates exercise startup and role
 topology, while production image checks retain the non-root, native-architecture, and compiler-runtime
 boundaries.

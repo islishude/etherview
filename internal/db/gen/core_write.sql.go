@@ -341,6 +341,12 @@ WITH input AS (
 ), update_state_changes AS (
     UPDATE transaction_state_changes AS target SET canonical = $1
     FROM input WHERE target.chain_id = $2::numeric AND target.block_hash = input.hash
+), update_native_balance_changes AS (
+ UPDATE native_balance_changes AS target SET canonical=$1 FROM input WHERE target.chain_id=$2::numeric AND target.block_hash=input.hash
+), update_native_balance_observations AS (
+ UPDATE native_balance_observations AS target SET canonical=$1 FROM input WHERE target.chain_id=$2::numeric AND target.block_hash=input.hash
+), update_native_balance_blocks AS (
+ UPDATE native_balance_blocks AS target SET canonical=$1 FROM input WHERE target.chain_id=$2::numeric AND target.block_hash=input.hash
 ), update_native_transfers AS (
  UPDATE native_transfers AS target SET canonical=$1 FROM input WHERE target.chain_id=$2::numeric AND target.block_hash=input.hash
 ), update_user_operations AS (

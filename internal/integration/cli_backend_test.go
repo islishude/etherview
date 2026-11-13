@@ -74,6 +74,12 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	if code != 0 || stderr != "" {
 		t.Fatalf("reindex code=%d stderr=%q", code, stderr)
 	}
+	code, _, stderr = runner.run(ctx,
+		"reindex", "--config="+configPath, "--from", "10", "--to", "20", "--stage", "native_balance", "--reason", "rebuild BAL balances",
+	)
+	if code != 0 || stderr != "" {
+		t.Fatalf("native balance reindex code=%d stderr=%q", code, stderr)
+	}
 	rows, err := db.Query(ctx, `
 		SELECT operation, stage, from_block::text, to_block::text, reason, status
 		FROM repair_requests
@@ -85,6 +91,7 @@ func TestCLIBackendPersistsMigrationsMaintenanceAndAdminState(t *testing.T) {
 	wantRepairs := [][]string{
 		{"repair", "core", "10", "20", "restore canonical gap", "queued"},
 		{"reindex", "token", "10", "20", "rebuild token state", "queued"},
+		{"reindex", "native_balance", "10", "20", "rebuild BAL balances", "queued"},
 	}
 	for index, want := range wantRepairs {
 		if !rows.Next() {

@@ -64,7 +64,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 		t.Fatal(err)
 	}
 	args := []string{"run", "-d", "--add-host", "host.docker.internal:host-gateway", "-p", "127.0.0.1::443", "-v", root + "/preview/Caddyfile:/etc/caddy/Caddyfile:ro", "-v", cert + ":/run/preview-tls/gateway.crt:ro", "-v", key + ":/run/preview-tls/gateway.key:ro", "-e", "PREVIEW_NODE_ALLOWED_ORIGINS=" + origins}
-	for _, name := range []string{"APP", "IPFS", "GETH", "GETH_WS", "RETH", "RETH_WS", "BEACON", "BUNDLER"} {
+	for _, name := range []string{"APP", "IPFS", "EXECUTION", "EXECUTION_WS", "RETH", "RETH_WS", "BEACON", "BUNDLER"} {
 		upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			g.calls.Add(1)
 			if r.URL.Query().Get("disconnect") == "1" {
@@ -81,7 +81,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 				return
 			}
 
-			if name == "GETH_WS" || name == "RETH_WS" {
+			if name == "EXECUTION_WS" || name == "RETH_WS" {
 				conn, upgradeErr := (&websocket.Upgrader{}).Upgrade(w, r, nil)
 				if upgradeErr != nil {
 					return
@@ -103,7 +103,7 @@ func startWithOrigins(t *testing.T, origins string) *gateway {
 			if name != "BUNDLER" && (r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "") {
 				t.Error("spoofed forwarding header")
 			}
-			if name == "GETH" || name == "RETH" || name == "BEACON" {
+			if name == "EXECUTION" || name == "RETH" || name == "BEACON" {
 				if r.Header.Get("Origin") != "" {
 					t.Error("node Origin forwarded upstream")
 				}
@@ -243,13 +243,13 @@ func TestRoutesAndBoundary(t *testing.T) {
 		status                             int
 	}{
 		{"GET", "app", "/api/v1/config", "", "APP", 200},
-		{"POST", "geth", "/", `[{"jsonrpc":"2.0","method":"eth_chainId","id":1}]`, "GETH", 200},
+		{"POST", "execution", "/", `[{"jsonrpc":"2.0","method":"eth_chainId","id":1}]`, "EXECUTION", 200},
 		{"POST", "reth", "/", `[{"jsonrpc":"2.0","method":"eth_chainId","id":1}]`, "RETH", 200},
 		{"GET", "beacon", "/eth/v1/node/version", "", "BEACON", 200},
 		{"POST", "beacon", "/eth/v1/beacon/pool/attestations", "[]", "BEACON", 200},
 		{"GET", "beacon", "/lighthouse/health", "", "", 404},
-		{"GET", "geth", "/", "", "", 404},
-		{"POST", "geth", "/engine", "{}", "", 404},
+		{"GET", "execution", "/", "", "", 404},
+		{"POST", "execution", "/engine", "{}", "", 404},
 		{"POST", "reth", "/engine", "{}", "", 404},
 		{"GET", "reth", "/", "", "", 404},
 		{"GET", "unknown", "/", "", "", 0},
@@ -300,7 +300,7 @@ func TestRoutesAndBoundary(t *testing.T) {
 			}
 		})
 	}
-	for _, host := range []string{"geth", "reth", "beacon", "bundler"} {
+	for _, host := range []string{"execution", "reth", "beacon", "bundler"} {
 		path := "/"
 		if host == "beacon" {
 			path = "/eth/v1/beacon/pool/attestations"
@@ -309,7 +309,7 @@ func TestRoutesAndBoundary(t *testing.T) {
 			for _, method := range []string{"POST", "OPTIONS"} {
 				before := g.calls.Load()
 				resp, _ := g.request(method, host, path, origin, "{}")
-				allowed := (host == "geth" || host == "reth") || origin == "" || origin == "https://app.etherview.localhost" || origin == "http://localhost:5173" || origin == "http://127.0.0.1:5173"
+				allowed := (host == "execution" || host == "reth") || origin == "" || origin == "https://app.etherview.localhost" || origin == "http://localhost:5173" || origin == "http://127.0.0.1:5173"
 				want := 200
 				if !allowed {
 					want = 403
@@ -323,7 +323,7 @@ func TestRoutesAndBoundary(t *testing.T) {
 					t.Fatal("rejected request or preflight reached upstream")
 				}
 				wantOrigin := ""
-				if host == "geth" || host == "reth" {
+				if host == "execution" || host == "reth" {
 					wantOrigin = "*"
 				} else if allowed {
 					wantOrigin = origin
@@ -331,7 +331,7 @@ func TestRoutesAndBoundary(t *testing.T) {
 				if resp.Header.Get("Access-Control-Allow-Origin") != wantOrigin || resp.Header.Get("Access-Control-Allow-Credentials") != "" {
 					t.Fatalf("%s CORS headers: %v", host, resp.Header)
 				}
-				if allowed && (origin != "" || (host == "geth" || host == "reth")) {
+				if allowed && (origin != "" || (host == "execution" || host == "reth")) {
 					if resp.Header.Get("Access-Control-Allow-Methods") != "GET, POST, OPTIONS" || resp.Header.Get("Access-Control-Allow-Headers") != "Content-Type, Accept, Eth-Consensus-Version" {
 						t.Fatalf("%s preflight policy: %v", host, resp.Header)
 					}
@@ -416,7 +416,7 @@ func TestStreamingAndDeadlines(t *testing.T) {
 		dialer := websocket.Dialer{TLSClientConfig: &tls.Config{RootCAs: g.roots}, NetDialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, network, g.binding)
 		}}
-		conn, _, err := dialer.Dial("wss://geth.etherview.localhost/", http.Header{"Origin": []string{"https://app.etherview.localhost"}})
+		conn, _, err := dialer.Dial("wss://execution.etherview.localhost/", http.Header{"Origin": []string{"https://app.etherview.localhost"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -455,7 +455,7 @@ func TestStreamingAndDeadlines(t *testing.T) {
 
 func TestRequestLimits(t *testing.T) {
 	g := start(t)
-	for _, host := range []string{"geth", "reth"} {
+	for _, host := range []string{"execution", "reth"} {
 		resp, _ := g.request("POST", host, "/", "", strings.Repeat("x", (32<<20)+1))
 		if resp.StatusCode != 413 {
 			t.Fatalf("%s oversize status %d", host, resp.StatusCode)
@@ -476,7 +476,7 @@ func TestRequestLimits(t *testing.T) {
 
 func TestFailureIsolationAndRange(t *testing.T) {
 	g := start(t)
-	for _, host := range []string{"geth", "reth"} {
+	for _, host := range []string{"execution", "reth"} {
 		before := g.calls.Load()
 		resp, data := g.request("POST", host, "/?disconnect=1", "", "{}")
 		if resp.StatusCode != 502 || string(data) != "upstream_unavailable\n" || g.calls.Load() != before+1 {
@@ -528,7 +528,7 @@ func TestStalledDownstream(t *testing.T) {
 
 func TestOriginOverride(t *testing.T) {
 	g := startWithOrigins(t, "https://custom.example null")
-	for _, host := range []string{"geth", "reth", "beacon", "bundler"} {
+	for _, host := range []string{"execution", "reth", "beacon", "bundler"} {
 		path := "/"
 		if host == "beacon" {
 			path = "/eth/v1/beacon/pool/attestations"
@@ -536,7 +536,7 @@ func TestOriginOverride(t *testing.T) {
 		for _, origin := range []string{"", "https://app.etherview.localhost", "http://localhost:5173", "https://custom.example", "null"} {
 			response, _ := g.request("POST", host, path, origin, "{}")
 			want := 403
-			if (host == "geth" || host == "reth") || origin == "" || origin == "https://custom.example" {
+			if (host == "execution" || host == "reth") || origin == "" || origin == "https://custom.example" {
 				want = 200
 			}
 			if response.StatusCode != want {
@@ -551,7 +551,7 @@ func TestWalletWebSocketOrigins(t *testing.T) {
 	dialer := websocket.Dialer{TLSClientConfig: &tls.Config{RootCAs: g.roots}, NetDialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, g.binding)
 	}}
-	for _, host := range []string{"geth", "reth"} {
+	for _, host := range []string{"execution", "reth"} {
 		for _, origin := range []string{"", "https://app.etherview.localhost", "https://evil.invalid", "chrome-extension://nkbihfbeogaeaoehlefnkodbefgpgknn", "moz-extension://preview-wallet", "null"} {
 			t.Run(host+"/"+origin, func(t *testing.T) {
 				headers := http.Header{}
@@ -604,14 +604,14 @@ func TestWebSocketUpgradeTokens(t *testing.T) {
 	} {
 		t.Run(test.connection+test.upgrade, func(t *testing.T) {
 			conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", g.binding, &tls.Config{
-				RootCAs: g.roots, ServerName: "geth.etherview.localhost", MinVersion: tls.VersionTLS12,
+				RootCAs: g.roots, ServerName: "execution.etherview.localhost", MinVersion: tls.VersionTLS12,
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = conn.Close() }()
 			_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-			_, err = fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: geth.etherview.localhost\r\nOrigin: https://app.etherview.localhost\r\nConnection: %s\r\nUpgrade: %s\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", test.connection, test.upgrade)
+			_, err = fmt.Fprintf(conn, "GET / HTTP/1.1\r\nHost: execution.etherview.localhost\r\nOrigin: https://app.etherview.localhost\r\nConnection: %s\r\nUpgrade: %s\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", test.connection, test.upgrade)
 			if err != nil {
 				t.Fatal(err)
 			}

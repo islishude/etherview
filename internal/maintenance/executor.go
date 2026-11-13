@@ -181,6 +181,8 @@ func replayStage(name string) (stagecontract.ID, bool) {
 		return stagecontract.Blob, true
 	case "native_transfer":
 		return stagecontract.NativeTransfer, true
+	case "native_balance":
+		return stagecontract.NativeBalance, true
 	case "proxy":
 		return stagecontract.Proxy, true
 	case "abi":

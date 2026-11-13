@@ -5,7 +5,7 @@ services:
     command: [--config=/etc/etherview/facilitator.yaml]
     secrets: [x402-db, x402-token, x402-key, x402-password]
     depends_on:
-      geth:
+      execution:
         condition: service_started
       reth:
         condition: service_healthy

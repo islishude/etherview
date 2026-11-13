@@ -57,14 +57,15 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
 
-  geth:
+  execution:
     extends:
       file: preview/compose/chain.yaml
-      service: geth
+      service: execution
     volumes:
-      - geth-data:/gethdata
+      - execution-data:/data
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/jwt.hex:/run/engine/jwt.hex:ro
-      - ./preview/geth-entrypoint.sh:/usr/local/bin/etherview-geth-entrypoint.sh:ro
+      - ./preview/execution/entrypoint.sh:/usr/local/bin/execution-entrypoint.sh:ro
+      - ./preview/execution/healthcheck.sh:/usr/local/bin/execution-healthcheck.sh:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
 
   lighthouse:
@@ -191,7 +192,7 @@ services:
 volumes:
   ipfs-data:
   postgres-data:
-  geth-data:
+  execution-data:
   reth-data:
   lighthouse-data:
   validator-data:

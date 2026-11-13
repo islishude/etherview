@@ -11,7 +11,9 @@ See [operator procedures](../operations/chain-data.md) and
 
 ## Exact balances, holders and ownership
 
-- Native balances and ERC-20 `balanceOf`/`totalSupply` observations use an
+- Native ETH balances first use authenticated BAL publication with continuous
+  coverage or an exact saved baseline; missing proof falls back to EIP-1898.
+  ERC-20 `balanceOf`/`totalSupply` observations use an
   EIP-1898 canonical block-hash selector and recheck that hash after the RPC
   response. Address ERC-20 holdings bulk-read permanent exact observations by
   owner, token, and block hash, batch only cache misses, persist zero as well

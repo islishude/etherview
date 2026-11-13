@@ -104,7 +104,7 @@ func boundedENSMetricValue(value string, allowed ...string) string {
 func boundedRPCMethod(method string) string {
 	switch method {
 	case "debug_traceBlockByHash", "empty_batch", "eth_blockNumber", "eth_call",
-		"eth_chainId", "eth_getBalance", "eth_getBlockByHash", "eth_getBlockByNumber",
+		"eth_chainId", "eth_getBalance", "eth_getBlockAccessListRaw", "eth_getBlockAccessList", "eth_getBlockByHash", "eth_getBlockByNumber",
 		"eth_getBlockReceipts", "eth_getCode", "eth_getStorageAt",
 		"eth_getTransactionCount", "eth_getTransactionReceipt",
 		"eth_getUncleByBlockHashAndIndex", "mixed_batch", "rpc_modules",

@@ -213,7 +213,7 @@ public-chain acceptance.
 regressions.
 
 `make test-preview-tools-e2e` is the default CLI smoke gate. It creates one
-isolated split-role Geth/Lighthouse Compose project and runs only `transactions`
+isolated split-role Reth/Lighthouse Compose project and runs only `transactions`
 with `--no-verify`: real transactions, receipts and public API checks, report
 creation, lifecycle continuation, completed-resume transaction identity and
 read-only `check` stability. It does not build the blob helper or launch a

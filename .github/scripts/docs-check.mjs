@@ -78,9 +78,9 @@ for (const file of maintained) {
   forbid(file, "roles=verify");
 }
 
-// Reth is now the payment-only Preview chain; Geth remains the indexed chain.
+// Both Preview chains use Reth; only the PoS execution chain is indexed.
 contains("preview/docs/architecture.md", "Reth v2.9.0");
-contains("preview/docs/architecture.md", "Geth chain 48815");
+contains("preview/docs/architecture.md", "Reth chain 48815");
 contains("preview/docs/operations.md", "--dev --dev.block-time 3s");
 forbid("preview/Caddyfile", "anvil.etherview.localhost");
 const makefile = read("Makefile");

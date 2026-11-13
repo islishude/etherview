@@ -14,7 +14,7 @@ import (
 )
 
 func TestPublicationReplayAndRenewConcurrent(t *testing.T) {
-	for _, stage := range []enrich.StageID{enrich.ProxyStage, enrich.TokenStage, enrich.TraceStage, enrich.StatsStage} {
+	for _, stage := range []enrich.StageID{enrich.NativeBalanceStage, enrich.ProxyStage, enrich.TokenStage, enrich.TraceStage, enrich.StatsStage} {
 		t.Run(stage.String(), func(t *testing.T) {
 			db := newMigratedPostgres(t)
 			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
