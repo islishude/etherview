@@ -9,12 +9,18 @@ contract PreviewDeposit {
 
     function littleEndian(uint64 value) private pure returns (bytes memory out) {
         out = new bytes(8);
-        for (uint256 i; i < 8; ++i) out[i] = bytes1(uint8(value >> (8 * i)));
+        for (uint256 i; i < 8; ++i) {
+            out[i] = bytes1(uint8(value >> (8 * i)));
+        }
     }
 
     function deposit(bytes calldata pubkey, bytes calldata credentials, bytes calldata signature) external payable {
         require(pubkey.length == 48 && credentials.length == 32 && signature.length == 96, "Invalid lengths");
-        require(msg.value >= 1 ether && msg.value % 1 gwei == 0 && msg.value / 1 gwei <= type(uint64).max, "Invalid amount");
-        emit DepositEvent(pubkey, credentials, littleEndian(uint64(msg.value / 1 gwei)), signature, littleEndian(depositCount++));
+        require(
+            msg.value >= 1 ether && msg.value % 1 gwei == 0 && msg.value / 1 gwei <= type(uint64).max, "Invalid amount"
+        );
+        emit DepositEvent(
+            pubkey, credentials, littleEndian(uint64(msg.value / 1 gwei)), signature, littleEndian(depositCount++)
+        );
     }
 }
