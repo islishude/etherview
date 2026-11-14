@@ -235,7 +235,7 @@ for (const suite of [
         args[args.indexOf("-run") + 1],
         full ? "^TestPreviewToolsFull$" : "^TestPreviewTools$",
       );
-      assert.ok(args.includes(full ? "-timeout=60m" : "-timeout=15m"));
+      assert.ok(args.includes(full ? "-timeout=80m" : "-timeout=15m"));
       assert.equal(prebuilt.stdout.includes("PREVIEW_TOOLS_FULL=1"), full);
     }
     if (suite.startsWith("preview-consensus")) {

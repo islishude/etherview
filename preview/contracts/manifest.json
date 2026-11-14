@@ -26,9 +26,9 @@
     "priceOracleSourceSha256": "f79df80b515465dec44cc6c42757134690cd7a427695743f56c275c5ca0dadc3",
     "billingSourceSha256": "2a56f8f11f45f4f62ed28542530b882fcb5dec61edc58603ad5bb25786e172a7",
     "defiSourceSha256": "158a334280b85732548492e424bc4bfc40c966b9344cfcc12cd40524c63b6dc9",
-    "depositSourceSha256": "4b0439152016b8f6ee99183694a5a620ebf6f39614e5ee127dff06740f2d9c38"
+    "depositSourceSha256": "bd4cb8d66fc835e5648f03c40f83cb1eccba959a5a08c7055b28901aea777e0f"
   },
-  "allocationSha256": "8e6c04f19f229f4ef4aec643b132bd527594437e4554cacd526ede9ce3500b7a",
+  "allocationSha256": "961dc2051dc36aadb2474a3718017cea81a58da83265fea4f4a1552f534ffac5",
   "sources": {
     "accountAbstraction": "b36a1ed52ae00da6f8a4c8d50181e2877e4fa410",
     "ens": "9b034936a42f462fc04bc0a929a419ede5e18d59"
@@ -10887,7 +10887,7 @@
     },
     "PreviewDeposit": {
       "address": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
-      "codeHash": "0x8f89f4105e57d050140c45ec4830818ec69a39a58681719fcbaad0e089124708",
+      "codeHash": "0xd901eb035d39ff2ef32b6972fe975d8d75042a1b8918900f7b287900429c4685",
       "abi": [
         {
           "anonymous": false,
