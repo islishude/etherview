@@ -1,8 +1,10 @@
 package defi
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -89,5 +91,39 @@ func TestBurnedNFTIsClosedButRPCFailureIsNot(t *testing.T) {
 		if !burned && (!errors.Is(err, deficontract.ErrUnavailable) || position.State == "closed") {
 			t.Fatal("RPC failure was treated as absence", position, err)
 		}
+	}
+}
+
+func TestTokenSymbolBoundsAndCanonicalEncoding(t *testing.T) {
+	encode := func(value string) []byte {
+		return append(words(32, int64(len(value))), common.RightPadBytes([]byte(value), (len(value)+31)/32*32)...)
+	}
+	badPadding := encode("LP")
+	badPadding[len(badPadding)-1] = 1
+	badOffset := encode("LP")
+	badOffset[31] = 64
+	for _, tc := range []struct {
+		name string
+		raw  []byte
+		want string
+	}{
+		{"string", encode("UNI-V2"), "UNI-V2"},
+		{"bytes32", common.RightPadBytes([]byte("USDC"), 32), "USDC"},
+		{"unicode", encode("代币"), "代币"},
+		{"empty", encode(""), ""},
+		{"oversized", encode(strings.Repeat("x", 257)), ""},
+		{"invalid utf8", encode("\xff"), ""},
+		{"control", encode("US\nDC"), ""},
+		{"bidi", encode("US\u202eDC"), ""},
+		{"padding", badPadding, ""},
+		{"offset", badOffset, ""},
+		{"truncated", words(32, 256), ""},
+		{"overflow", append(words(32), bytes.Repeat([]byte{255}, 32)...), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tokenSymbol(tc.raw); got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+		})
 	}
 }

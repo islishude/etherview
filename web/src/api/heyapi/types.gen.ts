@@ -978,6 +978,7 @@ export type DeFiPosition = {
     fee?: number;
     tick_spacing?: number;
     liquidity?: Quantity;
+    receipt_asset?: DeFiAsset;
     receipt_amount?: Quantity;
     range?: DeFiRange;
     collateral?: boolean;

@@ -1,10 +1,12 @@
 package defi
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -61,12 +63,21 @@ func words(values ...int64) []byte {
 func TestV2UsesExactBalancesAndAuthenticatedFactory(t *testing.T) {
 	factory, pair, owner, t0, t1 := common.HexToAddress("0x1"), common.HexToAddress("0x2"), common.HexToAddress("0x3"), common.HexToAddress("0x4"), common.HexToAddress("0x5")
 	hash := common.HexToHash("0xa")
-	f := &callFixture{t: t, hash: hash, answers: map[string][]byte{key(pair, "factory()"): addrWord(factory), key(pair, "token0()"): addrWord(t0), key(pair, "token1()"): addrWord(t1), key(factory, "getPair(address,address)"): addrWord(pair), key(pair, "balanceOf(address)"): words(3), key(pair, "totalSupply()"): words(7), key(pair, "getReserves()"): words(10, 20, 1), key(t0, "decimals()"): words(18), key(t1, "decimals()"): words(6)}}
+	f := &callFixture{t: t, hash: hash, answers: map[string][]byte{key(pair, "factory()"): addrWord(factory), key(pair, "token0()"): addrWord(t0), key(pair, "token1()"): addrWord(t1), key(factory, "getPair(address,address)"): addrWord(pair), key(pair, "balanceOf(address)"): words(3), key(pair, "totalSupply()"): words(7), key(pair, "getReserves()"): words(10, 20, 1), key(pair, "decimals()"): words(18), key(pair, "symbol()"): common.RightPadBytes([]byte("UNI-V2"), 32), key(t0, "symbol()"): common.RightPadBytes([]byte("WETH"), 32), key(t0, "decimals()"): words(18), key(t1, "decimals()"): words(6)}}
 	d := Deployment{ID: "v2", Protocol: deficontract.UniswapV2, Contracts: []Contract{{Role: "factory", Address: factory}}}
 	c := Candidate{Contract: pair, Owner: owner, Kind: "liquidity"}
 	p, e := Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "42")
 	if e != nil || len(p.Assets) != 2 || p.Assets[0].Amount != "4" || p.Assets[1].Amount != "8" || p.BlockHash != hash.Hex() {
 		t.Fatal(p, e)
+	}
+	if p.ReceiptAsset == nil || p.ReceiptAsset.Amount != "3" || p.ReceiptAsset.Address != pair.Hex() || p.ReceiptAsset.Decimals == nil || *p.ReceiptAsset.Decimals != 18 || p.ReceiptAsset.Symbol != "UNI-V2" || p.Assets[0].Symbol != "WETH" {
+		t.Fatalf("missing receipt metadata: %+v", p)
+	}
+	delete(f.answers, key(pair, "decimals()"))
+	delete(f.answers, key(pair, "symbol()"))
+	p, e = Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "42")
+	if e != nil || p.ReceiptAsset == nil || p.ReceiptAsset.Amount != "3" || p.ReceiptAsset.Decimals != nil || p.ReceiptAsset.Symbol != "" {
+		t.Fatal("optional metadata lost known balance", p, e)
 	}
 	f.answers[key(pair, "factory()")] = addrWord(owner)
 	_, e = Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "42")
@@ -81,7 +92,7 @@ func TestAaveDebtDoesNotBecomeAnAsset(t *testing.T) {
 	f := &callFixture{t: t, hash: hash, answers: map[string][]byte{key(debt, "UNDERLYING_ASSET_ADDRESS()"): addrWord(asset), key(debt, "POOL()"): addrWord(pool), key(provider, "getReserveTokensAddresses(address)"): tokens, key(debt, "balanceOf(address)"): words(101), key(asset, "decimals()"): words(18)}}
 	d := Deployment{ID: "aave", Protocol: deficontract.AaveV3, ReceiptContracts: []Contract{{Role: "receipt", Address: debt, CodeHash: crypto.Keccak256Hash([]byte{1})}}, Contracts: []Contract{{Role: "pool", Address: pool}, {Role: "data_provider", Address: provider}}}
 	p, e := Observe(t.Context(), &State{RPC: f, Hash: hash}, d, Candidate{Contract: debt, Owner: owner, Kind: "lending"}, "10")
-	if e != nil || len(p.Assets) != 0 || len(p.Debts) != 1 || p.Debts[0].Amount != "101" || p.Kind != "borrow" {
+	if e != nil || len(p.Assets) != 0 || len(p.Debts) != 1 || p.Debts[0].Amount != "101" || p.Kind != "borrow" || p.ReceiptAsset == nil || p.ReceiptAsset.Address != debt.Hex() || p.ReceiptAsset.Amount != "101" {
 		t.Fatal(p, e)
 	}
 	d.ReceiptContracts = nil
@@ -97,7 +108,7 @@ func TestLidoWrappedAmountAndRPCFailure(t *testing.T) {
 	d := Deployment{ID: "lido", Protocol: deficontract.Lido, Contracts: []Contract{{Role: "steth", Address: steth}, {Role: "wsteth", Address: wrapped}}}
 	c := Candidate{Contract: wrapped, Owner: owner, Kind: "staking"}
 	p, e := Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "10")
-	if e != nil || p.ReceiptAmount != "10" || len(p.Assets) != 1 || p.Assets[0].Amount != "12" {
+	if e != nil || p.ReceiptAmount != "10" || len(p.Assets) != 1 || p.Assets[0].Amount != "12" || p.ReceiptAsset == nil || p.ReceiptAsset.Amount != "10" || p.ReceiptAsset.Address != wrapped.Hex() {
 		t.Fatal(p, e)
 	}
 	delete(f.answers, key(wrapped, "balanceOf(address)"))
@@ -166,7 +177,7 @@ func TestCurveReviewedPoolAndCycle(t *testing.T) {
 	d := Deployment{ID: "curve", Protocol: deficontract.Curve, Contracts: []Contract{{Role: "metaregistry", Address: registry}}, PoolCodeHashes: []common.Hash{crypto.Keccak256Hash([]byte{1})}}
 	c := Candidate{Contract: lp, Owner: owner, Kind: "liquidity"}
 	p, e := Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "1")
-	if e != nil || len(p.Assets) != 2 || p.Assets[0].Amount != "100" || p.Assets[1].Amount != "200" {
+	if e != nil || len(p.Assets) != 2 || p.Assets[0].Amount != "100" || p.Assets[1].Amount != "200" || p.ReceiptAsset == nil || p.ReceiptAsset.Address != lp.Hex() {
 		t.Fatal(p, e)
 	}
 	copy(coins[32:64], addrWord(t0))
@@ -196,17 +207,86 @@ func TestLidoWithdrawalPendingAndClaimableAreDistinct(t *testing.T) {
 	d := Deployment{ID: "lido", Protocol: deficontract.Lido, Contracts: []Contract{{Role: "withdrawal_queue", Address: queue}, {Role: "steth", Address: steth}}}
 	c := Candidate{Contract: queue, Owner: owner, TokenID: "1", Kind: "withdrawal"}
 	p, e := Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "1")
-	if e != nil || p.State != "pending" || len(p.Claimable) != 0 || p.Assets[0].Amount != "10" {
+	if e != nil || p.State != "pending" || len(p.Claimable) != 0 || p.Assets[0].Amount != "10" || p.ReceiptAsset != nil {
 		t.Fatal(p, e)
 	}
 	copy(status[6*32:7*32], words(1))
 	p, e = Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "1")
-	if e != nil || p.State != "claimable" || len(p.Assets) != 0 || p.Claimable[0].Amount != "8" {
+	if e != nil || p.State != "claimable" || len(p.Assets) != 0 || p.Claimable[0].Amount != "8" || p.ReceiptAsset != nil {
 		t.Fatal(p, e)
 	}
 	copy(status[7*32:], words(1))
 	p, e = Observe(t.Context(), &State{RPC: f, Hash: hash}, d, c, "1")
 	if e != nil || p.State != "closed" {
 		t.Fatal(p, e)
+	}
+}
+
+func TestOptionalMetadataTimeoutPreservesReconciledHoldings(t *testing.T) {
+	steth, wrapped, owner := common.HexToAddress("0x1"), common.HexToAddress("0x2"), common.HexToAddress("0x3")
+	hash := common.HexToHash("0xa")
+	f := &callFixture{t: t, hash: hash, answers: map[string][]byte{key(wrapped, "balanceOf(address)"): words(10), key(wrapped, "getStETHByWstETH(uint256)"): words(12)}}
+	metadataStarted := false
+	client := rpcFunction(func(ctx context.Context, out any, method string, args ...any) error {
+		input := args[0].(map[string]any)["data"].(hexutil.Bytes)
+		if bytes.Equal(input[:4], crypto.Keccak256([]byte("decimals()"))[:4]) || bytes.Equal(input[:4], crypto.Keccak256([]byte("symbol()"))[:4]) {
+			metadataStarted = true
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		if metadataStarted {
+			t.Fatal("accounting ran after optional metadata")
+		}
+		return f.CallContext(ctx, out, method, args...)
+	})
+	p, err := Observe(t.Context(), &State{RPC: client, Hash: hash}, Deployment{Protocol: deficontract.Lido, Contracts: []Contract{{Role: "steth", Address: steth}, {Role: "wsteth", Address: wrapped}}}, Candidate{Contract: wrapped, Owner: owner, Kind: "staking"}, "42")
+	if err != nil || p.State != "available" || p.ReceiptAsset == nil || p.ReceiptAsset.Amount != "10" || p.ReceiptAsset.Decimals != nil || len(p.Assets) != 1 || p.Assets[0].Amount != "12" {
+		t.Fatal("metadata failure invalidated holdings", p, err)
+	}
+}
+
+func TestCurveMetaPoolLabelsExpandedUnderlying(t *testing.T) {
+	registry, pool, lp, base, baseLP, owner, coin := common.HexToAddress("0x1"), common.HexToAddress("0x2"), common.HexToAddress("0x3"), common.HexToAddress("0x4"), common.HexToAddress("0x5"), common.HexToAddress("0x6"), common.HexToAddress("0x7")
+	hash := common.HexToHash("0xa")
+	f := &callFixture{t: t, hash: hash, answers: map[string][]byte{key(registry, "get_pool_from_lp_token(address)"): addrWord(pool), key(lp, "balanceOf(address)"): words(10), key(lp, "totalSupply()"): words(100), key(baseLP, "totalSupply()"): words(100), key(registry, "get_balances(address)"): words(100, 0, 0, 0, 0, 0, 0, 0)}}
+	client := rpcFunction(func(ctx context.Context, out any, method string, args ...any) error {
+		if method == "eth_call" {
+			call := args[0].(map[string]any)
+			input := call["data"].(hexutil.Bytes)
+			if call["to"].(common.Address) == registry && len(input) == 36 {
+				target := common.BytesToAddress(input[4:])
+				var answer []byte
+				switch hex.EncodeToString(input[:4]) {
+				case hex.EncodeToString(crypto.Keccak256([]byte("get_lp_token(address)"))[:4]):
+					if target == pool {
+						answer = addrWord(lp)
+					} else {
+						answer = addrWord(baseLP)
+					}
+				case hex.EncodeToString(crypto.Keccak256([]byte("get_base_pool(address)"))[:4]):
+					if target == pool {
+						answer = addrWord(base)
+					} else {
+						answer = words(0)
+					}
+				case hex.EncodeToString(crypto.Keccak256([]byte("get_coins(address)"))[:4]):
+					if target == pool {
+						answer = addrWord(baseLP)
+					} else {
+						answer = addrWord(coin)
+					}
+					answer = append(answer, make([]byte, 7*32)...)
+				}
+				if answer != nil {
+					*(out.(*string)) = hexutil.Encode(answer)
+					return nil
+				}
+			}
+		}
+		return f.CallContext(ctx, out, method, args...)
+	})
+	p, err := Observe(t.Context(), &State{RPC: client, Hash: hash}, Deployment{Protocol: deficontract.Curve, Contracts: []Contract{{Role: "metaregistry", Address: registry}}, PoolCodeHashes: []common.Hash{crypto.Keccak256Hash([]byte{1})}}, Candidate{Contract: lp, Owner: owner, Kind: "liquidity"}, "42")
+	if err != nil || len(p.Assets) != 1 || p.Assets[0].Address != coin.Hex() || p.Assets[0].Amount != "10" || !slices.Contains(p.Limitations, "metapool_underlying_expanded") {
+		t.Fatal(p, err)
 	}
 }

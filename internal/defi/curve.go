@@ -43,6 +43,13 @@ func observeCurve(ctx context.Context, s *State, d Deployment, c Candidate, p *d
 		return e
 	}
 	p.Assets = assets
+	base, e := s.address(ctx, registry, "get_base_pool(address)", addrWord(pool))
+	if e != nil {
+		return e
+	}
+	if base != (common.Address{}) {
+		p.Limitations = append(p.Limitations, "metapool_underlying_expanded")
+	}
 	p.Limitations = append(p.Limitations, "reserve_share_not_redemption_quote", "fees_included_in_reserves")
 	return nil
 }
@@ -118,7 +125,7 @@ func curveAssets(ctx context.Context, s *State, d Deployment, pool common.Addres
 			if a == common.HexToAddress("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE") {
 				a = common.Address{}
 			}
-			assets = append(assets, s.asset(ctx, a, share))
+			assets = append(assets, asset(a, share))
 		}
 	}
 	if len(assets) == 0 || (base != (common.Address{}) && !expanded) {

@@ -1,11 +1,15 @@
 package defi
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
 	"math/big"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -154,18 +158,84 @@ func (s *State) code(ctx context.Context, a common.Address, hash common.Hash) er
 	}
 	return nil
 }
-func (s *State) asset(ctx context.Context, a common.Address, amount *big.Int) deficontract.Asset {
-	asset := deficontract.Asset{Kind: "erc20", Address: a.Hex(), Amount: amount.String()}
+func asset(a common.Address, amount *big.Int) deficontract.Asset {
+	result := deficontract.Asset{Kind: "erc20", Address: a.Hex(), Amount: amount.String()}
 	if a == (common.Address{}) {
-		asset.Kind = "native"
-		asset.Address = ""
-		return asset
+		result.Kind = "native"
+		result.Address = ""
 	}
-	// Optional display precision must not turn an exact quantity into a failure.
-	decimals, e := s.uint(ctx, a, "decimals()")
-	if e == nil && decimals.IsUint64() && decimals.Uint64() <= 255 {
-		n := int(decimals.Uint64())
-		asset.Decimals = &n
+	return result
+}
+
+// Read optional display data only after all accounting calls have succeeded.
+// Slow or missing metadata must not consume the budget for ownership/amounts.
+func (s *State) displayMetadata(ctx context.Context, p *deficontract.Position) {
+	ctx, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
+	defer cancel()
+	seen := map[string]deficontract.Asset{}
+	fill := func(a *deficontract.Asset) {
+		if a.Kind != "erc20" {
+			return
+		}
+		metadata, ok := seen[a.Address]
+		if !ok {
+			sub, stop := context.WithTimeout(ctx, 150*time.Millisecond)
+			address := common.HexToAddress(a.Address)
+			if decimals, err := s.uint(sub, address, "decimals()"); err == nil && decimals.IsUint64() && decimals.Uint64() <= 255 {
+				n := int(decimals.Uint64())
+				metadata.Decimals = &n
+			}
+			if raw, err := s.call(sub, address, "symbol()"); err == nil {
+				metadata.Symbol = tokenSymbol(raw)
+			}
+			stop()
+			seen[a.Address] = metadata
+		}
+		a.Decimals, a.Symbol = metadata.Decimals, metadata.Symbol
 	}
-	return asset
+	if p.ReceiptAsset != nil {
+		fill(p.ReceiptAsset)
+	}
+	for _, assets := range [][]deficontract.Asset{p.Assets, p.Debts, p.Claimable, p.UnsettledFees} {
+		for i := range assets {
+			fill(&assets[i])
+		}
+	}
+}
+
+// Accept bounded canonical ABI strings and legacy bytes32 symbols. Metadata
+// is display-only: malformed values never invalidate an exact token quantity.
+func tokenSymbol(raw []byte) string {
+	var value []byte
+	if len(raw) == 32 {
+		value = bytes.TrimRight(raw, "\x00")
+	} else {
+		if len(raw) < 64 || len(raw) > 320 {
+			return ""
+		}
+		offset, _ := word(raw, 0)
+		length, _ := word(raw, 1)
+		if offset.Cmp(big.NewInt(32)) != 0 || !length.IsUint64() || length.Uint64() > 256 {
+			return ""
+		}
+		n := int(length.Uint64())
+		if len(raw) != 64+(n+31)/32*32 {
+			return ""
+		}
+		value = raw[64 : 64+n]
+		for _, b := range raw[64+n:] {
+			if b != 0 {
+				return ""
+			}
+		}
+	}
+	if !utf8.Valid(value) {
+		return ""
+	}
+	for _, r := range string(value) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return ""
+		}
+	}
+	return strings.TrimSpace(string(value))
 }

@@ -126,3 +126,175 @@ it("localizes the new tab and quantity groups", async () => {
   expect(await screen.findByRole("heading", { name: "债务" })).toBeVisible();
   expect(screen.getByLabelText("协议")).toBeVisible();
 });
+
+it.each([
+  ["uniswap-v2", "liquidity", "UNI-V2", "LP tokens held"],
+  ["curve", "liquidity", "3CRV", "LP tokens held"],
+  ["aave-v3", "supply", "aUSDC", "Receipt tokens held"],
+  ["aave-v3", "borrow", "variableDebtUSDC", "Debt tokens"],
+  ["lido", "staking", "wstETH", "Tokens held"],
+] as const)(
+  "shows %s %s receipt holdings separately from underlying quantities",
+  async (protocol, kind, symbol, label) => {
+    data.deployments[0]!.protocol = protocol;
+    data.positions[0] = {
+      ...data.positions[0]!,
+      protocol,
+      kind,
+      receipt_asset: {
+        kind: "erc20",
+        address: token,
+        amount: "12345000000000000000",
+        decimals: 18,
+        symbol,
+      },
+      assets:
+        kind === "borrow"
+          ? []
+          : [
+              {
+                kind: "erc20",
+                address: owner,
+                amount: "250000000000000000",
+                decimals: 18,
+                symbol: "WETH",
+              },
+              {
+                kind: "erc20",
+                address: `0x${"33".repeat(20)}`,
+                amount: "800000000",
+                decimals: 6,
+                symbol: "USDC",
+              },
+            ],
+      debts: kind === "borrow" ? data.positions[0]!.debts : [],
+    };
+    renderExplorer(`/address/${owner}?tab=assets&asset=defi`);
+    expect(await screen.findByRole("heading", { name: label })).toBeVisible();
+    expect(screen.getByText("12.345", { exact: true })).toBeVisible();
+    const card = screen.getByRole("article");
+    expect(within(card).getAllByRole("link", { name: symbol })[0]).toHaveAttribute(
+      "href",
+      `/token/${token}`,
+    );
+    if (protocol === "uniswap-v2") {
+      expect(within(card).getByRole("heading", { name: "WETH / USDC" })).toBeVisible();
+      expect(within(card).getByText("0.25", { exact: true })).toBeVisible();
+      expect(within(card).getByText("800", { exact: true })).toBeVisible();
+      expect(within(card).queryByText("ETH", { exact: true })).not.toBeInTheDocument();
+    }
+  },
+);
+
+it.each(["uniswap-v3", "uniswap-v4"] as const)(
+  "shows %s NFT identity, fee and range without an LP balance",
+  async (protocol) => {
+    data.deployments[0]!.protocol = protocol;
+    data.positions[0] = {
+      ...data.positions[0]!,
+      protocol,
+      kind: "liquidity-nft",
+      token_id: "9007199254740993123",
+      fee: 3000,
+      range: {
+        lower_tick: -60,
+        upper_tick: 60,
+        current_tick: 0,
+        sqrt_price_x96: "79228162514264337593543950336",
+        in_range: true,
+      },
+      assets: [{ kind: "erc20", address: token, amount: "0", decimals: 6, symbol: "USDC" }],
+      debts: [],
+      claimable: [
+        { kind: "erc20", address: token, amount: "1000000", decimals: 6, symbol: "USDC" },
+      ],
+      limitations: ["recorded_claimable_may_include_principal"],
+    };
+    renderExplorer(`/address/${owner}?tab=assets&asset=defi`);
+    expect(await screen.findByText("Position NFT #9,007,199,254,740,993,123")).toBeVisible();
+    expect(screen.getByText("Fee: 0.3%")).toBeVisible();
+    expect(screen.getByText("In range", { exact: true })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Recorded claimable" })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "LP tokens held" })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("article")).getByText("0", {
+        selector: ".defi-quantity",
+        exact: true,
+      }),
+    ).toBeVisible();
+  },
+);
+
+it.each(["pending", "claimable"] as const)(
+  "shows Lido %s requests without ERC-20 receipts",
+  async (state) => {
+    data.deployments[0]!.protocol = "lido";
+    data.positions[0] = {
+      ...data.positions[0]!,
+      protocol: "lido",
+      kind: "withdrawal",
+      token_id: "42",
+      state,
+      debts: [],
+      assets:
+        state === "pending"
+          ? [
+              {
+                kind: "erc20",
+                address: token,
+                amount: "2000000000000000000",
+                decimals: 18,
+                symbol: "stETH",
+              },
+            ]
+          : [],
+      claimable: state === "claimable" ? [{ kind: "native", amount: "1800000000000000000" }] : [],
+    };
+    renderExplorer(`/address/${owner}?tab=assets&asset=defi`);
+    expect(await screen.findByText("Position NFT #42")).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: state === "pending" ? "Requested amount" : "Recorded claimable",
+      }),
+    ).toBeVisible();
+    if (state === "claimable") expect(screen.getByText("1.8", { exact: true })).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Receipt tokens held" })).not.toBeInTheDocument();
+  },
+);
+
+it("keeps unknown precision atomic and distinguishes same-symbol token addresses", async () => {
+  data.positions[0]!.debts = [
+    { kind: "erc20", address: token, amount: "9007199254740993123", symbol: "SAME" },
+    { kind: "erc20", address: owner, amount: "0", symbol: "SAME" },
+  ];
+  renderExplorer(`/address/${owner}?tab=assets&asset=defi`);
+  expect(await screen.findByText(/9,007,199,254,740,993,123/)).toBeVisible();
+  const card = screen.getByRole("article");
+  expect(within(card).getByText("0x222222…222222")).toBeVisible();
+  expect(within(card).getByText("0x111111…111111")).toBeVisible();
+  expect(
+    within(card)
+      .getAllByRole("link", { name: "SAME" })
+      .map((link) => link.getAttribute("href")),
+  ).toEqual(expect.arrayContaining([`/token/${token}`, `/token/${owner}`]));
+});
+
+it("does not invent pair assets for unsupported hooks", async () => {
+  data.deployments[0]!.protocol = "uniswap-v4";
+  data.positions[0] = {
+    ...data.positions[0]!,
+    protocol: "uniswap-v4",
+    kind: "liquidity-nft",
+    token_id: "1",
+    state: "unsupported",
+    assets: [],
+    debts: [],
+    limitations: ["hook_accounting_not_supported"],
+  };
+  renderExplorer(`/address/${owner}?tab=assets&asset=defi`);
+  expect(await screen.findByText("Unsupported accounting")).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "Underlying assets" })).not.toBeInTheDocument();
+  expect(
+    within(screen.getByRole("article")).queryByText("0", { exact: true }),
+  ).not.toBeInTheDocument();
+});

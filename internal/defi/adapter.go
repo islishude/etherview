@@ -43,6 +43,17 @@ func Observe(ctx context.Context, s *State, d Deployment, c Candidate, number st
 	default:
 		e = deficontract.ErrUnsupported
 	}
+	if e == nil && p.State != "closed" && p.Kind != "withdrawal" && p.ReceiptAmount != "" {
+		amount, err := tokenID(p.ReceiptAmount)
+		if err != nil {
+			return p, err
+		}
+		receipt := asset(c.Contract, amount)
+		p.ReceiptAsset = &receipt
+	}
+	if e == nil && p.State != "closed" {
+		s.displayMetadata(ctx, &p)
+	}
 	return p, e
 }
 func observeV2(ctx context.Context, s *State, d Deployment, c Candidate, p *deficontract.Position) error {
@@ -98,7 +109,7 @@ func observeV2(ctx context.Context, s *State, d Deployment, c Candidate, p *defi
 		if e != nil {
 			return e
 		}
-		p.Assets = append(p.Assets, s.asset(ctx, a, amount))
+		p.Assets = append(p.Assets, asset(a, amount))
 	}
 	p.Limitations = append(p.Limitations, "reserve_share_not_redemption_quote", "fees_included_in_reserves")
 	return nil
@@ -174,7 +185,7 @@ func observeAave(ctx context.Context, s *State, d Deployment, c Candidate, p *de
 	}
 	if c.Contract == a {
 		p.Kind = "supply"
-		p.Assets = append(p.Assets, s.asset(ctx, underlying, amount))
+		p.Assets = append(p.Assets, asset(underlying, amount))
 		raw, e := s.call(ctx, d.Address("data_provider"), "getUserReserveData(address,address)", addrWord(underlying), addrWord(c.Owner))
 		if e != nil {
 			return e
@@ -190,7 +201,7 @@ func observeAave(ctx context.Context, s *State, d Deployment, c Candidate, p *de
 		p.Collateral = &flag
 	} else {
 		p.Kind = "borrow"
-		p.Debts = append(p.Debts, s.asset(ctx, underlying, amount))
+		p.Debts = append(p.Debts, asset(underlying, amount))
 	}
 	return nil
 }
@@ -214,7 +225,7 @@ func observeLido(ctx context.Context, s *State, d Deployment, c Candidate, p *de
 				return e
 			}
 		}
-		p.Assets = append(p.Assets, s.asset(ctx, steth, amount))
+		p.Assets = append(p.Assets, asset(steth, amount))
 		return nil
 	case queue:
 		id, e := tokenID(c.TokenID)
@@ -252,7 +263,7 @@ func observeLido(ctx context.Context, s *State, d Deployment, c Candidate, p *de
 		p.ReceiptAmount = amount.String()
 		if finalized.Sign() == 0 {
 			p.State = "pending"
-			p.Assets = append(p.Assets, s.asset(ctx, steth, amount))
+			p.Assets = append(p.Assets, asset(steth, amount))
 			p.Limitations = append(p.Limitations, "withdrawal_request_not_guaranteed_eth")
 			return nil
 		}
@@ -277,7 +288,7 @@ func observeLido(ctx context.Context, s *State, d Deployment, c Candidate, p *de
 		}
 		claim, _ := word(result, 2)
 		p.State = "claimable"
-		p.Claimable = append(p.Claimable, s.asset(ctx, common.Address{}, claim))
+		p.Claimable = append(p.Claimable, asset(common.Address{}, claim))
 		return nil
 	}
 	return deficontract.ErrUnsupported

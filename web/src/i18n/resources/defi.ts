@@ -19,6 +19,14 @@ const resources = {
       contract: "Position contract",
       pool: "Pool",
       receipt: "Receipt amount (atomic)",
+      lpHolding: "LP tokens held",
+      receiptHolding: "Receipt tokens held",
+      debtReceipt: "Debt tokens",
+      holding: "Tokens held",
+      supplied: "Supplied assets",
+      requested: "Requested amount",
+      nft: "Position NFT",
+      unknownToken: "Unknown token",
       liquidity: "Liquidity",
       range: "Tick range",
       currentTick: "Current tick",
@@ -51,6 +59,8 @@ const resources = {
         withdrawal: "Withdrawal request",
       },
       limitations: {
+        metapool_underlying_expanded:
+          "MetaPool base-pool tokens are expanded into their underlying assets.",
         reserve_share_not_redemption_quote:
           "Amounts represent reserve shares, not an immediate redemption quote.",
         fees_included_in_reserves: "Trading fees are already included in the reserve share.",
@@ -83,6 +93,14 @@ const resources = {
       contract: "仓位合约",
       pool: "池",
       receipt: "凭证数量（原始单位）",
+      lpHolding: "持有 LP Token",
+      receiptHolding: "持有凭证代币",
+      debtReceipt: "债务凭证",
+      holding: "持有代币",
+      supplied: "存款资产",
+      requested: "申请数量",
+      nft: "仓位 NFT",
+      unknownToken: "未知代币",
       liquidity: "流动性",
       range: "Tick 区间",
       currentTick: "当前 Tick",
@@ -115,6 +133,7 @@ const resources = {
         withdrawal: "退出请求",
       },
       limitations: {
+        metapool_underlying_expanded: "已将 MetaPool 基础池份额展开为底层资产。",
         reserve_share_not_redemption_quote: "数量表示池储备份额，不是即时赎回报价。",
         fees_included_in_reserves: "交易手续费已包含在池储备份额中。",
         recorded_claimable_may_include_principal:

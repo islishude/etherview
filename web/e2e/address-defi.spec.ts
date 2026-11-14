@@ -22,7 +22,6 @@ const fixture: DeFiPositionsPage = {
       block_number: "99",
       block_hash: hash,
     },
-    { protocol: "lido", deployment: "lido", state: "scanning" },
   ],
   positions: [
     {
@@ -63,6 +62,74 @@ const fixture: DeFiPositionsPage = {
   ],
 };
 
+const receipt = {
+  kind: "erc20" as const,
+  address: token,
+  amount: "12345000000000000000",
+  decimals: 18,
+  symbol: "UNI-V2",
+};
+const underlying = [
+  {
+    kind: "erc20" as const,
+    address: `0x${"3".repeat(40)}`,
+    amount: "250000000000000000",
+    decimals: 18,
+    symbol: "WETH",
+  },
+  {
+    kind: "erc20" as const,
+    address: `0x${"4".repeat(40)}`,
+    amount: "800000000",
+    decimals: 6,
+    symbol: "USDC",
+  },
+];
+for (const protocol of ["uniswap-v2", "uniswap-v3", "curve", "lido"] as const) {
+  fixture.deployments.push({
+    protocol,
+    deployment: protocol,
+    state: "complete",
+    block_number: "99",
+    block_hash: hash,
+  });
+  fixture.positions.push({
+    ...fixture.positions[0]!,
+    id: protocol,
+    protocol,
+    deployment: protocol,
+    kind:
+      protocol === "lido" ? "staking" : protocol === "uniswap-v3" ? "liquidity-nft" : "liquidity",
+    receipt_asset:
+      protocol === "uniswap-v3"
+        ? undefined
+        : {
+            ...receipt,
+            symbol: protocol === "lido" ? "wstETH" : protocol === "curve" ? "3CRV" : "UNI-V2",
+          },
+    token_id: protocol === "uniswap-v3" ? "42" : undefined,
+    fee: protocol === "uniswap-v3" ? 3000 : undefined,
+    range:
+      protocol === "uniswap-v3"
+        ? {
+            lower_tick: -60,
+            upper_tick: 60,
+            current_tick: 0,
+            sqrt_price_x96: "79228162514264337593543950336",
+            in_range: true,
+          }
+        : undefined,
+    assets: protocol === "lido" ? [{ ...underlying[0]!, symbol: "stETH" }] : underlying,
+    debts: [],
+    limitations: protocol === "curve" ? ["metapool_underlying_expanded"] : [],
+  });
+}
+fixture.positions[0]!.receipt_asset = {
+  ...receipt,
+  amount: "9007199254740993123",
+  symbol: "variableDebtUSDC",
+};
+
 for (const appearance of appearanceCases) {
   test(`address DeFi ${appearance.width}px ${appearance.language} ${appearance.theme}`, async ({
     page,
@@ -87,9 +154,16 @@ for (const appearance of appearanceCases) {
       });
     });
     await page.goto(`/address/${owner}?tab=assets&asset=defi`);
-    await expect(page.locator(".defi-position")).toHaveCount(2);
-    await expect(page.getByText("9.007199254740993123", { exact: true })).toBeVisible();
+    await expect(page.locator(".defi-position")).toHaveCount(fixture.positions.length);
+    await expect(page.getByText("9.007199254740993123", { exact: true }).first()).toBeVisible();
     expect(requests.some((path) => /\/(erc20-balances|nfts)$/.test(path))).toBe(false);
+    const v2 = page
+      .getByRole("article")
+      .filter({ has: page.getByRole("link", { name: "UNI-V2", exact: true }) });
+    await expect(v2.getByRole("heading", { name: "WETH / USDC" })).toBeVisible();
+    await expect(v2.getByText("12.345", { exact: true })).toBeVisible();
+    await expect(v2.getByText("0.25", { exact: true })).toBeVisible();
+    await expect(v2.getByText("800", { exact: true })).toBeVisible();
     const selected = page.getByRole("link", { name: "DeFi", exact: true });
     await expect(selected).toHaveAttribute("aria-current", "page");
     await page.locator(".defi-position summary").last().click();
@@ -113,7 +187,7 @@ for (const appearance of appearanceCases) {
     await expect(page.locator(".defi-position")).toHaveCount(1);
     await page.reload();
     await expect(selected).toHaveAttribute("aria-current", "page");
-    await expect(page.locator(".defi-position")).toHaveCount(2);
+    await expect(page.locator(".defi-position")).toHaveCount(fixture.positions.length);
     expect(errors).toEqual([]);
   });
 }

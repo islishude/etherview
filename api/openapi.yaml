@@ -5210,6 +5210,9 @@ components:
           maximum: 8388607
         liquidity:
           $ref: "#/components/schemas/Quantity"
+        receipt_asset:
+          description: Directly held ERC-20 receipt or debt token at the position snapshot. Not an additional underlying asset or a withdrawal request amount.
+          $ref: "#/components/schemas/DeFiAsset"
         receipt_amount:
           $ref: "#/components/schemas/Quantity"
         range:

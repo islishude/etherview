@@ -210,6 +210,7 @@ func (w *Worker) Step(ctx context.Context, d Deployment) (resultErr error) {
 					p.Claimable = []deficontract.Asset{}
 					p.UnsettledFees = []deficontract.Asset{}
 					p.ReceiptAmount = ""
+					p.ReceiptAsset = nil
 					p.Liquidity = ""
 					p.Range = nil
 					p.State = "unavailable"

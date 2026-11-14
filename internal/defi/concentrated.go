@@ -83,7 +83,7 @@ func observeV3(ctx context.Context, s *State, d Deployment, c Candidate, p *defi
 	if e != nil {
 		return e
 	}
-	if e = setLiquidity(ctx, s, p, liquidity, price, lower, upper, tick, t0, t1); e != nil {
+	if e = setLiquidity(p, liquidity, price, lower, upper, tick, t0, t1); e != nil {
 		return e
 	}
 	lo, e := s.call(ctx, pool, "ticks(int24)", intWord(lower))
@@ -125,9 +125,9 @@ func observeV3(ctx context.Context, s *State, d Deployment, c Candidate, p *defi
 		if e != nil {
 			return e
 		}
-		p.UnsettledFees = append(p.UnsettledFees, s.asset(ctx, a, delta))
+		p.UnsettledFees = append(p.UnsettledFees, asset(a, delta))
 		// Recorded owed may include withdrawn principal. Keep it separate from fees.
-		p.Claimable = append(p.Claimable, s.asset(ctx, a, owed))
+		p.Claimable = append(p.Claimable, asset(a, owed))
 	}
 	p.Limitations = append(p.Limitations, "recorded_claimable_may_include_principal")
 	if liquidity.Sign() == 0 && owed0.Sign() == 0 && owed1.Sign() == 0 {
@@ -136,7 +136,7 @@ func observeV3(ctx context.Context, s *State, d Deployment, c Candidate, p *defi
 	return nil
 }
 func modSub(a, b *big.Int) *big.Int { return new(big.Int).Mod(new(big.Int).Sub(a, b), q256) }
-func setLiquidity(ctx context.Context, s *State, p *deficontract.Position, l, price *big.Int, lower, upper, tick int32, t0, t1 common.Address) error {
+func setLiquidity(p *deficontract.Position, l, price *big.Int, lower, upper, tick int32, t0, t1 common.Address) error {
 	a, b, e := LiquidityAmounts(l, price, lower, upper)
 	if e != nil {
 		return e
@@ -146,7 +146,7 @@ func setLiquidity(ctx context.Context, s *State, p *deficontract.Position, l, pr
 	}
 	p.Liquidity = l.String()
 	p.Range = &deficontract.Range{LowerTick: lower, UpperTick: upper, CurrentTick: tick, SqrtPriceX96: price.String(), InRange: tick >= lower && tick < upper}
-	p.Assets = append(p.Assets, s.asset(ctx, t0, a), s.asset(ctx, t1, b))
+	p.Assets = append(p.Assets, asset(t0, a), asset(t1, b))
 	return nil
 }
 func observeV4(ctx context.Context, s *State, d Deployment, c Candidate, p *deficontract.Position) error {
@@ -240,7 +240,7 @@ func observeV4(ctx context.Context, s *State, d Deployment, c Candidate, p *defi
 		return deficontract.ErrIntegrity
 	}
 	liquidity, _ := word(position, 0)
-	if e = setLiquidity(ctx, s, p, liquidity, price, lower, upper, tick, t0, t1); e != nil {
+	if e = setLiquidity(p, liquidity, price, lower, upper, tick, t0, t1); e != nil {
 		return e
 	}
 	growth, e := s.call(ctx, d.Address("state_view"), "getFeeGrowthInside(bytes32,int24,int24)", poolID[:], intWord(lower), intWord(upper))
@@ -257,7 +257,7 @@ func observeV4(ctx context.Context, s *State, d Deployment, c Candidate, p *defi
 		if e != nil {
 			return e
 		}
-		p.UnsettledFees = append(p.UnsettledFees, s.asset(ctx, a, amount))
+		p.UnsettledFees = append(p.UnsettledFees, asset(a, amount))
 	}
 	if liquidity.Sign() == 0 {
 		p.State = "closed"

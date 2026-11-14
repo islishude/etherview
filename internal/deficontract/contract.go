@@ -59,6 +59,7 @@ type Position struct {
 	Fee           *uint32  `json:"fee,omitempty"`
 	TickSpacing   *int32   `json:"tick_spacing,omitempty"`
 	Liquidity     string   `json:"liquidity,omitempty"`
+	ReceiptAsset  *Asset   `json:"receipt_asset,omitempty"`
 	ReceiptAmount string   `json:"receipt_amount,omitempty"`
 	Range         *Range   `json:"range,omitempty"`
 	Collateral    *bool    `json:"collateral,omitempty"`

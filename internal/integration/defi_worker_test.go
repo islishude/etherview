@@ -80,6 +80,8 @@ func (f *defiWorkerRPC) Call(request map[string]json.RawMessage, block rpc.Block
 			return word(0), nil
 		}
 		return word(f.balance), nil
+	case is("symbol()"):
+		return common.RightPadBytes([]byte("UNI-V2"), 32), nil
 	case is("decimals()"):
 		return word(18), nil
 	}
@@ -167,6 +169,10 @@ func TestDeFiWorkerPublishesBeforeHTTPAndRefreshesIdleHoldings(t *testing.T) {
 	page, e := reader.Positions(ctx, deficontract.Request{Owner: service.owner.Hex()})
 	if e != nil || len(page.Positions) != 1 || page.Positions[0].Assets[0].Amount != "100" {
 		t.Fatalf("page=%+v error=%v", page, e)
+	}
+	receipt := page.Positions[0].ReceiptAsset
+	if receipt == nil || receipt.Address != service.pair.Hex() || receipt.Amount != "10" || receipt.Decimals == nil || *receipt.Decimals != 18 || receipt.Symbol != "UNI-V2" {
+		t.Fatalf("published receipt did not round trip: %+v", receipt)
 	}
 	service.mu.Lock()
 	if service.calls != calls {

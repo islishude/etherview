@@ -35,6 +35,19 @@ them. The browser uses explicit refresh and existing status invalidation.
 Tokens/NFTs retain receipt tokens; DeFi explains their economic rights without
 adding cross-tab totals.
 
+Receipt/debt ERC-20 amounts are published as optional `receipt_asset` values
+with address, exact atomic amount and best-effort bounded symbol/precision
+from the same pinned block and endpoint. Missing display metadata does not
+invalidate holdings. `receipt_amount` remains the raw protocol quantity;
+withdrawal request amounts are not ERC-20 receipts. These display additions
+use the existing immutable position JSON, with no backfill or startup repair.
+
+The browser groups cards by deployment and identifies positions by their
+actual assets, receipt or NFT ID. Receipt holdings and underlying rights are
+shown separately without summing them. Token addresses disambiguate symbols;
+unknown precision remains explicitly atomic. Curve MetaPool look-through is
+labelled as expanded underlying assets. NFT liquidity is not an LP balance.
+
 ## Delivery and evidence
 
 P20-T35 owns discovery, adapters and publication; P40-T36 owns read-only APIs;

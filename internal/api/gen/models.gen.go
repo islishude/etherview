@@ -5716,6 +5716,7 @@ type DeFiPosition struct {
 
 	// ReceiptAmount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
 	ReceiptAmount *Quantity         `json:"receipt_amount,omitempty"`
+	ReceiptAsset  *DeFiAsset        `json:"receipt_asset,omitempty"`
 	State         DeFiPositionState `json:"state"`
 	TickSpacing   *int              `json:"tick_spacing,omitempty"`
 

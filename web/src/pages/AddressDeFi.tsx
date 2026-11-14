@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { isAddress } from "viem";
@@ -6,6 +6,9 @@ import { useAddressDeFiPositions } from "@/api/hooks";
 import { useQueryWithdrawn } from "@/api/browsingHooks";
 import { useBrowsingCursorHistory } from "@/api/pagination";
 import type { DeFiAsset, DeFiPosition, DeFiProtocol } from "@/api/heyapi/types.gen";
+import { usePublicConfig } from "@/api/publicConfig";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { NativeSelect } from "@/components/ui/native-select";
 import { QueryNotice } from "@/components/QueryNotice";
 import { formatInteger, formatTokenAmount, shorten } from "@/components/format";
@@ -134,131 +137,212 @@ export function AddressDeFi({ address }: { address: string }) {
 function Position({ position: p, locale }: { position: DeFiPosition; locale: string }) {
   const { t } = useTranslation();
   return (
-    <article className="defi-position">
-      <div className="defi-position-heading">
+    <Card asChild>
+      <article className="defi-position">
+        <div className="defi-position-heading">
+          <h4>
+            <PositionTitle position={p} />
+          </h4>
+          <Badge variant="secondary">{t(`defi.kinds.${p.kind}`)}</Badge>
+          <Badge variant="outline">{t(`defi.states.${p.state}`)}</Badge>
+        </div>
+        <div className="defi-position-facts">
+          {p.token_id !== undefined && (
+            <span>
+              {t("defi.nft")} #{formatInteger(p.token_id, locale)}
+            </span>
+          )}
+          {p.fee !== undefined && (
+            <span>
+              {t("defi.fee")}: {formatTokenAmount(String(p.fee), 4, locale)}%
+            </span>
+          )}
+          {p.range && <span>{t(p.range.in_range ? "defi.inRange" : "defi.outOfRange")}</span>}
+          {p.collateral !== undefined && (
+            <span>
+              {t("defi.collateral")}: {t(p.collateral ? "defi.enabled" : "defi.disabled")}
+            </span>
+          )}
+        </div>
+        {p.receipt_asset && (
+          <div className="defi-amount-group defi-holding">
+            <h5>
+              {t(
+                p.kind === "liquidity"
+                  ? "defi.lpHolding"
+                  : p.kind === "borrow"
+                    ? "defi.debtReceipt"
+                    : p.kind === "staking"
+                      ? "defi.holding"
+                      : "defi.receiptHolding",
+              )}
+            </h5>
+            <ul>
+              <li>
+                <Asset asset={p.receipt_asset} locale={locale} />
+              </li>
+            </ul>
+          </div>
+        )}
+        {(["assets", "debts", "claimable", "unsettled_fees"] as const).map(
+          (kind) =>
+            p[kind].length > 0 && (
+              <div className="defi-amount-group" key={kind}>
+                <h5>
+                  {t(
+                    kind === "assets" && p.kind === "supply"
+                      ? "defi.supplied"
+                      : kind === "assets" && p.kind === "withdrawal"
+                        ? "defi.requested"
+                        : `defi.${kind}`,
+                  )}
+                </h5>
+                <ul>
+                  {p[kind].map((asset, index) => (
+                    <li key={`${asset.address ?? "native"}:${index}`}>
+                      <Asset asset={asset} locale={locale} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ),
+        )}
+        <details>
+          <summary>{t("defi.details")}</summary>
+          <dl className="defi-details">
+            <dt>{t("defi.contract")}</dt>
+            <dd>
+              <Link to="/address/$address" params={{ address: p.contract }}>
+                {p.contract}
+              </Link>
+            </dd>
+            {p.pool && (
+              <>
+                <dt>{t("defi.pool")}</dt>
+                <dd>
+                  <Link to="/address/$address" params={{ address: p.pool }}>
+                    {p.pool}
+                  </Link>
+                </dd>
+              </>
+            )}
+            {p.pool_id && (
+              <>
+                <dt>Pool ID</dt>
+                <dd>
+                  <code>{p.pool_id}</code>
+                </dd>
+              </>
+            )}
+            {p.receipt_amount !== undefined && (
+              <>
+                <dt>{t("defi.receipt")}</dt>
+                <dd>{formatInteger(p.receipt_amount, locale)}</dd>
+              </>
+            )}
+            {p.liquidity !== undefined && (
+              <>
+                <dt>{t("defi.liquidity")}</dt>
+                <dd>{formatInteger(p.liquidity, locale)}</dd>
+              </>
+            )}
+            {p.range && (
+              <>
+                <dt>{t("defi.range")}</dt>
+                <dd>
+                  {p.range.lower_tick} ≤ tick &lt; {p.range.upper_tick} ·{" "}
+                  {t(p.range.in_range ? "defi.inRange" : "defi.outOfRange")}
+                </dd>
+                <dt>{t("defi.currentTick")}</dt>
+                <dd>{p.range.current_tick}</dd>
+              </>
+            )}
+            {p.tick_spacing !== undefined && (
+              <>
+                <dt>{t("defi.tickSpacing")}</dt>
+                <dd>{p.tick_spacing}</dd>
+              </>
+            )}
+            {p.hook && (
+              <>
+                <dt>Hook</dt>
+                <dd>
+                  <code>{p.hook}</code>
+                </dd>
+              </>
+            )}
+          </dl>
+        </details>
+        {p.limitations.map((code) => (
+          <p className="context-note" key={code}>
+            {t(`defi.limitations.${code}`, { defaultValue: t("defi.limitations.unavailable") })}
+          </p>
+        ))}
+      </article>
+    </Card>
+  );
+}
+function PositionTitle({ position: p }: { position: DeFiPosition }) {
+  const { t } = useTranslation();
+  const assets =
+    p.protocol === "curve" || p.kind === "staking"
+      ? p.receipt_asset
+        ? [p.receipt_asset]
+        : []
+      : p.kind === "borrow"
+        ? p.debts
+        : p.kind === "withdrawal"
+          ? []
+          : p.assets;
+  if (assets.length === 0)
+    return (
+      <>
+        {t(`defi.kinds.${p.kind}`)} ·{" "}
         <Link to="/address/$address" params={{ address: p.contract }} title={p.contract}>
           {shorten(p.contract)}
         </Link>
-        {p.token_id !== undefined && <span>#{formatInteger(p.token_id, locale)}</span>}
-        <span>{t(`defi.kinds.${p.kind}`)}</span>
-        <span>{t(`defi.states.${p.state}`)}</span>
-      </div>
-      {(["assets", "debts", "claimable", "unsettled_fees"] as const).map(
-        (kind) =>
-          p[kind].length > 0 && (
-            <div className="defi-amount-group" key={kind}>
-              <h4>{t(`defi.${kind}`)}</h4>
-              <ul>
-                {p[kind].map((asset, index) => (
-                  <li key={`${asset.address ?? "native"}:${index}`}>
-                    <Asset asset={asset} locale={locale} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ),
-      )}
-      <details>
-        <summary>{t("defi.details")}</summary>
-        <dl className="defi-details">
-          <dt>{t("defi.contract")}</dt>
-          <dd>
-            <code>{p.contract}</code>
-          </dd>
-          {p.pool && (
-            <>
-              <dt>{t("defi.pool")}</dt>
-              <dd>
-                <Link to="/address/$address" params={{ address: p.pool }}>
-                  {p.pool}
-                </Link>
-              </dd>
-            </>
-          )}
-          {p.pool_id && (
-            <>
-              <dt>Pool ID</dt>
-              <dd>
-                <code>{p.pool_id}</code>
-              </dd>
-            </>
-          )}
-          {p.receipt_amount !== undefined && (
-            <>
-              <dt>{t("defi.receipt")}</dt>
-              <dd>{formatInteger(p.receipt_amount, locale)}</dd>
-            </>
-          )}
-          {p.liquidity !== undefined && (
-            <>
-              <dt>{t("defi.liquidity")}</dt>
-              <dd>{formatInteger(p.liquidity, locale)}</dd>
-            </>
-          )}
-          {p.range && (
-            <>
-              <dt>{t("defi.range")}</dt>
-              <dd>
-                {p.range.lower_tick} ≤ tick &lt; {p.range.upper_tick} ·{" "}
-                {t(p.range.in_range ? "defi.inRange" : "defi.outOfRange")}
-              </dd>
-              <dt>{t("defi.currentTick")}</dt>
-              <dd>{p.range.current_tick}</dd>
-            </>
-          )}
-          {p.fee !== undefined && (
-            <>
-              <dt>{t("defi.fee")}</dt>
-              <dd>{p.fee} / 1,000,000</dd>
-            </>
-          )}
-          {p.tick_spacing !== undefined && (
-            <>
-              <dt>{t("defi.tickSpacing")}</dt>
-              <dd>{p.tick_spacing}</dd>
-            </>
-          )}
-          {p.hook && (
-            <>
-              <dt>Hook</dt>
-              <dd>
-                <code>{p.hook}</code>
-              </dd>
-            </>
-          )}
-          {p.collateral !== undefined && (
-            <>
-              <dt>{t("defi.collateral")}</dt>
-              <dd>{t(p.collateral ? "defi.enabled" : "defi.disabled")}</dd>
-            </>
-          )}
-        </dl>
-      </details>
-      {p.limitations.map((code) => (
-        <p className="context-note" key={code}>
-          {t(`defi.limitations.${code}`, { defaultValue: t("defi.limitations.unavailable") })}
-        </p>
+      </>
+    );
+  return (
+    <>
+      {assets.map((asset, index) => (
+        <Fragment key={`${asset.address ?? "native"}:${index}`}>
+          {index > 0 && " / "}
+          <AssetIdentity asset={asset} compact />
+        </Fragment>
       ))}
-    </article>
+    </>
+  );
+}
+function AssetIdentity({ asset, compact = false }: { asset: DeFiAsset; compact?: boolean }) {
+  const { t } = useTranslation();
+  const config = usePublicConfig();
+  if (asset.kind === "native") return <span>{config.data?.native_symbol || t("defi.native")}</span>;
+  if (!asset.address) return <span>{t("defi.unknownToken")}</span>;
+  return (
+    <span className="defi-asset-identity">
+      <Link to="/token/$address" params={{ address: asset.address }} title={asset.address}>
+        {asset.symbol || shorten(asset.address)}
+      </Link>
+      {!compact && asset.symbol && (
+        <span className="defi-token-address" title={asset.address}>
+          {shorten(asset.address)}
+        </span>
+      )}
+    </span>
   );
 }
 function Asset({ asset, locale }: { asset: DeFiAsset; locale: string }) {
   const { t } = useTranslation();
+  const config = usePublicConfig();
+  const decimals = asset.kind === "native" ? config.data?.native_decimals : asset.decimals;
   return (
     <>
-      <span className="defi-quantity">
-        {formatTokenAmount(asset.amount, asset.decimals, locale)}
-        {asset.decimals === undefined && <small> {t("addressAssets.rawAmount")}</small>}
+      <AssetIdentity asset={asset} />
+      <span className="defi-quantity numeric">
+        {formatTokenAmount(asset.amount, decimals, locale)}
+        {decimals === undefined && <small> {t("addressAssets.rawAmount")}</small>}
       </span>
-      {asset.kind === "native" ? (
-        <span>{t("defi.native")}</span>
-      ) : (
-        asset.address && (
-          <Link to="/token/$address" params={{ address: asset.address }} title={asset.address}>
-            {asset.symbol || shorten(asset.address)}
-          </Link>
-        )
-      )}
     </>
   );
 }
