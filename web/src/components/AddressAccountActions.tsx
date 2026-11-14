@@ -105,6 +105,7 @@ function WatchButton({
     <>
       <Button
         variant="ghost"
+        size="icon-sm"
         type="button"
         ref={trigger}
         className="address-qr-button address-watch-button"

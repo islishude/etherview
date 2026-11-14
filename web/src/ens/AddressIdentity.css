@@ -131,6 +131,10 @@
   max-width: 100%;
 }
 
+.address-header-actions .address-identity-address-row {
+  gap: 0.25rem;
+}
+
 .address-name-link {
   display: block;
   max-width: 14rem;
