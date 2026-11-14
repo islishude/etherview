@@ -8,6 +8,7 @@ import test from "node:test";
 
 import {
   encodeAbiParameters,
+  decodeEventLog,
   keccak256,
   toHex,
   decodeAbiParameters,
@@ -54,7 +55,7 @@ test("manifest and allocation bind real genesis code and funded isolated identit
   assert.equal(localName("HELLO.test"), "hello.test");
 });
 test(
-  "real genesis ENS registration, ownership, reverse matching and expiry",
+  "real genesis deposit encoding, ENS registration, ownership, reverse matching and expiry",
   { timeout: 120000 },
   async (t) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-ens-contracts-"));
@@ -97,6 +98,28 @@ test(
       }
     }
     assert.ok(ctx, "Anvil did not start");
+    // Exercise the actual genesis fixture, including ABI event encoding and LE uint64s.
+    const fields = ["0x" + "12".repeat(48), "0x" + "34".repeat(32), "0x" + "56".repeat(96)];
+    for (let index = 0; index < 2; index++) {
+      const receipt = await ctx.receipt(
+        await ctx.write("PreviewDeposit", "deposit", fields, 10n ** 18n),
+      );
+      const event = decodeEventLog({ abi: contracts.PreviewDeposit.abi, ...receipt.logs[0] });
+      assert.equal(event.eventName, "DepositEvent");
+      assert.deepEqual(event.args, {
+        pubkey: fields[0],
+        withdrawal_credentials: fields[1],
+        signature: fields[2],
+        amount: "0x00ca9a3b00000000",
+        index: index ? "0x0100000000000000" : "0x0000000000000000",
+      });
+    }
+    assert.equal(await ctx.read("PreviewDeposit", "depositCount"), 2n);
+    await assert.rejects(
+      ctx.write("PreviewDeposit", "deposit", ["0x12", ...fields.slice(1)], 10n ** 18n),
+    );
+    await assert.rejects(ctx.write("PreviewDeposit", "deposit", fields, 1n));
+    await assert.rejects(ctx.write("PreviewDeposit", "deposit", fields, 10n ** 18n + 1n));
     const mine = async (seconds) => {
       await ctx.rpc.request({ method: "evm_increaseTime", params: [seconds] });
       await ctx.rpc.request({ method: "evm_mine", params: [] });

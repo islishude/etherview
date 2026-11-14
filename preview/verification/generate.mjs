@@ -30,7 +30,12 @@ const token = fs.readFileSync(
   "utf8",
 );
 const defi = fs.readFileSync(new URL("../contracts/PreviewDeFi.sol", import.meta.url), "utf8");
+const deposit = fs.readFileSync(
+  new URL("../contracts/PreviewDeposit.sol", import.meta.url),
+  "utf8",
+);
 for (const [content, key] of [
+  [deposit, "depositSourceSha256"],
   [defi, "defiSourceSha256"],
   [controller, "controllerSourceSha256"],
   [oracle, "priceOracleSourceSha256"],
@@ -51,6 +56,7 @@ const input = {
     "PreviewPriceOracle.sol": { content: oracle },
     "LocalBillingToken.sol": { content: token },
     "PreviewDeFi.sol": { content: defi },
+    "PreviewDeposit.sol": { content: deposit },
   },
   settings: manifest.customCompilation.settings,
 };

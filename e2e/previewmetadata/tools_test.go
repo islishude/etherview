@@ -25,10 +25,22 @@ func TestPreviewToolsFull(t *testing.T) {
 	if os.Getenv("PREVIEW_TOOLS_FULL") != "1" {
 		t.Skip("opt in with make test-preview-tools-e2e-full")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 55*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 75*time.Minute)
 	defer cancel()
 	for _, phase := range []string{"all", "split"} {
 		if !t.Run(phase, func(t *testing.T) { testPreviewToolLayout(t, ctx, phase, true) }) {
+			return
+		}
+	}
+}
+
+// Focused request acceptance uses the same real network, both role layouts,
+// browser assertions and read-only resume checks as the full catalog.
+func TestPreviewRequests(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 18*time.Minute)
+	defer cancel()
+	for _, phase := range []string{"all", "split"} {
+		if !t.Run(phase, func(t *testing.T) { testPreviewToolScenarioLayout(t, ctx, phase, true, "requests") }) {
 			return
 		}
 	}
@@ -230,6 +242,9 @@ func testPreviewToolScenarioLayout(t *testing.T, ctx context.Context, phase stri
 	}
 	if full {
 		h.assertToolsBrowser(ctx, binding, reportPath, phase+"-final")
+		if scenario != "all" && scenario != "defi" {
+			return
+		}
 		// A second run may add fungible balances to the same wallet. The old run
 		// must still reconcile its own NFT IDs and the new exact-block totals.
 		var recipient string

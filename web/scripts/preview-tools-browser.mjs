@@ -34,6 +34,61 @@ try {
     page.on("pageerror", (e) => errors.push(e.message));
     for (const scenario of report.scenarios) {
       assert.equal(scenario.status, "api_published", scenario.name);
+      if (scenario.name === "requests") {
+        assert.equal(Object.keys(scenario.entities.requestBlocks).length, 5);
+        for (const [type, hash] of Object.entries(scenario.entities.requestBlocks)) {
+          const requestLink = scenario.links.find((l) => l.label.startsWith("Request " + type));
+          assert.ok(requestLink);
+          const requestURL = new URL(requestLink.url);
+          requestURL.port = "";
+          assert.equal(requestURL.pathname, "/blocks/" + hash);
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          await page.goto(requestURL.href);
+          const panel = page.getByRole("tabpanel");
+          await expect(panel.locator(".request-record").first()).toBeVisible({ timeout: 30000 });
+          const filter = panel.getByRole("button", {
+            name: mobile ? /^请求类型:/ : /^Request type:/,
+          });
+          await filter.click();
+          await panel
+            .locator(".request-filter-options")
+            .getByRole("button")
+            .filter({ hasText: type })
+            .click();
+          await expect(panel.locator(".request-record").first()).toBeVisible();
+          await panel.locator(".request-record summary").first().click();
+          await expect(panel.locator(".request-record details").first()).toHaveAttribute(
+            "open",
+            "",
+          );
+          const sample = scenario.entities.requests.find((s) => s.request_type === type);
+          await expect(
+            panel
+              .getByText(sample.pubkey ?? sample.validator_pubkey ?? sample.source_pubkey, {
+                exact: true,
+              })
+              .first(),
+          ).toBeVisible();
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          await page.evaluate(() => {
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+            window.scrollTo({ top: 0, behavior: "instant" });
+          });
+          await page.screenshot({
+            path:
+              artifacts +
+              "/requests-" +
+              type +
+              "-" +
+              phase +
+              "-" +
+              (mobile ? "mobile" : "desktop") +
+              ".png",
+            fullPage: true,
+          });
+        }
+        continue;
+      }
       const preferred =
         scenario.name === "defi"
           ? scenario.links.find((l) => l.label === "DeFi assets")

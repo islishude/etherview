@@ -592,3 +592,13 @@ until you explicitly reinitialize using the lifecycle procedure above. No startu
 backfill, automatic data deletion or migration of old Preview chains is performed.
 Use an isolated Compose project and network directory when preserving a daily
 Preview environment. `preview-tool` itself never starts or resets the network.
+
+## Block requests fixture upgrade
+
+Networks created before the `PreviewDeposit` genesis fixture cannot run the
+five-type `requests` scenario. `preview-tool doctor` reports the mismatch.
+Follow this runbook's explicit network destruction and reinitialization procedure
+to adopt the new bundle, then create a new tool run; old run hashes belong to the
+old genesis. Ordinary startup, `doctor`, `run` and `resume` never reset a network
+or patch live contract state. The demonstration deposit accepts local funds only
+and does not validate staking signatures.

@@ -6,6 +6,9 @@
 
 Preview authenticates genesis allocations for EntryPoint v0.9, SenderCreator,
 SimpleAccount and its factory, and a local `.test` ENS registration system, plus the Local USD x402 fixture and funded Facilitator.
+A Preview-only validator deposit event fixture is also allocated at the paired
+EL/CL deposit address for the five-type Block Requests demonstration. It does
+not validate BLS signatures or claim successful staking.
 The deterministic generator executes constructors and
 initializers in an isolated pinned EVM at chain ID 48815, exports complete
 state, and checks canonical EntryPoint deployment identity. Build inputs and

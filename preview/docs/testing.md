@@ -286,7 +286,7 @@ contracts are included in the genesis verification inventory.
 inventory, Solidity/Yul/Geas submission payloads, canonical genesis identities,
 publication reuse, transient admission, failed or stuck jobs, cancellation and
 bounded HTTP transport. The HTTP regression runs the Go command against test
-servers and verifies all 46 submissions and an idempotent replay. Host credential
+servers and verifies all 47 submissions and an idempotent replay. Host credential
 creation, stdin handoff and cleanup remain covered by
 `node --test preview/scripts/verify.test.mjs`.
 
@@ -328,3 +328,20 @@ Acceptance requires the old delegation designator in `pre` and an explicit
 `"code":"0x"` in `post`, alongside the unchanged authorization, history and
 browser checks. Omitted post code continues to mean unchanged code; the backend
 must reject a clearing authorization whose exact evidence contradicts it.
+
+## Block requests demonstration acceptance
+
+`make test-preview-tools` covers five-type encoding, queue fees and deposit
+amounts, fixed resume identities, paginated delayed publications, reorg rejection,
+genesis mismatch and report links. `make preview-contracts-check` reproduces the
+deposit genesis allocation and verifier sources. `make preview-network-check`
+covers network-bundle identity. `make test-preview-tools-e2e-full` includes all
+five types in both all/split layouts, read-only checks and resume transaction
+identity, plus type filtering and expanded fields in English desktop and Chinese
+mobile screenshots. These checks establish inclusion/display, not successful
+validator or builder state transitions.
+
+For focused isolation after building the production image and preparing Preview
+images, run `IMAGE=etherview:local DOCKER=docker COMPOSE=.github/scripts/compose.sh go test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewRequests$' ./e2e/previewmetadata`.
+It retains both layouts, initial/final browser evidence, restarts and read-only
+checks. It does not replace the complete catalog gate.

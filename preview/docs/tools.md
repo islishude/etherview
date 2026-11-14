@@ -15,6 +15,7 @@ that policy or the deployment layout.
 ```sh
 make preview-tool ARGS='doctor'
 make preview-tool ARGS='list'
+make preview-tool ARGS='run requests'
 make preview-tool ARGS='run blob'
 make preview-tool ARGS='run aa'
 make preview-tool ARGS='run proxy.uups'
@@ -45,6 +46,7 @@ funded by public development account 0. Only use these tools on Preview.
 
 | Scenario            | Initial data                                                                                                        | Explicit actions                                                                 |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `requests`          | Validator deposit, withdrawal, consolidation, builder deposit and builder exit demonstration requests               | None                                                                             |
 | `defi`              | Local demonstration V2/V3/V4 LPs, Aave supply/debt, Curve LP and Lido staking/withdrawals                           | `activity`, `finalize`                                                           |
 | `events`            | Verified/unverified emitters, 33 direct logs, overloaded and anonymous events, four topics and an upgradeable proxy | `emit`, `upgrade`                                                                |
 | `transactions`      | Legacy, access-list and EIP-1559 transfers; creation, internal transfer, state/log changes and revert               | `activity`                                                                       |
@@ -110,6 +112,32 @@ and decoded-source acceptance manual. Reports keep the browser checklist
 unchecked: inspect name search, mutually exclusive mode switching, URL reload,
 next/previous pages, raw data and provenance in both languages and mobile layout.
 An ordinary EOA must not show the new tab.
+
+## Block request demonstrations
+
+`make preview-tool ARGS='run requests'` submits all five request types to the
+Preview chain. It is also included in `run all`. Each type has its own saved
+transaction and deterministic demonstration parameters. Reports link directly
+to the actual published block's Requests tab; requests may occupy different
+blocks. The checker follows at most 64 blocks from each submission, including
+paginated results, to accommodate queue draining. Use `--timeout 600` on slower
+hosts. `resume` reconciles saved transactions; `check` and `report` never send.
+
+The four system queues use hash-pinned fee quotes with small bounded headroom.
+Validator and builder deposits each spend 1 local ETH, plus queue/gas fees, from
+the run's disposable funded account. The validator deposit is a Preview-only
+event fixture at the EL/CL deposit address. It checks lengths and amounts but
+intentionally does not verify BLS signatures or deposit roots. Demo public keys
+and signatures do not represent valid validators/builders: inclusion is not
+successful staking, withdrawal, consolidation or exit. Never use real funds.
+
+`doctor` checks consensus enablement and all five genesis code identities. Old
+networks without the deposit fixture require explicit
+[network reinitialization](operations.md); this tool never resets them. No
+backend mock, database injection or production API changes are involved.
+Inspect all five report links, filter request types, expand raw fields, and
+check English/Chinese and desktop/mobile layouts. Automatic publication checks
+do not mark the manual checklist complete.
 
 ## DeFi demonstrations
 
@@ -243,9 +271,8 @@ then invoke `activity`; export its CSV. API-key creation/revocation, wallet
 signatures and notification permissions remain explicit browser actions.
 
 Home, status, genesis, search and charts use the generated activity. Pending
-transactions may disappear quickly on the three-second-slot chain. Consensus
-and execution requests expose actual network data, including empty request
-sets. Admin permissions, external source services and real browser-provider
+transactions may disappear quickly on the three-second-slot chain. Consensus and execution requests expose actual network data; the `requests`
+scenario produces nonempty sets for all five types. Admin permissions, external source services and real browser-provider
 push delivery require their own prerequisites and remain unverified until
 checked. This tool does not perform outages, reorg injection, clock changes or
 public-chain acceptance.
@@ -265,7 +292,7 @@ Preview stack; it is not a unit test.
 
 `make test-preview-tools-e2e-full` explicitly runs the full catalog and lifecycle
 in independent all/split projects, with initial/final English desktop and Chinese
-mobile browser assertions and screenshots. Its test-process deadline is 60
+mobile browser assertions and screenshots. Its test-process deadline is 80
 minutes. Run it when changing scenario lifecycles, report-to-browser integration,
 or tool behavior across deployment layouts. It is opt-in and does not run in
 ordinary PR, push or scheduled CI. Browser prerequisites are described in

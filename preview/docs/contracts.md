@@ -35,9 +35,9 @@ system caller are not extra allocations in these tables.
 
 All nine contracts below start with nonce 1 and zero ETH. The seven Geth system
 allocations must match the pinned client's `core.SystemContractAllocs()`;
-ERC-1820 and Multicall3 are additional shared utilities. Protocol queues and
-history contracts are driven by the execution/consensus protocol, not the
-Preview management CLI.
+ERC-1820 and Multicall3 are additional shared utilities. The `requests` manual scenario submits ordinary transactions to the four
+request queues. Protocol system calls drain those queues and update the history
+contracts.
 
 | Address                                      | Contract             | Purpose and caller                                                                                                 |
 | -------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------ |
@@ -258,3 +258,15 @@ are generated with the existing genesis pipeline and included in the normal
 source-verification inventory. They are not upstream protocol deployments.
 Use [DeFi demonstrations](tools.md#defi-demonstrations) to create owner positions
 through real post-genesis transactions.
+
+## Preview validator deposit demonstration
+
+`PreviewDeposit` is predeployed at `0x00000000219ab540356cBB839Cbe05303d7705Fa`,
+the execution client and explicitly configured Beacon deposit address. The
+normal artifact generator exports its code, zero initial deposit count, ABI and
+verification source. It emits EIP-6110-shaped `DepositEvent` logs, with
+little-endian uint64 amounts and monotonically increasing indices. It validates
+field lengths and whole-Gwei deposits of at least 1 ETH, but intentionally omits
+BLS and deposit-root verification. This is a disposable demonstration fixture,
+not a staking contract. `preview-tool run requests` uses it alongside the four
+protocol queues; successful request inclusion does not imply consensus acceptance.

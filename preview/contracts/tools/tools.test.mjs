@@ -16,7 +16,7 @@ import {
   request,
   checkScenario,
 } from "./engine.mjs";
-import { assertEventPages, eventTopics, registerEventRanges } from "./events.mjs";
+import { assertEventPages, checkEventPages, eventTopics, registerEventRanges } from "./events.mjs";
 import { createRun, openRun, acquireLock, publicReport, writeReport } from "./state.mjs";
 const endpoints = {
   rpc: "http://127.0.0.1:8545",
@@ -816,4 +816,50 @@ test("new Preview transactions reserve integer fee headroom without replacing sa
       assert.equal(sent, 1);
     }
   }
+});
+
+test("event pagination restarts a stale cursor without accepting other bad requests", async (t) => {
+  const { run } = fixture(t);
+  const s = run.state.scenarios.transactions;
+  s.name = "events";
+  const address = "0x" + "ab".repeat(20);
+  s.entities = { verified: address };
+  const e = new Engine(run, {}, {});
+  e.wait = async (read, predicate) => {
+    for (let n = 0; n < 3; n++) if (predicate(await read())) return;
+    throw Error("pagination did not recover");
+  };
+  const row = (n) => ({
+    block_hash: "0x1234",
+    block_number: "10",
+    transaction_index: "1",
+    log: { address, log_index: String(n) },
+  });
+  const routes = [];
+  await checkEventPages(e, s, async (_, route) => {
+    routes.push(route);
+    if (routes.length === 2) return { status: 400, body: { error: { code: "invalid_cursor" } } };
+    if (!route.includes("cursor="))
+      return {
+        status: 200,
+        body: {
+          data: Array.from({ length: 25 }, (_, i) => row(32 - i)),
+          meta: { next_cursor: routes.length === 1 ? "old" : "fresh" },
+        },
+      };
+    return { status: 200, body: { data: [row(7)], meta: {} } };
+  });
+  assert.equal(routes.length, 4);
+  assert.equal(routes[0], routes[2]);
+  assert.match(routes[3], /cursor=fresh/);
+  assert.equal(s.checks.find((c) => c.label === "raw keyset pagination").status, "passed");
+  let calls = 0;
+  await assert.rejects(
+    checkEventPages(e, s, async () => {
+      calls++;
+      if (calls === 1) return { status: 200, body: { data: [], meta: { next_cursor: "cursor" } } };
+      return { status: 400, body: { error: { code: "invalid_query" } } };
+    }),
+  );
+  assert.equal(calls, 2);
 });

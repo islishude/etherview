@@ -18,6 +18,7 @@ const inputs = [
   "preview/cmd/previewensmanifest/main.go",
   "preview/cmd/previewdefimanifest/main.go",
   "preview/contracts/PreviewDeFi.sol",
+  "preview/contracts/PreviewDeposit.sol",
   "preview/contracts/defi.mjs",
   "preview/contracts/manifest.json",
   "preview/contracts/allocation.json",

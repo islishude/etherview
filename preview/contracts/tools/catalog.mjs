@@ -1,5 +1,11 @@
 const scenario = (title, requires, actions, checks) => ({ title, requires, actions, checks });
 export const catalog = {
+  requests: scenario(
+    "区块请求 / Block requests",
+    ["consensus"],
+    [],
+    ["五类请求的筛选、展开字段、中英文及手机布局；演示身份不代表质押、提款或退出成功"],
+  ),
   defi: scenario(
     "本地 DeFi 演示 / Local DeFi demonstrations",
     [],

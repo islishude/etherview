@@ -17,6 +17,7 @@ import { connect, contracts, stringify } from "../client.mjs";
 import { digest, root } from "./artifacts.mjs";
 import { checkDeFi } from "./defi.mjs";
 import { checkEventPages, registerEventRanges } from "./events.mjs";
+import { checkRequests } from "./requests.mjs";
 import { acquireLock } from "./state.mjs";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -801,7 +802,11 @@ export async function checkScenario(engine, s) {
   }
   registerEventRanges(engine, s);
   for (const c of s.checks) {
-    if (c.label === "DeFi exact-block accounting") continue;
+    if (
+      c.label === "DeFi exact-block accounting" ||
+      (s.name === "requests" && c.label.startsWith("request "))
+    )
+      continue;
     c.status = "pending";
     s.activeStep = "check:" + c.label;
     engine.run.save();
@@ -820,6 +825,7 @@ export async function checkScenario(engine, s) {
   }
   await checkEventPages(engine, s, request);
   await checkDeFi(engine, s, request);
+  await checkRequests(engine, s, request);
   if (!s.setupComplete || s.actions.some((a) => a.status !== "complete"))
     throw Error("Scenario has unfinished steps; use resume after checking the saved operations");
   s.status = "api_published";
