@@ -425,6 +425,68 @@ func TestDeriveEIP7702EvidenceFailsClosedOnNonceAndPostStateContradictions(t *te
 	}
 }
 
+func TestStateDiffClearRequiresExplicitTransactionPostCode(t *testing.T) {
+	t.Parallel()
+	key, err := crypto.HexToECDSA("8f2a5594903ef45b7b5a8f9f033b0f037b3a3fce0fdd7f1464d31dce1a4f809d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := crypto.PubkeyToAddress(key.PublicKey)
+	sender, delegate := testAddress(0xe1), testAddress(0xe2)
+	auth, err := types.SignSetCode(key, types.SetCodeAuthorization{ChainID: *uint256.NewInt(1), Nonce: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx := types.NewTx(&types.SetCodeTx{ChainID: uint256.NewInt(1), To: authority, AuthList: []types.SetCodeAuthorization{auth}})
+	job := Job{Stage: StateDiffStage, ChainID: "1", BlockHash: uintWord(560), BlockNumber: 560}
+	before := "0xef0100" + strings.TrimPrefix(delegate.Hex(), "0x")
+	for _, tc := range []struct {
+		name, post string
+		valid      bool
+	}{
+		{"explicit clear", `"nonce":4,"code":"0x"`, true},
+		// Reth 2.9.0 emitted this shape. Omission cannot prove clearing.
+		{"omitted code", `"nonce":4`, false},
+		{"unchanged code", `"nonce":4,"code":"` + before + `"`, false},
+		{"wrong nonce", `"nonce":3,"code":"0x"`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := json.RawMessage(`{"pre":{"` + authority.Hex() + `":{"balance":"0x1","nonce":3,"code":"` + before + `"},"` + sender.Hex() + `":{"nonce":1}},"post":{"` + authority.Hex() + `":{` + tc.post + `}}}`)
+			caller := &traceTestCaller{handler: func(method, hash string) (json.RawMessage, error) {
+				if method != debugTraceBlockByHashMethod || hash != job.BlockHash.Hex() {
+					t.Fatal("state evidence must remain bound to the exact block")
+				}
+				return repeatedBlockTraceResponse(t, raw, tx.Hash()), nil
+			}}
+			transactions := []stateDiffTransaction{{hash: tx.Hash(), tx: tx, sender: sender}}
+			processor := &StateDiffRPCProcessor{limits: DefaultStateDiffLimits()}
+			err := processor.fetch(t.Context(), caller, job, transactions, &stateDiffBudget{})
+			if len(caller.calls) != 1 {
+				t.Fatal("unexpected evidence fallback")
+			}
+			if !tc.valid {
+				var classified stageError
+				if err == nil || !errors.As(err, &classified) || classified.kind != "permanent" || len(transactions[0].authorities) != 0 {
+					t.Fatalf("contradictory evidence accepted: %v", err)
+				}
+				return
+			}
+			if err != nil || len(transactions[0].authorities) != 1 || transactions[0].authorities[0].applicationStatus != "applied" || executionResolutionForContext(transactions[0].executions, authority) != "empty" {
+				t.Fatalf("explicit clear not established: %v", err)
+			}
+			found := false
+			for _, c := range transactions[0].changes {
+				if c.address == authority && c.kind == "code" && c.before != nil && strings.EqualFold(*c.before, before) && c.after != nil && *c.after == "0x" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("cleared code missing from normalized state changes")
+			}
+		})
+	}
+}
+
 func TestProxyRelevantStateChangeRecognizesOnlyCodeAndERC1967Slots(t *testing.T) {
 	t.Parallel()
 	address := common.HexToAddress("0x0000000000000000000000000000000000000001")

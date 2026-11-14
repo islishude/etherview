@@ -314,3 +314,7 @@ bytecode_db:
 turnstile:
   enabled: false
   site_key: ""
+
+defi:
+  enabled: true
+  manifest: /etc/etherview/defi/current.json

@@ -16,6 +16,10 @@ const inputs = [
   "preview/genesis.json",
   "preview/generate.sh",
   "preview/cmd/previewensmanifest/main.go",
+  "preview/cmd/previewdefimanifest/main.go",
+  "preview/contracts/PreviewDeFi.sol",
+  "preview/contracts/PreviewDeposit.sol",
+  "preview/contracts/defi.mjs",
   "preview/contracts/manifest.json",
   "preview/contracts/allocation.json",
   "preview/contracts/generate.mjs",
@@ -34,6 +38,7 @@ const required = [
   "metadata/config.yaml",
   "metadata/genesis.ssz",
   "metadata/ens.json",
+  "metadata/defi.json",
   "jwt.hex",
 ];
 function digest(value) {
@@ -152,6 +157,18 @@ export function prepareNetwork(directory, { checkOnly = false, env = process.env
         path.join(temporary, "metadata/genesis.json"),
         "-output",
         path.join(temporary, "metadata/ens.json"),
+      ],
+      { cwd: root },
+    );
+    run(
+      env.GO || "go",
+      [
+        "run",
+        "./preview/cmd/previewdefimanifest",
+        "-genesis",
+        path.join(temporary, "metadata/genesis.json"),
+        "-output",
+        path.join(temporary, "metadata/defi.json"),
       ],
       { cwd: root },
     );

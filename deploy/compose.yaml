@@ -139,6 +139,7 @@ x-app: &app
   volumes:
     - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
     - ${ETHERVIEW_ENS_MANIFEST_DIR:-./deploy/ens-manifests}:/etc/etherview/ens:ro
+    - ${ETHERVIEW_DEFI_MANIFEST_DIR:-./deploy/defi-manifests}:/etc/etherview/defi:ro
   cap_drop:
     - ALL
   security_opt:
@@ -199,6 +200,7 @@ services:
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
       - ${ETHERVIEW_ENS_MANIFEST_DIR:-./deploy/ens-manifests}:/etc/etherview/ens:ro
+      - ${ETHERVIEW_DEFI_MANIFEST_DIR:-./deploy/defi-manifests}:/etc/etherview/defi:ro
       - compiler-cache:/var/lib/etherview/compilers
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
@@ -220,6 +222,7 @@ services:
     volumes:
       - ${ETHERVIEW_CONFIG_FILE:-./deploy/config.example.yaml}:/etc/etherview/config.yaml:ro
       - ${ETHERVIEW_ENS_MANIFEST_DIR:-./deploy/ens-manifests}:/etc/etherview/ens:ro
+      - ${ETHERVIEW_DEFI_MANIFEST_DIR:-./deploy/defi-manifests}:/etc/etherview/defi:ro
     ports:
       - "${ETHERVIEW_PORT:-8080}:8080"
       - "${ETHERVIEW_METRICS_PORT:-9090}:9090"

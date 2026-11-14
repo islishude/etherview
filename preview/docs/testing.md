@@ -68,7 +68,7 @@ remain host-owned and outside this cache. The existing Preview CI gates verify
 this lifecycle on native Linux; Docker Desktop evidence alone does not establish
 native Linux host cleanup behavior.
 
-`make test-preview-consensus` runs the fixed Reth v2.9.0 / Lighthouse v8.3.2
+`make test-preview-consensus` runs the fixed Reth v2.11.0 / Lighthouse v8.3.2
 combination with Gloas at genesis and the durable RustFS archive. Daily Preview,
 metadata acceptance and consensus acceptance share three-second slots. Both
 acceptance suites verify the live Beacon slot duration and record it in their
@@ -231,7 +231,7 @@ Local compilation of the system assembly bundle must match the actual genesis
 bytes exactly.
 
 Real acceptance runs `make verify-preview-genesis` against Reth/Lighthouse and
-the production API, requiring all 24 non-empty allocations to publish, then
+the production API, requiring the complete non-empty allocation inventory to publish, then
 repeats it to prove reuse. This check is additive to existing Preview chain,
 Bundler, ENS and billing acceptance; a mocked helper test does not establish
 compiler execution or durable publication.
@@ -286,7 +286,7 @@ contracts are included in the genesis verification inventory.
 inventory, Solidity/Yul/Geas submission payloads, canonical genesis identities,
 publication reuse, transient admission, failed or stuck jobs, cancellation and
 bounded HTTP transport. The HTTP regression runs the Go command against test
-servers and verifies all 27 submissions and an idempotent replay. Host credential
+servers and verifies all 47 submissions and an idempotent replay. Host credential
 creation, stdin handoff and cleanup remain covered by
 `node --test preview/scripts/verify.test.mjs`.
 
@@ -301,3 +301,47 @@ service, read-only inputs and isolation from the Bundler image.
   and empty files, Kubo multipart filename encoding, literal and URI-encoded
   paths, encoded traversal rejection, input type, RPC and stream errors,
   cancellation/timeouts, non-overwriting publication and temporary cleanup.
+
+## DeFi demonstration acceptance
+
+`make preview-network-check` includes the DeFi manifest generator's final-genesis,
+chain/code/receipt/pool identity and deterministic-digest regressions.
+`make preview-contracts-check` reproduces the local DeFi genesis contracts and
+ordinary verifier inputs. `make test-preview-tools` checks recipient selection,
+resume identities, per-run finalization, pagination and hash-pinned large values.
+`make test-preview-tools-e2e-full` includes the six-protocol scenario in both
+split/all layouts, initial and finalized browser states, exact-block quantities,
+API/enrich restart and read-only reconciliation. Screenshots cover English desktop,
+Chinese mobile, both themes and protocol filtering. The full gate's report and
+browser assertions remain separate from unperformed manual wallet checks.
+For focused isolation after building the production image and preparing Preview
+images, run `IMAGE=etherview:local DOCKER=docker COMPOSE=.github/scripts/compose.sh go test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewDeFi$' ./e2e/previewmetadata`.
+It uses the same six-protocol, browser, lifecycle, restart and repeated-wallet
+assertions in fresh all/split projects. It does not replace the complete catalog
+gate or conceal failures in other scenarios.
+This evidence uses demonstration contracts and does not complete P30-T158.
+
+The full catalog also retains the clearing transaction's exact-block
+`prestateTracer` response in `tools-<layout>-clear-evidence.json`. Reth v2.11.0
+includes the [upstream explicit code-clear fix](https://github.com/alloy-rs/evm2/pull/858).
+Acceptance requires the old delegation designator in `pre` and an explicit
+`"code":"0x"` in `post`, alongside the unchanged authorization, history and
+browser checks. Omitted post code continues to mean unchanged code; the backend
+must reject a clearing authorization whose exact evidence contradicts it.
+
+## Block requests demonstration acceptance
+
+`make test-preview-tools` covers five-type encoding, queue fees and deposit
+amounts, fixed resume identities, paginated delayed publications, reorg rejection,
+genesis mismatch and report links. `make preview-contracts-check` reproduces the
+deposit genesis allocation and verifier sources. `make preview-network-check`
+covers network-bundle identity. `make test-preview-tools-e2e-full` includes all
+five types in both all/split layouts, read-only checks and resume transaction
+identity, plus type filtering and expanded fields in English desktop and Chinese
+mobile screenshots. These checks establish inclusion/display, not successful
+validator or builder state transitions.
+
+For focused isolation after building the production image and preparing Preview
+images, run `IMAGE=etherview:local DOCKER=docker COMPOSE=.github/scripts/compose.sh go test -count=1 -v -timeout=20m -tags=previewmetadatae2e -run '^TestPreviewRequests$' ./e2e/previewmetadata`.
+It retains both layouts, initial/final browser evidence, restarts and read-only
+checks. It does not replace the complete catalog gate.

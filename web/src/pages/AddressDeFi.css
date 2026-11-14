@@ -1,0 +1,134 @@
+.address-defi {
+  min-width: 0;
+}
+.defi-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.defi-toolbar .select-control {
+  max-width: 18rem;
+}
+.defi-protocol-group {
+  border-top: 1px solid var(--line);
+  padding-block: 1rem;
+}
+.defi-group-heading,
+.defi-position-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+.defi-group-heading h3,
+.defi-position-heading h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+.defi-group-heading > span {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+.defi-position {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  margin-top: 0.75rem;
+  min-width: 0;
+}
+.defi-position-heading {
+  font-size: 0.875rem;
+  margin-bottom: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.defi-amount-group {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr);
+  gap: 1rem;
+}
+.defi-amount-group h5 {
+  margin-block: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--text-soft);
+}
+.defi-amount-group ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.defi-amount-group li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding-block: 0.4rem;
+}
+.defi-quantity {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.defi-position details {
+  margin-top: 0.75rem;
+}
+.defi-position summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+.defi-details {
+  display: grid;
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 3fr);
+  gap: 0.5rem 1rem;
+  font-size: 0.8125rem;
+}
+.defi-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.defi-details dt {
+  color: var(--text-soft);
+}
+@media (max-width: 600px) {
+  .defi-amount-group,
+  .defi-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+  .defi-amount-group + .defi-amount-group {
+    margin-top: 0.5rem;
+  }
+}
+
+.defi-position-heading h4 {
+  flex: 1 1 12rem;
+  line-height: 1.5;
+}
+.defi-position-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+.defi-position-facts:not(:empty) {
+  margin-bottom: 0.75rem;
+}
+.defi-holding {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.defi-asset-identity {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.defi-token-address {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+.defi-quantity {
+  text-align: right;
+}

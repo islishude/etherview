@@ -111,6 +111,28 @@ linters:
               desc: ENS contracts must not own RPC clients
             - pkg: github.com/islishude/etherview/internal/httpapi$
               desc: ENS contracts must not depend on HTTP transport
+        database-only-defi-reader:
+          files:
+            - "${base-path}/internal/defiread/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/defi$
+              desc: DeFi readers must not depend on workers
+            - pkg: github.com/islishude/etherview/internal/ethrpc$
+              desc: DeFi readers must not issue RPC or enqueue work
+            - pkg: net/http
+              desc: DeFi readers must consume database publications only
+        neutral-defi-contracts:
+          files:
+            - "${base-path}/internal/deficontract/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/db
+              desc: DeFi contracts must not depend on persistence
+            - pkg: github.com/islishude/etherview/internal/defi$
+              desc: DeFi contracts must not depend on workers
+            - pkg: github.com/islishude/etherview/internal/httpapi$
+              desc: DeFi contracts must not depend on HTTP transport
         neutral-public-contracts:
           files:
             - "${base-path}/internal/publicquery/**"

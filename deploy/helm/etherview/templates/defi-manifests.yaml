@@ -1,0 +1,13 @@
+{{- if .Values.defiManifests }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "etherview.fullname" . }}-defi-manifests
+  labels:
+    {{- include "etherview.labels" . | nindent 4 }}
+data:
+  {{- range $name, $document := .Values.defiManifests }}
+  {{ $name }}: |
+    {{- $document | nindent 4 }}
+  {{- end }}
+{{- end }}

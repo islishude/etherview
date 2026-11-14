@@ -10,6 +10,7 @@ x-etherview-paths: &etherview-paths
   volumes:
     - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
     - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
+    - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/defi.json:/etc/etherview/defi/current.json:ro
 
 services:
   nats:
@@ -166,6 +167,7 @@ services:
       - ${ETHERVIEW_CONFIG_FILE:-./preview/config.yaml}:/etc/etherview/config.yaml:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/genesis.json:/config/genesis.json:ro
       - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/ens.json:/etc/etherview/ens/current.json:ro
+      - ${PREVIEW_NETWORK_DIR:-./.local/preview-network}/metadata/defi.json:/etc/etherview/defi/current.json:ro
 
   trace:
     <<: *etherview-paths

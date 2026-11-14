@@ -235,7 +235,7 @@ for (const suite of [
         args[args.indexOf("-run") + 1],
         full ? "^TestPreviewToolsFull$" : "^TestPreviewTools$",
       );
-      assert.ok(args.includes(full ? "-timeout=60m" : "-timeout=15m"));
+      assert.ok(args.includes(full ? "-timeout=80m" : "-timeout=15m"));
       assert.equal(prebuilt.stdout.includes("PREVIEW_TOOLS_FULL=1"), full);
     }
     if (suite.startsWith("preview-consensus")) {
@@ -434,7 +434,11 @@ test("Preview network checks install locked dependencies before tests and stop o
     command: "pnpm",
     args: ["install", "--frozen-lockfile"],
   });
-  assert.deepEqual(result.commands[1].args, ["test", "./tools/genesis-verify"]);
+  assert.deepEqual(result.commands[1].args, [
+    "test",
+    "./tools/genesis-verify",
+    "./preview/cmd/previewdefimanifest",
+  ]);
   assert.ok(result.commands[2].args.includes("preview/contracts/admin.test.mjs"));
   const failed = f.run("preview-network-check", { FAIL_COMMAND: "pnpm" }, ["NODE=stub-go"]);
   assert.notEqual(failed.status, 0);

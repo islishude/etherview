@@ -1,6 +1,7 @@
 package httpapi
 
 func (h *Handler) registerCatalogRoutes() {
+	h.handleBillable("listAddressDeFiPositions", h.defiPositions)
 	if h.catalog == nil {
 		return
 	}

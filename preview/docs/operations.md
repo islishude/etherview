@@ -31,11 +31,19 @@ building the application and pulling the official Caddy image,
 it prepares `.local/preview-network/` using the pinned
 `ethpandaops/ethereum-genesis-generator:6.2.7` image. The bundle contains the
 execution genesis, Beacon configuration/state, Engine JWT and 64 development
-validator keys. The checked-in `preview/genesis.json` template remains
-unchanged. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
-active at genesis. Reth v2.9.0 retains archive state; Lighthouse
+validator keys. Network preparation reads `preview/genesis.json` without
+modifying that checked-in template. Chain ID is 48815, slots take three seconds, and Amsterdam/Gloas are
+active at genesis. Reth v2.11.0 retains archive state; Lighthouse
 v8.3.2 runs both the Beacon node and validator client. These clients form an
 isolated local PoS network with no public bootnodes or external builders.
+
+Reth v2.11.0 supplies explicit empty post-code evidence when EIP-7702 clears a
+delegation. The explorer still rejects a clearing authorization when post code
+is omitted or contradictory. Updating an external RPC endpoint does not replay
+previously failed publications: use the existing bounded
+[state-difference recovery procedure](../../docs/operations/recovery.md#repair-and-reindex)
+for the affected canonical range. Preview bundle changes follow the explicit
+rebuild rules below; startup performs no automatic reset or backfill.
 
 The primary service is `execution`, with persistent `execution-data` and wallet
 RPC at `https://execution.etherview.localhost`. Reth replaces the former primary
@@ -521,7 +529,7 @@ The explorer and SIWE login still use Preview Reth chain `48815`. The existing
 wildcard gateway certificate covers the new name. The node and its facilitator
 have no direct host ports. Use only the public local development accounts.
 
-Reth v2.9.0 uses `--dev --dev.block-time 3s`, with Amsterdam and its prerequisites
+Reth v2.11.0 uses `--dev --dev.block-time 3s`, with Amsterdam and its prerequisites
 active from genesis. HTTP and WebSocket use internal ports 8545 and 8546.
 The `reth-data` volume stores the full database and genesis digest. Normal
 recreation preserves balances and spent authorizations without funding again.
@@ -573,3 +581,24 @@ ETHERVIEW_WEB_BRANDING_DIR=branding/acme .github/scripts/compose.sh \
 
 Run normal Preview initialization and deployment lifecycle commands to apply the
 rebuilt image. A container environment change alone cannot change embedded branding.
+
+## DeFi network material
+
+Preview enables DeFi with `/etc/etherview/defi/current.json`, generated as
+`metadata/defi.json` inside its immutable network bundle. API and enrich must
+mount the same file; all-role acceptance uses that identical input. Contract
+and manifest changes alter the network fingerprint. Existing bundles are rejected
+until you explicitly reinitialize using the lifecycle procedure above. No startup
+backfill, automatic data deletion or migration of old Preview chains is performed.
+Use an isolated Compose project and network directory when preserving a daily
+Preview environment. `preview-tool` itself never starts or resets the network.
+
+## Block requests fixture upgrade
+
+Networks created before the `PreviewDeposit` genesis fixture cannot run the
+five-type `requests` scenario. `preview-tool doctor` reports the mismatch.
+Follow this runbook's explicit network destruction and reinitialization procedure
+to adopt the new bundle, then create a new tool run; old run hashes belong to the
+old genesis. Ordinary startup, `doctor`, `run` and `resume` never reset a network
+or patch live contract state. The demonstration deposit accepts local funds only
+and does not validate staking signatures.

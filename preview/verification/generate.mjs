@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 
+import { defiArtifacts } from "../contracts/defi.mjs";
 import { resolveENSImport } from "../contracts/ens-imports.mjs";
-
 const require = createRequire(new URL("../contracts/package.json", import.meta.url));
 const solc = require("solc");
 const { namehash, keccak256 } = require("viem");
@@ -29,7 +29,14 @@ const token = fs.readFileSync(
   new URL("../../e2e/x402local/contracts/LocalBillingToken.sol", import.meta.url),
   "utf8",
 );
+const defi = fs.readFileSync(new URL("../contracts/PreviewDeFi.sol", import.meta.url), "utf8");
+const deposit = fs.readFileSync(
+  new URL("../contracts/PreviewDeposit.sol", import.meta.url),
+  "utf8",
+);
 for (const [content, key] of [
+  [deposit, "depositSourceSha256"],
+  [defi, "defiSourceSha256"],
   [controller, "controllerSourceSha256"],
   [oracle, "priceOracleSourceSha256"],
   [token, "billingSourceSha256"],
@@ -48,6 +55,8 @@ const input = {
     "contracts/ethregistrar/PreviewRegistrarController.sol": { content: controller },
     "PreviewPriceOracle.sol": { content: oracle },
     "LocalBillingToken.sol": { content: token },
+    "PreviewDeFi.sol": { content: defi },
+    "PreviewDeposit.sol": { content: deposit },
   },
   settings: manifest.customCompilation.settings,
 };
@@ -106,6 +115,7 @@ for (const [raw, account] of Object.entries(genesis.alloc)) {
         "0xca11bde05977b3631167028862be2a173976ca11": "Multicall3",
         "0x1820a4b7618bde71dce8cdc73aab6c95905fad24": "ERC1820Registry",
       }[address];
+    name = defiArtifacts[name] ?? name;
     if (name === "LocalBillingToken18") name = "LocalBillingToken";
     if (name === "X402ExactPermit2Proxy") name = "x402ExactPermit2Proxy";
     if (!name) throw Error(`Missing source mapping: ${address}`);

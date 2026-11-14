@@ -23,7 +23,7 @@ func sourceFixture(t *testing.T) (inventory, bundles) {
 
 func TestInventoryAndSubmissions(t *testing.T) {
 	inv, sources := sourceFixture(t)
-	if len(inv.Contracts) != 27 {
+	if len(inv.Contracts) != 47 {
 		t.Fatalf("inventory count: %d", len(inv.Contracts))
 	}
 	names := map[string]bool{}
@@ -66,7 +66,7 @@ func TestInventoryAndSubmissions(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"SenderCreator", "SimpleAccount", "LocalBillingToken", "BuilderExit", "Permit2", "x402ExactPermit2Proxy"} {
+	for _, name := range []string{"PreviewDeposit", "SenderCreator", "SimpleAccount", "LocalBillingToken", "BuilderExit", "Permit2", "x402ExactPermit2Proxy"} {
 		if !names[name] {
 			t.Fatalf("missing %s", name)
 		}

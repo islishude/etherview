@@ -23,8 +23,10 @@ import {
   rpcOperation,
   smartAddress,
 } from "../client.mjs";
+import { setupDeFi, actionDeFi } from "./defi.mjs";
 import { actor, request, matches } from "./engine.mjs";
 import { setupEvents, actionEvents } from "./events.mjs";
+import { setupRequests } from "./requests.mjs";
 
 const largeID = (1n << 200n) + 42n;
 const implSlot = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc";
@@ -511,6 +513,12 @@ export async function setup(e, s) {
   if (s.name.startsWith("proxy.")) await proxies(e, s);
   else
     switch (s.name) {
+      case "requests":
+        await setupRequests(e, s);
+        break;
+      case "defi":
+        await setupDeFi(e, s);
+        break;
       case "events":
         await setupEvents(e, s);
         break;
@@ -547,6 +555,7 @@ export async function setup(e, s) {
   e.run.save();
 }
 export async function action(e, s, name, id) {
+  if (s.name === "defi") return actionDeFi(e, s, name, id);
   if (s.name === "events") return actionEvents(e, s, name, id);
   const entity = s.entities;
   if (name === "activity") {

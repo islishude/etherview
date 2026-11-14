@@ -24,6 +24,7 @@ import {
 import { entryPoint09Abi, entryPoint09Address } from "viem/account-abstraction";
 import { mnemonicToAccount } from "viem/accounts";
 
+import { defiArtifacts, defiDeployments, deployDeFi } from "./defi.mjs";
 import { resolveENSImport } from "./ens-imports.mjs";
 import { standardPaymentContracts } from "./x402-standard.mjs";
 const here = import.meta.dirname;
@@ -82,7 +83,11 @@ const tokenSource = fs.readFileSync(
   path.join(root, "e2e/x402local/contracts/LocalBillingToken.sol"),
   "utf8",
 );
+const defiSource = fs.readFileSync(new URL("PreviewDeFi.sol", import.meta.url), "utf8");
+const depositSource = fs.readFileSync(new URL("PreviewDeposit.sol", import.meta.url), "utf8");
 const sources = {
+  "PreviewDeposit.sol": { content: depositSource },
+  "PreviewDeFi.sol": { content: defiSource },
   "LocalBillingToken.sol": { content: tokenSource },
   ...Object.fromEntries(
     Object.entries(ensSources.roots)
@@ -101,7 +106,9 @@ const input = {
   settings: {
     optimizer: { enabled: true, runs: 200 },
     evmVersion: "cancun",
-    outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } },
+    outputSelection: {
+      "*": { "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object"] },
+    },
   },
 };
 const compilation = JSON.parse(
@@ -125,6 +132,7 @@ function compiled(file, name) {
   return { abi: a.abi, bytecode: `0x${a.evm.bytecode.object}` };
 }
 const artifacts = {
+  PreviewDeposit: compiled("PreviewDeposit.sol", "PreviewDeposit"),
   LocalBillingToken: compiled("LocalBillingToken.sol", "LocalBillingToken"),
   EntryPoint: { abi: entryPoint09Abi },
   SimpleAccountFactory: {
@@ -145,6 +153,8 @@ const artifacts = {
   PreviewRegistrarController: compiled(controllerPath, "PreviewRegistrarController"),
   PreviewPriceOracle: compiled("PreviewPriceOracle.sol", "PreviewPriceOracle"),
 };
+for (const [name, artifact] of Object.entries(defiArtifacts))
+  artifacts[name] = compiled("PreviewDeFi.sol", artifact);
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), "etherview-contract-genesis-"));
 const server = net.createServer();
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
@@ -184,7 +194,7 @@ child.stderr.on("data", (d) => {
 });
 const transport = http(`http://127.0.0.1:${port}`, { retryCount: 0, timeout: 10000 });
 const rpc = createPublicClient({ chain, transport, pollingInterval: 50 });
-const wallet = createWalletClient({ chain, transport, account: deployer });
+let wallet = createWalletClient({ chain, transport, account: deployer });
 const addresses = {};
 async function wait(hash) {
   const r = await rpc.waitForTransactionReceipt({ hash, timeout: 30000 });
@@ -337,6 +347,22 @@ try {
     addresses[contract.name] = contract.address;
     artifacts[contract.name] = { abi: contract.abi };
   }
+  const defiDeployer = mnemonicToAccount(mnemonic, { addressIndex: 18 });
+  await rpc.request({
+    method: "anvil_setBalance",
+    params: [defiDeployer.address, toHex(parseEther("1000"))],
+  });
+  wallet = createWalletClient({ chain, transport, account: defiDeployer });
+  await deployDeFi(deploy, write);
+  addresses.PreviewDeposit = "0x00000000219ab540356cBB839Cbe05303d7705Fa";
+  await rpc.request({
+    method: "anvil_setCode",
+    params: [
+      addresses.PreviewDeposit,
+      "0x" + compilation.contracts["PreviewDeposit.sol"].PreviewDeposit.evm.deployedBytecode.object,
+    ],
+  });
+  await rpc.request({ method: "anvil_setNonce", params: [addresses.PreviewDeposit, "0x1"] });
   const encoded = await rpc.request({ method: "anvil_dumpState", params: [] });
   let bytes = Buffer.from(encoded.slice(2), "hex");
   if (bytes[0] === 31 && bytes[1] === 139) bytes = gunzipSync(bytes);
@@ -362,6 +388,7 @@ try {
     ["x402Facilitator", 1],
     ["bundlerExecutor", 9],
     ["ensOwner", 19],
+    ["defiDeployer", 18],
   ]) {
     const address = mnemonicToAccount(mnemonic, { addressIndex: index }).address;
     if (existing.has(address.slice(2).toLowerCase()))
@@ -414,6 +441,8 @@ try {
       controllerSourceSha256: sha(controllerSource),
       priceOracleSourceSha256: sha(oracleSource),
       billingSourceSha256: sha(tokenSource),
+      defiSourceSha256: sha(defiSource),
+      depositSourceSha256: sha(depositSource),
     },
     allocationSha256: sha(JSON.stringify(alloc, null, 2) + "\n"),
     sources: {
@@ -422,6 +451,7 @@ try {
     },
     devAccounts,
     contracts,
+    defiDeployments,
     allocationAddresses: Object.keys(alloc).sort(),
   };
   const result = structuredClone(base);

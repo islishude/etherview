@@ -48,6 +48,7 @@ type TurnstileConfig struct {
 // Config is the complete runtime configuration. A deployment serves exactly
 // one chain, although chain_id remains present in persistent identities.
 type Config struct {
+	DeFi          DeFiConfig          `yaml:"defi"`
 	Turnstile     TurnstileConfig     `yaml:"turnstile"`
 	Push          PushConfig          `yaml:"push"`
 	Consensus     ConsensusConfig     `yaml:"consensus"`

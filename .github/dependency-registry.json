@@ -1003,6 +1003,21 @@
           "path": "preview/reth/test.mjs",
           "template": "const rethImage = \"ghcr.io/paradigmxyz/reth:v{{version}}\";",
           "count": 1
+        },
+        {
+          "path": "e2e/previewmetadata/preview_metadata_test.go",
+          "template": "\t\t\"PREVIEW_EXECUTION_IMAGE\":            \"ghcr.io/paradigmxyz/reth:v{{version}}\",",
+          "count": 1
+        },
+        {
+          "path": "e2e/previewmetadata/consensus_test.go",
+          "template": "\t\t\"execution\": \"v{{version}}\",",
+          "count": 1
+        },
+        {
+          "path": ".github/scripts/docs-check.mjs",
+          "template": "contains(\"preview/docs/architecture.md\", \"Reth v{{version}}\");",
+          "count": 1
         }
       ],
       "commands": [],

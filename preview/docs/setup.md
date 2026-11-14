@@ -48,10 +48,10 @@ explicit name resolution, add the hosts entries from the
 copies mkcert's public `rootCA.pem` there for deterministic command-line
 verification; it never copies `rootCA-key.pem`.
 `make start-preview` builds images, then prepares or verifies an ignored
-`.local/preview-network/` bundle. It starts Reth v2.9.0, Lighthouse v8.3.2
+`.local/preview-network/` bundle. It starts Reth v2.11.0, Lighthouse v8.3.2
 Beacon/validator clients and a scoped RustFS blob archive. Chain ID remains
 48815 with Amsterdam/Gloas at genesis, 64 validators and three-second slots.
-The checked-in genesis template remains unchanged. Network files, Engine JWT
+Network preparation leaves the checked-in genesis template unchanged. Network files, Engine JWT
 and validator keys are generated together and verified by a manifest.
 `make recreate-preview` requires an intact bundle and preserves its timestamp,
 chain data, blob objects and slashing protection. `make stop-preview` explicitly

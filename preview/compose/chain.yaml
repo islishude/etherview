@@ -37,7 +37,7 @@ services:
     restart: unless-stopped
 
   execution:
-    image: ${PREVIEW_EXECUTION_IMAGE:-ghcr.io/paradigmxyz/reth:v2.9.0}
+    image: ${PREVIEW_EXECUTION_IMAGE:-ghcr.io/paradigmxyz/reth:v2.11.0}
     user: "0:0"
     entrypoint: [sh, /usr/local/bin/execution-entrypoint.sh]
     ports:

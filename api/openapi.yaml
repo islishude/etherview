@@ -1407,6 +1407,27 @@ paths:
                 $ref: "#/components/schemas/ERC20BalanceListResponse"
         default:
           $ref: "#/components/responses/Error"
+  /addresses/{address}/defi-positions:
+    get:
+      operationId: listAddressDeFiPositions
+      tags: [addresses]
+      parameters:
+        - $ref: "#/components/parameters/Address"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: protocol
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeFiProtocol"
+      responses:
+        "200":
+          description: Published canonical direct DeFi positions with explicit per-deployment coverage. Reads never initiate RPC or indexing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeFiPositionsResponse"
+        default:
+          $ref: "#/components/responses/Error"
   /tokens:
     get:
       operationId: listTokens
@@ -5085,6 +5106,200 @@ components:
           $ref: "#/components/schemas/Quantity"
         confidence:
           $ref: "#/components/schemas/StateConfidence"
+    DeFiProtocol:
+      type: string
+      enum: [uniswap-v2, uniswap-v3, uniswap-v4, aave-v3, curve, lido]
+    DeFiAsset:
+      type: object
+      required: [kind, amount]
+      properties:
+        kind:
+          type: string
+          enum: [native, erc20]
+        address:
+          $ref: "#/components/schemas/Address"
+        amount:
+          $ref: "#/components/schemas/Quantity"
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 255
+        symbol:
+          type: string
+          maxLength: 256
+    DeFiRange:
+      type: object
+      required: [lower_tick, upper_tick, current_tick, sqrt_price_x96, in_range]
+      properties:
+        lower_tick:
+          type: integer
+          minimum: -887272
+          maximum: 887272
+        upper_tick:
+          type: integer
+          minimum: -887272
+          maximum: 887272
+        current_tick:
+          type: integer
+          minimum: -887272
+          maximum: 887272
+        sqrt_price_x96:
+          $ref: "#/components/schemas/Quantity"
+        in_range:
+          type: boolean
+    DeFiPosition:
+      type: object
+      required:
+        [
+          id,
+          protocol,
+          deployment,
+          owner,
+          kind,
+          contract,
+          assets,
+          debts,
+          claimable,
+          unsettled_fees,
+          state,
+          limitations,
+          block_number,
+          block_hash,
+        ]
+      properties:
+        id:
+          type: string
+          maxLength: 256
+        protocol:
+          $ref: "#/components/schemas/DeFiProtocol"
+        deployment:
+          type: string
+          maxLength: 64
+        owner:
+          $ref: "#/components/schemas/Address"
+        kind:
+          type: string
+          enum: [liquidity, liquidity-nft, lending, supply, borrow, staking, withdrawal]
+          x-enum-varnames:
+            [
+              DeFiLiquidity,
+              DeFiLiquidityNFT,
+              DeFiLending,
+              DeFiSupply,
+              DeFiBorrow,
+              DeFiStaking,
+              DeFiWithdrawal,
+            ]
+        contract:
+          $ref: "#/components/schemas/Address"
+        token_id:
+          $ref: "#/components/schemas/Quantity"
+        pool:
+          $ref: "#/components/schemas/Address"
+        pool_id:
+          $ref: "#/components/schemas/Hash"
+        hook:
+          $ref: "#/components/schemas/Address"
+        fee:
+          type: integer
+          minimum: 0
+          maximum: 16777215
+        tick_spacing:
+          type: integer
+          minimum: 1
+          maximum: 8388607
+        liquidity:
+          $ref: "#/components/schemas/Quantity"
+        receipt_asset:
+          description: Directly held ERC-20 receipt or debt token at the position snapshot. Not an additional underlying asset or a withdrawal request amount.
+          $ref: "#/components/schemas/DeFiAsset"
+        receipt_amount:
+          $ref: "#/components/schemas/Quantity"
+        range:
+          $ref: "#/components/schemas/DeFiRange"
+        collateral:
+          type: boolean
+        state:
+          type: string
+          enum: [available, pending, claimable, unsupported, unavailable]
+        limitations:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            maxLength: 128
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        assets:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/DeFiAsset"
+        debts:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/DeFiAsset"
+        claimable:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/DeFiAsset"
+        unsettled_fees:
+          type: array
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/DeFiAsset"
+    DeFiDeploymentStatus:
+      type: object
+      required: [protocol, deployment, state]
+      properties:
+        protocol:
+          $ref: "#/components/schemas/DeFiProtocol"
+        deployment:
+          type: string
+          maxLength: 64
+        state:
+          type: string
+          enum: [not_configured, scanning, complete, partial, unavailable]
+        block_number:
+          $ref: "#/components/schemas/Quantity"
+        block_hash:
+          $ref: "#/components/schemas/Hash"
+        coverage_start:
+          $ref: "#/components/schemas/Quantity"
+        coverage_end:
+          $ref: "#/components/schemas/Quantity"
+        updated_at:
+          type: string
+          format: date-time
+        failure_code:
+          type: string
+          maxLength: 128
+    DeFiPositionsPage:
+      type: object
+      required: [positions, deployments]
+      properties:
+        positions:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/DeFiPosition"
+        deployments:
+          type: array
+          maxItems: 38
+          items:
+            $ref: "#/components/schemas/DeFiDeploymentStatus"
+    DeFiPositionsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/DeFiPositionsPage"
+        meta:
+          $ref: "#/components/schemas/Meta"
     ERC20Balance:
       type: object
       required: [chain_id, owner, token_address, balance, confidence]

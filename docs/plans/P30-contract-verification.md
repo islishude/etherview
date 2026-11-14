@@ -1,6 +1,6 @@
 # P30 — Contract Platform & Runtime Operations
 
-Status: `done`
+Status: `in_progress`
 
 This is the canonical plan for contract verification, contract intelligence,
 and the shared runtime/operations platform. Final release gates belong to P70.
@@ -101,6 +101,8 @@ availability does not gate core readiness.
 | P30-T154 | done   | P30-T153                                                      | Session-owned polling and publication for live sync, maintenance, NFT source discovery, mempool and compiler catalogs; safe concurrent compiler-cache startup                                                           | PostgreSQL contention, lost-session takeover, stale-write and Docker cold-start regressions, common and production parity gates                                         |
 | P30-T155 | done   | P30-T154                                                      | Database-wide deadlock gates for managed integration and both runtime layouts, bounded diagnostics and cross-domain concurrency regressions                                                                             | Detector self-tests, PostgreSQL/race, runtime parity and generated/source/documentation gates                                                                           |
 | P30-T156 | done   | P30-T10, P30-T153                                             | Compact verification inputs, durable admission budgets, lightweight status and bounded input retention                                                                                                                  | Input boundaries, multi-replica quotas, retention, compiler and all/split acceptance                                                                                    |
+| P30-T158 | todo   | P20-T35, P40-T36, P50-T90                                     | DeFi production all/split parity and independent deployed-protocol reconciliation                                                                                                                                       | Pinned real-contract runtime fixtures and separate live coverage evidence                                                                                               |
+| P30-T159 | done   | P20-T35, P40-T36, P50-T90                                     | Custom-chain DeFi manifest examples and six-protocol Preview demonstration assets                                                                                                                                       | Deterministic genesis identities, resumable CLI and split/all browser acceptance; local demonstrations only                                                             |
 
 ## Acceptance
 
@@ -167,6 +169,17 @@ of P30-T138; its completed local acceptance does not establish writer IAM enforc
 P70 release gates remain independent.
 
 ## Evidence
+
+P30-T159 completed locally on 2026-11-14 in the ARM64/Docker Desktop worktree
+based on `09623327`, using Reth v2.11.0 and Lighthouse v8.3.2. The complete tool
+catalog passed all/split acceptance: 19 initial scenarios and 42 lifecycle
+actions per layout, exact-block DeFi quantities, restart, repeated-wallet
+reconciliation and bilingual desktop/mobile light/dark browser checks. Both
+layouts retain the clearing transaction's explicit empty post-code evidence;
+omitted or contradictory code and nonce evidence still fails closed.
+Deterministic network/contracts, 33 tool regressions, deployment, Go lint/race,
+dependency, docs and plan checks passed. Local demonstration evidence does not
+complete P30-T158 or independent human review.
 
 P30-T157 completed locally on 2026-11-12 in the working tree based on `ddacb5a5`.
 Reth v2.9.0/Lighthouse v8.3.2 passed metadata, full consensus/finality/restart,

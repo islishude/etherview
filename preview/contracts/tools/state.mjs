@@ -5,6 +5,7 @@ import path from "node:path";
 import { saveState, stringify } from "../client.mjs";
 import { catalog } from "./catalog.mjs";
 import { eventTopics } from "./events.mjs";
+import { requestTitles } from "./requests.mjs";
 
 export function safeID(id) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id)) throw Error("Invalid run ID");
@@ -142,6 +143,14 @@ export function links(state, s) {
       (label === "proxy" || label === "proxyReuse" || s.deployments?.[label])
     )
       add(label + " source", "/address/" + entity + "#code");
+  }
+  for (const [type, hash] of Object.entries(s.entities.requestBlocks ?? {}))
+    add("Request " + type + " — " + requestTitles[type], "/blocks/" + hash + "?tab=requests");
+  if (s.name === "defi" && s.entities.recipient) {
+    add("DeFi assets", "/address/" + s.entities.recipient + "?tab=assets&asset=defi");
+    for (const [protocol, roles] of Object.entries(s.entities.projects ?? {}))
+      for (const [role, address] of Object.entries(roles))
+        add(protocol + " " + role, "/address/" + address);
   }
   if (s.entities.name) add("ENS", "/name/" + encodeURIComponent(s.entities.name));
   if (s.name === "events") {

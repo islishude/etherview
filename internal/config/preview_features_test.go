@@ -123,3 +123,25 @@ func TestPreviewEnablesConsensusAndDurableBlobs(t *testing.T) {
 		t.Fatal("shared Preview YAML must not carry archive credentials")
 	}
 }
+
+func TestPreviewEnablesDeFiWithGeneratedManifest(t *testing.T) {
+	raw, err := os.ReadFile("../../preview/config.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview struct {
+		DeFi DeFiConfig `yaml:"defi"`
+	}
+	if err = yaml.Unmarshal(raw, &preview); err != nil {
+		t.Fatal(err)
+	}
+	if !preview.DeFi.Enabled || preview.DeFi.Manifest != "/etc/etherview/defi/current.json" {
+		t.Fatal("Preview DeFi configuration drift")
+	}
+	if err = validateDeFiConfig(preview.DeFi); err != nil {
+		t.Fatal(err)
+	}
+	if Default().DeFi.Enabled {
+		t.Fatal("production DeFi must remain opt-in")
+	}
+}
