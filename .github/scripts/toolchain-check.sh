@@ -7,7 +7,7 @@ NODE_BIN="${NODE:-node}"
 PNPM_BIN="${PNPM:-pnpm}"
 MINIMUM_GO="go1.27.4"
 MINIMUM_NODE="v26.13.1"
-MINIMUM_PNPM="12.18.0"
+MINIMUM_PNPM="12.21.0"
 
 normalize_version() {
   local raw="$1"
