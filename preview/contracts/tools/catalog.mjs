@@ -1,5 +1,20 @@
 const scenario = (title, requires, actions, checks) => ({ title, requires, actions, checks });
 export const catalog = {
+  requests: scenario(
+    "区块请求 / Block requests",
+    ["consensus"],
+    [],
+    ["五类请求的筛选、展开字段、中英文及手机布局；演示身份不代表质押、提款或退出成功"],
+  ),
+  defi: scenario(
+    "本地 DeFi 演示 / Local DeFi demonstrations",
+    [],
+    ["activity", "finalize"],
+    [
+      "六类协议的资产、债务、区间和提款状态；仅限本地演示，不代表真实协议兼容性",
+      "手动刷新、精确数量、协议筛选、中英文、明暗主题和手机布局",
+    ],
+  ),
   events: scenario(
     "合约事件日志 / Contract event logs",
     ["verification"],
@@ -140,6 +155,7 @@ export const catalog = {
   ),
 };
 export const lifecycle = {
+  defi: ["activity", "finalize"],
   events: ["emit", "upgrade"],
   transactions: ["activity"],
   aa: ["execute", "revert", "bad-signature", "insufficient-prefund"],

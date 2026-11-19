@@ -16,7 +16,7 @@ import {
   request,
   checkScenario,
 } from "./engine.mjs";
-import { assertEventPages, eventTopics, registerEventRanges } from "./events.mjs";
+import { assertEventPages, checkEventPages, eventTopics, registerEventRanges } from "./events.mjs";
 import { createRun, openRun, acquireLock, publicReport, writeReport } from "./state.mjs";
 const endpoints = {
   rpc: "http://127.0.0.1:8545",
@@ -733,4 +733,133 @@ test("ambiguous shared funding retains its writer lock across independent runs",
   assert.equal(first.run.state.funding.steps.owner.status, "submitted");
   assert.equal(released, false);
   assert.throws(() => b.lockSender(address), /Another writer/);
+});
+
+test("temporary API key creation and revocation use the selected isolated Compose project", (t) => {
+  const { run } = fixture(t);
+  const wrapper = path.join(run.dir, "compose-arguments");
+  fs.writeFileSync(
+    wrapper,
+    "#!/usr/bin/env node\nconsole.log(JSON.stringify({args:process.argv.slice(2)}));\n",
+    { mode: 0o700 },
+  );
+  const previous = process.env.COMPOSE;
+  process.env.COMPOSE = wrapper;
+  t.after(() => {
+    if (previous === undefined) delete process.env.COMPOSE;
+    else process.env.COMPOSE = previous;
+  });
+  const engine = new Engine(
+    run,
+    { project: "isolated-preview", "compose-files": "compose.yaml,/tmp/isolated override.yaml" },
+    {},
+  );
+  for (const operation of [
+    ["create", "--name", "fixture"],
+    ["revoke", "fixture-prefix"],
+  ]) {
+    const result = engine.apiKeyAdmin(operation);
+    assert.deepEqual(result.args, [
+      "-f",
+      "compose.yaml",
+      "-f",
+      "/tmp/isolated override.yaml",
+      "-p",
+      "isolated-preview",
+      "exec",
+      "-T",
+      "api",
+      "/etherview",
+      "admin",
+      "api-key",
+      ...operation,
+      "--config=/etc/etherview/config.yaml",
+    ]);
+  }
+});
+
+test("new Preview transactions reserve integer fee headroom without replacing saved or explicit fees", async (t) => {
+  const { keccak256 } = await import("viem");
+  for (const field of ["maxFeePerGas", "gasPrice"]) {
+    for (const explicit of [false, true]) {
+      const { run } = fixture(t);
+      const engine = new Engine(run, {}, {});
+      const scenario = run.state.scenarios.transactions;
+      const input = explicit ? { [field]: 1n } : {};
+      let signed = 0,
+        sent = 0;
+      engine.account = { address: "0x1111111111111111111111111111111111111111" };
+      engine.wallet = () => ({
+        prepareTransactionRequest: async () => ({ [field]: 1n }),
+        signTransaction: async (prepared) => {
+          signed++;
+          assert.equal(prepared[field], explicit ? 1n : 3n);
+          return "0xdead";
+        },
+      });
+      engine.rpc = {
+        async sendRawTransaction({ serializedTransaction }) {
+          sent++;
+          return keccak256(serializedTransaction);
+        },
+      };
+      engine.reconcile = async (step) => {
+        step.status = "mined";
+        step.receipt = { blockNumber: "1" };
+        return true;
+      };
+      await engine.tx(scenario, "fee", input);
+      const hash = scenario.steps.fee.hash;
+      await engine.tx(scenario, "fee", input);
+      assert.equal(scenario.steps.fee.hash, hash);
+      assert.equal(signed, 1);
+      assert.equal(sent, 1);
+    }
+  }
+});
+
+test("event pagination restarts a stale cursor without accepting other bad requests", async (t) => {
+  const { run } = fixture(t);
+  const s = run.state.scenarios.transactions;
+  s.name = "events";
+  const address = "0x" + "ab".repeat(20);
+  s.entities = { verified: address };
+  const e = new Engine(run, {}, {});
+  e.wait = async (read, predicate) => {
+    for (let n = 0; n < 3; n++) if (predicate(await read())) return;
+    throw Error("pagination did not recover");
+  };
+  const row = (n) => ({
+    block_hash: "0x1234",
+    block_number: "10",
+    transaction_index: "1",
+    log: { address, log_index: String(n) },
+  });
+  const routes = [];
+  await checkEventPages(e, s, async (_, route) => {
+    routes.push(route);
+    if (routes.length === 2) return { status: 400, body: { error: { code: "invalid_cursor" } } };
+    if (!route.includes("cursor="))
+      return {
+        status: 200,
+        body: {
+          data: Array.from({ length: 25 }, (_, i) => row(32 - i)),
+          meta: { next_cursor: routes.length === 1 ? "old" : "fresh" },
+        },
+      };
+    return { status: 200, body: { data: [row(7)], meta: {} } };
+  });
+  assert.equal(routes.length, 4);
+  assert.equal(routes[0], routes[2]);
+  assert.match(routes[3], /cursor=fresh/);
+  assert.equal(s.checks.find((c) => c.label === "raw keyset pagination").status, "passed");
+  let calls = 0;
+  await assert.rejects(
+    checkEventPages(e, s, async () => {
+      calls++;
+      if (calls === 1) return { status: 200, body: { data: [], meta: { next_cursor: "cursor" } } };
+      return { status: 400, body: { error: { code: "invalid_query" } } };
+    }),
+  );
+  assert.equal(calls, 2);
 });

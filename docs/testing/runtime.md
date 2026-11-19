@@ -30,7 +30,7 @@
 - `make test-schema-e2e`: use Go orchestration to migrate a fresh PostgreSQL 18
   volume with the production image and verify exact compatibility through
   `migrate status`. The domain baseline spans `0001_core` through
-  `0018_browsing`, with one checksummed ledger entry per file. Integration
+  `0019_defi`, with one checksummed ledger entry per file. Integration
   tests additionally cover repeat/concurrent application, later-file checksum
   and unknown-version rejection, rejection of the previous single-file baseline,
   and isolated-schema function bindings. A conflict in a late file must roll

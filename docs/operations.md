@@ -21,6 +21,8 @@ root. Preview lifecycle, local endpoints, fixtures and tools belong in
 | Configure prepaid credit, payment options and the standalone facilitator               | [Billing and x402 facilitator](operations/billing.md)            |
 | Review compiler proposals or recover dependency-update automation                      | [Dependency and compiler maintenance](operations/maintenance.md) |
 
+See [DeFi indexing](operations/defi.md) for protocol manifests, progress and recovery.
+
 ## Operational boundaries
 
 PostgreSQL owns chain identity, canonical history, leases and atomic publication.

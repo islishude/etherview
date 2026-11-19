@@ -77,8 +77,23 @@ for (const language of ["en", "zh"] as const) {
       await page.evaluate((value) => {
         document.documentElement.dataset.theme = value;
       }, theme);
-      for (const width of [1280, 390]) {
+      for (const width of [1280, 768, 390]) {
         await page.setViewportSize({ width, height: 900 });
+        const buttons = toolbar.locator(".copyable-copy-button, .address-qr-button");
+        await expect(buttons).toHaveCount(3);
+        const boxes = await buttons.evaluateAll((elements) =>
+          elements.map((element) => {
+            const { x, y, width, height } = element.getBoundingClientRect();
+            return { x, y, width, height };
+          }),
+        );
+        for (const [index, box] of boxes.entries()) {
+          expect(box.width).toBe(32);
+          expect(box.height).toBe(32);
+          expect(box.y).toBeCloseTo(boxes[0].y, 0);
+          if (index > 0)
+            expect(box.x - boxes[index - 1].x - boxes[index - 1].width).toBeCloseTo(4, 0);
+        }
         // Inspect settled theme colors, not an intermediate CSS transition frame.
         await toolbar.evaluate(async (element) => {
           await Promise.all(

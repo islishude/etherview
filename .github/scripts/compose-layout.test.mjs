@@ -465,3 +465,17 @@ test("Preview runs Rundler directly after Reth health, with an independent Go ve
     config.services["genesis-verify"].image,
   );
 });
+
+test("Preview API and enrich share the same immutable DeFi network manifest", () => {
+  const config = render(["-f", "compose.yaml"], {
+    PREVIEW_NETWORK_DIR: "/tmp/preview-defi-network",
+  });
+  for (const role of ["api", "enrich"]) {
+    const mounts = config.services[role].volumes.filter(
+      (m) => m.target === "/etc/etherview/defi/current.json",
+    );
+    assert.equal(mounts.length, 1, role);
+    assert.equal(mounts[0].source, "/tmp/preview-defi-network/metadata/defi.json", role);
+    assert.equal(mounts[0].read_only, true, role);
+  }
+});

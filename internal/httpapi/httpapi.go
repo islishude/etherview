@@ -22,6 +22,7 @@ import (
 	"github.com/islishude/etherview/internal/billing"
 	"github.com/islishude/etherview/internal/catalog"
 	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/deficontract"
 	"github.com/islishude/etherview/internal/enscontract"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/mempool"
@@ -134,6 +135,7 @@ type UserAPIKeyAdministration interface {
 }
 
 type Options struct {
+	DeFi                  deficontract.Reader
 	Turnstile             TurnstileValidator
 	ConsensusReader       publicquery.ConsensusReader
 	RequestsReader        publicquery.RequestsReader
@@ -182,6 +184,7 @@ type Options struct {
 }
 
 type Handler struct {
+	defi                  deficontract.Reader
 	turnstile             TurnstileValidator
 	streamAdmission       *streamAdmission
 	consensusReader       publicquery.ConsensusReader
@@ -267,6 +270,7 @@ func New(options Options) (*Handler, error) {
 		delegationHistory:     options.DelegationHistory,
 		genesis:               options.Genesis,
 		catalog:               options.Catalog,
+		defi:                  options.DeFi,
 		userOperations:        options.UserOperations,
 		nativeTransfersReader: options.NativeTransfers,
 		analytics:             options.Analytics,

@@ -78,6 +78,6 @@ observations fail closed. Reorgs retain orphan facts and withdraw publications.
 Address and Etherscan reads share this index; nonce/code and token state remain
 separate. There is no periodic account scan or new history API.
 
-Preview uses Reth v2.9.0 with Lighthouse for the primary 48815 PoS chain; the
+Preview uses Reth v2.11.0 with Lighthouse for the primary 48815 PoS chain; the
 31337 Reth payment fixture remains independent. Existing Geth databases are not
 converted or automatically erased. Fresh isolated volumes establish acceptance.

@@ -28,6 +28,7 @@ export function ChainEventInvalidation() {
     const pending = new Set<ChainEventType>();
     const pendingPublications = new Set<string>();
     let withdrawNames = false;
+    let pendingDeFi = false;
     const flush = () => {
       scheduled = undefined;
       if (disposed) return;
@@ -42,10 +43,15 @@ export function ChainEventInvalidation() {
       pending.clear();
       const publications = [...pendingPublications];
       pendingPublications.clear();
+      const defiPublished = pendingDeFi;
+      pendingDeFi = false;
       for (const query of queryClient.getQueryCache().getAll()) {
         if (!isBrowsingQuery(query)) continue;
         const bounds = browsingBounds(query.state.data);
         const affected =
+          (defiPublished &&
+            query.queryKey[0] === "address" &&
+            query.queryKey[2] === "defi-positions") ||
           (types.includes("reorg") && query.meta?.chainEvents?.includes("reorg")) ||
           (types.includes("names") && query.meta?.chainEvents?.includes("names")) ||
           (query.meta?.chainEvents?.includes("status") &&
@@ -111,6 +117,13 @@ export function ChainEventInvalidation() {
           if (type === "status") {
             try {
               const payload: unknown = JSON.parse((event as MessageEvent).data);
+              if (
+                typeof payload === "object" &&
+                payload !== null &&
+                "reason" in payload &&
+                payload.reason === "defi_publication"
+              )
+                pendingDeFi = true;
               if (
                 typeof payload === "object" &&
                 payload !== null &&

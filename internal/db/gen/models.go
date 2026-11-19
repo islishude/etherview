@@ -797,6 +797,59 @@ type CoreIndexConfiguration struct {
 	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type DefiCandidate struct {
+	RunID     string `db:"run_id" json:"run_id"`
+	Key       string `db:"key" json:"key"`
+	Owner     []byte `db:"owner" json:"owner"`
+	Candidate []byte `db:"candidate" json:"candidate"`
+}
+
+type DefiInstrument struct {
+	RunID   string `db:"run_id" json:"run_id"`
+	Address []byte `db:"address" json:"address"`
+	Pool    []byte `db:"pool" json:"pool"`
+	Kind    string `db:"kind" json:"kind"`
+}
+
+type DefiObservation struct {
+	RunID    string `db:"run_id" json:"run_id"`
+	Key      string `db:"key" json:"key"`
+	Owner    []byte `db:"owner" json:"owner"`
+	State    string `db:"state" json:"state"`
+	Position []byte `db:"position" json:"position"`
+}
+
+type DefiRun struct {
+	ID               string             `db:"id" json:"id"`
+	SourceID         string             `db:"source_id" json:"source_id"`
+	PreviousRun      *string            `db:"previous_run" json:"previous_run"`
+	BlockNumber      pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash        []byte             `db:"block_hash" json:"block_hash"`
+	Attachment       pgtype.Timestamptz `db:"attachment" json:"attachment"`
+	CoverageStart    pgtype.Numeric     `db:"coverage_start" json:"coverage_start"`
+	State            string             `db:"state" json:"state"`
+	InstrumentOffset int64              `db:"instrument_offset" json:"instrument_offset"`
+	ScanNumber       pgtype.Numeric     `db:"scan_number" json:"scan_number"`
+	ScanIndex        int64              `db:"scan_index" json:"scan_index"`
+	AfterCandidate   string             `db:"after_candidate" json:"after_candidate"`
+	FailureCode      string             `db:"failure_code" json:"failure_code"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	PublishedAt      pgtype.Timestamptz `db:"published_at" json:"published_at"`
+}
+
+type DefiSource struct {
+	ID             string             `db:"id" json:"id"`
+	ChainID        pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	Deployment     string             `db:"deployment" json:"deployment"`
+	Protocol       string             `db:"protocol" json:"protocol"`
+	ManifestDigest string             `db:"manifest_digest" json:"manifest_digest"`
+	LeaseToken     *string            `db:"lease_token" json:"lease_token"`
+	LeaseUntil     pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
+	FailureCode    string             `db:"failure_code" json:"failure_code"`
+	Failures       int32              `db:"failures" json:"failures"`
+	NextRunAt      pgtype.Timestamptz `db:"next_run_at" json:"next_run_at"`
+}
+
 type DerivedVerificationAttempt struct {
 	ID                pgtype.UUID        `db:"id" json:"id"`
 	ChainID           pgtype.Numeric     `db:"chain_id" json:"chain_id"`

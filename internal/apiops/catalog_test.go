@@ -362,6 +362,7 @@ func TestEligibleInventoryIsClosed(t *testing.T) {
 		"getTransactionTrace",
 		"getUserOperation",
 		"getVerifierJob",
+		"listAddressDeFiPositions",
 		"listAddressDelegations",
 		"listAddressERC20Balances",
 		"listAddressERC20Transfers",

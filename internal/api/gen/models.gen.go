@@ -1302,6 +1302,141 @@ func (e ContractArtifactResolution) Valid() bool {
 	}
 }
 
+// Defines values for DeFiAssetKind.
+const (
+	DeFiAssetKindErc20  DeFiAssetKind = "erc20"
+	DeFiAssetKindNative DeFiAssetKind = "native"
+)
+
+// Valid indicates whether the value is a known member of the DeFiAssetKind enum.
+func (e DeFiAssetKind) Valid() bool {
+	switch e {
+	case DeFiAssetKindErc20:
+		return true
+	case DeFiAssetKindNative:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeFiDeploymentStatusState.
+const (
+	DeFiDeploymentStatusStateComplete      DeFiDeploymentStatusState = "complete"
+	DeFiDeploymentStatusStateNotConfigured DeFiDeploymentStatusState = "not_configured"
+	DeFiDeploymentStatusStatePartial       DeFiDeploymentStatusState = "partial"
+	DeFiDeploymentStatusStateScanning      DeFiDeploymentStatusState = "scanning"
+	DeFiDeploymentStatusStateUnavailable   DeFiDeploymentStatusState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the DeFiDeploymentStatusState enum.
+func (e DeFiDeploymentStatusState) Valid() bool {
+	switch e {
+	case DeFiDeploymentStatusStateComplete:
+		return true
+	case DeFiDeploymentStatusStateNotConfigured:
+		return true
+	case DeFiDeploymentStatusStatePartial:
+		return true
+	case DeFiDeploymentStatusStateScanning:
+		return true
+	case DeFiDeploymentStatusStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeFiPositionKind.
+const (
+	DeFiBorrow       DeFiPositionKind = "borrow"
+	DeFiLending      DeFiPositionKind = "lending"
+	DeFiLiquidity    DeFiPositionKind = "liquidity"
+	DeFiLiquidityNFT DeFiPositionKind = "liquidity-nft"
+	DeFiStaking      DeFiPositionKind = "staking"
+	DeFiSupply       DeFiPositionKind = "supply"
+	DeFiWithdrawal   DeFiPositionKind = "withdrawal"
+)
+
+// Valid indicates whether the value is a known member of the DeFiPositionKind enum.
+func (e DeFiPositionKind) Valid() bool {
+	switch e {
+	case DeFiBorrow:
+		return true
+	case DeFiLending:
+		return true
+	case DeFiLiquidity:
+		return true
+	case DeFiLiquidityNFT:
+		return true
+	case DeFiStaking:
+		return true
+	case DeFiSupply:
+		return true
+	case DeFiWithdrawal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeFiPositionState.
+const (
+	DeFiPositionStateAvailable   DeFiPositionState = "available"
+	DeFiPositionStateClaimable   DeFiPositionState = "claimable"
+	DeFiPositionStatePending     DeFiPositionState = "pending"
+	DeFiPositionStateUnavailable DeFiPositionState = "unavailable"
+	DeFiPositionStateUnsupported DeFiPositionState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the DeFiPositionState enum.
+func (e DeFiPositionState) Valid() bool {
+	switch e {
+	case DeFiPositionStateAvailable:
+		return true
+	case DeFiPositionStateClaimable:
+		return true
+	case DeFiPositionStatePending:
+		return true
+	case DeFiPositionStateUnavailable:
+		return true
+	case DeFiPositionStateUnsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeFiProtocol.
+const (
+	AaveV3    DeFiProtocol = "aave-v3"
+	Curve     DeFiProtocol = "curve"
+	Lido      DeFiProtocol = "lido"
+	UniswapV2 DeFiProtocol = "uniswap-v2"
+	UniswapV3 DeFiProtocol = "uniswap-v3"
+	UniswapV4 DeFiProtocol = "uniswap-v4"
+)
+
+// Valid indicates whether the value is a known member of the DeFiProtocol enum.
+func (e DeFiProtocol) Valid() bool {
+	switch e {
+	case AaveV3:
+		return true
+	case Curve:
+		return true
+	case Lido:
+		return true
+	case UniswapV2:
+		return true
+	case UniswapV3:
+		return true
+	case UniswapV4:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DelegationBindingReason.
 const (
 	DelegationBindingReasonStateUnavailable DelegationBindingReason = "state_unavailable"
@@ -5503,6 +5638,125 @@ type ContractArtifactTarget struct {
 	CodeHash Hash `json:"code_hash"`
 }
 
+// DeFiAsset defines model for DeFiAsset.
+type DeFiAsset struct {
+	// Address A 20-byte address; responses use the EIP-55 checksum form.
+	Address *Address `json:"address,omitempty"`
+
+	// Amount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Amount   Quantity      `json:"amount"`
+	Decimals *int          `json:"decimals,omitempty"`
+	Kind     DeFiAssetKind `json:"kind"`
+	Symbol   *string       `json:"symbol,omitempty"`
+}
+
+// DeFiAssetKind defines model for DeFiAsset.Kind.
+type DeFiAssetKind string
+
+// DeFiDeploymentStatus defines model for DeFiDeploymentStatus.
+type DeFiDeploymentStatus struct {
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash *Hash `json:"block_hash,omitempty"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber *Quantity `json:"block_number,omitempty"`
+
+	// CoverageEnd A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CoverageEnd *Quantity `json:"coverage_end,omitempty"`
+
+	// CoverageStart A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	CoverageStart *Quantity                 `json:"coverage_start,omitempty"`
+	Deployment    string                    `json:"deployment"`
+	FailureCode   *string                   `json:"failure_code,omitempty"`
+	Protocol      DeFiProtocol              `json:"protocol"`
+	State         DeFiDeploymentStatusState `json:"state"`
+	UpdatedAt     *time.Time                `json:"updated_at,omitempty"`
+}
+
+// DeFiDeploymentStatusState defines model for DeFiDeploymentStatus.State.
+type DeFiDeploymentStatusState string
+
+// DeFiPosition defines model for DeFiPosition.
+type DeFiPosition struct {
+	Assets []DeFiAsset `json:"assets"`
+
+	// BlockHash A 32-byte hash; responses use normalized lowercase hexadecimal.
+	BlockHash Hash `json:"block_hash"`
+
+	// BlockNumber A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	BlockNumber Quantity    `json:"block_number"`
+	Claimable   []DeFiAsset `json:"claimable"`
+	Collateral  *bool       `json:"collateral,omitempty"`
+
+	// Contract A 20-byte address; responses use the EIP-55 checksum form.
+	Contract   Address     `json:"contract"`
+	Debts      []DeFiAsset `json:"debts"`
+	Deployment string      `json:"deployment"`
+	Fee        *int        `json:"fee,omitempty"`
+
+	// Hook A 20-byte address; responses use the EIP-55 checksum form.
+	Hook        *Address         `json:"hook,omitempty"`
+	Id          string           `json:"id"`
+	Kind        DeFiPositionKind `json:"kind"`
+	Limitations []string         `json:"limitations"`
+
+	// Liquidity A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	Liquidity *Quantity `json:"liquidity,omitempty"`
+
+	// Owner A 20-byte address; responses use the EIP-55 checksum form.
+	Owner Address `json:"owner"`
+
+	// Pool A 20-byte address; responses use the EIP-55 checksum form.
+	Pool *Address `json:"pool,omitempty"`
+
+	// PoolId A 32-byte hash; responses use normalized lowercase hexadecimal.
+	PoolId   *Hash        `json:"pool_id,omitempty"`
+	Protocol DeFiProtocol `json:"protocol"`
+	Range    *DeFiRange   `json:"range,omitempty"`
+
+	// ReceiptAmount A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	ReceiptAmount *Quantity         `json:"receipt_amount,omitempty"`
+	ReceiptAsset  *DeFiAsset        `json:"receipt_asset,omitempty"`
+	State         DeFiPositionState `json:"state"`
+	TickSpacing   *int              `json:"tick_spacing,omitempty"`
+
+	// TokenId A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	TokenId       *Quantity   `json:"token_id,omitempty"`
+	UnsettledFees []DeFiAsset `json:"unsettled_fees"`
+}
+
+// DeFiPositionKind defines model for DeFiPosition.Kind.
+type DeFiPositionKind string
+
+// DeFiPositionState defines model for DeFiPosition.State.
+type DeFiPositionState string
+
+// DeFiPositionsPage defines model for DeFiPositionsPage.
+type DeFiPositionsPage struct {
+	Deployments []DeFiDeploymentStatus `json:"deployments"`
+	Positions   []DeFiPosition         `json:"positions"`
+}
+
+// DeFiPositionsResponse defines model for DeFiPositionsResponse.
+type DeFiPositionsResponse struct {
+	Data DeFiPositionsPage `json:"data"`
+	Meta Meta              `json:"meta"`
+}
+
+// DeFiProtocol defines model for DeFiProtocol.
+type DeFiProtocol string
+
+// DeFiRange defines model for DeFiRange.
+type DeFiRange struct {
+	CurrentTick int  `json:"current_tick"`
+	InRange     bool `json:"in_range"`
+	LowerTick   int  `json:"lower_tick"`
+
+	// SqrtPriceX96 A uint256 in the inclusive range 0 through 2^256-1, serialized as a canonical decimal string.
+	SqrtPriceX96 Quantity `json:"sqrt_price_x96"`
+	UpperTick    int      `json:"upper_tick"`
+}
+
 // Decimal A canonical non-negative fixed-point decimal with at most 18 fractional digits.
 type Decimal = string
 
@@ -8371,6 +8625,13 @@ type VerificationAccepted = VerificationJobResponse
 type ListAddressNamesParams struct {
 	Addresses string        `form:"addresses" json:"addresses"`
 	Snapshot  *OpaqueCursor `form:"snapshot,omitempty" json:"snapshot,omitempty"`
+}
+
+// ListAddressDeFiPositionsParams defines parameters for ListAddressDeFiPositions.
+type ListAddressDeFiPositionsParams struct {
+	Cursor   *Cursor       `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit    *Limit        `form:"limit,omitempty" json:"limit,omitempty"`
+	Protocol *DeFiProtocol `form:"protocol,omitempty" json:"protocol,omitempty"`
 }
 
 // ListAddressDelegationsParams defines parameters for ListAddressDelegations.

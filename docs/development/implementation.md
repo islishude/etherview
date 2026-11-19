@@ -12,7 +12,7 @@
 - Do not preserve backward compatibility during active development. The current
   fresh-database baseline is organized by domain in the numbered SQL files under
   `internal/store/migrations/`, from `0001_core.sql` through
-  `0018_browsing.sql`. Each file has its own version and checksum; the
+  `0019_defi.sql`. Each file has its own version and checksum; the
   runner applies all pending files in one transaction under an advisory lock.
   Databases created with the earlier development chain or single-file baseline
   must be recreated as described in the

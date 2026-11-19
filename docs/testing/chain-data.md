@@ -189,3 +189,13 @@ JSON (including runtime bytecode) lives in `web/src/contracts/fixtures/`. Browse
 Read/Write Contract editor regressions, add/remove focus, typed values, hash-only
 URL restoration and bilingual mobile acceptance. These local fixtures do not
 establish P70 production capacity.
+
+## DeFi positions
+
+Run `go test ./internal/defi ./internal/defiread ./internal/httpapi ./internal/app`
+for adapter arithmetic, strict manifests, cursors, HTTP errors and role ownership.
+Run `go run ./e2e/cmd/testintegration -packages ./internal/integration -race -run '^TestDeFi'`
+for canonical publication, immutable values, read-only queries, worker restart,
+lease takeover and incremental background refresh. Browser coverage is in the
+address DeFi unit and Playwright suites. These are local fixtures; P30-T158
+retains separate real-contract production and live deployment acceptance.

@@ -34,16 +34,73 @@ try {
     page.on("pageerror", (e) => errors.push(e.message));
     for (const scenario of report.scenarios) {
       assert.equal(scenario.status, "api_published", scenario.name);
+      if (scenario.name === "requests") {
+        assert.equal(Object.keys(scenario.entities.requestBlocks).length, 5);
+        for (const [type, hash] of Object.entries(scenario.entities.requestBlocks)) {
+          const requestLink = scenario.links.find((l) => l.label.startsWith("Request " + type));
+          assert.ok(requestLink);
+          const requestURL = new URL(requestLink.url);
+          requestURL.port = "";
+          assert.equal(requestURL.pathname, "/blocks/" + hash);
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          await page.goto(requestURL.href);
+          const panel = page.getByRole("tabpanel");
+          await expect(panel.locator(".request-record").first()).toBeVisible({ timeout: 30000 });
+          const filter = panel.getByRole("button", {
+            name: mobile ? /^请求类型:/ : /^Request type:/,
+          });
+          await filter.click();
+          await panel
+            .locator(".request-filter-options")
+            .getByRole("button")
+            .filter({ hasText: type })
+            .click();
+          await expect(panel.locator(".request-record").first()).toBeVisible();
+          await panel.locator(".request-record summary").first().click();
+          await expect(panel.locator(".request-record details").first()).toHaveAttribute(
+            "open",
+            "",
+          );
+          const sample = scenario.entities.requests.find((s) => s.request_type === type);
+          await expect(
+            panel
+              .getByText(sample.pubkey ?? sample.validator_pubkey ?? sample.source_pubkey, {
+                exact: true,
+              })
+              .first(),
+          ).toBeVisible();
+          assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+          await page.evaluate(() => {
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+            window.scrollTo({ top: 0, behavior: "instant" });
+          });
+          await page.screenshot({
+            path:
+              artifacts +
+              "/requests-" +
+              type +
+              "-" +
+              phase +
+              "-" +
+              (mobile ? "mobile" : "desktop") +
+              ".png",
+            fullPage: true,
+          });
+        }
+        continue;
+      }
       const preferred =
-        scenario.name === "events"
-          ? scenario.links.find((l) => l.label === "verified event logs")
-          : scenario.name === "blob"
-            ? scenario.links.find((l) => l.label.endsWith(" blobs"))
-            : scenario.name === "aa"
-              ? scenario.links.find((l) => l.url.includes("/user-op/"))
-              : scenario.name === "contracts"
-                ? scenario.links.find((l) => l.label === "verified source")
-                : undefined;
+        scenario.name === "defi"
+          ? scenario.links.find((l) => l.label === "DeFi assets")
+          : scenario.name === "events"
+            ? scenario.links.find((l) => l.label === "verified event logs")
+            : scenario.name === "blob"
+              ? scenario.links.find((l) => l.label.endsWith(" blobs"))
+              : scenario.name === "aa"
+                ? scenario.links.find((l) => l.url.includes("/user-op/"))
+                : scenario.name === "contracts"
+                  ? scenario.links.find((l) => l.label === "verified source")
+                  : undefined;
       const link =
         preferred ??
         scenario.links.find(
@@ -81,6 +138,24 @@ try {
           await expect(
             page.locator('a[href^="/address/' + implementation + '" i]').first(),
           ).toBeVisible({ timeout: 2000 });
+        if (scenario.name === "defi") {
+          await expect(page.locator(".defi-protocol-group")).toHaveCount(6);
+          await expect(page.locator(".defi-position")).toHaveCount(
+            6 + 3 * Object.keys(scenario.entities.batches).length,
+          );
+          await expect(
+            page.locator(".defi-quantity").filter({ hasText: "49.99625031247265871" }).first(),
+          ).toBeVisible();
+          await expect(page.locator(".address-defi")).toContainText(
+            mobile
+              ? phase.endsWith("final")
+                ? "可领取"
+                : "等待退出"
+              : phase.endsWith("final")
+                ? "Ready to claim"
+                : "Withdrawal pending",
+          );
+        }
         if (scenario.name === "ens")
           await expect(page.locator("h1")).toContainText(scenario.entities.name);
         if (scenario.name === "events") {
@@ -142,6 +217,29 @@ try {
           ".png",
         fullPage: true,
       });
+      if (scenario.name === "defi") {
+        await page.locator("#defi-protocol").selectOption("aave-v3");
+        await expect(page.locator(".defi-position")).toHaveCount(2);
+        await page.locator("#defi-protocol").selectOption("");
+        await expect(page.locator(".defi-position")).toHaveCount(
+          6 + 3 * Object.keys(scenario.entities.batches).length,
+        );
+        await page
+          .getByRole("button", { name: mobile ? "切换颜色主题" : "Switch color theme" })
+          .click();
+        await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+        await expect(page.locator(".defi-protocol-group")).toHaveCount(6);
+        await expect(page.locator(".defi-position")).toHaveCount(
+          6 + 3 * Object.keys(scenario.entities.batches).length,
+        );
+        await page.screenshot({
+          path: `${artifacts}/tools-${phase}-defi-dark-${mobile ? "mobile" : "desktop"}.png`,
+          fullPage: true,
+        });
+        await page
+          .getByRole("button", { name: mobile ? "切换颜色主题" : "Switch color theme" })
+          .click();
+      }
       if (scenario.name === "events") {
         await page
           .getByRole("button", { name: mobile ? /^事件签名:/ : /^Event signature:/ })

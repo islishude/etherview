@@ -14,7 +14,7 @@ const { mnemonicToAccount } = require("viem/accounts");
 const manifest = JSON.parse(
   fs.readFileSync(new URL("../contracts/manifest.json", import.meta.url)),
 );
-const rethImage = "ghcr.io/paradigmxyz/reth:v2.9.0";
+const rethImage = "ghcr.io/paradigmxyz/reth:v2.11.0";
 const chain = defineChain({
   id: 31337,
   name: "Preview payment",

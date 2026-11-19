@@ -68,6 +68,9 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				add("15-pending-mempool")
 			}
 		case components.RoleEnrich:
+			if cfg.DeFi.Enabled {
+				add("40-defi-index")
+			}
 			if cfg.Features.ENS {
 				add("38-ens-collection")
 				addWorkerComponentKeys(add, "39-ens-resolution", cfg.ENS.MaxConcurrency)

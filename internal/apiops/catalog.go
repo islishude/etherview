@@ -236,6 +236,8 @@ var catalog = []Spec{
 	spec("listAddressNFTBalances", "GET", "/addresses/{address}/nfts", true,
 		pathParameter("address", ParameterAddress),
 		cursorParameter(), limitParameter("25")),
+	spec("listAddressDeFiPositions", "GET", "/addresses/{address}/defi-positions", true,
+		pathParameter("address", ParameterAddress), cursorParameter(), limitParameter("25"), queryParameter("protocol", ParameterText)),
 	spec("listAddressERC20Balances", "GET", "/addresses/{address}/erc20-balances", true,
 		pathParameter("address", ParameterAddress),
 		cursorParameter(), limitParameter("25")),

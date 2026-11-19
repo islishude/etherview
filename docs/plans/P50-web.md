@@ -64,6 +64,7 @@ protect browser verification and CSV downloads; address actions use a compact to
 | P50-T87 | done   | P40-T34, P50-T86                   | Compact event browsing with searchable dropdown, draft range filters and expandable logs                                                                                                               | 992 frontend tests, 235 browser tests, keyboard/IME and real Preview range checks                                   |
 | P50-T88 | done   | P40-T35, P50-T87                   | Dynamic indexed-field filters with browser-side indexed event encoding and shared recursive ABI inputs                                                                                                 | Typed encoding, historical identity, pagination, database/browser and all/split acceptance                          |
 | P50-T89 | done   | P50-T01, P50-T05                   | Repository-owned shadcn/ui primitives across explorer, contract, account and administration surfaces; existing brand, native boundaries and business behavior retained                                 | 1012 frontend tests, 41 tooling tests, 241 browser scenarios; asset/CSP, generation and license gates               |
+| P50-T90 | done   | P40-T36                            | Address Assets DeFi tab with protocol filtering, quantities and coverage states                                                                                                                        | Bilingual responsive, accessibility, refresh and browser tests                                                      |
 
 ## Acceptance
 
@@ -178,3 +179,13 @@ and CSP; representative screenshots were reviewed. The unchanged initial asset
 budgets pass at 991967 raw / 297250 gzip bytes. Shared source ownership, local
 adaptations and upstream MIT notice are documented; this UI acceptance does
 not extend live-chain coverage or close P70 release gates.
+
+### DeFi implementation
+
+P50-T90 has passed adapter/RPC fixtures, the PostgreSQL race
+suite for durable publication and restart, read-only cursor/canonical fences,
+and generated OpenAPI clients. Browser acceptance covers 390/768/1440px,
+Chinese/English, light/dark, exact quantities, protocol filtering and accessibility.
+Publication events preserve manual refresh; reorgs withdraw old snapshots.
+Production real-contract all/split and live deployment reconciliation remain
+separate P30-T158 acceptance; no deployment is implicitly enabled.

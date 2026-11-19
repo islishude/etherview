@@ -22,6 +22,7 @@ function fixture(t) {
     "metadata/config.yaml": "PRESET_BASE: mainnet",
     "metadata/genesis.ssz": "state",
     "metadata/ens.json": "{}",
+    "metadata/defi.json": "{}",
     "jwt.hex": "a".repeat(64),
   };
   for (let i = 0; i < 64; i++) {
@@ -140,4 +141,15 @@ test("old volumes reject initialization and generator failure leaves no publishe
   assert.throws(() => prepareNetwork(directory), /failed \(42\)/);
   assert.equal(fs.existsSync(directory), false);
   assert.deepEqual(fs.readdirSync(base), ["docker"]);
+});
+
+test("DeFi manifest is mandatory network material even in a self-consistent file inventory", (t) => {
+  const { directory, manifest } = fixture(t);
+  const file = "metadata/defi.json";
+  fs.writeFileSync(path.join(directory, file), "changed");
+  assert.throws(() => validateNetwork(directory), /integrity mismatch/);
+  fs.unlinkSync(path.join(directory, file));
+  delete manifest.files[file];
+  fs.writeFileSync(path.join(directory, "manifest.json"), JSON.stringify(manifest));
+  assert.throws(() => validateNetwork(directory), /Missing Preview network material/);
 });

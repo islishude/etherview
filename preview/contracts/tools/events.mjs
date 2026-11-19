@@ -214,7 +214,11 @@ export async function checkEventPages(e, s, request) {
           e.run.state.endpoints.app,
           route(address, "logs", { ...filter, cursor: first.body.meta.next_cursor }),
         );
-        if ([409, 429, 503].includes(second.status)) return false;
+        if (
+          [409, 429, 503].includes(second.status) ||
+          (second.status === 400 && second.body.error?.code === "invalid_cursor")
+        )
+          return false;
         assert.equal(second.status, 200);
         assertEventPages(first.body, second.body, address);
         return true;

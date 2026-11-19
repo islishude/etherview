@@ -537,7 +537,7 @@ preview-cert-check:
 	}
 
 preview-network-check: pnpm-install
-	$(GO) test ./tools/genesis-verify
+	$(GO) test ./tools/genesis-verify ./preview/cmd/previewdefimanifest
 	$(NODE) --test preview/scripts/compiler-cache.test.mjs preview/scripts/network.test.mjs preview/scripts/env.test.mjs preview/scripts/verify.test.mjs preview/contracts/admin.test.mjs
 
 preview-env:
@@ -671,7 +671,7 @@ test-preview-tools-e2e-full: pnpm-install preview-cert-check docker-build previe
 	@$(MAKE) --no-print-directory test-preview-tools-e2e-full-prebuilt
 
 test-preview-tools-e2e-full-prebuilt: preview-e2e-check
-	PREVIEW_TOOLS_FULL=1 IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=60m -tags=previewmetadatae2e -run '^TestPreviewToolsFull$$' ./e2e/previewmetadata
+	PREVIEW_TOOLS_FULL=1 IMAGE="$(IMAGE)" DOCKER="$(DOCKER)" COMPOSE="$(COMPOSE)" $(GO) test -count=1 -v -timeout=80m -tags=previewmetadatae2e -run '^TestPreviewToolsFull$$' ./e2e/previewmetadata
 
 check: test-preview-tools
 

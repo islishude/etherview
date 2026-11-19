@@ -195,7 +195,7 @@ func newHarness(t *testing.T) *harness {
 		"PREVIEW_COMPILER_CACHE_DIR":         compilerDirectory,
 		"ETHERVIEW_IMAGE":                    image,
 		"ETHERVIEW_CONFIG_FILE":              filepath.Join(root, "preview", "config.yaml"),
-		"PREVIEW_EXECUTION_IMAGE":            "ghcr.io/paradigmxyz/reth:v2.9.0",
+		"PREVIEW_EXECUTION_IMAGE":            "ghcr.io/paradigmxyz/reth:v2.11.0",
 		"RUSTFS_ACCESS_KEY":                  "etherview",
 		"RUSTFS_SECRET_KEY":                  "etherview-dev-only",
 		"PREVIEW_BLOB_READ_SECRET":           "preview-read-dev-only",

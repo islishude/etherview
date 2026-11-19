@@ -267,6 +267,9 @@ externalSecret:
   otlpTraceHeadersRemoteKey: ""
 
 config:
+  defi:
+    enabled: false
+    manifest: ""
   turnstile:
     enabled: false
     site_key: ""
@@ -568,3 +571,6 @@ blobArchiveServiceAccounts:
 
 # Public, reviewed JSON files mounted only in ENS-owning processes.
 ensManifests: {}
+
+# Current-chain reviewed JSON manifests; mounted only into API/enrich/all.
+defiManifests: {}

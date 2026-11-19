@@ -1,3 +1,4 @@
+import { queryWithdrawn } from "./browsingState";
 import { subscribeNames } from "@/ens/nameEvents";
 import {
   chainQueryMeta,
@@ -305,5 +306,38 @@ describe("durable chain event invalidation", () => {
     view.unmount();
     observer.unmount();
     pager.unmount();
+  });
+  it("marks DeFi publications stale and withdraws them on reorg without rereading", async () => {
+    const client = new QueryClient();
+    const key = ["address", "0xabc", "defi-positions"];
+    client.setQueryDefaults(key, { meta: { ...statusQueryMeta } });
+    client.setQueryData(key, { data: { positions: ["snapshot"] } });
+    const queryFn = vi.fn(async () => ({ data: { positions: ["unexpected"] } }));
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const observer = renderHook(() => useQuery({ queryKey: key, queryFn, staleTime: Infinity }), {
+      wrapper,
+    });
+    const view = render(<ChainEventInvalidation />, { wrapper });
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit(
+        "status",
+        "1",
+        '{"reason":"defi_publication","block_number":"99"}',
+      );
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(client.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(client.getQueryData(key)).toEqual({ data: { positions: ["snapshot"] } });
+    expect(queryFn).not.toHaveBeenCalled();
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit("reorg", "2");
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(queryFn).not.toHaveBeenCalled();
+    expect(queryWithdrawn(client.getQueryCache().find({ queryKey: key })!)).toBe(true);
+    view.unmount();
+    observer.unmount();
   });
 });

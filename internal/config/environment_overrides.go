@@ -227,6 +227,7 @@ func applyStringEnvironment(cfg *Config, lookup func(string) (string, bool), rea
 	setString(lookup, "PRICE_BASE_URL", &cfg.Adapters.PriceBaseURL)
 	setString(lookup, "ENS_POLICY_DIGEST", &cfg.ENS.PolicyDigest)
 	setString(lookup, "ENS_MANIFEST", &cfg.ENS.Manifest)
+	setString(lookup, "DEFI_MANIFEST", &cfg.DeFi.Manifest)
 	setString(lookup, "METADATA_IPFS_GATEWAY", &cfg.Metadata.IPFSGateway)
 	if value, ok := lookup(envPrefix + "METADATA_IMAGE_NAVIGATION_ALLOWED_ORIGINS"); ok {
 		cfg.Metadata.ImageNavigationAllowedOrigins = splitCSV(value)
@@ -516,6 +517,7 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 		"SOURCIFY_UNSAFE_ALLOW_PRIVATE_NETWORKS":              &cfg.Sourcify.UnsafeAllowPrivateNetworks,
 		"FEATURE_NFT_METADATA":                                &cfg.Features.NFTMetadata,
 		"FEATURE_PRICING":                                     &cfg.Features.Pricing,
+		"DEFI_ENABLED":                                        &cfg.DeFi.Enabled,
 		"FEATURE_ENS":                                         &cfg.Features.ENS,
 		"FEATURE_USER_OPERATIONS":                             &cfg.Features.UserOperations,
 		"FEATURE_USER_AUTH":                                   &cfg.Features.UserAuth,

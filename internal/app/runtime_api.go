@@ -56,6 +56,10 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			addressNames   httpapi.AddressNameReader
 			priceProvider  etherscan.PriceProvider
 		)
+		defiReader, err := newDeFiReader(readDB, cfg)
+		if err != nil {
+			return err
+		}
 		ensService, err := newENSReader(db, cfg)
 		if err != nil {
 			return err
@@ -297,7 +301,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			Config:          cfg, Reader: publicReader, TransactionReader: transactionReader, AddressActivities: reader,
 			AddressEnrichment: catalogReader, AddressNames: addressNames,
 			DelegationBindings: delegationBindings, DelegationHistory: catalogReader,
-			Genesis: reader, Catalog: catalogReader, UserOperations: reader, NativeTransfers: writerReader, Web: webHandler,
+			Genesis: reader, Catalog: catalogReader, DeFi: defiReader, UserOperations: reader, NativeTransfers: writerReader, Web: webHandler,
 			WebRoutePattern: webHandler.RoutePattern,
 			Analytics:       analyticsReader,
 			ProxyReader:     proxyReader,

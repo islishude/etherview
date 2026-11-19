@@ -25,6 +25,7 @@ import (
 // error in deterministic configuration order.
 func (c Config) Validate() error {
 	return errors.Join(
+		validateDeFiConfig(c.DeFi),
 		validateServerConfig(c),
 		validateConsensusConfig(c),
 		validateChainWalletConfig(c),

@@ -454,6 +454,7 @@ function AddressHeader({ address }: { address: string }) {
               <>
                 <Button
                   variant="ghost"
+                  size="icon-sm"
                   aria-label={t("actions.showQRCode")}
                   aria-haspopup="dialog"
                   className="address-qr-button"

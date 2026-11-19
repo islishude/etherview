@@ -48,6 +48,8 @@ merging distinct invariants.
 
 ## API, Web, external boundaries, and identity
 
+- [ADR-0060 — Background DeFi Positions](ADR-0060-background-defi-positions.md)
+
 - [ADR-0058 — Background ENS Synchronization and Database-Only Reads](ADR-0058-background-ens-synchronization-and-database-only-reads.md)
   owns current-chain synchronization, registration profiles, directory/history
   publication and database-only reads.

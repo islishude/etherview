@@ -92,6 +92,11 @@ spec:
               mountPath: /etc/etherview/ens
               readOnly: true
             {{- end }}
+            {{- if and $root.Values.defiManifests (or (eq $roleName "all") (eq $roleName "enrich") (eq $roleName "api")) }}
+            - name: defi-manifests
+              mountPath: /etc/etherview/defi
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
       containers:
@@ -327,6 +332,11 @@ spec:
               mountPath: /etc/etherview/ens
               readOnly: true
             {{- end }}
+            {{- if and $root.Values.defiManifests (or (eq $roleName "all") (eq $roleName "enrich") (eq $roleName "api")) }}
+            - name: defi-manifests
+              mountPath: /etc/etherview/defi
+              readOnly: true
+            {{- end }}
             - name: tmp
               mountPath: /tmp
             {{- if and $root.Values.config.features.verification $verificationCapable }}
@@ -352,6 +362,11 @@ spec:
         - name: ens-manifests
           configMap:
             name: {{ include "etherview.fullname" $root }}-ens-manifests
+        {{- end }}
+        {{- if and $root.Values.defiManifests (or (eq $roleName "all") (eq $roleName "enrich") (eq $roleName "api")) }}
+        - name: defi-manifests
+          configMap:
+            name: {{ include "etherview.fullname" $root }}-defi-manifests
         {{- end }}
         - name: tmp
           emptyDir:

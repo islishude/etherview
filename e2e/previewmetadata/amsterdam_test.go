@@ -127,6 +127,7 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
     volumes:
       - ${PREVIEW_COMPILER_CACHE_DIR}:/var/lib/etherview/compilers
       - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
+      - ${PREVIEW_NETWORK_DIR}/metadata/defi.json:/etc/etherview/defi/current.json:ro
       - ` + filepath.Join(h.root, ".local", "preview-tls", "rootCA.pem") + `:/run/ipfs-ca/rootCA.pem:ro
 `
 	if err := os.WriteFile(override, []byte(config), 0600); err != nil {
