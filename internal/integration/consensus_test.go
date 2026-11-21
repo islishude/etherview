@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -69,6 +70,12 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := header.Hash().Hex()
+	headerResponse := func(h beacontypes.Header) any {
+		return map[string]any{"data": map[string]any{"root": h.Hash().Hex(), "header": map[string]any{"message": map[string]string{
+			"slot": strconv.FormatUint(h.Slot, 10), "proposer_index": strconv.FormatUint(h.ProposerIndex, 10),
+			"parent_root": h.ParentRoot.Hex(), "state_root": h.StateRoot.Hex(), "body_root": h.BodyRoot.Hex(),
+		}}}}
+	}
 	var networkConflict atomic.Bool
 	var pruned atomic.Bool
 	var blobRequests atomic.Int64
@@ -86,7 +93,7 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		case "/eth/v1/config/deposit_contract":
 			response = map[string]any{"data": map[string]string{"chain_id": "1"}}
 		case "/eth/v1/beacon/headers/2", "/eth/v1/beacon/headers/head":
-			response = map[string]any{"data": map[string]any{"root": root, "header": map[string]any{"message": map[string]string{"slot": "2", "proposer_index": "9007199254740993", "parent_root": header.ParentRoot.Hex(), "state_root": header.StateRoot.Hex(), "body_root": header.BodyRoot.Hex()}}}}
+			response = headerResponse(header)
 		case "/eth/v2/beacon/blocks/" + root:
 			if pruned.Load() {
 				http.NotFound(w, r)
@@ -150,7 +157,7 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrongHeaderJSON, err := json.Marshal(map[string]any{"data": map[string]any{"root": wrongHeader.Hash().Hex(), "header": map[string]any{"message": wrongHeader}}})
+	wrongHeaderJSON, err := json.Marshal(headerResponse(wrongHeader))
 	if err != nil {
 		t.Fatal(err)
 	}
