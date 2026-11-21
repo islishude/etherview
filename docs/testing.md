@@ -5,6 +5,94 @@ targets are runnable gates; future gates remain in their owning plans. Run
 focused regressions first, then the applicable gates for the changed boundary.
 Commands in these guides run from the repository root.
 
+## Test design
+
+For Node.js (including TypeScript), Go and Solidity, maintain the smallest
+suite that protects against regressions. Test counts, assertion counts and
+coverage percentages are not goals. Honor additional verification the user
+explicitly requests.
+
+### Selecting coverage
+
+- Prefer E2E as the sole verification mechanism when it suffices. Add another
+  layer only when a system needs isolated testing. Security-critical
+  verification and required CI gates still apply.
+- Before writing implementation or tests for a system that needs isolation,
+  define its boundary and enumerate every distinct failure reachable through
+  supported use within it. For each, describe the trigger, observable outcome
+  and verification method. Group equivalent inputs and permutations.
+- Inspect existing tests first. In order, reuse them, extend them, or merge
+  equivalent cases using tables or parameters. Add a test only for an
+  independent, material risk to observable behavior, a documented contract,
+  a real regression or an important invariant. Decide what realistic defect
+  it detects, whether existing coverage detects it, whether removing it
+  materially reduces confidence and why the chosen layer fits.
+- Keep representative cases and distinct boundaries. Assert public behavior
+  and protocol invariants. A new function, branch, file or coverage target
+  alone does not justify a test. Overlap across layers must detect different
+  failures.
+
+### Matching the change
+
+- For documentation, formatting, comments and nonbehavioral tidying, use
+  relevant static checks only. For behavior-preserving refactors, run existing
+  tests and extend them only for an uncovered compatibility risk.
+- For a bug fix, prefer one focused regression in the suite that owns the
+  behavior. Reproduce the failure before the fix when feasible and verify it
+  passes afterward. Add cases for independent failures only.
+- For new behavior or an external contract change, cover the necessary
+  success paths and material failure conditions in existing suites first.
+  Patch size does not determine test count. Run applicable existing checks
+  even when the change needs no new test.
+
+### Stability and maintenance
+
+Use deterministic tests with clear behavioral assertions. Avoid sleeps,
+fragile timing, external services and unstable fixtures. Reproduce optional
+service integration through documented Compose profiles. Avoid combinatorial
+cases, repeated assertions, trivial getters, pass-through wrappers and repeated
+error-text checks. Introduce test frameworks, fixtures, mocks, snapshots,
+helpers or dependencies only for a demonstrated maintenance benefit. Merge
+directly related redundant tests when safe. Preserve valuable security and
+regression coverage regardless of suite size or CI duration.
+
+### Security-critical behavior
+
+Scale verification to the risk for accounting, balances, withdrawals,
+permissions, upgrades, replay, reentrancy and conservation of funds. Apply the
+same standard to consensus, validator rewards, state transitions, deterministic
+execution, cryptographic commitments and proof verification, cross-chain
+deposits and withdrawals, bridge messages, finality and adversarial inputs or
+transitions. Prefer high-value invariants, property tests and adversarial
+scenarios covering independent attack surfaces and critical boundaries.
+Correctness and security take precedence over runtime budgets and test counts.
+
+### Language conventions
+
+- **Node.js and TypeScript.** Exercise public behavior and meaningful module
+  boundaries in existing test files. Parameterize distinct behavioral cases.
+  Avoid excessive mocking, snapshots and retesting library behavior.
+- **Go.** Use concise table-driven tests for distinct behaviors. Private
+  helpers, new branches and equivalent permutations need no separate cases.
+  Fuzz when the input space, parser, consensus or security risk warrants it.
+  Keep an individual fuzz finding as an example only to preserve a regression.
+- **Solidity.** Exercise external contract behavior, permissions, accounting,
+  state machines and protocol invariants. Use unit tests for clear examples
+  and invariant or fuzz tests for properties across inputs or operation
+  sequences. Cover independent precision, rounding, replay and failure paths
+  that affect funds or protocol correctness. Avoid copying every fuzz input
+  into a unit test.
+
+### Running tests
+
+Start with the narrowest relevant test and rerun affected tests after a fix.
+Expand verification for shared interfaces, cross-module behavior, consensus,
+cryptography and security boundaries. Avoid repeated full-suite runs and
+preserve required CI gates. Keep default PR checks fast and deterministic.
+Schedule expensive stress, load, long fuzz and exhaustive invariant runs in
+dedicated periodic or release jobs unless a critical change needs them in
+the PR. Measure runtime and remove duplicate work without test quotas.
+
 ## Common Gates
 
 - `make check`: documentation, source, unit/race, security, license, generation,
@@ -75,24 +163,29 @@ Use this failure matrix instead of repeatedly trying unrelated workarounds:
 
 An approved sandbox-external run is still a local test run. Record the exact
 canonical target and result in the PR or completion report (and the owning
-milestone for planned work); mention the host permission
-boundary only when it materially affected execution. Read-only inspection in
+milestone for planned work). Read-only inspection in
 the in-app browser is useful for diagnosing a built SPA, but it does not
 replace a required `make test-e2e` pass.
 
 ## Evidence Rules
 
-- Record the exact target/command and a concise pass/fail summary in the PR or
-  completion report. For planned work, retain milestone acceptance in the child
-  plan once, with revision/environment and material limits. Do not paste full
-  logs or create plan items merely to record test execution.
-- A targeted test is required for every fixed regression. Place it in the suite
-  that owns the behavior, named for the contract or input condition rather than
-  the incident, audit or redesign that introduced it. Extend an existing table
-  or scenario when setup and assertions match. Consolidation must preserve
-  distinct edge cases and the separate evidence provided by unit, PostgreSQL
-  integration and embedded-browser tests.
-- Integration tests that require optional local services must be reproducible
-  through documented Compose profiles.
-- Load and soak evidence records the revision, dataset, hardware, RPC behavior,
-  duration, throughput, latency, error rate, and index lag.
+- Deliver a reproducible artifact. Give its repository-relative path, relevant
+  version, necessary protocol inputs, commands from the repository root, and
+  expected and observed results so a collaborator can verify the conclusion.
+  Retain only the evidence supporting acceptance and any outstanding gates.
+- Keep host runtime information out of acceptance evidence, including host
+  and user names, absolute local paths, OS and hardware details, processes,
+  environment variables, ports and host logs. For required performance or
+  fault checks, retain the protocol inputs and measured acceptance results.
+- Lead with the strongest verified result and use the project's wording.
+  Group material limits in one section. Report unresolved issues, failed
+  acceptance and outstanding required gates accurately. Omit intermediate
+  errors, discarded approaches, course corrections and explanations of
+  omitted work. Honor explicit requests to omit a topic. Omit AI attribution
+  such as `Generated by` or `Co-authored-by`, formulaic transitions and
+  introductory filler.
+- In the PR or completion report, identify existing tests reused or updated,
+  the independent regression or invariant protected by each new test, checks
+  actually run and important checks outstanding. Claim existing coverage
+  suffices only after inspecting it. For planned work, record acceptance once
+  in the owning milestone. These rules require no separate test plan or report.
