@@ -129,13 +129,13 @@ to roll Pods for ConfigMap changes.
 
 Additional keys in `secrets.existingSecret` are selected through these values:
 
-| Value                                                                                 | Default Secret key                                                                    | Application roles and enablement                                              |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when `config.turnstile.enabled` is true                          |
-| `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                     |
+| Value                                                                                 | Default Secret key                                                                    | Application roles and enablement                                            |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when `config.turnstile.enabled` is true                        |
+| `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                   |
 | `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`sync`, when consensus is enabled                        |
-| `consensusHeadersKey`                                                                 | `consensus-headers`                                                                   | optional headers for the same Beacon roles                                    |
-| `blobArchiveReadAccessKey` / `blobArchiveReadSecretKey` / `blobArchiveReadSessionKey` | `blob-archive-read-access` / `blob-archive-read-secret` / `blob-archive-read-session` | optional read credentials for `api`/`enrich`, when blob archival is enabled            |
+| `consensusHeadersKey`                                                                 | `consensus-headers`                                                                   | optional headers for the same Beacon roles                                  |
+| `blobArchiveReadAccessKey` / `blobArchiveReadSecretKey` / `blobArchiveReadSessionKey` | `blob-archive-read-access` / `blob-archive-read-secret` / `blob-archive-read-session` | optional read credentials for `api`/`enrich`, when blob archival is enabled |
 | `blobArchiveAccessKey` / `blobArchiveSecretKey` / `blobArchiveSessionKey`             | `blob-archive-access` / `blob-archive-secret` / `blob-archive-session`                | optional writer credentials for `all`/`sync`, when blob archival is enabled |
 
 External Secrets uses the corresponding `externalSecret.*RemoteKey` values in

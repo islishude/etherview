@@ -173,11 +173,14 @@ func TestPreviewX402(t *testing.T) {
   api:
     volumes:
       - ${PREVIEW_NETWORK_DIR}/metadata/ens.json:/etc/etherview/ens/current.json:ro
+      - ${PREVIEW_NETWORK_DIR}/metadata/defi.json:/etc/etherview/defi/current.json:ro
       - ${PREVIEW_COMPILER_CACHE_DIR}:/var/lib/etherview/compilers
     command: [serve, --roles=all, --config=/etc/etherview/config.yaml]
     environment:
       ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       ETHERVIEW_ROLES: all
+      ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://execution:8545,ws://execution:8546}
+      ETHERVIEW_CONSENSUS_URL: ${ETHERVIEW_CONSENSUS_URL:-http://lighthouse:5052}
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only
 `), 0600); err != nil {

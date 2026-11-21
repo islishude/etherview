@@ -120,7 +120,7 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 	if err != nil || result.Rewound {
 		return result, err
 	}
-	target, err := c.repo.localTarget(ctx, c.manifest)
+	target, err := c.repo.collectionTarget(ctx, c.manifest, progress, c.options.StoredInputs)
 	var session rpcSession
 	if err == nil && c.pool != nil {
 		endpoint, e := c.pool.Acquire(ethrpc.PurposeState)
@@ -144,6 +144,7 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 		return result, err
 	}
 	deployments := make([]verifiedDeployment, 0, len(c.manifest.Deployments))
+	pending := false
 	for _, d := range c.manifest.Deployments {
 		if d.Number > target.Number.Uint64() {
 			continue
@@ -165,10 +166,17 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 		} else {
 			verified, err = c.repo.localDeployment(ctx, c.manifest, d)
 		}
+		if errors.Is(err, chaininput.ErrPending) {
+			pending = true
+			continue
+		}
 		if err != nil {
 			return result, err
 		}
 		deployments = append(deployments, verified)
+	}
+	if pending {
+		return result, chaininput.ErrPending
 	}
 	next := c.manifest.Start
 	if progress.ScannedNumber.Valid {

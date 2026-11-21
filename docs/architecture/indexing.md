@@ -113,13 +113,13 @@ both runtime layouts. Core head ingestion has its own workers. Historical,
 interactive and stage acquisitions use separate workers. The chain binding and
 exact block hash identify the inputs retained in PostgreSQL.
 
-| Input | PostgreSQL ownership |
-| --- | --- |
-| Trace, state diff and full prestate | `block_inputs` retains the adapter response and endpoint. Supplementary prestate uses the endpoint that supplied the diff. |
+| Input                               | PostgreSQL ownership                                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trace, state diff and full prestate | `block_inputs` retains the adapter response and endpoint. Supplementary prestate uses the endpoint that supplied the diff.                                                              |
 | Beacon block and execution requests | `block_inputs` retains the network identity, header, root-pinned block and applicable envelope. Enrich verifies and publishes the association. Blob bodies live in the durable archive. |
-| BAL body | `bal_acquisitions` tracks acquisition for an authenticated BAL-bearing header. `native_balance_blocks` retains the verified body for replay. |
-| Code, storage and contract calls | `state_input_groups` pins related reads to an endpoint. `stage_state_inputs` retains each result or revert, so a processor can release its lease while an input is missing. |
-| Interactive account and token state | `balance_acquisitions` and `account_inputs` coalesce bounded requests. Waiters release their snapshots and recheck canonicality before returning. |
+| BAL body                            | `bal_acquisitions` tracks acquisition for an authenticated BAL-bearing header. `native_balance_blocks` retains the verified body for replay.                                            |
+| Code, storage and contract calls    | `state_input_groups` pins related reads to an endpoint. `stage_state_inputs` retains each result or revert, so a processor can release its lease while an input is missing.             |
+| Interactive account and token state | `balance_acquisitions` and `account_inputs` coalesce bounded requests. Waiters release their snapshots and recheck canonicality before returning.                                       |
 
 Acquisition leases fence writes to the input store. Each processor acquires its
 own publication lease and rechecks canonical identity before exposing output.
