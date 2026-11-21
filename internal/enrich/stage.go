@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chaininput"
 	"github.com/islishude/etherview/internal/stagecontract"
 )
 
@@ -156,9 +157,12 @@ type leaseHeartbeatGuard struct {
 	finished bool
 }
 
+var errInputPending = chaininput.ErrPending
+
 type Retry struct {
-	Reason string
-	After  time.Duration
+	WaitingForInput bool
+	Reason          string
+	After           time.Duration
 }
 
 // JobQueue is the correctness boundary for durable enrichment scheduling.
@@ -534,11 +538,15 @@ func (worker *Worker) record(
 	// keeping a second worker-local limit can terminate an eight-attempt worker
 	// while the durable producer granted ten attempts.
 	retry := Retry{Reason: completed.err.Error(), After: worker.retryDelay(lease.Job.Attempt)}
+	if errors.Is(completed.err, errInputPending) {
+		retry.WaitingForInput = true
+		retry.After = worker.options.PollInterval
+	}
 	if err := worker.queue.Retry(ctx, lease, retry); err != nil {
 		return fmt.Errorf("retry enrichment job: %w", err)
 	}
 	result, status, code := "retry", "queued", "retryable_failure"
-	if lease.Job.MaxAttempts > 0 && lease.Job.Attempt >= lease.Job.MaxAttempts {
+	if !retry.WaitingForInput && lease.Job.MaxAttempts > 0 && lease.Job.Attempt >= lease.Job.MaxAttempts {
 		result, status, code = "failed", "failed", "attempts_exhausted"
 	}
 	worker.observe(worker.errorTransition(

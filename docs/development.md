@@ -72,6 +72,50 @@ the [catalog watermarks](plans/index.md#identifier-allocation) reserve removed
 numbers. Long-lived code TODOs should link to an actionable issue or existing
 milestone; they do not automatically justify creating a plan item.
 
+## Coding and abstraction
+
+- While a plan is incomplete, breaking changes are allowed. Refactor or
+  rewrite as extensively as current requirements warrant. Replace obsolete
+  interfaces and implementations directly, updating callers and documentation
+  together. Avoid compatibility code that serves only the unfinished design.
+- Use the standard library and mature third-party libraries wherever possible.
+  Implement an existing capability yourself only for a specific reason.
+- Before adding or changing a domain string or number, check its owning
+  module and dependencies for a definition with the same meaning. For
+  example, reuse `rawdb.HashScheme` and `rawdb.PathScheme` for state schemes.
+- When a meaning recurs and no definition exists, name the constant in the
+  smallest shared scope of its owning module. Update equivalent uses touched
+  by the change. Include the purpose and any necessary unit in the name.
+  Give equal values with different meanings separate names. Keep ordinary
+  counts, indices and independent test expectations as readable literals.
+- Keep one operation in one function unless its parts compose or are reused.
+  Inline one-off helpers at the call site by default. Extract when callers
+  reuse the logic, when it hides a genuinely complex boundary, or when a
+  distinct name makes the caller easier to understand.
+- Validate unknown values once at entry. Trust guarantees already established
+  by a schema, constructor or internal type. Prefer concrete types and narrow
+  interfaces expressing the required capability over `any`.
+
+## Review and repair scope
+
+Report every real issue, including rare failures reachable through supported
+use. These limits govern fixes. When the behavior is correct, say so directly.
+
+- Unless the project specifies otherwise, assume the operator is a
+  collaborator on their own machine. Validate at the actual trust boundary.
+- Add a hash, checksum or fingerprint only when it replaces materially more
+  expensive work and its result changes the next action.
+- Introduce flags, migration frameworks, compatibility layers or wrappers
+  only for situations the project can encounter. Consider unusual encodings,
+  symlink races and millisecond timing windows when supported use can reach them.
+- Before adding complexity for a speculative or highly unlikely race or
+  security edge case, explain the failure mode, likelihood and maintenance
+  cost and obtain the user's agreement.
+- Make direct judgments without scoring rubrics, checklists or repeated
+  verification of settled questions. Explicit user, project and higher-priority
+  security, migration, validation and review requirements still apply, including
+  protocol hash authentication, security invariants and release gates.
+
 ## Change workflow
 
 1. Inspect staged, unstaged, and untracked files. Preserve all pre-existing
@@ -85,7 +129,13 @@ milestone; they do not automatically justify creating a plan item.
    without editing plans.
 4. Implement the behavior and focused regressions together. Keep monolith and
    split-role behavior aligned when the change crosses process boundaries.
-5. Run targeted checks first, then the applicable maintained gates. Follow
+5. When several approaches fit, choose one and state the tradeoff. Ask only
+   when the options differ materially or reversal is difficult. Note
+   nonblocking details and continue. Before each check, identify the concrete
+   failure it detects and what action a failure would change. Skip checks
+   without such a purpose. Run targeted checks first, then the applicable
+   maintained gates. Once checks pass, proceed to delivery unless a new
+   change, failure or open question warrants another run. Follow
    `docs/testing.md` when a browser, Docker, cache, or service boundary is
    involved.
 6. Record concise commands, results and limitations in the PR or completion
@@ -95,7 +145,7 @@ milestone; they do not automatically justify creating a plan item.
 
 ## Completion checklist
 
-- Add regressions for malformed inputs and, where relevant, reorgs,
+- Verify regression coverage for malformed inputs and, where relevant, reorgs,
   canonicality, optional-capability loss, numeric bounds, concurrency, and
   security-sensitive parsing.
 - Run the smallest focused checks before broader gates. The Makefile is command

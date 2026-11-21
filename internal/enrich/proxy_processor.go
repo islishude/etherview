@@ -209,8 +209,8 @@ func NewPostgresProxyProcessorWithOptions(
 	limits ProxyLimits,
 	options ProxyDetectionOptions,
 ) (*PostgresProxyProcessor, error) {
-	if db == nil || pool == nil {
-		return nil, errors.New("proxy processor requires a database and RPC pool")
+	if db == nil {
+		return nil, errors.New("proxy processor requires a database")
 	}
 	limits.defaults()
 	if err := limits.validate(); err != nil {
@@ -230,7 +230,7 @@ func (processor *PostgresProxyProcessor) ProcessLease(
 }
 
 func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (StageResult, error) {
-	if processor == nil || processor.db == nil || processor.pool == nil {
+	if processor == nil || processor.db == nil {
 		return StageResult{}, errors.New("process proxy stage using unconfigured processor")
 	}
 	if err := job.Validate(); err != nil {
@@ -249,12 +249,12 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 	if len(candidates) == 0 && len(uupsTargets) == 0 {
 		return processor.persist(ctx, job, nil, nil, nil, events, "complete")
 	}
-	endpoint, err := processor.pool.Acquire(ethrpc.PurposeState)
+	endpoint, err := openStageState(ctx, processor.db, processor.pool, job)
 	if err != nil {
-		return StageResult{}, Unavailable(errors.New("state RPC endpoint is unavailable"))
+		return StageResult{}, err
 	}
 	detector := rpcProxyDetector{
-		caller: endpoint.Client, limits: processor.limits,
+		caller: endpoint, limits: processor.limits,
 		memo:           &proxyDetectionRPCMemo{code: make(map[proxyCodeCacheKey][]byte)},
 		safeEnabled:    processor.options.SafeEnabled,
 		diamondEnabled: processor.options.DiamondEnabled,
@@ -267,11 +267,10 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 		},
 	}
 	uupsResults, err := probeUUPSReplayTargets(
-		ctx, endpoint.Client, job, uupsTargets, processor.limits.MaxCodeBytes,
+		ctx, endpoint, job, uupsTargets, processor.limits.MaxCodeBytes,
 	)
 	if err != nil {
-		processor.pool.ReportFailure(endpoint.Name)
-		return StageResult{}, err
+		return StageResult{}, endpoint.check(err)
 	}
 	for _, result := range uupsResults {
 		identity := ProxyDetectionCacheKey{ChainID: job.ChainID, Address: result.target.address, BlockNumber: job.BlockNumber, BlockHash: job.BlockHash, DetectorVersion: ProxyDetectorFrameworkVersion}
@@ -288,8 +287,7 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 	}
 	detections, err := detector.detectBlock(ctx, job, proxyCandidates)
 	if err != nil {
-		processor.pool.ReportFailure(endpoint.Name)
-		return StageResult{}, err
+		return StageResult{}, endpoint.check(err)
 	}
 	for _, detection := range detections {
 		if detection.proxy == nil && detection.rejected == "" &&
@@ -299,9 +297,10 @@ func (processor *PostgresProxyProcessor) Process(ctx context.Context, job Job) (
 	}
 	beacons, err := detector.detectBeaconBlock(ctx, job, beaconCandidates)
 	if err != nil {
-		processor.pool.ReportFailure(endpoint.Name)
+		return StageResult{}, endpoint.check(err)
+	}
+	if err := endpoint.check(nil); err != nil {
 		return StageResult{}, err
 	}
-	processor.pool.ReportSuccess(endpoint.Name)
 	return processor.persist(ctx, job, detections, beacons, uupsResults, events, "complete")
 }

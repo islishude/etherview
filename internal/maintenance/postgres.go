@@ -28,7 +28,8 @@ const (
 // release. This supplies crash-safe lease ownership without pretending that
 // repair_requests has token/expiry columns that do not exist in the schema.
 type PostgresRepository struct {
-	acquire func(context.Context) (sessionConnection, error)
+	operation Operation
+	acquire   func(context.Context) (sessionConnection, error)
 }
 
 // sessionConnection keeps query execution and lock ownership on one session.
@@ -120,7 +121,16 @@ type claimCursor struct {
 	id          int64
 }
 
-func queryCandidateBatch(ctx context.Context, tx pgx.Tx, cursor claimCursor) ([]claimCandidate, error) {
+// ForOperation restricts claim selection before row locking and pagination.
+func (repository PostgresRepository) ForOperation(operation Operation) (*PostgresRepository, error) {
+	if err := operation.Validate(); err != nil {
+		return nil, err
+	}
+	repository.operation = operation
+	return &repository, nil
+}
+
+func queryCandidateBatch(ctx context.Context, tx pgx.Tx, cursor claimCursor, operation Operation) ([]claimCandidate, error) {
 	requestedAt := cursor.requestedAt
 	if requestedAt.IsZero() {
 		requestedAt = time.Unix(0, 0).UTC()
@@ -132,7 +142,7 @@ func queryCandidateBatch(ctx context.Context, tx pgx.Tx, cursor claimCursor) ([]
 		if cursor.statusRank < -2147483648 || cursor.statusRank > 2147483647 {
 			return nil, errors.New("invalid stored query value")
 		}
-		return dbgen.New(tx).MaintenanceLegacyClaimCandidates(ctx, dbgen.MaintenanceLegacyClaimCandidatesParams{Limit: int32(claimBatchSize), HasCursor: cursor.set, CursorStatusRank: int32(cursor.statusRank), CursorRequestedAt: pgtype.Timestamptz{Time: requestedAt, Valid: true}, CursorID: cursor.id})
+		return dbgen.New(tx).MaintenanceLegacyClaimCandidates(ctx, dbgen.MaintenanceLegacyClaimCandidatesParams{OperationFilter: string(operation), Limit: int32(claimBatchSize), HasCursor: cursor.set, CursorStatusRank: int32(cursor.statusRank), CursorRequestedAt: pgtype.Timestamptz{Time: requestedAt, Valid: true}, CursorID: cursor.id})
 	}()
 	if err != nil {
 		return nil, fmt.Errorf("query maintenance candidates: %w", err)
@@ -218,7 +228,7 @@ func (repository *PostgresRepository) Claim(ctx context.Context, workerID string
 	}()
 	cursor := claimCursor{}
 	for {
-		candidates, err := queryCandidateBatch(ctx, tx, cursor)
+		candidates, err := queryCandidateBatch(ctx, tx, cursor, repository.operation)
 		if err != nil {
 			return Lease{}, false, err
 		}

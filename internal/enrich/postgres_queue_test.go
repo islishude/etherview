@@ -455,13 +455,13 @@ func TestPostgresLeaseMutationsAreTokenAndExpiryConditional(t *testing.T) {
 			if !strings.Contains(query, "available_at = CASE") || !strings.Contains(query, "RETURNING status") {
 				return nil, fmt.Errorf("unexpected query: %s", query)
 			}
-			if !strings.Contains(query, "WHEN attempts >= max_attempts THEN 'failed'") {
+			if !strings.Contains(query, "AND attempts >= max_attempts THEN 'failed'") {
 				t.Errorf("retry does not terminally fail an exhausted job:\n%s", query)
 			}
-			if !testpgx.TextPointerEquals(arguments[8], "owned-token") {
+			if !testpgx.TextPointerEquals(arguments[9], "owned-token") {
 				return &testpgx.Rows{ColumnNames: []string{"status", "replay_pending"}}, nil
 			}
-			retryReason = *arguments[1].(*string)
+			retryReason = *arguments[2].(*string)
 			return &testpgx.Rows{ColumnNames: []string{"status", "replay_pending"}, ValuesList: [][]any{{"queued", false}}}, nil
 		},
 	}

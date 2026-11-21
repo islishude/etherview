@@ -6,23 +6,22 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/adraffy/go-ens-normalize/ensip15"
-	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/consensus"
 	"strconv"
 	"strings"
 	"time"
 
-	dbaccess "github.com/islishude/etherview/internal/db"
-	pgx "github.com/jackc/pgx/v5"
-	pgtype "github.com/jackc/pgx/v5/pgtype"
-
+	"github.com/adraffy/go-ens-normalize/ensip15"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/islishude/etherview/internal/api/gen"
+	"github.com/islishude/etherview/internal/config"
+	"github.com/islishude/etherview/internal/consensus"
+	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/publicquery"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 var ErrInvalidCursor = publicquery.ErrInvalidCursor
@@ -43,6 +42,7 @@ type RuntimeStatus struct {
 type RuntimeStatusFunc func(context.Context) (RuntimeStatus, bool, error)
 
 type Options struct {
+	SyncCapabilities      func(gen.Completeness) gen.Completeness
 	Consensus             config.ConsensusConfig
 	BlobArchive           consensus.Archive
 	ChainID               uint64
@@ -55,6 +55,7 @@ type Options struct {
 }
 
 type PostgresReader struct {
+	syncCapabilities    func(gen.Completeness) gen.Completeness
 	consensus           config.ConsensusConfig
 	blobArchive         consensus.Archive
 	db                  dbaccess.Database
@@ -100,8 +101,8 @@ func NewPostgresReader(db dbaccess.Database, options Options) (*PostgresReader, 
 		startBlock:    options.StartBlock,
 		latestBlock:   options.LatestBlock,
 		runtimeStatus: options.RuntimeStatus,
-		completeness:  completeness,
-		namePolicy:    options.NamePolicy,
+		completeness:  completeness, syncCapabilities: options.SyncCapabilities,
+		namePolicy: options.NamePolicy,
 	}
 	if options.UserOperationRegistry != nil && len(options.UserOperationRegistry.Entries()) > 0 {
 		digest := options.UserOperationRegistry.Digest()
@@ -128,7 +129,7 @@ func (r *PostgresReader) status(
 		Consensus:     r.consensusOverview(ctx, queryer),
 		CoverageStart: r.startBlock,
 		CoverageEnd:   r.startBlock,
-		Completeness:  r.completeness,
+		Completeness:  r.currentCompleteness(),
 	}
 	var configuredStart, contiguousEnd, checkpointHeight, highestEnd pgtype.Text
 	var contiguousHash, checkpointHash, highestHash []byte
@@ -791,4 +792,11 @@ func equalBytes(left, right []byte) bool {
 		}
 	}
 	return true
+}
+
+func (r *PostgresReader) currentCompleteness() gen.Completeness {
+	if r.syncCapabilities != nil {
+		return r.syncCapabilities(r.completeness)
+	}
+	return r.completeness
 }

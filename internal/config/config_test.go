@@ -1478,16 +1478,15 @@ func TestAPIVerificationReadsRequireAPIKeyAuthentication(t *testing.T) {
 	}
 }
 
-func TestEnrichRoleRequiresRPCForBlockPinnedTokenDetection(t *testing.T) {
+func TestEnrichRoleConsumesBlockPinnedInputsWithoutRPC(t *testing.T) {
 	t.Parallel()
 	cfg := Default()
 	cfg.Database.URL = "postgres://localhost/etherview"
-	if err := cfg.ValidateForRoles([]string{"enrich"}); err == nil || !strings.Contains(err.Error(), "rpc endpoint") {
-		t.Fatalf("unexpected missing RPC error: %v", err)
-	}
-	cfg.RPC.Endpoints = []RPCEndpoint{{Name: "state", URL: "http://localhost:8545", Purposes: []string{"state"}}}
 	if err := cfg.ValidateForRoles([]string{"enrich"}); err != nil {
 		t.Fatal(err)
+	}
+	if err := cfg.ValidateForRoles([]string{"sync"}); err == nil || !strings.Contains(err.Error(), "rpc endpoint") {
+		t.Fatalf("sync validation = %v", err)
 	}
 }
 

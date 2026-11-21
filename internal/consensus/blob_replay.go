@@ -31,19 +31,13 @@ func RestoreReferences(refs, retained []BlobReference, namespace string) ([]Blob
 
 func (c *Client) archiveReference(ctx context.Context, archive Archive, namespace string, observation Observation, ref BlobReference) (BlobReference, error) {
 	if ref.ObjectKey != "" {
-		data, err := archive.Read(ctx, ref.ObjectKey, ref.SHA256)
-		if err == nil {
-			sum := sha256.Sum256(data)
-			if "0x"+hex.EncodeToString(sum[:]) != ref.SHA256 {
-				return BlobReference{}, failure("blob_storage_integrity")
-			}
-			if _, err := validateBlob("0x"+hex.EncodeToString(data), ref); err != nil {
-				return BlobReference{}, err
-			}
+		found, err := ArchivedReference(ctx, archive, ref)
+		if err != nil {
+			return BlobReference{}, err
+		}
+		if found {
 			return ref, nil
 		}
-		// Missing objects may be repaired from the exact upstream block.
-		// Create remains conditional: corrupt existing keys are never overwritten.
 	}
 	data, err := c.blob(ctx, observation, ref)
 	if err != nil {
@@ -61,4 +55,21 @@ func (c *Client) archiveReference(ctx context.Context, archive Archive, namespac
 	}
 	ref.SHA256 = digest
 	return ref, nil
+}
+
+// ArchivedReference verifies content against the manifest before lease-fenced publication.
+func ArchivedReference(ctx context.Context, archive Archive, ref BlobReference) (bool, error) {
+	if ref.ObjectKey == "" {
+		return false, nil
+	}
+	data, err := archive.Read(ctx, ref.ObjectKey, ref.SHA256)
+	if err != nil {
+		return false, nil
+	}
+	sum := sha256.Sum256(data)
+	if "0x"+hex.EncodeToString(sum[:]) != ref.SHA256 {
+		return false, failure("blob_storage_integrity")
+	}
+	_, err = validateBlob("0x"+hex.EncodeToString(data), ref)
+	return err == nil, err
 }

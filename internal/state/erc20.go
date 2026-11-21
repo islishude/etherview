@@ -40,7 +40,7 @@ func (reconciler *TokenReconciler) ERC20Balances(
 	ownerAddressText string,
 	candidates []catalog.ERC20BalanceCandidate,
 ) ([]catalog.ERC20BalanceObservation, error) {
-	if reconciler == nil || reconciler.db == nil || reconciler.pool == nil || reconciler.canonical == nil {
+	if reconciler == nil || reconciler.db == nil || (reconciler.pool == nil && reconciler.inputs == nil) || reconciler.canonical == nil {
 		return nil, erc20RPCUnavailable()
 	}
 	if len(candidates) == 0 {
@@ -91,14 +91,33 @@ func (reconciler *TokenReconciler) ERC20Balances(
 		}
 		return observations, nil
 	}
-	endpoint, err := reconciler.pool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		return nil, erc20RPCUnavailable()
-	}
-	batchResults, err := callERC20BalanceBatch(ctx, endpoint, reference, owner, parsed, missing)
-	if err != nil {
-		reconciler.pool.ReportFailure(endpoint.Name)
-		return nil, err
+	var batchResults []erc20BalanceBatchResult
+	if reconciler.inputs != nil {
+		candidates := make([]parsedNFTCandidate, len(parsed))
+		for i, a := range parsed {
+			candidates[i] = parsedNFTCandidate{standard: standardERC20, address: a}
+		}
+		input, e := reconciler.inputs.accountInput(ctx, reference, "tokenBatch@1", owner, tokenCandidates(candidates, missing))
+		if e != nil || len(input.TokenResults) != len(missing) {
+			return nil, erc20RPCUnavailable()
+		}
+		for i, result := range input.TokenResults {
+			if result.Reverted || len(result.Value) != 32 {
+				return nil, erc20RPCUnavailable()
+			}
+			batchResults = append(batchResults, erc20BalanceBatchResult{index: missing[i], observation: catalog.ERC20BalanceObservation{Balance: new(big.Int).SetBytes(result.Value).String(), Confidence: catalog.NFTStateConfidenceRPCExact}})
+		}
+	} else {
+		endpoint, err := reconciler.pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return nil, erc20RPCUnavailable()
+		}
+		batchResults, err = callERC20BalanceBatch(ctx, endpoint, reference, owner, parsed, missing)
+		if err != nil {
+			reconciler.pool.ReportFailure(endpoint.Name)
+			return nil, err
+		}
+		reconciler.pool.ReportSuccess(endpoint.Name)
 	}
 	for _, result := range batchResults {
 		observations[result.index] = result.observation
@@ -106,7 +125,6 @@ func (reconciler *TokenReconciler) ERC20Balances(
 	if err := reconciler.requireCanonicalERC20(ctx, reference); err != nil {
 		return nil, err
 	}
-	reconciler.pool.ReportSuccess(endpoint.Name)
 	if err := reconciler.persistERC20Balances(ctx, chainID, owner, parsed, observations, missing, reference); err != nil {
 		return nil, err
 	}

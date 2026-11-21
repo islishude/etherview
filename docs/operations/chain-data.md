@@ -96,9 +96,9 @@ Collection reads core canonical blocks, logs and coverage from PostgreSQL. It
 never fills core gaps over a separate RPC. Restore missing history through the
 core sync/backfill procedures. Its independent cursor advances in bounded
 batches and checks attachment timestamps on restart and reorg. Exact state
-resolution uses the current-chain RPC pool, one sticky endpoint and block hash,
-outside database transactions. The pool and its credentials follow the existing
-current-chain role boundaries; there is no dedicated ENS RPC secret or service.
+resolution uses PostgreSQL inputs acquired by sync on one endpoint at the target
+block hash. Provide node credentials to the sync process. Enrich owns CCIP
+gateway access and resumes resolution when its inputs become available.
 `ens.max_concurrency` bounds resolution lanes independently of other enrich
 workers. Collection has an eight-block batch and one-minute round budget;
 `ens.request_timeout` bounds each resolution. Configure `ens.gateways` for
@@ -223,8 +223,8 @@ hashes.
 Amsterdam block responses expose exact decimal `slot_number` and
 `block_access_list_hash` when present in the authenticated execution header.
 Pre-upgrade blocks omit them and cause no BAL RPC or capability probes.
-The always-on `native_balance@1` stage fetches BAL only after authenticating a
-header with `BlockAccessListHash`. It requests `eth_getBlockAccessListRaw` by
+The always-on `native_balance@1` stage requests acquisition after authenticating a
+header with `BlockAccessListHash`. Sync requests `eth_getBlockAccessListRaw` by
 hash and falls back to `eth_getBlockAccessList` only for method-not-found.
 Endpoint selection honors pool health. A transport failure or missing body
 tries another state endpoint with the same exact hash; transport failures
@@ -239,6 +239,9 @@ addresses and coverage gaps trigger an exact EIP-1898 state request; zero values
 are persisted too. This is request-driven, not a periodic balance scan. Token
 balances, nonce and code retain their existing state paths. Unsupported BAL
 methods are cached per endpoint for one minute without disabling state RPC.
+Etherscan `balance` and `balancemulti` queue missing balances in PostgreSQL.
+Sync reads each batch at its exact canonical block hash. API waiters share the
+result and expire within the server request timeout.
 After enabling a BAL-capable endpoint, use `reindex --stage native_balance`
 for a reviewed canonical range to retry unavailable blocks. Replay and reorg
 revoke coverage; retained authenticated bodies can be replayed without RPC.
@@ -260,10 +263,11 @@ See [Preview genesis updates](../../preview/docs/operations.md#genesis-updates).
 
 ## Optional consensus and blob archives
 
-Enable `consensus.enabled` to collect Beacon observations through the enrich
+Enable `consensus.enabled` to collect Beacon observations through the sync
 role. Configure `ETHERVIEW_CONSENSUS_URL` and optionally a JSON string-map in
 `ETHERVIEW_CONSENSUS_HEADERS`; their `_FILE` variants accept mounted secrets.
-Only enrich/all reads these credentials. The endpoint may be a controlled
+Sync reads these credentials for discovery, overview polling and per-block
+collection. Enrich consumes authenticated inputs from PostgreSQL. The endpoint may be a controlled
 internal HTTP service; redirects are rejected. API instances read PostgreSQL.
 
 `ETHERVIEW_CONSENSUS_ENABLED`, `ETHERVIEW_CONSENSUS_POLL_INTERVAL` (12s),
@@ -292,8 +296,7 @@ closed; the five supported types include the pinned builder request draft.
 Historical discovery also covers requests. Retry a selected range with
 `reindex --stage requests` and the existing reason/finalized-range safeguards.
 Retained sets are rehashed against the exact execution header before replay, so
-intact PostgreSQL history can be republished after envelope pruning. Current
-network identity must still be available. A corrupt retained set requires
+intact PostgreSQL history can be republished after envelope pruning. Replay checks the stored network identity and reported network conflicts. A corrupt retained set requires
 restoring verified database data; replay never silently overwrites it. Existing
 development databases must be recreated for the changed fresh baseline.
 
@@ -304,16 +307,16 @@ Provision a dedicated bucket without expiry or cache eviction and configure
 Optional static secrets `ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY`,
 `ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY`, and
 `ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN` also support `_FILE`; absent keys use
-the AWS SDK credential chain. Enrich/all requires conditional PutObject and
-GetObject; API requires GetObject only. Compose uses `ETHERVIEW_CONSENSUS_BLOBS_READ_ACCESS_KEY`,
+the AWS SDK credential chain. Sync/all requires conditional PutObject and GetObject. API and enrich require
+GetObject only. Compose uses `ETHERVIEW_CONSENSUS_BLOBS_READ_ACCESS_KEY`,
 `ETHERVIEW_CONSENSUS_BLOBS_READ_SECRET_KEY` and
-`ETHERVIEW_CONSENSUS_BLOBS_READ_SESSION_TOKEN` for the API role; enrich/all
+`ETHERVIEW_CONSENSUS_BLOBS_READ_SESSION_TOKEN` for API and enrich. Sync/all
 uses the ordinary archive credential inputs. Helm selects separate
-`secrets.blobArchiveRead*Key` entries for API and `secrets.blobArchive*Key`
+`secrets.blobArchiveRead*Key` entries for API/enrich and `secrets.blobArchive*Key`
 entries for writers. Alternatively, provision workload identities and select
-existing names in `blobArchiveServiceAccounts.api`, `.enrich` and `.all`;
+existing names in `blobArchiveServiceAccounts.api`, `.enrich`, `.sync` and `.all`;
 these override the trace-cache ServiceAccount only on archive roles. For nonstandard Beacon/S3 ports, set the Helm network policy's
-explicit additional egress rules. Never grant archive credentials to sync,
+explicit additional egress rules. Never grant archive credentials to
 trace, metadata, maintenance or migration processes.
 
 The archive supports standard full-blob retrieval, and the older sidecar API
@@ -352,7 +355,7 @@ read capability without changing execution finality or core readiness.
 The archive writes S2 blocks under `blobs/v2/.../<raw-sha256>.s2` using the pinned
 klauspost/compress dependency. Database manifests retain original-byte hashes
 and sizes; S3 checksums cover encoded bytes. Both database and archive backups
-remain required. Preserve read-only API credentials and enrich read/write
+remain required. Preserve read-only API/enrich credentials and sync read/write
 credentials, conditional creation and the no-expiry policy.
 
 This fresh-database format has no old `.bin` reader, startup conversion or

@@ -8,6 +8,7 @@ See [operator procedures](../operations/recovery.md) and
 
 - [Chain identity and genesis](#chain-identity-and-genesis)
 - [RPC ingestion and atomic persistence](#rpc-ingestion-and-atomic-persistence)
+- [Durable chain inputs](#durable-chain-inputs)
 - [Coverage, finality markers and reorgs](#coverage-finality-markers-and-reorgs)
 - [Repair and downstream invalidation](#repair-and-downstream-invalidation)
 - [Operator Recovery Boundary](#operator-recovery-boundary)
@@ -105,6 +106,25 @@ See [operator procedures](../operations/recovery.md) and
   identity plus the narrow base-fee projection. Missing, malformed, or drifting
   projections fail closed rather than silently returning a partial model.
 
+## Durable chain inputs
+
+The sync role owns execution HTTP, WebSocket and Beacon REST connections in
+both runtime layouts. Core head ingestion has its own workers. Historical,
+interactive and stage acquisitions use separate workers. The chain binding and
+exact block hash identify the inputs retained in PostgreSQL.
+
+| Input                               | PostgreSQL ownership                                                                                                                                                                    |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trace, state diff and full prestate | `block_inputs` retains the adapter response and endpoint. Supplementary prestate uses the endpoint that supplied the diff.                                                              |
+| Beacon block and execution requests | `block_inputs` retains the network identity, header, root-pinned block and applicable envelope. Enrich verifies and publishes the association. Blob bodies live in the durable archive. |
+| BAL body                            | `bal_acquisitions` tracks acquisition for an authenticated BAL-bearing header. `native_balance_blocks` retains the verified body for replay.                                            |
+| Code, storage and contract calls    | `state_input_groups` pins related reads to an endpoint. `stage_state_inputs` retains each result or revert, so a processor can release its lease while an input is missing.             |
+| Interactive account and token state | `balance_acquisitions` and `account_inputs` coalesce bounded requests. Waiters release their snapshots and recheck canonicality before returning.                                       |
+
+Acquisition leases fence writes to the input store. Each processor acquires its
+own publication lease and rechecks canonical identity before exposing output.
+See [ADR-0061](../decisions/ADR-0061-sync-acquisition.md).
+
 ## Coverage, finality markers and reorgs
 
 - New-head subscriptions are hints. Polling, ancestry checks, and gap scans are
@@ -150,7 +170,7 @@ See [operator procedures](../operations/recovery.md) and
 
 ## Repair and downstream invalidation
 
-- Operator repair refetches a block through the normal sticky history-RPC path
+- The sync role claims operator repair requests and refetches a block through the normal sticky history-RPC path
   and may refresh core rows only when chain, height, hash, and parent still
   match the canonical mapping. The refresh path never invokes normal
   fork-choice `Apply`; it never moves canonicality or checkpoints.

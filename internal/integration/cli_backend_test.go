@@ -440,14 +440,31 @@ func TestCLIMaintenanceWorkerExecutesRepairAndReindex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create maintenance executor: %v", err)
 	}
-	worker, err := maintenance.NewWorker(requestRepository, executor, maintenance.WorkerOptions{WorkerID: "integration-maintenance"})
+	reindex, err := maintenance.NewReindexExecutor("1", repository, queue)
 	if err != nil {
-		t.Fatalf("create maintenance worker: %v", err)
+		t.Fatal(err)
 	}
-	for index := range 2 {
+	// Let reindex claim first even though repair is the oldest request.
+	for _, item := range []struct {
+		op       maintenance.Operation
+		executor maintenance.RangeExecutor
+	}{
+		{maintenance.OperationReindex, reindex}, {maintenance.OperationRepair, executor},
+	} {
+		scoped, err := requestRepository.ForOperation(item.op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		worker, err := maintenance.NewWorker(scoped, item.executor, maintenance.WorkerOptions{WorkerID: string(item.op)})
+		if err != nil {
+			t.Fatal(err)
+		}
 		processed, err := worker.ProcessOne(ctx)
 		if err != nil || !processed {
-			t.Fatalf("process maintenance request %d: processed=%t error=%v", index, processed, err)
+			t.Fatalf("process %s: processed=%v error=%v", item.op, processed, err)
+		}
+		if processed, err := worker.ProcessOne(ctx); err != nil || processed {
+			t.Fatalf("unexpected second %s request processed=%v error=%v", item.op, processed, err)
 		}
 	}
 

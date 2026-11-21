@@ -18,9 +18,6 @@ func (a runtimeAssembly) registerENSComponents() error {
 	if !a.roleSet[components.RoleEnrich] || !cfg.Features.ENS {
 		return nil
 	}
-	if a.rpcBuild == nil || a.rpcBuild.Pool == nil {
-		return errors.New("ENS requires current-chain RPC pool")
-	}
 	m, e := loadENSManifest(cfg.ENS.Manifest)
 	if e != nil {
 		return e
@@ -50,9 +47,9 @@ func (a runtimeAssembly) registerENSComponents() error {
 		return e
 	}
 	background, e := enssync.NewRuntime(repo, enssync.RuntimeOptions{
-		Source: enssync.RuntimeSource{Manifest: m, Pool: a.rpcBuild.Pool, Gateways: cfg.ENS.Gateways},
+		Source: enssync.RuntimeSource{Manifest: m, Gateways: cfg.ENS.Gateways},
 		Policy: enssync.EffectivePolicy{TargetChainID: chain, CoinType: m.CoinType, Digest: m.Policy}, PollInterval: cfg.Runtime.PollInterval, Logger: a.logger, Observer: a.businessObserver,
-		Collector: enssync.CollectorOptions{MaxBytes: int(cfg.ENS.MaxResponseBytes), Health: cfg.ENS.ResolutionFreshness},
+		Collector: enssync.CollectorOptions{StoredInputs: true, MaxBytes: int(cfg.ENS.MaxResponseBytes), Health: cfg.ENS.ResolutionFreshness},
 		Worker:    enssync.WorkerOptions{Resolver: resolver, Freshness: cfg.ENS.ResolutionFreshness, Retention: cfg.ENS.SnapshotTTL, Timeout: cfg.ENS.RequestTimeout, FailureDelay: cfg.ENS.FailureTTL}})
 	if e != nil {
 		return e

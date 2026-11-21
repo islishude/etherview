@@ -59,8 +59,8 @@ type holderTokenReconciliation struct {
 }
 
 func NewPostgresHolderProcessor(db dbaccess.Database, pool *ethrpc.Pool) (*PostgresHolderProcessor, error) {
-	if db == nil || pool == nil {
-		return nil, errors.New("holder processor requires PostgreSQL and an RPC pool")
+	if db == nil {
+		return nil, errors.New("holder processor requires PostgreSQL")
 	}
 	return &PostgresHolderProcessor{db: db, pool: pool}, nil
 }
@@ -76,7 +76,7 @@ func (processor *PostgresHolderProcessor) ProcessLease(
 }
 
 func (processor *PostgresHolderProcessor) Process(ctx context.Context, job Job) (StageResult, error) {
-	if processor == nil || processor.db == nil || processor.pool == nil {
+	if processor == nil || processor.db == nil {
 		return StageResult{}, errors.New("process holder stage using incomplete processor")
 	}
 	if err := job.Validate(); err != nil {
@@ -96,9 +96,9 @@ func (processor *PostgresHolderProcessor) Process(ctx context.Context, job Job) 
 	}
 	reconciliations := make([]holderTokenReconciliation, 0, len(inputs))
 	if len(inputs) > 0 {
-		endpoint, acquireErr := processor.pool.Acquire(ethrpc.PurposeState)
+		endpoint, acquireErr := openStageState(ctx, processor.db, processor.pool, job)
 		if acquireErr != nil {
-			return StageResult{}, Unavailable(errors.New("holder exact-state RPC is unavailable"))
+			return StageResult{}, acquireErr
 		}
 		for _, input := range inputs {
 			reconciliation, reconcileErr := reconcileHolderToken(ctx, endpoint, job, input)
@@ -110,12 +110,13 @@ func (processor *PostgresHolderProcessor) Process(ctx context.Context, job Job) 
 					})
 					continue
 				}
-				processor.pool.ReportFailure(endpoint.Name)
-				return StageResult{}, reconcileErr
+				return StageResult{}, endpoint.check(reconcileErr)
 			}
 			reconciliations = append(reconciliations, reconciliation)
 		}
-		processor.pool.ReportSuccess(endpoint.Name)
+		if err := endpoint.check(nil); err != nil {
+			return StageResult{}, err
+		}
 	}
 	return runStageTransaction(ctx, processor.db, job, func(ctx context.Context, tx pgx.Tx) (StageResult, error) {
 		return persistHolderReconciliations(ctx, tx, job, reconciliations)
@@ -365,7 +366,7 @@ func (processor *PostgresHolderProcessor) readTokenInput(
 
 func reconcileHolderToken(
 	ctx context.Context,
-	endpoint *ethrpc.Endpoint,
+	endpoint stageStateCaller,
 	job Job,
 	input holderTokenInput,
 ) (holderTokenReconciliation, error) {
@@ -419,7 +420,7 @@ func reconcileHolderToken(
 
 func callHolderUint256(
 	ctx context.Context,
-	endpoint *ethrpc.Endpoint,
+	endpoint stageStateCaller,
 	token common.Address,
 	data hexutil.Bytes,
 	block rpc.BlockNumberOrHash,
@@ -436,7 +437,7 @@ func callHolderUint256(
 
 func callHolderBalanceBatch(
 	ctx context.Context,
-	endpoint *ethrpc.Endpoint,
+	endpoint stageStateCaller,
 	token common.Address,
 	holders []common.Address,
 	block rpc.BlockNumberOrHash,

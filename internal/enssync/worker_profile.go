@@ -14,9 +14,10 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chaininput"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/enscontract"
-	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 // Getter subsets of the revisions recorded in ensfixture/testdata. Dynamic
@@ -25,7 +26,7 @@ import (
 //go:embed profileabi/*.json
 var profileABIs embed.FS
 
-func profileCall(ctx context.Context, endpoint *ethrpc.Endpoint, hash common.Hash, address common.Address, contract, method string, args ...any) ([]any, error) {
+func profileCall(ctx context.Context, endpoint ensresolver.RPCCaller, hash common.Hash, address common.Address, contract, method string, args ...any) ([]any, error) {
 	raw, e := profileABIs.ReadFile("profileabi/" + contract + ".json")
 	if e != nil {
 		return nil, ErrUnsupportedDeployment
@@ -56,7 +57,7 @@ func profileValue(value string) enscontract.Field {
 	return enscontract.Field{State: "value", Value: value}
 }
 func profileAbsent() enscontract.Field { return enscontract.Field{State: "not_applicable"} }
-func (w *Worker) registrationProfile(ctx context.Context, ep *ethrpc.Endpoint, hash common.Hash, name string, number uint64, at time.Time) (enscontract.RegistrationProfile, []common.Address, error) {
+func (w *Worker) registrationProfile(ctx context.Context, ep ensresolver.RPCCaller, hash common.Hash, name string, number uint64, at time.Time) (enscontract.RegistrationProfile, []common.Address, error) {
 	// Prefer the longest explicitly bound registry root. A reverse parent hint
 	// never selects a path. Every traversed child is verified at this exact hash.
 	var root *RegistryRoot
@@ -71,7 +72,7 @@ func (w *Worker) registrationProfile(ctx context.Context, ep *ethrpc.Endpoint, h
 	}
 	return w.v1RegistrationProfile(ctx, ep, hash, name, number, at)
 }
-func (w *Worker) v1RegistrationProfile(ctx context.Context, ep *ethrpc.Endpoint, hash common.Hash, name string, number uint64, at time.Time) (enscontract.RegistrationProfile, []common.Address, error) {
+func (w *Worker) v1RegistrationProfile(ctx context.Context, ep ensresolver.RPCCaller, hash common.Hash, name string, number uint64, at time.Time) (enscontract.RegistrationProfile, []common.Address, error) {
 	p := enscontract.PendingProfile()
 	var registrar, wrapper, registry, legacyRegistry common.Address
 	registryCount := 0
@@ -233,7 +234,7 @@ func (w *Worker) v1RegistrationProfile(ctx context.Context, ep *ethrpc.Endpoint,
 	return p, nil, nil
 }
 
-func (w *Worker) verifiedProfileContract(ctx context.Context, ep *ethrpc.Endpoint, hash common.Hash, address common.Address, profile string) error {
+func (w *Worker) verifiedProfileContract(ctx context.Context, ep ensresolver.RPCCaller, hash common.Hash, address common.Address, profile string) error {
 	s := rpcSession{endpoint: ep}
 	for _, d := range w.options.Manifest.Deployments {
 		if d.Address == address && d.Profile == profile {
@@ -255,7 +256,7 @@ func (w *Worker) verifiedProfileContract(ctx context.Context, ep *ethrpc.Endpoin
 	}
 	return ErrUnsupportedDeployment
 }
-func (w *Worker) v2RegistrationProfile(ctx context.Context, ep *ethrpc.Endpoint, hash common.Hash, name string, root RegistryRoot, number uint64, at time.Time) (enscontract.RegistrationProfile, []common.Address, error) {
+func (w *Worker) v2RegistrationProfile(ctx context.Context, ep ensresolver.RPCCaller, hash common.Hash, name string, root RegistryRoot, number uint64, at time.Time) (enscontract.RegistrationProfile, []common.Address, error) {
 	p := enscontract.PendingProfile()
 	remaining := name
 	if root.Name != "" {
@@ -364,8 +365,11 @@ func (w *Worker) v2RegistrationProfile(ctx context.Context, ep *ethrpc.Endpoint,
 	}
 	return p, watches, nil
 }
-func (w *Worker) publishProfile(ctx context.Context, ep *ethrpc.Endpoint, job dbgen.EnsSyncJob, data dbgen.GetENSSyncWorkerJobRow, number uint64) error {
+func (w *Worker) publishProfile(ctx context.Context, ep ensresolver.RPCCaller, endpointName string, job dbgen.EnsSyncJob, data dbgen.GetENSSyncWorkerJobRow, number uint64) error {
 	profile, watches, e := w.registrationProfile(ctx, ep, common.BytesToHash(job.TargetHash), data.LookupKey, number, data.BlockTime.Time)
+	if input, ok := ep.(*chaininput.Session); ok && input.Err() != nil {
+		return w.deferInputs(ctx, job, input.Err())
+	}
 	if e != nil {
 		return w.retry(ctx, job, "profile_unavailable")
 	}
@@ -374,7 +378,7 @@ func (w *Worker) publishProfile(ctx context.Context, ep *ethrpc.Endpoint, job db
 		return ErrInvalidInput
 	}
 	now := time.Now()
-	observation := dbgen.PublishENSSyncObservationParams{SourceID: job.SourceID, CandidateID: job.CandidateID, JobID: job.ID, Generation: job.Generation, LeaseToken: job.LeaseToken, Deployment: w.options.Registry.Bytes(), Endpoint: ep.Name, Evidence: "resolver", Outcome: "resolved", Name: &data.LookupKey, ProfileData: raw, ObservedAt: stamp(now), ValidUntil: stamp(now.Add(w.options.Freshness)), RefreshAt: stamp(now.Add(w.options.Freshness / 2)), RetainUntil: stamp(now.Add(w.options.Retention))}
+	observation := dbgen.PublishENSSyncObservationParams{SourceID: job.SourceID, CandidateID: job.CandidateID, JobID: job.ID, Generation: job.Generation, LeaseToken: job.LeaseToken, Deployment: w.options.Registry.Bytes(), Endpoint: endpointName, Evidence: "resolver", Outcome: "resolved", Name: &data.LookupKey, ProfileData: raw, ObservedAt: stamp(now), ValidUntil: stamp(now.Add(w.options.Freshness)), RefreshAt: stamp(now.Add(w.options.Freshness / 2)), RetainUntil: stamp(now.Add(w.options.Retention))}
 	// Dependency watches are committed before the final fenced publication. A
 	// rejected old target remains visible to the scheduler for replacement.
 	addresses := make([][]byte, 0, len(watches))

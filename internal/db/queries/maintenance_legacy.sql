@@ -16,6 +16,7 @@ WHERE request.status IN ('queued', 'running')
           request.id
       ) > (sqlc.arg('cursor_status_rank')::integer, sqlc.arg('cursor_requested_at')::timestamptz, sqlc.arg('cursor_id')::bigint)
   )
+  AND (sqlc.arg(operation_filter)::text='' OR request.operation=sqlc.arg(operation_filter)::text)
 ORDER BY CASE request.status WHEN 'queued' THEN 0 ELSE 1 END,
          request.requested_at, request.id
 FOR UPDATE OF request SKIP LOCKED

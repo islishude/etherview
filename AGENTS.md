@@ -12,6 +12,11 @@ or add one when its decision changes.
 Read and follow the [design style guide](docs/design-style-guide.md) before
 changing UI presentation or shared components.
 
+Follow the development guide for [coding and abstraction](docs/development.md#coding-and-abstraction)
+and [review and repair scope](docs/development.md#review-and-repair-scope).
+Use the testing guide to [select tests](docs/testing.md#test-design) and
+[report acceptance evidence](docs/testing.md#evidence-rules).
+
 The development guide owns detailed workflow and boundary routing. The current
 [Makefile](Makefile) and testing guide own commands; historical plan evidence
 must not revive removed targets. Operator procedures belong in the

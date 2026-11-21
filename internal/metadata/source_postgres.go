@@ -11,6 +11,7 @@ import (
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chaininput"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 )
@@ -203,4 +204,15 @@ func (repository *PostgresRepository) WithSourceDiscovery(ctx context.Context, w
 		scoped.db = db
 		return work(&scoped)
 	})
+}
+
+func (repository *PostgresRepository) OpenSourceInputs(ctx context.Context, candidate NFTSourceCandidate) (*chaininput.Session, error) {
+	var chain, height pgtype.Numeric
+	if err := chain.Scan(candidate.ChainID); err != nil {
+		return nil, err
+	}
+	if err := height.Scan(strconv.FormatUint(candidate.BlockNumber, 10)); err != nil {
+		return nil, err
+	}
+	return chaininput.Open(ctx, repository.db, chain, height, candidate.BlockHash, "nft-source@1")
 }

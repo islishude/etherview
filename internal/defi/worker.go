@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/google/uuid"
+	"github.com/islishude/etherview/internal/chaininput"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/deficontract"
@@ -29,7 +30,7 @@ type Worker struct {
 
 func (*Worker) Name() string { return "defi-index" }
 func (w *Worker) Run(ctx context.Context) error {
-	if w.DB == nil || w.Pool == nil || w.Manifest.Validate() != nil {
+	if w.DB == nil || w.Manifest.Validate() != nil {
 		return deficontract.ErrInput
 	}
 	timer := time.NewTimer(0)
@@ -80,7 +81,7 @@ func (w *Worker) Step(ctx context.Context, d Deployment) (resultErr error) {
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
-		if resultErr != nil && !errors.Is(ctx.Err(), context.Canceled) {
+		if resultErr != nil && !errors.Is(resultErr, chaininput.ErrPending) && !errors.Is(ctx.Err(), context.Canceled) {
 			_, _ = q.FailDeFiSource(cleanup, failureCode(resultErr), source, &lease)
 			return
 		}
@@ -105,14 +106,35 @@ func (w *Worker) Step(ctx context.Context, d Deployment) (resultErr error) {
 	if e != nil {
 		return e
 	}
-	endpoint, e := w.Pool.Acquire(ethrpc.PurposeState)
-	if e != nil {
-		return deficontract.ErrUnavailable
+	state := &State{Hash: common.BytesToHash(run.BlockHash), cache: make(map[string][]byte)}
+	var inputs *chaininput.Session
+	if w.Pool != nil {
+		endpoint, err := w.Pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return deficontract.ErrUnavailable
+		}
+		state.RPC = endpoint
+	} else {
+		inputs, e = chaininput.Open(ctx, w.DB, chain, run.BlockNumber, state.Hash, source)
+		if e != nil {
+			return e
+		}
+		state.RPC = inputs
+		defer func() {
+			if err := inputs.Err(); err != nil {
+				resultErr = err
+			}
+		}()
 	}
-	state := &State{RPC: endpoint, Hash: common.BytesToHash(run.BlockHash), cache: make(map[string][]byte)}
 	if e = state.Verify(ctx, d); e != nil {
 		return e
 	}
+	return w.advanceRun(ctx, d, source, lease, chain, run, state, inputs)
+}
+
+func (w *Worker) advanceRun(ctx context.Context, d Deployment, source, lease string, chain pgtype.Numeric, run dbgen.DefiRun, state *State, inputs *chaininput.Session) error {
+	q := dbgen.New(w.DB)
+	var e error
 	advance := dbgen.AdvanceDeFiRunParams{ID: run.ID, State: run.State, InstrumentOffset: run.InstrumentOffset, ScanNumber: run.ScanNumber, ScanIndex: run.ScanIndex, AfterCandidate: run.AfterCandidate}
 	var instruments []Instrument
 	var candidates []Candidate
@@ -202,7 +224,7 @@ func (w *Worker) Step(ctx context.Context, d Deployment) (resultErr error) {
 					return deficontract.ErrIntegrity
 				}
 				sub, cancel := context.WithTimeout(ctx, 3*time.Second)
-				p, err := Observe(sub, &State{RPC: endpoint, Hash: state.Hash, cache: state.cache}, d, candidate, text.String)
+				p, err := Observe(sub, &State{RPC: state.RPC, Hash: state.Hash, cache: state.cache}, d, candidate, text.String)
 				cancel()
 				if err != nil {
 					p.Assets = []deficontract.Asset{}
@@ -240,6 +262,9 @@ func (w *Worker) Step(ctx context.Context, d Deployment) (resultErr error) {
 		if item.FailureCode != "" {
 			advance.FailureCode = "partial"
 		}
+	}
+	if inputs != nil && inputs.Err() != nil {
+		return inputs.Err()
 	}
 	return w.publishBatch(ctx, d, source, lease, chain, run, workBatch{advance, instruments, candidates, positions})
 }

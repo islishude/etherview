@@ -549,6 +549,14 @@ func applyBooleanEnvironment(cfg *Config, lookup func(string) (string, bool)) er
 }
 
 func applyRPCEnvironment(cfg *Config, lookup func(string) (string, bool), readFile func(string) ([]byte, error), _ bool) error {
+	roles, err := NormalizeRoles(cfg.Runtime.Roles)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(roles, "sync") {
+		cfg.RPC.Endpoints = nil
+		return nil
+	}
 	rpcURLs, err := lookupValueOrFile("RPC_URLS", lookup, readFile)
 	if err != nil {
 		return err

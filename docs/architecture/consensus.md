@@ -32,7 +32,7 @@ Address in both locales while retaining the address, navigation and copying.
 [ADR-0055](../decisions/ADR-0055-consensus-and-blob-archives.md) defines the
 optional Beacon boundary. Independent enrich workers publish `consensus@1`
 observations and `blob@1` manifests through the same generation/lease protocol
-as other stages. Discovery supplements already-published core outbox history.
+as other stages. The sync role runs discovery against already-published core outbox history.
 A leased overview publisher pins the head and state roots and atomically stores
 its observation with a runtime invalidation event. PostgreSQL remains the
 identity/publication authority; the dedicated blob bucket durably owns S2-compressed

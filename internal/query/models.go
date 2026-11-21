@@ -84,7 +84,7 @@ func (r *PostgresReader) decodeBlock(scanner dbgen.QueryListBlocksFirstRow, forc
 		Timestamp:        timestamp,
 		TransactionCount: int(*scanner.TransactionCount),
 		Canonical:        scanner.Canonical,
-		Completeness:     r.completeness,
+		Completeness:     r.currentCompleteness(),
 	}
 	model.Finality, err = classifyFinality(scanner.Canonical, number, safeHeight, finalizedHeight)
 	if err != nil {
@@ -265,7 +265,7 @@ func (r *PostgresReader) transactionModel(
 		BlockHash:        new(strings.ToLower(blockHash.Hex())),
 		BlockNumber:      new(strconv.FormatUint(blockNumber, 10)),
 		Canonical:        canonical,
-		Completeness:     r.completeness,
+		Completeness:     r.currentCompleteness(),
 		From:             from,
 		Input:            hexutil.Encode(wire.Data()),
 		TransactionIndex: new(int(transactionIndex)),

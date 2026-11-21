@@ -16,15 +16,14 @@ import (
 )
 
 type PostgresNativeBalanceProcessor struct {
-	db      dbaccess.Database
-	fetcher *ethrpc.BALFetcher
+	db dbaccess.Database
 }
 
-func NewPostgresNativeBalanceProcessor(db dbaccess.Database, pool *ethrpc.Pool) (*PostgresNativeBalanceProcessor, error) {
-	if db == nil || pool == nil {
-		return nil, errors.New("native balance processor requires database and RPC pool")
+func NewPostgresNativeBalanceProcessor(db dbaccess.Database) (*PostgresNativeBalanceProcessor, error) {
+	if db == nil {
+		return nil, errors.New("native balance processor requires database")
 	}
-	return &PostgresNativeBalanceProcessor{db: db, fetcher: &ethrpc.BALFetcher{Pool: pool}}, nil
+	return &PostgresNativeBalanceProcessor{db: db}, nil
 }
 func (*PostgresNativeBalanceProcessor) Stage() StageID { return NativeBalanceStage }
 func (p *PostgresNativeBalanceProcessor) ProcessLease(ctx context.Context, lease Lease, queue *PostgresJobQueue) (StageResult, error) {
@@ -74,7 +73,18 @@ func (p *PostgresNativeBalanceProcessor) Process(ctx context.Context, job Job) (
 		case readErr == nil:
 			result, err = ethrpc.DecodeBAL(stored.Raw, stored.Method, bundle.Block)
 		case errors.Is(readErr, pgx.ErrNoRows):
-			result, err = p.fetcher.Fetch(ctx, bundle.Block)
+			code, submitErr := q.BALDemandSubmit(ctx, dbgen.BALDemandSubmitParams{ChainID: chain, BlockNumber: number, BlockHash: job.BlockHash[:], Generation: int64(job.Generation)})
+			if submitErr != nil {
+				return StageResult{}, submitErr
+			}
+			switch code {
+			case "unavailable":
+				err = ethrpc.ErrBALUnavailable
+			case "invalid":
+				err = ethrpc.ErrBALInvalid
+			default:
+				return StageResult{}, errInputPending
+			}
 		default:
 			return StageResult{}, readErr
 		}

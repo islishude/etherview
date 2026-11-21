@@ -16,8 +16,6 @@ func (assembly runtimeAssembly) registerMaintenanceComponents() error {
 	registry := assembly.registry
 	businessObserver := assembly.businessObserver
 	repository := assembly.repository
-	coreRPCSource := assembly.coreRPCSource
-	coreCanonicalizer := assembly.coreCanonicalizer
 	componentRegistry := assembly.componentRegistry
 	chainID := assembly.chainID
 	if roleSet[components.RoleMaintenance] {
@@ -50,7 +48,11 @@ func (assembly runtimeAssembly) registerMaintenanceComponents() error {
 		if err != nil {
 			return err
 		}
-		executor, err := maintenance.NewExecutor(chainID, coreRPCSource, coreCanonicalizer, repository, queue)
+		requestRepository, err = requestRepository.ForOperation(maintenance.OperationReindex)
+		if err != nil {
+			return err
+		}
+		executor, err := maintenance.NewReindexExecutor(chainID, repository, queue)
 		if err != nil {
 			return err
 		}

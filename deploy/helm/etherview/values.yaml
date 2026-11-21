@@ -245,8 +245,6 @@ externalSecret:
   # Set to materialize the optional database-read-url Secret entry.
   databaseReadURLRemoteKey: ""
   rpcURLsRemoteKey: etherview/rpc-urls
-  # Optional dedicated Ethereum Mainnet RPC Secret used only by API/all when
-  # ENS is enabled. Leave empty when the explored RPC is exact Mainnet.
   apiKeyPepperRemoteKey: etherview/api-key-pepper
   # Required when both externalSecret and config.features.user_auth are
   # enabled. It is otherwise neither fetched nor injected.
@@ -563,8 +561,9 @@ topologySpreadConstraints: []
 
 terminationGracePeriodSeconds: 30
 
-# Existing workload identities with archive-bucket permissions: api=read, enrich/all=read/write.
+# Existing workload identities with archive-bucket permissions: api/enrich=read, sync/all=read/write.
 blobArchiveServiceAccounts:
+  sync: ""
   api: ""
   enrich: ""
   all: ""

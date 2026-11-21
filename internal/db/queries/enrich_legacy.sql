@@ -761,11 +761,12 @@ WHERE id = sqlc.arg('id')
 UPDATE durable_jobs
 SET status = CASE
         WHEN requested_generation > leased_generation THEN 'queued'
-        WHEN attempts >= max_attempts THEN 'failed'
+        WHEN NOT sqlc.arg(waiting_for_input)::boolean AND attempts >= max_attempts THEN 'failed'
         ELSE 'queued'
     END,
     attempts = CASE
         WHEN requested_generation > leased_generation THEN 0
+        WHEN sqlc.arg(waiting_for_input)::boolean THEN GREATEST(attempts-1,0)
         ELSE attempts
     END,
     available_at = CASE
@@ -778,14 +779,14 @@ SET status = CASE
     END,
     result = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        WHEN attempts >= max_attempts
+        WHEN NOT sqlc.arg(waiting_for_input)::boolean AND attempts >= max_attempts
             THEN jsonb_build_object('state', 'failed', 'error', sqlc.arg('last_error')::text)
         ELSE NULL
     END,
     completed_generation = CASE
         WHEN requested_generation > leased_generation
             THEN GREATEST(completed_generation, leased_generation)
-        WHEN attempts >= max_attempts
+        WHEN NOT sqlc.arg(waiting_for_input)::boolean AND attempts >= max_attempts
             THEN GREATEST(completed_generation, leased_generation)
         ELSE completed_generation
     END,
@@ -809,7 +810,7 @@ WHERE id = sqlc.arg('id')
   AND completed_generation < sqlc.arg('claimed_generation')
 RETURNING status,
           status = 'queued'
-          AND attempts = 0
+          AND completed_generation >= sqlc.arg('claimed_generation')
           AND completed_generation < requested_generation AS followup_queued;
 
 -- name: EnrichLegacyRetryOutbox :execrows

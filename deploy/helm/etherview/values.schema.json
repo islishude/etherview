@@ -140,6 +140,9 @@
         "api": {
           "type": "string"
         },
+        "sync": {
+          "type": "string"
+        },
         "enrich": {
           "type": "string"
         },

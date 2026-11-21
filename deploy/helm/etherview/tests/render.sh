@@ -968,14 +968,20 @@ expect_render_failure alert-rules-without-scoped-monitor \
 
 # Consensus credentials and immutable archive identities are role scoped.
 consensus_roles="$temporary_dir/consensus-roles.yaml"
-"$helm_bin" template etherview "$chart_dir" -f "$chart_dir/values-distributed.yaml"   --set config.consensus.enabled=true --set config.consensus.blobs.enabled=true   --set-string config.consensus.blobs.endpoint=https://archive.example.com   --set-string config.consensus.blobs.bucket=durable-blobs   --set-string blobArchiveServiceAccounts.api=archive-reader   --set-string blobArchiveServiceAccounts.enrich=archive-writer > "$consensus_roles"
+"$helm_bin" template etherview "$chart_dir" -f "$chart_dir/values-distributed.yaml"   --set config.consensus.enabled=true --set config.consensus.blobs.enabled=true   --set-string config.consensus.blobs.endpoint=https://archive.example.com   --set-string config.consensus.blobs.bucket=durable-blobs   --set-string blobArchiveServiceAccounts.api=archive-reader   --set-string blobArchiveServiceAccounts.sync=archive-writer --set-string blobArchiveServiceAccounts.enrich=archive-reader > "$consensus_roles"
 assert_component_occurrences "$consensus_roles" api 'name: ETHERVIEW_CONSENSUS_URL' 0
-assert_component_occurrences "$consensus_roles" enrich 'name: ETHERVIEW_CONSENSUS_URL' 1
+assert_component_occurrences "$consensus_roles" sync 'name: ETHERVIEW_CONSENSUS_URL' 1
+assert_component_occurrences "$consensus_roles" enrich 'name: ETHERVIEW_CONSENSUS_URL' 0
 assert_component_occurrences "$consensus_roles" api 'key: "blob-archive-read-access"' 1
-assert_component_occurrences "$consensus_roles" enrich 'key: "blob-archive-access"' 1
+assert_component_occurrences "$consensus_roles" sync 'key: "blob-archive-access"' 1
 assert_component_occurrences "$consensus_roles" api 'serviceAccountName: archive-reader' 1
-assert_component_occurrences "$consensus_roles" enrich 'serviceAccountName: archive-writer' 1
-for role in sync trace metadata maintenance; do
+assert_component_occurrences "$consensus_roles" sync 'serviceAccountName: archive-writer' 1
+assert_component_occurrences "$consensus_roles" enrich 'key: "blob-archive-read-access"' 1
+assert_component_occurrences "$consensus_roles" sync 'name: ETHERVIEW_RPC_URLS' 1
+for role in api enrich trace metadata maintenance verification; do
+  assert_component_occurrences "$consensus_roles" "$role" 'name: ETHERVIEW_RPC_URLS' 0
+done
+for role in trace metadata maintenance verification; do
   assert_component_occurrences "$consensus_roles" "$role" 'name: ETHERVIEW_CONSENSUS_URL' 0
   assert_component_occurrences "$consensus_roles" "$role" 'name: ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY' 0
 done

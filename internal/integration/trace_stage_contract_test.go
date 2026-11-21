@@ -365,7 +365,7 @@ func TestStateDiffStageCompletePrestatePublishesNativeTransferProjection(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	processor, err := enrich.NewStateDiffRPCProcessor(db, pool, enrich.StateDiffLimits{})
+	processor, err := enrich.NewStateDiffRPCProcessor(db, nil, enrich.StateDiffLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +389,21 @@ func TestStateDiffStageCompletePrestatePublishesNativeTransferProjection(t *test
 	processed, err := worker.ProcessOne(ctx)
 	if err != nil || !processed {
 		t.Fatalf("process state difference job=%t err=%v", processed, err)
+	}
+	collector := enrich.TraceInputCollector{DB: db, Pool: pool, ChainID: "1", Timeout: 5 * time.Second}
+	if found, err := collector.CollectOne(ctx); err != nil || !found {
+		t.Fatalf("collect coherent trace input=%v err=%v", found, err)
+	}
+	execFixture(t, ctx, db, `UPDATE durable_jobs SET available_at=now() WHERE stage='state_diff' AND last_error='sync_input_pending'`)
+	if found, err := worker.ProcessOne(ctx); err != nil || !found {
+		t.Fatalf("request supplementary prestate = %v, %v", found, err)
+	}
+	if found, err := collector.CollectOne(ctx); err != nil || !found {
+		t.Fatalf("collect supplementary prestate = %v, %v", found, err)
+	}
+	execFixture(t, ctx, db, `UPDATE durable_jobs SET available_at=now() WHERE stage='state_diff' AND last_error='sync_input_pending'`)
+	if found, err := worker.ProcessOne(ctx); err != nil || !found {
+		t.Fatalf("offline projection=%v err=%v", found, err)
 	}
 	assertEnrichmentJobTerminal(t, ctx, db, enqueued.Job.ID, "succeeded", 1)
 	if fmt.Sprint(service.diffModes) != "[true false]" {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 
 	"github.com/islishude/etherview/internal/analytics"
 	"github.com/islishude/etherview/internal/auth"
@@ -13,7 +14,7 @@ import (
 	"github.com/islishude/etherview/internal/contractartifact"
 	"github.com/islishude/etherview/internal/erc4337"
 	"github.com/islishude/etherview/internal/etherscan"
-	"github.com/islishude/etherview/internal/ethrpc"
+
 	"github.com/islishude/etherview/internal/httpapi"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/observability"
@@ -35,7 +36,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 	logger := assembly.logger
 	registry := assembly.registry
 	telemetry := assembly.telemetry
-	rpcBuild := assembly.rpcBuild
+
 	pendingRepository := assembly.pendingRepository
 	runtimeEvents := assembly.runtimeEvents
 	redisAccelerator := assembly.redisAccelerator
@@ -72,14 +73,10 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
-		if rpcBuild != nil && len(rpcBuild.Pool.Names(ethrpc.PurposeState)) > 0 {
-			stateReconciler, stateErr := state.NewTokenReconciler(db, rpcBuild.Pool, canonicalState)
-			if stateErr != nil {
-				return stateErr
-			}
-			nftState = stateReconciler
-			erc20State = stateReconciler
-		}
+		accountDemand := &state.BalanceDemand{Store: state.PostgresNativeBalances{DB: db, ChainID: chainID}, Timeout: min(cfg.Server.RequestTimeout, cfg.Server.WriteTimeout)}
+		stateReconciler := state.NewStoredTokenReconciler(accountDemand, canonicalState)
+		nftState = stateReconciler
+		erc20State = stateReconciler
 		traceCache, err := newAPITraceCache(ctx, cfg)
 		if err != nil {
 			return err
@@ -95,7 +92,14 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
-		completeness := configuredCompleteness(cfg, rpcBuild)
+		completeness := configuredCompleteness(cfg, nil)
+		capabilities := &syncCapabilityReader{q: dbgen.New(db)}
+		if err := capabilities.chain.Scan(chainID); err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(components.RoleAPI, "07-sync-capabilities", func() (components.Service, error) { return capabilities, nil }); err != nil {
+			return err
+		}
 		userOperationRegistry, err := apiUserOperationRegistry(cfg)
 		if err != nil {
 			return err
@@ -104,7 +108,7 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 		if err != nil {
 			return err
 		}
-		queryOptions := query.Options{
+		queryOptions := query.Options{SyncCapabilities: capabilities.apply,
 			Consensus: cfg.Consensus, BlobArchive: archive,
 			ChainID: cfg.Chain.ID, StartBlock: cfg.Chain.StartBlock,
 			RuntimeStatus: func(callbackCtx context.Context) (query.RuntimeStatus, bool, error) {
@@ -149,18 +153,16 @@ func (assembly runtimeAssembly) registerAPIComponents() error {
 			}
 			baseReader = searchRoutingReader{Reader: reader, search: writerSearchReader}
 		}
-		publicReader := baseReader
+		var publicReader httpapi.Reader
 		var (
 			compatibilityState etherscan.StateProvider
 			delegationBindings httpapi.DelegationBindingReader
 		)
-		stateReader := &state.Reader{
+		stateReader := &state.Reader{SyncCapabilities: capabilities.apply,
 			Base: baseReader, Completeness: completeness,
-			Balances:  state.PostgresNativeBalances{DB: db, ChainID: chainID},
-			Canonical: canonicalState, Origin: reader, DelegationHistory: writerReader,
-		}
-		if rpcBuild != nil {
-			stateReader.Pool = rpcBuild.Pool
+			BalanceDemand: accountDemand,
+			Balances:      state.PostgresNativeBalances{DB: db, ChainID: chainID},
+			Canonical:     canonicalState, Origin: reader, DelegationHistory: writerReader,
 		}
 		publicReader = stateReader
 		compatibilityState = stateReader

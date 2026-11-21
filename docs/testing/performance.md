@@ -22,7 +22,7 @@
   plus block and transaction public projections at deterministic typical and
   large block cardinalities. It honors `INTEGRATION_DATABASE_URL` only for an
   explicitly disposable external database and accepts the same `BENCHTIME`
-  override. Record the PostgreSQL version and host with results.
+  override. Record the PostgreSQL version with results.
 - `make test-soak`: run the same driver at the P70 reference defaults of
   500 RPS for 30 minutes. The target fixes a 5-second request timeout, p95
   below 500 ms, error rate below 0.1%, final lag no greater than two blocks,
@@ -33,6 +33,11 @@
   release evidence by itself; P70-T04 still requires the named reference
   deployment, dataset, hardware, RPC behavior, and independently captured
   resource peaks.
+
+For published acceptance, record the revision, dataset, reference profile,
+RPC model, duration, throughput, latency, error rate, index lag and required
+resource measurements. Keep host details and raw runner output out of the
+deliverable as specified by the [evidence rules](../testing.md#evidence-rules).
 
 ## Load profile example
 

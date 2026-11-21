@@ -1,13 +1,10 @@
 package app
 
 import (
-	"errors"
-
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/erc4337"
-	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 func (assembly runtimeAssembly) registerEnrichComponents() error {
@@ -16,19 +13,13 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 	db := assembly.db
 	registry := assembly.registry
 	businessObserver := assembly.businessObserver
-	rpcBuild := assembly.rpcBuild
+
 	natsWake := assembly.natsWake
 	outboxWake := assembly.outboxWake
 	enrichJobWake := assembly.enrichJobWake
 	componentRegistry := assembly.componentRegistry
 	if roleSet[components.RoleEnrich] {
-		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
-			return errors.New("enrich role requires an HTTP state RPC endpoint for block-pinned token detection")
-		}
-		tokenDetector, err := enrich.NewPoolTokenDetector(rpcBuild.Pool, enrich.TokenProbeLimits{})
-		if err != nil {
-			return err
-		}
+		tokenDetector := enrich.NewStoredTokenDetector(db)
 		queue, err := enrich.NewPostgresJobQueue(db)
 		if err != nil {
 			return err
@@ -64,7 +55,7 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 			return err
 		}
 		proxyProcessor, err := enrich.NewPostgresProxyProcessorWithOptions(
-			db, rpcBuild.Pool, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
+			db, nil, enrich.ProxyLimits{}, enrich.ProxyDetectionOptions{
 				SafeEnabled:    cfg.Features.SafeProxyDetection,
 				DiamondEnabled: cfg.Features.DiamondProxyDetection,
 				Observer:       registry,
@@ -81,7 +72,7 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		if err != nil {
 			return err
 		}
-		holderProcessor, err := enrich.NewPostgresHolderProcessor(db, rpcBuild.Pool)
+		holderProcessor, err := enrich.NewPostgresHolderProcessor(db, nil)
 		if err != nil {
 			return err
 		}
@@ -89,7 +80,7 @@ func (assembly runtimeAssembly) registerEnrichComponents() error {
 		if err != nil {
 			return err
 		}
-		balanceProcessor, err := enrich.NewPostgresNativeBalanceProcessor(db, rpcBuild.Pool)
+		balanceProcessor, err := enrich.NewPostgresNativeBalanceProcessor(db)
 		if err != nil {
 			return err
 		}

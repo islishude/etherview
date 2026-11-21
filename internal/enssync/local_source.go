@@ -1,6 +1,7 @@
 package enssync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math/big"
@@ -50,8 +51,19 @@ func storedHeader(raw []byte) (*types.Header, error) {
 	return h, nil
 }
 
-func (r *Repository) localTarget(ctx context.Context, m Manifest) (*types.Header, error) {
+// Resume an unfinished scan at its exact canonical target. A new core head can
+// arrive between submitting deployment checks and consuming their results.
+func (r *Repository) collectionTarget(ctx context.Context, m Manifest, progress dbgen.EnsSyncProgress, storedInputs bool) (*types.Header, error) {
 	chain, _ := unsignedNumeric(m.SourceChainID)
+	if storedInputs && progress.TargetNumber.Valid && !bytes.Equal(progress.TargetHash, progress.ScannedHash) {
+		row, err := dbgen.New(r.db).GetENSSyncCoreBlock(ctx, chain, m.Genesis.Bytes(), progress.TargetNumber)
+		if err == nil && bytes.Equal(row.Hash, progress.TargetHash) {
+			return storedHeader(row.Raw)
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrStorage
+		}
+	}
 	row, err := dbgen.New(r.db).GetENSSyncCoreTip(ctx, chain, m.Genesis.Bytes())
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrCoverageGap

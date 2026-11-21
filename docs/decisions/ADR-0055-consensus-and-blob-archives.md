@@ -9,7 +9,8 @@ safe or finalized execution state. Consensus and blob archive switches default
 off. Blob archival requires consensus and a separate durable object bucket.
 
 The enrich role owns independent workers for consensus, execution requests and
-blobs, together with bounded discovery.
+blobs. The sync role owns bounded discovery and overview polling under
+[ADR-0061](ADR-0061-sync-acquisition.md).
 Genesis/spec and execution-chain identity are checked before binding a Beacon
 network to an authenticated local execution hash. Requests pin one Beacon root.
 The complete fork-specific body must hash to the pinned header's SSZ body root
@@ -70,8 +71,7 @@ of the expanded content details; changing identity or leaving the blob
 page clears it. Responses are no-store, including failures.
 API clients use the `blob.getblob` V2 extension governed by ADR-0044, returning
 raw bytes as a 0x-prefixed hex result after the same integrity/publication checks. Credentials
-and object URLs are never public. Enrich has archive read/write permissions;
-API has read permissions. Optional-service outages affect only their capability.
+and object URLs are never public. Sync has archive read/write permissions. API and enrich have read permissions. Optional-service outages affect only their capability.
 
 ## Consequences
 

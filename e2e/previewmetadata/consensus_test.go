@@ -329,7 +329,7 @@ func (h *harness) assertPreviewRecovery(ctx context.Context, receipt rpcReceipt,
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	h.assertArchiveOutageRecreate(ctx, receipt, []string{"api", "enrich"}, "0x1237")
+	h.assertArchiveOutageRecreate(ctx, receipt, []string{"api", "enrich", "sync"}, "0x1237")
 	// A failed provisioner must fail its caller while already started core roles
 	// remain ready. Re-running the valid provisioner must preserve archived bytes.
 	if _, err := h.project.Run(ctx, "run", "--rm", "--no-deps", "-e", "RUSTFS_SECRET_KEY=invalid-init-secret", "archive-init"); err == nil {
@@ -352,7 +352,7 @@ func (h *harness) assertPreviewRecovery(ctx context.Context, receipt rpcReceipt,
 		h.t.Fatal(err)
 	}
 	h.assertBlobDownload(ctx, receipt.BlockHash, blob)
-	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--force-recreate", "--wait", "--wait-timeout", "180", "execution", "lighthouse", "validator", "object-storage", "api", "enrich"); err != nil {
+	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--force-recreate", "--wait", "--wait-timeout", "180", "execution", "lighthouse", "validator", "object-storage", "api", "enrich", "sync"); err != nil {
 		h.t.Fatal(err)
 	}
 	h.initializeArchive(ctx)

@@ -21,11 +21,7 @@ func componentRoles(names []string) ([]components.Role, map[components.Role]bool
 }
 
 func needsRPC(roles map[components.Role]bool) bool {
-	return roles[components.RoleSync] || roles[components.RoleEnrich] || roles[components.RoleTrace] || roles[components.RoleMaintenance]
-}
-
-func needsRPCForServe(roles map[components.Role]bool, cfg config.Config) bool {
-	return needsRPC(roles) || roles[components.RoleMetadata] && cfg.Features.NFTMetadata
+	return roles[components.RoleSync]
 }
 
 func roleUsesNATSWake(role components.Role, cfg config.Config) bool {
@@ -40,8 +36,4 @@ func rolesUseNATSWake(roles []components.Role, cfg config.Config) bool {
 		}
 	}
 	return false
-}
-
-func roleUsesRPC(role components.Role, cfg config.Config) bool {
-	return needsRPCForServe(map[components.Role]bool{role: true}, cfg) || role == components.RoleAPI && len(cfg.RPC.Endpoints) > 0
 }

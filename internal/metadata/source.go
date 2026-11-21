@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chaininput"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -96,6 +97,7 @@ func (observation NFTSourceObservation) validate() error {
 type NFTSourceRepository interface {
 	WithSourceDiscovery(context.Context, func(NFTSourceRepository) error) (bool, error)
 	NextNFTSource(context.Context) (NFTSourceCandidate, bool, error)
+	OpenSourceInputs(context.Context, NFTSourceCandidate) (*chaininput.Session, error)
 	NFTSourceCanonical(context.Context, NFTSourceCandidate) (bool, error)
 	RecordNFTSource(context.Context, NFTSourceObservation) error
 	EnqueueNFT(context.Context, NFTRequest) (EnqueueResult, error)
@@ -117,9 +119,6 @@ type SourceDiscoverer struct {
 func NewSourceDiscoverer(repository NFTSourceRepository, pool *ethrpc.Pool, options SourceDiscovererOptions) (*SourceDiscoverer, error) {
 	if repository == nil {
 		return nil, errors.New("NFT metadata source discovery requires a repository")
-	}
-	if pool == nil || len(pool.Names(ethrpc.PurposeState)) == 0 {
-		return nil, errors.New("NFT metadata source discovery requires a state RPC endpoint")
 	}
 	if options.PollInterval <= 0 {
 		options.PollInterval = time.Second
@@ -178,24 +177,51 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 	if err := candidate.validate(); err != nil {
 		return true, fmt.Errorf("metadata source repository returned invalid candidate: %w", err)
 	}
-	endpoint, err := discoverer.pool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		discoverer.logSource(ctx, candidate, "retry", "endpoint_unavailable", "", startedAt, slog.LevelDebug)
-		return false, nil
+	var caller sourceCaller
+	var endpointName string
+	var inputs *chaininput.Session
+	if discoverer.pool == nil {
+		inputs, err = repository.OpenSourceInputs(ctx, candidate)
+		if err != nil {
+			return false, err
+		}
+		caller = inputs
+	} else {
+		endpoint, err := discoverer.pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return false, nil
+		}
+		caller, endpointName = endpoint, endpoint.Name
 	}
-	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, endpoint, candidate)
+	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, caller, candidate)
+	if inputs != nil {
+		if errors.Is(inputs.Err(), chaininput.ErrPending) {
+			return false, nil
+		}
+		if inputs.Err() != nil {
+			return false, inputs.Err()
+		}
+		endpointName, err = inputs.Endpoint(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
 	if retry {
-		discoverer.pool.ReportFailure(endpoint.Name)
-		discoverer.logSource(ctx, candidate, "retry", "rpc_request_failed", endpoint.Name, startedAt, slog.LevelDebug)
+		if discoverer.pool != nil {
+			discoverer.pool.ReportFailure(endpointName)
+		}
+		discoverer.logSource(ctx, candidate, "retry", "rpc_request_failed", endpointName, startedAt, slog.LevelDebug)
 		return false, nil
 	}
-	discoverer.pool.ReportSuccess(endpoint.Name)
+	if discoverer.pool != nil {
+		discoverer.pool.ReportSuccess(endpointName)
+	}
 	canonical, err := repository.NFTSourceCanonical(ctx, candidate)
 	if err != nil {
 		return true, err
 	}
 	if !canonical {
-		discoverer.logSource(ctx, candidate, "stale", "source_block_noncanonical", endpoint.Name, startedAt, slog.LevelInfo)
+		discoverer.logSource(ctx, candidate, "stale", "source_block_noncanonical", endpointName, startedAt, slog.LevelInfo)
 		return true, nil
 	}
 	if unavailableCode != "" {
@@ -203,7 +229,7 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 			Candidate: candidate, State: NFTSourceUnavailable, ErrorCode: unavailableCode,
 		})
 		if err == nil {
-			discoverer.logSource(ctx, candidate, "unavailable", unavailableCode, endpoint.Name, startedAt, slog.LevelInfo)
+			discoverer.logSource(ctx, candidate, "unavailable", unavailableCode, endpointName, startedAt, slog.LevelInfo)
 		}
 		return true, err
 	}
@@ -220,7 +246,7 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 	}); err != nil {
 		return true, err
 	}
-	discoverer.logSource(ctx, candidate, "found", "", endpoint.Name, startedAt, slog.LevelInfo)
+	discoverer.logSource(ctx, candidate, "found", "", endpointName, startedAt, slog.LevelInfo)
 	return true, nil
 }
 
@@ -250,7 +276,11 @@ var (
 	erc1155URISelector     = []byte{0x0e, 0x89, 0x34, 0x1c}
 )
 
-func discoverNFTSource(ctx context.Context, endpoint *ethrpc.Endpoint, candidate NFTSourceCandidate) (string, string, bool) {
+type sourceCaller interface {
+	CallContext(context.Context, any, string, ...any) error
+}
+
+func discoverNFTSource(ctx context.Context, endpoint sourceCaller, candidate NFTSourceCandidate) (string, string, bool) {
 	tokenID, _ := new(big.Int).SetString(candidate.TokenID, 10)
 	input := make([]byte, 36)
 	if candidate.Standard == NFTStandardERC1155 {
@@ -263,10 +293,10 @@ func discoverNFTSource(ctx context.Context, endpoint *ethrpc.Endpoint, candidate
 	selector := rpc.BlockNumberOrHashWithHash(candidate.BlockHash, true)
 	var encoded hexutil.Bytes
 	if err := endpoint.CallContext(ctx, &encoded, "eth_call", call, selector); err != nil {
-		if sourceExecutionReverted(err) {
+		if ethrpc.IsExecutionReverted(err) {
 			return "", "token_uri_unavailable", false
 		}
-		if sourceExactStateUnavailable(err) {
+		if ethrpc.IsExactStateUnavailable(err) {
 			return "", "exact_state_unavailable", false
 		}
 		return "", "", true
@@ -324,30 +354,6 @@ func decodeSourceString(output []byte, maximum int) (string, bool) {
 		}
 	}
 	return string(value), true
-}
-
-func sourceExecutionReverted(err error) bool {
-	var rpcError rpc.Error
-	if !errors.As(err, &rpcError) {
-		return false
-	}
-	message := strings.ToLower(rpcError.Error())
-	return rpcError.ErrorCode() == 3 || strings.Contains(message, "execution reverted") || strings.Contains(message, "revert")
-}
-
-func sourceExactStateUnavailable(err error) bool {
-	if ethrpc.IsMethodNotFound(err) {
-		return true
-	}
-	var rpcError rpc.Error
-	if !errors.As(err, &rpcError) {
-		return false
-	}
-	message := strings.ToLower(rpcError.Error())
-	return rpcError.ErrorCode() == -32602 || strings.Contains(message, "eip-1898") ||
-		strings.Contains(message, "block hash") || strings.Contains(message, "missing trie") ||
-		strings.Contains(message, "historical state") || strings.Contains(message, "pruned") ||
-		strings.Contains(message, "header not found") || strings.Contains(message, "state is not available")
 }
 
 func parseSourceBlockNumber(value string) (uint64, error) {

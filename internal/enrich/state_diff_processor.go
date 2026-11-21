@@ -73,8 +73,8 @@ type StateDiffRPCProcessor struct {
 }
 
 func NewStateDiffRPCProcessor(db dbaccess.Database, pool *ethrpc.Pool, limits StateDiffLimits) (*StateDiffRPCProcessor, error) {
-	if db == nil || pool == nil {
-		return nil, errors.New("state difference processor requires a database and RPC pool")
+	if db == nil {
+		return nil, errors.New("state difference processor requires a database")
 	}
 	if limits == (StateDiffLimits{}) {
 		limits = DefaultStateDiffLimits()
@@ -170,7 +170,7 @@ type stateDiffBudget struct {
 }
 
 func (processor *StateDiffRPCProcessor) Process(ctx context.Context, job Job) (StageResult, error) {
-	if processor == nil || processor.db == nil || processor.pool == nil {
+	if processor == nil || processor.db == nil {
 		return StageResult{}, errors.New("process state difference stage using unconfigured processor")
 	}
 	if err := job.Validate(); err != nil {
@@ -188,6 +188,26 @@ func (processor *StateDiffRPCProcessor) Process(ctx context.Context, job Job) (S
 	}
 	if len(transactions) == 0 {
 		return processor.persist(ctx, job, transactions, "complete")
+	}
+	if processor.pool == nil {
+		input, err := loadTraceInput(ctx, processor.db, job, job.Stage.String())
+		if err != nil {
+			return StageResult{}, err
+		}
+		if input.Source != "prestateTracer" {
+			return StageResult{}, Permanent(errors.New("state_diff_input_invalid"))
+		}
+		caller := &storedStateDiff{primary: input, load: func() (*traceInput, error) { return loadTraceInput(ctx, processor.db, job, fullPrestateKind) }}
+		err = processor.fetch(ctx, caller, job, transactions, &stateDiffBudget{})
+		if caller.loadErr != nil {
+			return StageResult{}, caller.loadErr
+		}
+		if err != nil {
+			return StageResult{}, err
+		}
+		result, err := processor.persist(ctx, job, transactions, "complete")
+		result.diagnostic.Endpoint = input.Endpoint
+		return result, err
 	}
 	endpoint, err := processor.pool.Acquire(ethrpc.PurposeTrace)
 	if err != nil {
@@ -223,10 +243,7 @@ func (processor *StateDiffRPCProcessor) fetch(
 		expected[index] = transactions[index].hash
 	}
 	var diffRaw json.RawMessage
-	if err := caller.CallContext(ctx, &diffRaw, debugTraceBlockByHashMethod, job.BlockHash, map[string]any{
-		"tracer":       "prestateTracer",
-		"tracerConfig": map[string]any{"diffMode": true},
-	}); err != nil {
+	if err := caller.CallContext(ctx, &diffRaw, debugTraceBlockByHashMethod, job.BlockHash, prestateOptions(true)); err != nil {
 		return sanitizeTraceRPCError(err)
 	}
 	if err := budget.add(len(diffRaw), normalizedStateDiffCounts{}, processor.limits); err != nil {
@@ -278,10 +295,7 @@ func (processor *StateDiffRPCProcessor) fetch(
 		return nil
 	}
 	var prestateRaw json.RawMessage
-	if err := caller.CallContext(ctx, &prestateRaw, debugTraceBlockByHashMethod, job.BlockHash, map[string]any{
-		"tracer":       "prestateTracer",
-		"tracerConfig": map[string]any{"diffMode": false},
-	}); err != nil {
+	if err := caller.CallContext(ctx, &prestateRaw, debugTraceBlockByHashMethod, job.BlockHash, prestateOptions(false)); err != nil {
 		return sanitizeTraceRPCError(err)
 	}
 	if err := budget.add(len(prestateRaw), normalizedStateDiffCounts{}, processor.limits); err != nil {

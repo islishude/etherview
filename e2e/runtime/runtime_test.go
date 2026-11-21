@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/exec"
@@ -44,7 +45,6 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/loadtest"
 	"github.com/islishude/etherview/internal/testcompose"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -120,6 +120,7 @@ type fixture struct {
 }
 
 type durableSnapshot struct {
+	TraceInputs          string
 	GenesisHash          string
 	Canonical            string
 	BlockCount           int64
@@ -357,7 +358,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	project.Env["ETHERVIEW_RUNTIME_WATCHLIST"] = "true"
 	// Optional upstream outages must not prevent either production topology from serving execution data.
 	project.Env["ETHERVIEW_CONSENSUS_ENABLED"] = "true"
-	project.Env["ETHERVIEW_CONSENSUS_URL"] = "http://127.0.0.1:1"
+
 	project.Env["ETHERVIEW_CONSENSUS_BLOBS_ENABLED"] = "true"
 	project.Env["ETHERVIEW_CONSENSUS_BLOBS_ENDPOINT"] = "http://127.0.0.1:1"
 	project.Env["ETHERVIEW_CONSENSUS_BLOBS_BUCKET"] = "runtime-durable-blobs"
@@ -395,7 +396,9 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.initializeFixture(ctx)
 		h.configureUserOperationEnvironment()
 		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
-		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
+		nodeURL := h.rpcProxy.containerURL()
+		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = nodeURL + "," + strings.Replace(nodeURL, "http://", "ws://", 1)
+		h.project.Env["ETHERVIEW_CONSENSUS_URL"] = h.rpcProxy.containerURL() + "/beacon"
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
 	}
 
@@ -571,7 +574,7 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 			if observed == nil {
 				return false, "missing consensus status", nil
 			}
-			return observed.State == gen.ConsensusStateUnavailable && observed.Code != nil && *observed.Code == "beacon_transport", string(observed.State), nil
+			return observed.State == gen.ConsensusStateUnavailable && observed.Code != nil && *observed.Code == "beacon_unavailable", string(observed.State), nil
 		})
 		waitFor(t, ctx, "requests retry without execution readiness loss", func() (bool, string, error) {
 			var requests gen.BlockRequestsResponse
@@ -648,9 +651,22 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		durable: h.captureDurable(ctx),
 		api:     h.captureAPI(ctx),
 	}
+	err = h.db.QueryRow(ctx, `SELECT string_agg(kind || ':' || encode(sha256(convert_to(evidence::text,'UTF8')),'hex'),',' ORDER BY kind)
+		FROM block_inputs WHERE chain_id=1 AND block_hash=decode($1,'hex') AND kind IN ('trace@4','state_diff@3','full_prestate@1') AND evidence IS NOT NULL AND error_code=''`, strings.TrimPrefix(h.fixture.blockOneHash, "0x")).Scan(&result.durable.TraceInputs)
+	if err != nil || !strings.Contains(result.durable.TraceInputs, "trace@4:") {
+		t.Fatalf("durable trace inputs = %q, %v", result.durable.TraceInputs, err)
+	}
+	if h.rpcProxy.websocketRequests.Load() == 0 {
+		t.Fatal("execution fixture received no WebSocket requests")
+	}
+	if h.rpcProxy.beaconRequests.Load() == 0 {
+		t.Fatal("Beacon fixture received no requests")
+	}
 	h.writeJSONArtifact(mode+"-durable.json", result.durable)
 	h.writeJSONArtifact(mode+"-api.json", result.api)
 	if mode == "distributed" {
+		h.enterPhase("offline processing replay")
+		h.assertSyncOfflineReplay(ctx)
 		h.enterPhase("process-native TLS")
 		h.validateProcessNativeTLS(ctx)
 	}
@@ -781,7 +797,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 func (h *harness) startTopology(ctx context.Context) {
 	h.startDeadlockGuard(ctx)
 	if h.mode == "distributed" {
-		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "api")
+		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "api", "enrich", "verification", "metadata", "maintenance", "trace")
 		h.connectDatabase(ctx)
 		waitFor(h.t, ctx, "config-only role identity bind", func() (bool, string, error) {
 			var identity string
@@ -792,7 +808,10 @@ func (h *harness) startTopology(ctx context.Context) {
 			want := "1:" + strings.TrimPrefix(h.fixture.genesisHash, "0x")
 			return err == nil && identity == want, identity, err
 		})
-		// The first API startup already completed migration. Do not restart the
+		if h.rpcProxy != nil && (h.rpcProxy.executionRequests.Load() != 0 || h.rpcProxy.beaconRequests.Load() != 0) {
+			h.t.Fatal("node received a request while only processing roles were running")
+		}
+		// The first split-role startup already completed migration. Do not restart the
 		// one-shot initializer while application workers are claiming jobs: its
 		// schema/partition locks must precede all runtime transactions.
 		services, err := h.project.Run(ctx, "config", "--services")
@@ -1270,106 +1289,6 @@ func (h *harness) validateSSE(ctx context.Context) {
 	h.t.Fatal("SSE did not replay a durable event")
 }
 
-func (h *harness) assertENS(ctx context.Context) {
-	waitFor(h.t, ctx, "autonomous real v2 publication", func() (bool, string, error) {
-		var count int
-		err := h.db.QueryRow(ctx, `SELECT count(DISTINCT direction) FROM ens_effective_publications WHERE target_chain_id=1 AND name=$1 AND ens_effective_publication_current(id)`, runtimeENSName).Scan(&count)
-		return count == 3, fmt.Sprint(count), err
-	})
-	var config gen.PublicConfigResponse
-	h.mustGetJSON(ctx, "/api/v1/config", &config)
-	if !config.Data.Features["ens"] {
-		h.t.Fatal("runtime public config did not enable ENS")
-	}
-	var names gen.AddressNamePageResponse
-	h.mustGetJSON(ctx, "/api/v1/address-names?addresses="+url.QueryEscape(h.fixture.authority), &names)
-	if len(names.Data.Items) != 1 || names.Data.Items[0].State != gen.AddressNameLookupStateResolved ||
-		names.Data.Items[0].PrimaryName == nil || names.Data.Items[0].PrimaryName.Name != runtimeENSName ||
-		names.Data.Snapshot == "" {
-		h.t.Fatalf("runtime ENS address names = %#v", names.Data)
-	}
-	var search gen.SearchResponse
-	h.mustGetJSON(ctx, "/api/v1/search?q="+url.QueryEscape(runtimeENSName), &search)
-	if len(search.Data) != 1 || search.Data[0].Key != runtimeENSName || search.Data[0].Kind != gen.SearchResultKindName || search.Data[0].NameDetails == nil || search.Data[0].NameDetails.ResolvedAddress.Value == nil || !strings.EqualFold(*search.Data[0].NameDetails.ResolvedAddress.Value, h.fixture.authority) {
-		h.t.Fatalf("runtime ENS search = %#v", search.Data)
-	}
-
-	var detail gen.NameDetailResponse
-	h.mustGetJSON(ctx, "/api/v1/names/"+runtimeENSName, &detail)
-	if detail.Data.ProfileObservation == nil || detail.Data.Registrant.Value == nil || !strings.EqualFold(*detail.Data.Registrant.Value, h.ensOwner) {
-		h.t.Fatalf("runtime registration profile: %+v", detail.Data)
-	}
-
-	var history gen.NameHistoryResponse
-	h.mustGetJSON(ctx, "/api/v1/names/"+runtimeENSName+"/history", &history)
-	if len(history.Data.Items) == 0 || history.Data.Snapshot == "" {
-		h.t.Fatalf("runtime history: %+v", history.Data)
-	}
-	first := history.Data.Items[0]
-	var events gen.NameHistoryEventsResponse
-	h.mustGetJSON(ctx, "/api/v1/names/"+runtimeENSName+"/history/"+first.TransactionHash+"/events?block_hash="+first.BlockHash+"&snapshot="+url.QueryEscape(history.Data.Snapshot), &events)
-	if len(events.Data.Items) == 0 {
-		h.t.Fatal("runtime history lost transaction events")
-	}
-
-	for _, name := range []string{"plain.eth", "wrapped.eth", "locked.eth"} {
-		waitFor(h.t, ctx, "migrated forward "+name, func() (bool, string, error) {
-			var count int
-			err := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_effective_publications WHERE target_chain_id=1 AND direction='forward' AND state='resolved' AND name=$1 AND ens_effective_publication_current(id)`, name).Scan(&count)
-			return count > 0, fmt.Sprint(count), err
-		})
-		h.mustGetJSON(ctx, "/api/v1/search?q="+name, &search)
-		if len(search.Data) != 1 || search.Data[0].Key != name || search.Data[0].NameDetails == nil || search.Data[0].NameDetails.ResolutionObservation == nil {
-			h.t.Fatalf("migrated name %s: %#v", name, search.Data)
-		}
-	}
-	waitFor(h.t, ctx, "CCIP failure isolated from published names", func() (bool, string, error) {
-		var failed bool
-		err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ens_sync_jobs j JOIN ens_sync_candidates c ON c.id=j.candidate_id WHERE c.lookup_key='ccip.eth' AND j.failure_code='ccip_unavailable')`).Scan(&failed)
-		return failed, fmt.Sprint(failed), err
-	})
-	var candidateID, observationID int64
-	var validUntil time.Time
-	waitFor(h.t, ctx, "definitive negative for refresh", func() (bool, string, error) {
-		err := h.db.QueryRow(ctx, `SELECT c.id,o.id,o.valid_until FROM ens_sync_candidates c JOIN ens_sync_observations o ON o.candidate_id=c.id WHERE c.direction='primary' AND c.lookup_key=$1 AND o.outcome='not_found' ORDER BY o.id DESC LIMIT 1`, strings.ToLower(h.fixture.accounts[0])).Scan(&candidateID, &observationID, &validUntil)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, "pending", nil
-		}
-		return err == nil, fmt.Sprint(candidateID), err
-	})
-
-	// ENS eth_call failures share the current-chain pool but do not expire an
-	// already verified observation early or create request-triggered jobs.
-	h.rpcProxy.ensOffline.Store(true)
-	defer h.rpcProxy.ensOffline.Store(false)
-	if _, e := h.db.Exec(ctx, `UPDATE ens_sync_candidates SET refresh_at=clock_timestamp() WHERE id=$1`, candidateID); e != nil {
-		h.t.Fatal(e)
-	}
-	waitFor(h.t, ctx, "background resolver failure", func() (bool, string, error) {
-		var failed bool
-		err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ens_sync_jobs WHERE candidate_id=$1 AND failure_code IS NOT NULL AND attempts>0)`, candidateID).Scan(&failed)
-		return failed, fmt.Sprint(failed), err
-	})
-	var latestID int64
-	var latestExpiry time.Time
-	if e := h.db.QueryRow(ctx, `SELECT id,valid_until FROM ens_sync_observations WHERE candidate_id=$1 ORDER BY id DESC LIMIT 1`, candidateID).Scan(&latestID, &latestExpiry); e != nil || latestID != observationID || !latestExpiry.Equal(validUntil) {
-		h.t.Fatalf("failed refresh renewed observation: %d %v %v", latestID, latestExpiry, e)
-	}
-
-	response := h.requireHTTPStatus(ctx, "/health/ready", http.StatusOK)
-	_ = response.Body.Close()
-	response = h.requireHTTPStatus(ctx, "/api/v1/search?q=never-imported.eth", http.StatusOK)
-	_ = response.Body.Close()
-	invalidName := h.requireHTTPStatus(ctx, "/api/v1/names/%20", http.StatusBadRequest)
-	_ = invalidName.Body.Close()
-	var candidates int
-	if e := h.db.QueryRow(ctx, `SELECT count(*) FROM ens_sync_candidates WHERE lookup_key='never-imported.eth'`).Scan(&candidates); e != nil || candidates != 0 {
-		h.t.Fatalf("HTTP enqueued missing name: %d %v", candidates, e)
-	}
-	h.rpcProxy.ensOffline.Store(false)
-
-}
-
 func (h *harness) captureDurable(ctx context.Context) durableSnapshot {
 	var snapshot durableSnapshot
 	err := h.db.QueryRow(ctx, `
@@ -1845,6 +1764,10 @@ func assertRuntimeAuthorization(
 }
 
 type receiptProxy struct {
+	executionRequests atomic.Uint64
+	websocketRequests atomic.Uint64
+	websocketProxy    http.Handler
+	beaconRequests    atomic.Uint64
 	upstream          string
 	listener          net.Listener
 	server            *http.Server
@@ -1861,8 +1784,13 @@ func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
 	if err != nil {
 		t.Fatal(err)
 	}
+	target, err := url.Parse(upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
 	proxy := &receiptProxy{
-		upstream: upstream, listener: listener,
+		websocketProxy: httputil.NewSingleHostReverseProxy(target),
+		upstream:       upstream, listener: listener,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -1889,6 +1817,17 @@ func (p *receiptProxy) containerURL() string {
 }
 
 func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	if strings.HasPrefix(request.URL.Path, "/beacon/") {
+		p.beaconRequests.Add(1)
+		http.Error(writer, "fixture beacon outage", http.StatusServiceUnavailable)
+		return
+	}
+	p.executionRequests.Add(1)
+	if strings.EqualFold(request.Header.Get("Upgrade"), "websocket") {
+		p.websocketRequests.Add(1)
+		p.websocketProxy.ServeHTTP(writer, request)
+		return
+	}
 	if request.Method != http.MethodPost {
 		http.Error(writer, "JSON-RPC requires POST", http.StatusMethodNotAllowed)
 		return
@@ -1955,16 +1894,6 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	_, _ = writer.Write(encoded)
-}
-
-func rpcRequestMethod(body []byte) string {
-	var request struct {
-		Method string `json:"method"`
-	}
-	if json.Unmarshal(body, &request) != nil {
-		return ""
-	}
-	return request.Method
 }
 
 func normalizeAnvilClearedDelegations(value any) uint64 {

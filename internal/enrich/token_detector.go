@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rpc"
+	dbaccess "github.com/islishude/etherview/internal/db"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -121,8 +122,15 @@ type TokenBlockDetector interface {
 }
 
 type PoolTokenDetector struct {
+	db     dbaccess.Database
 	pool   *ethrpc.Pool
 	limits TokenProbeLimits
+}
+
+func NewStoredTokenDetector(db dbaccess.Database) *PoolTokenDetector {
+	var limits TokenProbeLimits
+	limits.defaults()
+	return &PoolTokenDetector{db: db, limits: limits}
 }
 
 func NewPoolTokenDetector(pool *ethrpc.Pool, limits TokenProbeLimits) (*PoolTokenDetector, error) {
@@ -155,7 +163,7 @@ func (detector *PoolTokenDetector) Detect(ctx context.Context, request TokenDete
 }
 
 func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evidence map[common.Address]TokenLogEvidence) (map[common.Address]TokenDetection, error) {
-	if detector == nil || detector.pool == nil {
+	if detector == nil || (detector.pool == nil && detector.db == nil) {
 		return nil, errors.New("pool token detector is not configured")
 	}
 	if err := job.Validate(); err != nil {
@@ -173,11 +181,11 @@ func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evi
 			return nil, Permanent(errors.New("pool token detector received invalid block evidence"))
 		}
 	}
-	endpoint, err := detector.pool.Acquire(ethrpc.PurposeState)
+	endpoint, err := openStageState(ctx, detector.db, detector.pool, job)
 	if err != nil {
-		return nil, Unavailable(errors.New("state RPC endpoint is unavailable"))
+		return nil, err
 	}
-	blockDetector, err := NewRPCTokenDetector(endpoint.Client, detector.limits)
+	blockDetector, err := NewRPCTokenDetector(endpoint, detector.limits)
 	if err != nil {
 		return nil, err
 	}
@@ -187,13 +195,11 @@ func (detector *PoolTokenDetector) DetectBlock(ctx context.Context, job Job, evi
 			Job: job, Address: address, Evidence: evidence[address],
 		})
 		if detectErr != nil {
-			detector.pool.ReportFailure(endpoint.Name)
-			return nil, detectErr
+			return nil, endpoint.check(detectErr)
 		}
 		results[address] = result
 	}
-	detector.pool.ReportSuccess(endpoint.Name)
-	return results, nil
+	return results, endpoint.check(nil)
 }
 
 type TokenProbeLimits struct {
