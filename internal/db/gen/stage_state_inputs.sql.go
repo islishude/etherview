@@ -111,7 +111,7 @@ func (q *Queries) StageInputFinish(ctx context.Context, arg StageInputFinishPara
 }
 
 const stageInputRead = `-- name: StageInputRead :one
-SELECT outcome,result FROM stage_state_inputs WHERE group_id=$1 AND request_hash=sha256($2::bytea) AND request=$2 AND (outcome<>'failed' OR lease_until>clock_timestamp())
+SELECT outcome,result FROM stage_state_inputs WHERE group_id=$1 AND request_hash=sha256($2::bytea) AND request=$2 AND (outcome NOT IN ('failed','exact_unavailable') OR lease_until>clock_timestamp())
 `
 
 type StageInputReadRow struct {
@@ -138,7 +138,7 @@ func (q *Queries) StageInputRetry(ctx context.Context, iD int64, leaseGeneration
 
 const stageInputSubmit = `-- name: StageInputSubmit :exec
 INSERT INTO stage_state_inputs(group_id,request) VALUES($1,$2) ON CONFLICT(group_id,request_hash) DO UPDATE SET outcome='',attempts=0,lease_until='-infinity',result=NULL
-WHERE stage_state_inputs.outcome='failed' AND stage_state_inputs.lease_until<=clock_timestamp()
+WHERE stage_state_inputs.outcome IN ('failed','exact_unavailable') AND stage_state_inputs.lease_until<=clock_timestamp()
 AND stage_state_inputs.request=EXCLUDED.request
 `
 

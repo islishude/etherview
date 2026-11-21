@@ -82,7 +82,7 @@ CREATE TABLE stage_state_inputs (
     lease_generation bigint NOT NULL DEFAULT 0,
     attempts integer NOT NULL DEFAULT 0,
     lease_until timestamptz NOT NULL DEFAULT '-infinity',
-    outcome text NOT NULL DEFAULT '' CHECK(outcome IN ('','ready','reverted','failed')),
+    outcome text NOT NULL DEFAULT '' CHECK(outcome IN ('','ready','reverted','failed','exact_unavailable')),
     result bytea CHECK(octet_length(result)<=1048576),
     UNIQUE(group_id,request_hash)
 );

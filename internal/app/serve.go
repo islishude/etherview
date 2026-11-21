@@ -17,7 +17,6 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/httpapi"
-	"github.com/islishude/etherview/internal/indexer"
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/observability"
 	"github.com/islishude/etherview/internal/stagecontract"
@@ -253,25 +252,6 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 			natsWake.Signal(accelerator.WakeOutbox)
 		}
 	}
-	var coreRPCSource *syncer.RPCSource
-	var coreCanonicalizer *indexer.Canonicalizer
-	if roleSet[components.RoleSync] {
-		if rpcBuild == nil {
-			return errors.New("sync role requires an RPC pool")
-		}
-		if len(rpcBuild.Pool.Names(ethrpc.PurposeHistory)) == 0 {
-			return errors.New("sync role requires an HTTP history RPC endpoint")
-		}
-		fetcher := ethrpc.Fetcher{ReceiptStrategy: ethrpc.ReceiptStrategyAuto, ReceiptBatchSize: cfg.RPC.BatchSize}
-		bundleSource := &indexer.PoolBundleSource{Pool: rpcBuild.Pool, Fetcher: fetcher, Purpose: ethrpc.PurposeHistory}
-		headBundleSource := &indexer.PoolBundleSource{Pool: rpcBuild.Pool, Fetcher: fetcher, Purpose: ethrpc.PurposeHead}
-		coreCanonicalizer = &indexer.Canonicalizer{
-			ChainID: chainID, StartBlock: cfg.Chain.StartBlock,
-			MaxReorgDepth: cfg.Chain.MaxReorgDepth, Repository: repository,
-			Source: bundleSource, HeadSource: headBundleSource,
-		}
-		coreRPCSource = &syncer.RPCSource{Pool: rpcBuild.Pool, Fetcher: fetcher}
-	}
 	dependencies, err := buildVerificationDependencies(cfg, roleSet, db, natsWake)
 	if err != nil {
 		return err
@@ -290,18 +270,22 @@ func (b *Backend) Serve(ctx context.Context, cfg config.Config, roleNames []stri
 		backend: b, ctx: ctx, cfg: cfg, roles: roles, roleSet: roleSet,
 		db: db, readDB: readDB, logger: logger, registry: registry,
 		businessObserver: businessObserver, tracker: tracker,
-		metricCollector: metricCollector, telemetry: telemetry, rpcBuild: rpcBuild,
+		metricCollector: metricCollector, telemetry: telemetry,
 		repository: repository, pendingRepository: pendingRepository,
 		runtimeEvents: runtimeEvents, redisAccelerator: redisAccelerator,
 		broker: broker, eventWake: eventWake, natsWake: natsWake,
 		outboxWake: outboxWake, enrichJobWake: enrichJobWake, traceJobWake: traceJobWake,
-		signalEvents: signalEvents, coreRPCSource: coreRPCSource,
-		coreCanonicalizer:      coreCanonicalizer,
+		signalEvents:           signalEvents,
 		verificationRepository: verificationRepository, compilerCatalog: compilerCatalog,
 		verificationReader: verificationReader, verificationSubmitter: verificationSubmitter,
 		compatibilityVerification: compatibilityVerification, sourcify: sourcify,
 		lifecycle: lifecycle, componentRegistry: componentRegistry,
 		databaseHealth: databaseHealth, chainID: chainID,
+	}
+	if roleSet[components.RoleSync] {
+		if err := assembly.registerSyncComponents(rpcBuild); err != nil {
+			return err
+		}
 	}
 	if err := assembly.registerComponents(); err != nil {
 		return err

@@ -20,6 +20,12 @@ var ErrPending = errors.New("sync_input_pending")
 var ErrInvalid = errors.New("invalid_state_input")
 var ErrUnavailable = errors.New("state_input_unavailable")
 
+// exactStateUnavailable replays a selector capability failure without retaining provider text.
+type exactStateUnavailable struct{}
+
+func (exactStateUnavailable) Error() string  { return "exact_state_unavailable" }
+func (exactStateUnavailable) ErrorCode() int { return -32602 }
+
 type Reverted struct{ Data []byte }
 
 func (e Reverted) ErrorData() any { return hexutil.Encode(e.Data) }
@@ -142,6 +148,8 @@ func (s *Session) CallContext(ctx context.Context, result any, method string, ar
 	switch row.Outcome {
 	case "":
 		return s.record(ErrPending)
+	case "exact_unavailable":
+		return exactStateUnavailable{}
 	case "reverted":
 		return Reverted{Data: row.Result}
 	case "ready":

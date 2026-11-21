@@ -53,7 +53,7 @@ func (p *RequestsProcessor) Process(ctx context.Context, job Job) (StageResult, 
 		return retryBeaconInput(ctx, dbgen.New(p.DB), job, chain, number, input, err)
 	}
 	if err := consensus.ValidateRequestSet(set, block); err != nil {
-		return consensusFailure(err)
+		return retryBeaconInput(ctx, dbgen.New(p.DB), job, chain, number, input, err)
 	}
 	items, err := json.Marshal(set.Items)
 	if err != nil {

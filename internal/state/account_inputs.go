@@ -78,7 +78,10 @@ func (r *Reader) accountInput(ctx context.Context, ref CanonicalRef, op string, 
 					if e := q.AccountInputExpire(ctx, chain); e != nil {
 						return e
 					}
-					_, e := q.AccountInputSubmit(ctx, dbgen.AccountInputSubmitParams(key))
+					rows, e := q.AccountInputSubmit(ctx, dbgen.AccountInputSubmitParams(key))
+					if e == nil && rows == 0 {
+						return CapabilityError{Code: "endpoint_unavailable"}
+					}
 					return e
 				})
 				if err != nil {

@@ -23,7 +23,7 @@ func (assembly runtimeAssembly) registerMetadataComponents() error {
 			return err
 		}
 		if err := componentRegistry.Register(components.RoleMetadata, "42-nft-metadata-discovery", func() (components.Service, error) {
-			return metadata.NewSourceDiscoverer(repo, nil, metadata.SourceDiscovererOptions{Inputs: db, PollInterval: cfg.Runtime.PollInterval, MaxAttempts: metadata.DefaultMaxAttempts, Logger: logger})
+			return metadata.NewSourceDiscoverer(repo, nil, metadata.SourceDiscovererOptions{PollInterval: cfg.Runtime.PollInterval, MaxAttempts: metadata.DefaultMaxAttempts, Logger: logger})
 		}); err != nil {
 			return err
 		}

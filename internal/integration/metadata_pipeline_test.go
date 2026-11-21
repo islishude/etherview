@@ -27,6 +27,7 @@ import (
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/metadata"
 	"github.com/islishude/etherview/internal/store"
+	"github.com/islishude/etherview/internal/syncer"
 )
 
 func TestPostgresMetadataPipelineIsDurableAuditedAndCanonicalBound(t *testing.T) {
@@ -761,12 +762,92 @@ func TestPostgresNFTMetadataUpdateSignalsDriveBoundedExactSourceRefresh(t *testi
 	}
 }
 
+func TestMetadataSourceReplaysRPCOutcomesWithOneConnection(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	core, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := testAddress(950)
+	topic := crypto.Keccak256Hash([]byte("MetadataUpdate(uint256)"))
+	var logs []*types.Log
+	for id := 1; id <= 4; id++ {
+		logs = append(logs, &types.Log{Address: token, Topics: []common.Hash{topic}, Data: metadataUint256(int64(id))})
+	}
+	block := metadataUpdateBundle(t, 0, common.Hash{}, "metadata-retained-inputs", token, logs)
+	commitCanonical(t, ctx, core, block)
+	hash := block.Block.Hash()
+	insertMetadataUpdateTokenContract(t, ctx, db, token, hash, 0, "erc721")
+	config := db.Config()
+	config.MaxConns, config.MinConns = 1, 1
+	consumer, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	repo, err := metadata.NewPostgresRepository(consumer, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates, err := metadata.NewUpdateDiscoverer(repo, metadata.UpdateDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range logs {
+		if ok, err := updates.ProcessOnce(ctx); err != nil || !ok {
+			t.Fatalf("update=%t err=%v", ok, err)
+		}
+	}
+	discovery, err := metadata.NewSourceDiscoverer(repo, nil, metadata.SourceDiscovererOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, closeRPC := metadataRefreshRPCPool(t, &metadataRefreshRPC{
+		erc721URI: "https://metadata.example/4.json",
+		failures: map[string]error{
+			"1": &integrationRPCError{code: -32000, message: "missing trie node"},
+			"2": &integrationRPCError{code: -32602, message: "unsupported selector"},
+			"3": &integrationRPCError{code: -32000, message: "execution reverted"},
+		},
+	})
+	defer closeRPC()
+	collector := syncer.StateInputCollector{DB: db, ChainID: "1", Pool: pool, Timeout: time.Second, PollInterval: time.Millisecond}
+	runCtx, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- collector.Run(runCtx) }()
+	defer func() {
+		stop()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	for id, want := range []string{"exact_state_unavailable", "exact_state_unavailable", "token_uri_unavailable", ""} {
+		for {
+			completed, err := discovery.ProcessOnce(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if completed {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+		var code string
+		if err := db.QueryRow(ctx, `SELECT COALESCE(error_code,'') FROM nft_metadata_source_observations WHERE chain_id=1 AND block_hash=$1 AND token_id=$2`, hash.Bytes(), strconv.Itoa(id+1)).Scan(&code); err != nil || code != want {
+			t.Fatalf("token %d code=%q err=%v", id+1, code, err)
+		}
+	}
+}
+
 type metadataRefreshRPCCall struct {
 	tokenID  string
 	selector rpc.BlockNumberOrHash
 }
 
 type metadataRefreshRPC struct {
+	failures   map[string]error
 	erc721URI  string
 	erc1155URI string
 	calls      []metadataRefreshRPCCall
@@ -787,6 +868,9 @@ func (service *metadataRefreshRPC) Call(
 	}
 	tokenID := new(big.Int).SetBytes(input[4:]).String()
 	service.calls = append(service.calls, metadataRefreshRPCCall{tokenID: tokenID, selector: selector})
+	if err := service.failures[tokenID]; err != nil {
+		return nil, err
+	}
 	uri := service.erc721URI
 	if hexutil.Encode(input[:4]) == "0x0e89341c" {
 		uri = service.erc1155URI

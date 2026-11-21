@@ -58,14 +58,21 @@ func readBeaconInput(ctx context.Context, q *dbgen.Queries, job Job, chain, heig
 // Only the exact evidence the processor inspected can be replaced.
 func retryBeaconInput(ctx context.Context, q *dbgen.Queries, job Job, chain, height pgtype.Numeric, input retainedBeaconInput, cause error) (StageResult, error) {
 	remote, ok := errors.AsType[*consensus.Error](cause)
-	if !ok || !remote.Retry {
+	if !ok {
 		return consensusFailure(cause)
 	}
-	if input.attempts < 4 {
-		_, err := q.BlockInputRetryEvidence(ctx, dbgen.BlockInputRetryEvidenceParams{ChainID: chain, BlockNumber: height, BlockHash: job.BlockHash[:], Kind: job.Stage.Name, Generation: input.generation, Previous: input.raw})
-		if err != nil {
-			return StageResult{}, err
-		}
+	code := remote.Code
+	if remote.Retry && input.attempts < 4 {
+		code = ""
+	}
+	rows, err := q.BlockInputRejectEvidence(ctx, dbgen.BlockInputRejectEvidenceParams{
+		ChainID: chain, BlockNumber: height, BlockHash: job.BlockHash[:], Kind: job.Stage.Name,
+		Generation: input.generation, Attempts: input.attempts, Previous: input.raw, Code: code,
+	})
+	if err != nil {
+		return StageResult{}, err
+	}
+	if rows == 0 || code == "" || job.Generation > uint64(input.generation) {
 		return StageResult{}, errInputPending
 	}
 	return consensusFailure(&consensus.Error{Code: remote.Code})

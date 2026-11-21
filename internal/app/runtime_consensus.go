@@ -8,10 +8,8 @@ import (
 	"github.com/islishude/etherview/internal/accelerator"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/consensus"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/store"
-	"github.com/islishude/etherview/internal/syncer"
 )
 
 func consensusArchive(ctx context.Context, cfg config.Config) (*accelerator.BlobArchive, error) {
@@ -43,14 +41,7 @@ func (a runtimeAssembly) registerConsensusComponents() error {
 		namespace = identity.ChainID + "/" + strings.TrimPrefix(identity.GenesisHash.Hex(), "0x")
 	}
 	if a.roleSet[components.RoleSync] {
-		client := consensus.NewClient(a.cfg.Consensus)
-		if err := a.componentRegistry.Register(components.RoleSync, "32-beacon-inputs", func() (components.Service, error) {
-			return &syncer.BeaconCollector{DB: a.db, ChainID: a.cfg.Chain.ID, Client: client, Archive: archive, Namespace: namespace, Timeout: 8 * a.cfg.Consensus.RequestTimeout, PollInterval: a.cfg.Runtime.PollInterval, Logger: a.logger}, nil
-		}); err != nil {
-			return err
-		}
-		discovery := &enrich.ConsensusDiscovery{DB: a.db, Queue: queue, Client: client, Config: a.cfg, Logger: a.logger}
-		if err := a.componentRegistry.Register(components.RoleSync, "31-consensus-discovery", func() (components.Service, error) { return discovery, nil }); err != nil {
+		if err := a.registerBeaconAcquisition(queue, archive, namespace); err != nil {
 			return err
 		}
 	}

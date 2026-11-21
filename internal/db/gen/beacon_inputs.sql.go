@@ -126,30 +126,36 @@ func (q *Queries) BlockInputRead(ctx context.Context, arg BlockInputReadParams) 
 	return i, err
 }
 
-const blockInputRetryEvidence = `-- name: BlockInputRetryEvidence :execrows
-UPDATE block_inputs SET evidence=NULL,lease_until=clock_timestamp()+interval '1 second'
+const blockInputRejectEvidence = `-- name: BlockInputRejectEvidence :execrows
+UPDATE block_inputs SET evidence=NULL,
+    error_code=$6::text,
+    lease_until=clock_timestamp()+interval '1 second'
 WHERE chain_id=$1 AND block_number=$2 AND block_hash=$3 AND kind=$4 AND version=1
-  AND generation=$5 AND attempts<4 AND evidence=$6::jsonb
+  AND generation=$5 AND attempts=$7 AND error_code='' AND evidence=$8::jsonb
 `
 
-type BlockInputRetryEvidenceParams struct {
+type BlockInputRejectEvidenceParams struct {
 	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
 	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
 	Kind        string         `db:"kind" json:"kind"`
 	Generation  int64          `db:"generation" json:"generation"`
+	Code        string         `db:"code" json:"code"`
+	Attempts    int32          `db:"attempts" json:"attempts"`
 	Previous    []byte         `db:"previous" json:"previous"`
 }
 
 // A processor may discover that a slot has moved, or an acquired blob has
 // disappeared from the archive. Preserve the lease counter and retry budget.
-func (q *Queries) BlockInputRetryEvidence(ctx context.Context, arg BlockInputRetryEvidenceParams) (int64, error) {
-	result, err := q.db.Exec(ctx, blockInputRetryEvidence,
+func (q *Queries) BlockInputRejectEvidence(ctx context.Context, arg BlockInputRejectEvidenceParams) (int64, error) {
+	result, err := q.db.Exec(ctx, blockInputRejectEvidence,
 		arg.ChainID,
 		arg.BlockNumber,
 		arg.BlockHash,
 		arg.Kind,
 		arg.Generation,
+		arg.Code,
+		arg.Attempts,
 		arg.Previous,
 	)
 	if err != nil {

@@ -12,7 +12,6 @@ import (
 	"github.com/islishude/etherview/internal/etherscan"
 	"github.com/islishude/etherview/internal/events"
 	"github.com/islishude/etherview/internal/httpapi"
-	"github.com/islishude/etherview/internal/indexer"
 	"github.com/islishude/etherview/internal/mempool"
 	"github.com/islishude/etherview/internal/observability"
 	"github.com/islishude/etherview/internal/store"
@@ -34,7 +33,6 @@ type runtimeAssembly struct {
 	tracker                   *syncer.Tracker
 	metricCollector           *observability.DurableCollector
 	telemetry                 *observability.Telemetry
-	rpcBuild                  *RPCBuild
 	repository                *store.PostgresRepository
 	pendingRepository         *mempool.Postgres
 	runtimeEvents             *events.PostgresStore
@@ -46,8 +44,6 @@ type runtimeAssembly struct {
 	enrichJobWake             <-chan struct{}
 	traceJobWake              <-chan struct{}
 	signalEvents              func()
-	coreRPCSource             *syncer.RPCSource
-	coreCanonicalizer         *indexer.Canonicalizer
 	verificationRepository    *verify.PostgresRepository
 	compilerCatalog           *verify.CompilerCatalog
 	verificationReader        httpapi.VerificationReader
@@ -62,10 +58,6 @@ type runtimeAssembly struct {
 
 func (assembly runtimeAssembly) registerComponents() error {
 	if err := assembly.registerSharedComponents(); err != nil {
-		return err
-	}
-
-	if err := assembly.registerSyncComponents(); err != nil {
 		return err
 	}
 

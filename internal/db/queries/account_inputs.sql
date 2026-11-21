@@ -2,13 +2,22 @@
 SELECT evidence FROM account_inputs WHERE chain_id=$1 AND block_number=$2 AND block_hash=$3 AND operation=$4 AND address=$5 AND argument_hash=sha256(sqlc.arg(argument)::bytea) AND argument=sqlc.arg(argument) AND expires_at>now();
 
 -- name: AccountInputExpire :exec
-DELETE FROM account_inputs WHERE chain_id=$1 AND expires_at<=now();
+-- Leave space for pending work independently of the size of the evidence cache.
+-- The submitter holds the chain admission lock while pruning and inserting.
+DELETE FROM account_inputs a WHERE a.chain_id=$1 AND (a.expires_at<=now() OR a.id IN (
+    SELECT cached.id FROM account_inputs cached WHERE cached.chain_id=$1 AND cached.evidence IS NOT NULL AND cached.expires_at>now()
+    ORDER BY expires_at DESC, id DESC OFFSET 8192
+));
 
 -- name: AccountInputSubmit :execrows
 INSERT INTO account_inputs(chain_id,block_number,block_hash,operation,address,argument,expires_at)
 SELECT sqlc.arg(chain_id)::numeric,sqlc.arg(block_number)::numeric,sqlc.arg(block_hash)::bytea,sqlc.arg(operation)::text,sqlc.arg(address)::bytea,sqlc.arg(argument)::bytea,now()+interval '2 minutes'
-WHERE (SELECT count(*) FROM account_inputs WHERE chain_id=sqlc.arg(chain_id)) < 8192
-ON CONFLICT(chain_id,block_hash,operation,address,argument_hash) DO NOTHING;
+WHERE (SELECT count(*) FROM account_inputs WHERE chain_id=sqlc.arg(chain_id) AND evidence IS NULL) < 8192
+   OR EXISTS (SELECT 1 FROM account_inputs WHERE chain_id=sqlc.arg(chain_id)
+       AND block_hash=sqlc.arg(block_hash) AND operation=sqlc.arg(operation)
+       AND address=sqlc.arg(address) AND argument_hash=sha256(sqlc.arg(argument)::bytea))
+ON CONFLICT(chain_id,block_hash,operation,address,argument_hash) DO UPDATE SET expires_at=account_inputs.expires_at
+WHERE account_inputs.argument=EXCLUDED.argument AND account_inputs.block_number=EXCLUDED.block_number;
 
 -- name: AccountInputClaim :one
 WITH next AS (SELECT id FROM account_inputs WHERE chain_id=sqlc.arg(chain_id)::numeric AND evidence IS NULL

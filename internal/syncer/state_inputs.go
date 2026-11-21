@@ -104,19 +104,20 @@ func (c *StateInputCollector) collect(ctx context.Context, chain pgtype.Numeric)
 		default:
 			return chaininput.ErrInvalid
 		}
-		var rpcErr rpc.Error
 		switch {
 		case err == nil && len(value) <= 1<<20:
 			finish.Result = value
 			finish.Outcome = "ready"
 			c.Pool.ReportSuccess(pin)
-		case errors.As(err, &rpcErr) && rpcErr.ErrorCode() == 3:
+		case ethrpc.IsExecutionReverted(err):
 			finish.Outcome = "reverted"
 			if dataErr, ok := errors.AsType[rpc.DataError](err); ok {
 				if raw, ok := dataErr.ErrorData().(string); ok && len(raw) <= 2+(1<<21) {
 					finish.Result, _ = hexutil.Decode(raw)
 				}
 			}
+		case ethrpc.IsExactStateUnavailable(err):
+			finish.Outcome = "exact_unavailable"
 		case err != nil:
 			c.Pool.ReportFailure(pin)
 		}

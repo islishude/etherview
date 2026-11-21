@@ -144,7 +144,35 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		}
 		runBeaconJob(t, ctx, db, worker, cfg, archive)
 	}
-	publish(cp, "initial")
+	// The last attempt observed another execution fork at this slot. Its
+	// terminal error must allow a new generation to reacquire corrected data.
+	wrongHeader, wrongBlock, err := testfixture.Block("bellatrix", genesis.Block, header, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongHeaderJSON, err := json.Marshal(map[string]any{"data": map[string]any{"root": wrongHeader.Hash().Hex(), "header": map[string]any{"message": wrongHeader}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongBlockJSON, err := json.Marshal(wrongBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongInput, err := json.Marshal(consensus.Evidence{
+		Network: consensus.Network{ChainID: 1, Genesis: 100, Millis: 12000, Slots: 32},
+		Header:  wrongHeaderJSON, Root: wrongHeader.Hash().Hex(), Block: wrongBlockJSON,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execFixture(t, ctx, db, `INSERT INTO block_inputs(chain_id,block_number,block_hash,kind,version,generation,attempts,evidence) VALUES(1,1,$1,'consensus',1,1,4,$2)`, block.Block.Hash().Bytes(), wrongInput)
+	publish(cp, "wrong-fork")
+	var rejectedCode string
+	var discarded bool
+	if err := db.QueryRow(ctx, `SELECT error_code,evidence IS NULL FROM block_inputs WHERE kind='consensus' AND block_hash=$1`, block.Block.Hash().Bytes()).Scan(&rejectedCode, &discarded); err != nil || rejectedCode != "execution_identity_mismatch" || !discarded {
+		t.Fatalf("rejected Beacon evidence code=%q discarded=%v err=%v", rejectedCode, discarded, err)
+	}
+	publish(cp, "corrected-fork")
 	observed, err := reader.BlockConsensus(ctx, "1")
 	if err != nil || observed.State != gen.ConsensusStateComplete || observed.SlotConflict == nil || !*observed.SlotConflict {
 		var jobs string

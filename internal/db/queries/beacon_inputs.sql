@@ -38,7 +38,9 @@ WHERE chain_id=$1 AND block_number=$2 AND block_hash=$3 AND kind='state_diff@3' 
 
 -- A processor may discover that a slot has moved, or an acquired blob has
 -- disappeared from the archive. Preserve the lease counter and retry budget.
--- name: BlockInputRetryEvidence :execrows
-UPDATE block_inputs SET evidence=NULL,lease_until=clock_timestamp()+interval '1 second'
+-- name: BlockInputRejectEvidence :execrows
+UPDATE block_inputs SET evidence=NULL,
+    error_code=sqlc.arg(code)::text,
+    lease_until=clock_timestamp()+interval '1 second'
 WHERE chain_id=$1 AND block_number=$2 AND block_hash=$3 AND kind=$4 AND version=1
-  AND generation=$5 AND attempts<4 AND evidence=sqlc.arg(previous)::jsonb;
+  AND generation=$5 AND attempts=sqlc.arg(attempts) AND error_code='' AND evidence=sqlc.arg(previous)::jsonb;

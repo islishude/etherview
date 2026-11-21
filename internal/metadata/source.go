@@ -16,9 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/chaininput"
-	dbaccess "github.com/islishude/etherview/internal/db"
 	"github.com/islishude/etherview/internal/ethrpc"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type NFTStandard string
@@ -99,13 +97,13 @@ func (observation NFTSourceObservation) validate() error {
 type NFTSourceRepository interface {
 	WithSourceDiscovery(context.Context, func(NFTSourceRepository) error) (bool, error)
 	NextNFTSource(context.Context) (NFTSourceCandidate, bool, error)
+	OpenSourceInputs(context.Context, NFTSourceCandidate) (*chaininput.Session, error)
 	NFTSourceCanonical(context.Context, NFTSourceCandidate) (bool, error)
 	RecordNFTSource(context.Context, NFTSourceObservation) error
 	EnqueueNFT(context.Context, NFTRequest) (EnqueueResult, error)
 }
 
 type SourceDiscovererOptions struct {
-	Inputs       dbaccess.Database
 	PollInterval time.Duration
 	MaxAttempts  uint32
 	Logger       *slog.Logger
@@ -121,9 +119,6 @@ type SourceDiscoverer struct {
 func NewSourceDiscoverer(repository NFTSourceRepository, pool *ethrpc.Pool, options SourceDiscovererOptions) (*SourceDiscoverer, error) {
 	if repository == nil {
 		return nil, errors.New("NFT metadata source discovery requires a repository")
-	}
-	if pool == nil && options.Inputs == nil {
-		return nil, errors.New("NFT metadata source discovery requires a state RPC endpoint")
 	}
 	if options.PollInterval <= 0 {
 		options.PollInterval = time.Second
@@ -185,15 +180,8 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 	var caller sourceCaller
 	var endpointName string
 	var inputs *chaininput.Session
-	if discoverer.options.Inputs != nil {
-		var chain, height pgtype.Numeric
-		if err := chain.Scan(candidate.ChainID); err != nil {
-			return false, err
-		}
-		if err := height.Scan(strconv.FormatUint(candidate.BlockNumber, 10)); err != nil {
-			return false, err
-		}
-		inputs, err = chaininput.Open(ctx, discoverer.options.Inputs, chain, height, candidate.BlockHash, "nft-source@1")
+	if discoverer.pool == nil {
+		inputs, err = repository.OpenSourceInputs(ctx, candidate)
 		if err != nil {
 			return false, err
 		}
@@ -305,10 +293,10 @@ func discoverNFTSource(ctx context.Context, endpoint sourceCaller, candidate NFT
 	selector := rpc.BlockNumberOrHashWithHash(candidate.BlockHash, true)
 	var encoded hexutil.Bytes
 	if err := endpoint.CallContext(ctx, &encoded, "eth_call", call, selector); err != nil {
-		if sourceExecutionReverted(err) {
+		if ethrpc.IsExecutionReverted(err) {
 			return "", "token_uri_unavailable", false
 		}
-		if sourceExactStateUnavailable(err) {
+		if ethrpc.IsExactStateUnavailable(err) {
 			return "", "exact_state_unavailable", false
 		}
 		return "", "", true
@@ -366,30 +354,6 @@ func decodeSourceString(output []byte, maximum int) (string, bool) {
 		}
 	}
 	return string(value), true
-}
-
-func sourceExecutionReverted(err error) bool {
-	var rpcError rpc.Error
-	if !errors.As(err, &rpcError) {
-		return false
-	}
-	message := strings.ToLower(rpcError.Error())
-	return rpcError.ErrorCode() == 3 || strings.Contains(message, "execution reverted") || strings.Contains(message, "revert")
-}
-
-func sourceExactStateUnavailable(err error) bool {
-	if ethrpc.IsMethodNotFound(err) {
-		return true
-	}
-	var rpcError rpc.Error
-	if !errors.As(err, &rpcError) {
-		return false
-	}
-	message := strings.ToLower(rpcError.Error())
-	return rpcError.ErrorCode() == -32602 || strings.Contains(message, "eip-1898") ||
-		strings.Contains(message, "block hash") || strings.Contains(message, "missing trie") ||
-		strings.Contains(message, "historical state") || strings.Contains(message, "pruned") ||
-		strings.Contains(message, "header not found") || strings.Contains(message, "state is not available")
 }
 
 func parseSourceBlockNumber(value string) (uint64, error) {

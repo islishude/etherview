@@ -290,6 +290,61 @@ func (s *exactBalanceRPC) GetCode(_ context.Context, address common.Address, ref
 	return hexutil.Bytes{}, nil
 }
 
+func TestAccountInputAdmissionWithRetainedEvidence(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	repo, _ := store.NewPostgresRepository(db)
+	if err := repo.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	block, err := newIntegrationBundle(integrationBundleOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{block}); err != nil {
+		t.Fatal(err)
+	}
+	hash := block.Block.Hash().Bytes()
+	execFixture(t, ctx, db, `INSERT INTO account_inputs(chain_id,block_number,block_hash,operation,address,argument,evidence,expires_at)
+		SELECT 1,0,$1,'code@1',decode(lpad(to_hex(i),40,'0'),'hex'),''::bytea,'{}'::jsonb,now()+interval '1 hour' FROM generate_series(1,8193) i`, hash)
+	q := dbgen.New(db)
+	var chain, height pgtype.Numeric
+	_ = chain.Scan("1")
+	_ = height.Scan("0")
+	if err := q.AccountInputExpire(ctx, chain); err != nil {
+		t.Fatal(err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM account_inputs`, 8192)
+	key := dbgen.AccountInputSubmitParams{ChainID: chain, BlockNumber: height, BlockHash: hash, Operation: "code@1", Address: common.Address{}.Bytes(), Argument: []byte{}}
+	if n, err := q.AccountInputSubmit(ctx, key); err != nil || n != 1 {
+		t.Fatalf("admit missing account with a full evidence cache: rows=%d err=%v", n, err)
+	}
+	execFixture(t, ctx, db, `INSERT INTO account_inputs(chain_id,block_number,block_hash,operation,address,argument,expires_at)
+		SELECT 1,0,$1,'summary@1',decode(lpad(to_hex(i),40,'0'),'hex'),''::bytea,now()+interval '2 minutes' FROM generate_series(1,8191) i`, hash)
+	if n, err := q.AccountInputSubmit(ctx, key); err != nil || n != 1 {
+		t.Fatalf("coalesce existing request at capacity: rows=%d err=%v", n, err)
+	}
+	demand := state.BalanceDemand{Store: state.PostgresNativeBalances{DB: db, ChainID: "1"}, Timeout: time.Minute}
+	reader := state.Reader{Canonical: state.PostgresCanonicalSource{DB: db, ChainID: "1"}, BalanceDemand: &demand}
+	requestCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	// An unadmitted request returns immediately even with a long remaining budget.
+	result := make(chan error, 1)
+	go func() {
+		_, _, _, err := reader.AccountKind(requestCtx, common.HexToAddress("0xf00d").Hex())
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		var unavailable state.CapabilityError
+		if !errors.As(err, &unavailable) || unavailable.Code != "endpoint_unavailable" {
+			t.Fatalf("full acquisition queue error=%v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("waited for an account input that was never admitted")
+	}
+}
+
 func TestSyncBalanceDemandReplay(t *testing.T) {
 	db := newMigratedPostgres(t)
 	ctx := t.Context()

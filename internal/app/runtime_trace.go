@@ -10,16 +10,8 @@ func (assembly runtimeAssembly) registerTraceComponents() error {
 	roleSet := assembly.roleSet
 	db := assembly.db
 	businessObserver := assembly.businessObserver
-	rpcBuild := assembly.rpcBuild
 	traceJobWake := assembly.traceJobWake
 	componentRegistry := assembly.componentRegistry
-	if cfg.Features.Trace && roleSet[components.RoleSync] {
-		if err := componentRegistry.Register(components.RoleSync, "16-trace-inputs", func() (components.Service, error) {
-			return &enrich.TraceInputCollector{DB: db, Pool: rpcBuild.Pool, ChainID: assembly.chainID, Timeout: cfg.Runtime.LeaseDuration, PollInterval: cfg.Runtime.PollInterval, Logger: assembly.logger}, nil
-		}); err != nil {
-			return err
-		}
-	}
 	if cfg.Features.Trace && roleSet[components.RoleTrace] {
 		queue, err := enrich.NewPostgresJobQueue(db)
 		if err != nil {

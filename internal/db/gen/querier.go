@@ -12,6 +12,8 @@ import (
 
 type Querier interface {
 	AccountInputClaim(ctx context.Context, leaseMs int64, chainID pgtype.Numeric) (AccountInputClaimRow, error)
+	// Leave space for pending work independently of the size of the evidence cache.
+	// The submitter holds the chain admission lock while pruning and inserting.
 	AccountInputExpire(ctx context.Context, chainID pgtype.Numeric) error
 	AccountInputFinish(ctx context.Context, arg AccountInputFinishParams) (int64, error)
 	AccountInputRead(ctx context.Context, arg AccountInputReadParams) ([]byte, error)
@@ -72,7 +74,7 @@ type Querier interface {
 	BlockInputRead(ctx context.Context, arg BlockInputReadParams) (BlockInputReadRow, error)
 	// A processor may discover that a slot has moved, or an acquired blob has
 	// disappeared from the archive. Preserve the lease counter and retry budget.
-	BlockInputRetryEvidence(ctx context.Context, arg BlockInputRetryEvidenceParams) (int64, error)
+	BlockInputRejectEvidence(ctx context.Context, arg BlockInputRejectEvidenceParams) (int64, error)
 	BlockInputSubmit(ctx context.Context, arg BlockInputSubmitParams) error
 	BlockInputTraceEndpoint(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (string, error)
 	BlockInputTransactionHashes(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)

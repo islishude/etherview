@@ -44,9 +44,14 @@ func (q *Queries) AccountInputClaim(ctx context.Context, leaseMs int64, chainID 
 }
 
 const accountInputExpire = `-- name: AccountInputExpire :exec
-DELETE FROM account_inputs WHERE chain_id=$1 AND expires_at<=now()
+DELETE FROM account_inputs a WHERE a.chain_id=$1 AND (a.expires_at<=now() OR a.id IN (
+    SELECT cached.id FROM account_inputs cached WHERE cached.chain_id=$1 AND cached.evidence IS NOT NULL AND cached.expires_at>now()
+    ORDER BY expires_at DESC, id DESC OFFSET 8192
+))
 `
 
+// Leave space for pending work independently of the size of the evidence cache.
+// The submitter holds the chain admission lock while pruning and inserting.
 func (q *Queries) AccountInputExpire(ctx context.Context, chainID pgtype.Numeric) error {
 	_, err := q.db.Exec(ctx, accountInputExpire, chainID)
 	return err
@@ -107,8 +112,12 @@ func (q *Queries) AccountInputRead(ctx context.Context, arg AccountInputReadPara
 const accountInputSubmit = `-- name: AccountInputSubmit :execrows
 INSERT INTO account_inputs(chain_id,block_number,block_hash,operation,address,argument,expires_at)
 SELECT $1::numeric,$2::numeric,$3::bytea,$4::text,$5::bytea,$6::bytea,now()+interval '2 minutes'
-WHERE (SELECT count(*) FROM account_inputs WHERE chain_id=$1) < 8192
-ON CONFLICT(chain_id,block_hash,operation,address,argument_hash) DO NOTHING
+WHERE (SELECT count(*) FROM account_inputs WHERE chain_id=$1 AND evidence IS NULL) < 8192
+   OR EXISTS (SELECT 1 FROM account_inputs WHERE chain_id=$1
+       AND block_hash=$3 AND operation=$4
+       AND address=$5 AND argument_hash=sha256($6::bytea))
+ON CONFLICT(chain_id,block_hash,operation,address,argument_hash) DO UPDATE SET expires_at=account_inputs.expires_at
+WHERE account_inputs.argument=EXCLUDED.argument AND account_inputs.block_number=EXCLUDED.block_number
 `
 
 type AccountInputSubmitParams struct {

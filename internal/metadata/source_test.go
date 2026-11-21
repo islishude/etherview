@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chaininput"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
@@ -192,4 +193,8 @@ func encodeSourceString(value string) []byte {
 
 func (repository *fakeSourceRepository) WithSourceDiscovery(_ context.Context, work func(NFTSourceRepository) error) (bool, error) {
 	return true, work(repository)
+}
+
+func (*fakeSourceRepository) OpenSourceInputs(context.Context, NFTSourceCandidate) (*chaininput.Session, error) {
+	return nil, errors.New("unexpected persisted input lookup")
 }

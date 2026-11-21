@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/exec"
@@ -395,7 +396,8 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 		h.initializeFixture(ctx)
 		h.configureUserOperationEnvironment()
 		h.rpcProxy = startReceiptProxy(t, "http://"+binding)
-		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = h.rpcProxy.containerURL()
+		nodeURL := h.rpcProxy.containerURL()
+		h.project.Env["ETHERVIEW_RUNTIME_RPC_URL"] = nodeURL + "," + strings.Replace(nodeURL, "http://", "ws://", 1)
 		h.project.Env["ETHERVIEW_CONSENSUS_URL"] = h.rpcProxy.containerURL() + "/beacon"
 		h.project.Env["ETHERVIEW_CHAIN_GENESIS_HASH"] = h.fixture.genesisHash
 	}
@@ -654,6 +656,9 @@ func runMode(t *testing.T, ctx context.Context, root, mode string, baseTimestamp
 	if err != nil || !strings.Contains(result.durable.TraceInputs, "trace@4:") {
 		t.Fatalf("durable trace inputs = %q, %v", result.durable.TraceInputs, err)
 	}
+	if h.rpcProxy.websocketRequests.Load() == 0 {
+		t.Fatal("execution fixture received no WebSocket requests")
+	}
 	if h.rpcProxy.beaconRequests.Load() == 0 {
 		t.Fatal("Beacon fixture received no requests")
 	}
@@ -792,7 +797,7 @@ func (h *harness) initializeFixture(ctx context.Context) {
 func (h *harness) startTopology(ctx context.Context) {
 	h.startDeadlockGuard(ctx)
 	if h.mode == "distributed" {
-		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "api")
+		h.compose(ctx, "up", "-d", "--no-recreate", "--wait", "--wait-timeout", "90", "api", "enrich", "verification", "metadata", "maintenance", "trace")
 		h.connectDatabase(ctx)
 		waitFor(h.t, ctx, "config-only role identity bind", func() (bool, string, error) {
 			var identity string
@@ -804,9 +809,9 @@ func (h *harness) startTopology(ctx context.Context) {
 			return err == nil && identity == want, identity, err
 		})
 		if h.rpcProxy != nil && (h.rpcProxy.executionRequests.Load() != 0 || h.rpcProxy.beaconRequests.Load() != 0) {
-			h.t.Fatal("node received a request during standalone API startup")
+			h.t.Fatal("node received a request while only processing roles were running")
 		}
-		// The first API startup already completed migration. Do not restart the
+		// The first split-role startup already completed migration. Do not restart the
 		// one-shot initializer while application workers are claiming jobs: its
 		// schema/partition locks must precede all runtime transactions.
 		services, err := h.project.Run(ctx, "config", "--services")
@@ -1760,6 +1765,8 @@ func assertRuntimeAuthorization(
 
 type receiptProxy struct {
 	executionRequests atomic.Uint64
+	websocketRequests atomic.Uint64
+	websocketProxy    http.Handler
 	beaconRequests    atomic.Uint64
 	upstream          string
 	listener          net.Listener
@@ -1777,8 +1784,13 @@ func startReceiptProxy(t *testing.T, upstream string) *receiptProxy {
 	if err != nil {
 		t.Fatal(err)
 	}
+	target, err := url.Parse(upstream)
+	if err != nil {
+		t.Fatal(err)
+	}
 	proxy := &receiptProxy{
-		upstream: upstream, listener: listener,
+		websocketProxy: httputil.NewSingleHostReverseProxy(target),
+		upstream:       upstream, listener: listener,
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
@@ -1811,6 +1823,11 @@ func (p *receiptProxy) ServeHTTP(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	p.executionRequests.Add(1)
+	if strings.EqualFold(request.Header.Get("Upgrade"), "websocket") {
+		p.websocketRequests.Add(1)
+		p.websocketProxy.ServeHTTP(writer, request)
+		return
+	}
 	if request.Method != http.MethodPost {
 		http.Error(writer, "JSON-RPC requires POST", http.StatusMethodNotAllowed)
 		return
