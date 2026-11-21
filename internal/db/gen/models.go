@@ -2093,7 +2093,6 @@ type NativeBalanceObservation struct {
 	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
 	Canonical           bool           `db:"canonical" json:"canonical"`
 	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
-	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 type NativeBalanceObservationsDefault struct {
@@ -2105,7 +2104,6 @@ type NativeBalanceObservationsDefault struct {
 	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
 	Canonical           bool           `db:"canonical" json:"canonical"`
 	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
-	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 type NativeBalanceObservationsP01000000 struct {
@@ -2117,7 +2115,6 @@ type NativeBalanceObservationsP01000000 struct {
 	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
 	Canonical           bool           `db:"canonical" json:"canonical"`
 	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
-	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 type NativeTransfer struct {

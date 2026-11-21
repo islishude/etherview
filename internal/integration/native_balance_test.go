@@ -408,6 +408,8 @@ func TestSyncBalanceDemandReplay(t *testing.T) {
 	if err != nil || !slices.Equal(values, []string{"42", "42"}) {
 		t.Fatalf("values=%v err=%v", values, err)
 	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM native_balance_observations
+		WHERE chain_id=1 AND block_hash=$1 AND address=$2 AND acquisition_endpoint='state'`, 1, ref.Hash[:], account[:])
 	values, err = demand.Read(ctx, ref, addresses)
 	if err != nil || !slices.Equal(values, []string{"42", "42"}) || node.calls.Load() != 1 {
 		t.Fatalf("replay=%v calls=%d err=%v", values, node.calls.Load(), err)

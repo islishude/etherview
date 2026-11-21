@@ -3,7 +3,6 @@ package state
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"errors"
 	"slices"
 	"strconv"
@@ -93,14 +92,8 @@ func saveNativeBalances(ctx context.Context, q *dbgen.Queries, chain, number pgt
 	}
 	slices.SortFunc(addresses, func(a, b common.Address) int { return bytes.Compare(a[:], b[:]) })
 	var source *string
-	var batch []byte
 	if endpoint != "" {
 		source = &endpoint
-		hash := sha256.New()
-		for _, a := range addresses {
-			hash.Write(a[:])
-		}
-		batch = hash.Sum(nil)
 	}
 	for _, a := range addresses {
 		if _, err := parseUint256(values[a]); err != nil {
@@ -110,7 +103,7 @@ func saveNativeBalances(ctx context.Context, q *dbgen.Queries, chain, number pgt
 		if err := balance.Scan(values[a]); err != nil {
 			return err
 		}
-		n, err := q.NativeBalanceInsertObservation(ctx, dbgen.NativeBalanceInsertObservationParams{ChainID: chain, BlockNumber: number, BlockHash: ref.Hash[:], Address: a[:], Balance: balance, RpcExact: true, AcquisitionEndpoint: source, AcquisitionBatch: batch})
+		n, err := q.NativeBalanceInsertObservation(ctx, dbgen.NativeBalanceInsertObservationParams{ChainID: chain, BlockNumber: number, BlockHash: ref.Hash[:], Address: a[:], Balance: balance, RpcExact: true, AcquisitionEndpoint: source})
 		if err != nil {
 			return err
 		}
