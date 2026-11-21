@@ -647,6 +647,8 @@ CREATE TABLE native_balance_observations (
     balance numeric(78,0) NOT NULL CHECK (balance>=0 AND balance<115792089237316195423570985008687907853269984665640564039457584007913129639936),
     rpc_exact boolean NOT NULL,
     canonical boolean NOT NULL,
+    acquisition_endpoint text,
+    acquisition_batch bytea CHECK (octet_length(acquisition_batch)=32),
     PRIMARY KEY(chain_id,block_number,block_hash,address),
     FOREIGN KEY(chain_id,block_number,block_hash) REFERENCES blocks(chain_id,number,hash)
 ) PARTITION BY RANGE(block_number);

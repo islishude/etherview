@@ -243,3 +243,8 @@ See [operator procedures](../operations/recovery.md) and
   work keeps its token until completion or expiry, and repeating the same
   source generation then quiesces. Loss of Trace capability withdraws dependent
   exact Proxy and ABI publications rather than preserving stale evidence.
+
+Trace and state-difference workers declare missing block inputs in PostgreSQL.
+Sync collects the bounded response set on one trace endpoint, including
+complete prestate when needed. Processing workers replay the saved responses
+and publish using their existing generation and canonicality fences.

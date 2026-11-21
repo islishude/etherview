@@ -119,8 +119,8 @@ func (q *Queries) NativeBalanceInsertEnds(ctx context.Context, arg NativeBalance
 }
 
 const nativeBalanceInsertObservation = `-- name: NativeBalanceInsertObservation :execrows
-INSERT INTO native_balance_observations(chain_id,block_number,block_hash,address,balance,rpc_exact,canonical)
-VALUES($1::numeric,$2::numeric,$3,$4,$5::numeric,$6,true)
+INSERT INTO native_balance_observations(chain_id,block_number,block_hash,address,balance,rpc_exact,canonical,acquisition_endpoint,acquisition_batch)
+VALUES($1::numeric,$2::numeric,$3,$4,$5::numeric,$6,true,$7,$8)
 ON CONFLICT (chain_id,block_number,block_hash,address) DO UPDATE
 SET rpc_exact=native_balance_observations.rpc_exact OR EXCLUDED.rpc_exact,canonical=true
 WHERE native_balance_observations.balance=EXCLUDED.balance
@@ -128,12 +128,14 @@ WHERE native_balance_observations.balance=EXCLUDED.balance
 `
 
 type NativeBalanceInsertObservationParams struct {
-	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Address     []byte         `db:"address" json:"address"`
-	Balance     pgtype.Numeric `db:"balance" json:"balance"`
-	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	Address             []byte         `db:"address" json:"address"`
+	Balance             pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
+	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
+	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 func (q *Queries) NativeBalanceInsertObservation(ctx context.Context, arg NativeBalanceInsertObservationParams) (int64, error) {
@@ -144,6 +146,8 @@ func (q *Queries) NativeBalanceInsertObservation(ctx context.Context, arg Native
 		arg.Address,
 		arg.Balance,
 		arg.RpcExact,
+		arg.AcquisitionEndpoint,
+		arg.AcquisitionBatch,
 	)
 	if err != nil {
 		return 0, err

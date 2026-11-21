@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/islishude/etherview/internal/chaininput"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
 
 // CollectorOptions bounds one reconciliation. A disabled Step makes no source calls.
 type CollectorOptions struct {
+	StoredInputs                               bool
 	MaxBlocks, MaxLogs, MaxBytes, MaxAddresses int
 	Timeout, Health                            time.Duration
 }
@@ -90,7 +93,7 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 		return result, ErrUnsupportedDeployment
 	}
 	defer func() {
-		if err == nil || errors.Is(err, ErrFenceLost) || ctx.Err() != nil {
+		if err == nil || errors.Is(err, chaininput.ErrPending) || errors.Is(err, ErrFenceLost) || ctx.Err() != nil {
 			return
 		}
 		state, code := "pending", "storage_unavailable"
@@ -157,6 +160,8 @@ func (c *Collector) Step(ctx context.Context, enabled bool) (result CollectionRe
 				verified.Header, err = session.verifyDeployment(ctx, d, target)
 			}
 			verified.Deployment = d
+		} else if c.options.StoredInputs {
+			verified, err = c.storedDeployment(ctx, d, target)
 		} else {
 			verified, err = c.repo.localDeployment(ctx, c.manifest, d)
 		}
@@ -221,4 +226,29 @@ func (c *Collector) EnsureSource(ctx context.Context) (int64, error) {
 	targetChain, _ := unsignedNumeric(c.manifest.TargetChainID)
 	sourceChain, _ := unsignedNumeric(c.manifest.SourceChainID)
 	return c.repo.CreateSource(ctx, dbgen.CreateENSSyncSourceParams{TargetChainID: targetChain, SourceChainID: sourceChain, GenesisHash: c.manifest.Genesis.Bytes(), PolicyDigest: c.manifest.Policy.Bytes(), ManifestDigest: c.digest.Bytes(), StartNumber: numeric(c.manifest.Start), StartHash: c.manifest.StartHash.Bytes()})
+}
+
+func (c *Collector) storedDeployment(ctx context.Context, d Deployment, target *types.Header) (verifiedDeployment, error) {
+	block, err := c.repo.localBlock(ctx, c.manifest, d.Number, c.options.MaxLogs)
+	if err != nil {
+		return verifiedDeployment{}, err
+	}
+	if block.Header.Hash() != d.Hash {
+		return verifiedDeployment{}, ErrSourceIdentity
+	}
+	chain, _ := unsignedNumeric(c.manifest.SourceChainID)
+	for _, header := range []*types.Header{block.Header, target} {
+		input, err := chaininput.Open(ctx, c.repo.db, chain, numeric(header.Number.Uint64()), header.Hash(), "ens-deployment-"+c.digest.Hex())
+		if err != nil {
+			return verifiedDeployment{}, err
+		}
+		err = (rpcSession{endpoint: input}).verifyCode(ctx, d, header.Hash())
+		if input.Err() != nil {
+			return verifiedDeployment{}, input.Err()
+		}
+		if err != nil {
+			return verifiedDeployment{}, err
+		}
+	}
+	return verifiedDeployment{Deployment: d, Header: block.Header}, nil
 }

@@ -15,7 +15,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/islishude/etherview/internal/chaininput"
+	dbaccess "github.com/islishude/etherview/internal/db"
 	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type NFTStandard string
@@ -102,6 +105,7 @@ type NFTSourceRepository interface {
 }
 
 type SourceDiscovererOptions struct {
+	Inputs       dbaccess.Database
 	PollInterval time.Duration
 	MaxAttempts  uint32
 	Logger       *slog.Logger
@@ -118,7 +122,7 @@ func NewSourceDiscoverer(repository NFTSourceRepository, pool *ethrpc.Pool, opti
 	if repository == nil {
 		return nil, errors.New("NFT metadata source discovery requires a repository")
 	}
-	if pool == nil || len(pool.Names(ethrpc.PurposeState)) == 0 {
+	if pool == nil && options.Inputs == nil {
 		return nil, errors.New("NFT metadata source discovery requires a state RPC endpoint")
 	}
 	if options.PollInterval <= 0 {
@@ -178,24 +182,58 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 	if err := candidate.validate(); err != nil {
 		return true, fmt.Errorf("metadata source repository returned invalid candidate: %w", err)
 	}
-	endpoint, err := discoverer.pool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		discoverer.logSource(ctx, candidate, "retry", "endpoint_unavailable", "", startedAt, slog.LevelDebug)
-		return false, nil
+	var caller sourceCaller
+	var endpointName string
+	var inputs *chaininput.Session
+	if discoverer.options.Inputs != nil {
+		var chain, height pgtype.Numeric
+		if err := chain.Scan(candidate.ChainID); err != nil {
+			return false, err
+		}
+		if err := height.Scan(strconv.FormatUint(candidate.BlockNumber, 10)); err != nil {
+			return false, err
+		}
+		inputs, err = chaininput.Open(ctx, discoverer.options.Inputs, chain, height, candidate.BlockHash, "nft-source@1")
+		if err != nil {
+			return false, err
+		}
+		caller = inputs
+	} else {
+		endpoint, err := discoverer.pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return false, nil
+		}
+		caller, endpointName = endpoint, endpoint.Name
 	}
-	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, endpoint, candidate)
+	sourceURI, unavailableCode, retry := discoverNFTSource(ctx, caller, candidate)
+	if inputs != nil {
+		if errors.Is(inputs.Err(), chaininput.ErrPending) {
+			return false, nil
+		}
+		if inputs.Err() != nil {
+			return false, inputs.Err()
+		}
+		endpointName, err = inputs.Endpoint(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
 	if retry {
-		discoverer.pool.ReportFailure(endpoint.Name)
-		discoverer.logSource(ctx, candidate, "retry", "rpc_request_failed", endpoint.Name, startedAt, slog.LevelDebug)
+		if discoverer.pool != nil {
+			discoverer.pool.ReportFailure(endpointName)
+		}
+		discoverer.logSource(ctx, candidate, "retry", "rpc_request_failed", endpointName, startedAt, slog.LevelDebug)
 		return false, nil
 	}
-	discoverer.pool.ReportSuccess(endpoint.Name)
+	if discoverer.pool != nil {
+		discoverer.pool.ReportSuccess(endpointName)
+	}
 	canonical, err := repository.NFTSourceCanonical(ctx, candidate)
 	if err != nil {
 		return true, err
 	}
 	if !canonical {
-		discoverer.logSource(ctx, candidate, "stale", "source_block_noncanonical", endpoint.Name, startedAt, slog.LevelInfo)
+		discoverer.logSource(ctx, candidate, "stale", "source_block_noncanonical", endpointName, startedAt, slog.LevelInfo)
 		return true, nil
 	}
 	if unavailableCode != "" {
@@ -203,7 +241,7 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 			Candidate: candidate, State: NFTSourceUnavailable, ErrorCode: unavailableCode,
 		})
 		if err == nil {
-			discoverer.logSource(ctx, candidate, "unavailable", unavailableCode, endpoint.Name, startedAt, slog.LevelInfo)
+			discoverer.logSource(ctx, candidate, "unavailable", unavailableCode, endpointName, startedAt, slog.LevelInfo)
 		}
 		return true, err
 	}
@@ -220,7 +258,7 @@ func (discoverer *SourceDiscoverer) processOwned(ctx context.Context, repository
 	}); err != nil {
 		return true, err
 	}
-	discoverer.logSource(ctx, candidate, "found", "", endpoint.Name, startedAt, slog.LevelInfo)
+	discoverer.logSource(ctx, candidate, "found", "", endpointName, startedAt, slog.LevelInfo)
 	return true, nil
 }
 
@@ -250,7 +288,11 @@ var (
 	erc1155URISelector     = []byte{0x0e, 0x89, 0x34, 0x1c}
 )
 
-func discoverNFTSource(ctx context.Context, endpoint *ethrpc.Endpoint, candidate NFTSourceCandidate) (string, string, bool) {
+type sourceCaller interface {
+	CallContext(context.Context, any, string, ...any) error
+}
+
+func discoverNFTSource(ctx context.Context, endpoint sourceCaller, candidate NFTSourceCandidate) (string, string, bool) {
 	tokenID, _ := new(big.Int).SetString(candidate.TokenID, 10)
 	input := make([]byte, 36)
 	if candidate.Standard == NFTStandardERC1155 {

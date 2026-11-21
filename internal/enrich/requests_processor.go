@@ -6,19 +6,16 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/consensus"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // RequestsProcessor publishes a whole verified request set in one fenced transaction.
 type RequestsProcessor struct {
-	DB     dbaccess.Database
-	Client *consensus.Client
+	DB dbaccess.Database
 }
 
 func (*RequestsProcessor) Stage() StageID { return RequestsStage }
@@ -46,17 +43,14 @@ func (p *RequestsProcessor) Process(ctx context.Context, job Job) (StageResult, 
 	if block.Difficulty().Sign() != 0 || block.RequestsHash() == nil {
 		return StageResult{}, Unavailable(errors.New("not_applicable"))
 	}
-	id, err := strconv.ParseUint(job.ChainID, 10, 64)
-	if err != nil {
-		return StageResult{}, Permanent(errors.New("consensus_chain_id"))
-	}
-	network, err := p.Client.Network(ctx, id)
+	input, err := readBeaconInput(ctx, dbgen.New(p.DB), job, chain, number)
 	if err != nil {
 		return consensusFailure(err)
 	}
-	set, err := p.observe(ctx, chain, number, network, block)
+	network := input.Network
+	set, err := input.RequestSet(block)
 	if err != nil {
-		return consensusFailure(err)
+		return retryBeaconInput(ctx, dbgen.New(p.DB), job, chain, number, input, err)
 	}
 	if err := consensus.ValidateRequestSet(set, block); err != nil {
 		return consensusFailure(err)
@@ -114,31 +108,4 @@ func (p *RequestsProcessor) Process(ctx context.Context, job Job) (StageResult, 
 		}
 		return StageResult{State: ResultComplete}, nil
 	})
-}
-func (p *RequestsProcessor) observe(ctx context.Context, chain, number pgtype.Numeric, network consensus.Network, block *types.Block) (consensus.RequestSet, error) {
-	q := dbgen.New(p.DB)
-	raw, err := q.RequestsRetainedSet(ctx, chain, number, block.Hash().Bytes())
-	if errors.Is(err, pgx.ErrNoRows) {
-		return p.Client.ObserveRequests(ctx, network, block)
-	}
-	if err != nil {
-		return consensus.RequestSet{}, err
-	}
-	var set consensus.RequestSet
-	if json.Unmarshal(raw, &set) != nil {
-		return set, Permanent(errors.New("requests_observation_invalid"))
-	}
-	records, err := q.RequestsRetainedItems(ctx, chain, number, block.Hash().Bytes())
-	if err != nil {
-		return set, err
-	}
-	set.Items = make([]consensus.ExecutionRequest, 0, len(records))
-	for _, raw := range records {
-		var item consensus.ExecutionRequest
-		if json.Unmarshal(raw, &item) != nil {
-			return set, Permanent(errors.New("requests_observation_invalid"))
-		}
-		set.Items = append(set.Items, item)
-	}
-	return set, consensus.ValidateRequestSet(set, block)
 }

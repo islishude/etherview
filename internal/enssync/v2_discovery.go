@@ -114,10 +114,15 @@ func (c *Collector) discoverV2(ctx context.Context, source int64, session rpcSes
 			continue
 		}
 		instance := Deployment{Address: address, Profile: template.Profile, Number: log.BlockNumber, Hash: log.BlockHash, CodeHash: template.ProxyCodeHash, Implementation: implementation, ImplementationCodeHash: template.CodeHash}
-		if session.endpoint == nil {
+		verified := verifiedDeployment{Deployment: instance}
+		switch {
+		case session.endpoint != nil:
+			verified.Header, e = session.verifyDeployment(ctx, instance, block.Header)
+		case c.options.StoredInputs:
+			verified, e = c.storedDeployment(ctx, instance, block.Header)
+		default:
 			return block, nil, ErrUnsupportedDeployment
 		}
-		header, e := session.verifyDeployment(ctx, instance, block.Header)
 		if e != nil {
 			return block, nil, e
 		}
@@ -127,7 +132,7 @@ func (c *Collector) discoverV2(ctx context.Context, source int64, session rpcSes
 		}
 		c.manifest.Deployments = append(c.manifest.Deployments, instance)
 		c.profiles[address] = p
-		discovered = append(discovered, verifiedDeployment{Deployment: instance, Header: header})
+		discovered = append(discovered, verified)
 	}
 	// User-owned subregistry and resolver links are retained by projectV2,
 	// but never enroll their targets as standard-event emitters. An unknown

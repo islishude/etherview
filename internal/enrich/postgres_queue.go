@@ -1077,7 +1077,7 @@ func (queue *PostgresJobQueue) retryOnce(ctx context.Context, lease Lease, retry
 		if lease.Job.Stage.Version > 2147483647 {
 			return errors.New("invalid stored query value")
 		}
-		queryRow, err := dbgen.New(tx).EnrichLegacyRetryJob(ctx, dbgen.EnrichLegacyRetryJobParams{ID: identity.jobID, LeaseToken: new(lease.Token), LastError: new(retry.Reason), RetryMicroseconds: retryMicros, ClaimedGeneration: identity.generation, ChainID: queryValue0, Stage: lease.Job.Stage.Name, StageVersion: int32(lease.Job.Stage.Version), Payload: []byte(lease.Job.BlockHash.String()), Payload2: []byte(strconv.FormatUint(lease.Job.BlockNumber, 10))})
+		queryRow, err := dbgen.New(tx).EnrichLegacyRetryJob(ctx, dbgen.EnrichLegacyRetryJobParams{WaitingForInput: retry.WaitingForInput, ID: identity.jobID, LeaseToken: new(lease.Token), LastError: new(retry.Reason), RetryMicroseconds: retryMicros, ClaimedGeneration: identity.generation, ChainID: queryValue0, Stage: lease.Job.Stage.Name, StageVersion: int32(lease.Job.Stage.Version), Payload: []byte(lease.Job.BlockHash.String()), Payload2: []byte(strconv.FormatUint(lease.Job.BlockNumber, 10))})
 		if err != nil {
 			return err
 		}

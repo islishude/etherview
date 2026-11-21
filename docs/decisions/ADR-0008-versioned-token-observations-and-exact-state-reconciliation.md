@@ -2,6 +2,11 @@
 
 Status: accepted
 
+
+[ADR-0061](ADR-0061-sync-acquisition.md) assigns exact-block token and
+ownership reads to sync. API reconciliations reuse persisted input and
+revalidate the block before returning observations.
+
 ## Context
 
 Token classification and metadata are observed at immutable block hashes. A

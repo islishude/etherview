@@ -85,6 +85,20 @@ linters:
               desc: readers and shared contracts must not depend on enrichment workers
             - pkg: github.com/islishude/etherview/internal/enssync$
               desc: readers and shared contracts must use neutral ENS contracts
+        sync-owned-node-connections:
+          files:
+            - "${base-path}/internal/app/runtime_api.go"
+            - "${base-path}/internal/app/runtime_enrich.go"
+            - "${base-path}/internal/app/runtime_metadata.go"
+            - "${base-path}/internal/app/ens_runtime.go"
+            - "${base-path}/internal/app/defi.go"
+            - "${base-path}/internal/chaininput/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/ethrpc$
+              desc: consumer wiring reads durable inputs and sync owns upstream node connections
+            - pkg: github.com/ethereum/go-ethereum/ethclient
+              desc: only sync constructs execution clients
         database-only-ens-reader:
           files:
             - "${base-path}/internal/ensread/**"

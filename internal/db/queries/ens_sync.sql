@@ -255,3 +255,9 @@ ON CONFLICT DO NOTHING;
 
 -- name: CheckENSSyncJobCurrent :one
 SELECT ens_sync_job_current(@job_id)::boolean;
+
+-- name: AwaitENSStateInputs :execrows
+UPDATE ens_sync_jobs SET state='queued', attempts=attempts-1, retry_at=clock_timestamp()+interval '1 second',
+    queued_at=CASE WHEN attempts=1 THEN clock_timestamp() ELSE queued_at END,
+    failure_code=NULL, lease_token=NULL, lease_until=NULL
+WHERE id=$1 AND lease_token=$2 AND state='leased' AND lease_until>clock_timestamp();

@@ -32,6 +32,7 @@ and retain raw-first input, exact block identity, and atomic publication.
 | P10-T04 | done   | P10-T03          | Parallel backfill with aggregate raw-byte/row budgets, recoverable subsegments under one range lease, live-head priority, polling reconciliation, and coverage status               | restart/gap, cancellation, lease-expiry, partial-progress, race, and PostgreSQL tests                                                              |
 | P10-T05 | done   | P10-T03          | Bounded common-ancestor reorg, pre-work depth/finality rejection, finality ancestry, orphan retention, and rollback journal                                                         | counting-source/repository, single/multi/finalized reorg, race, and PostgreSQL tests                                                               |
 | P10-T06 | done   | P10-T04, P10-T05 | Repair/reindex tooling, history-pruning detection, audit records                                                                                                                    | CLI integration tests                                                                                                                              |
+| P10-T08 | done | P10-T03 | Sync-owned execution and Beacon acquisition with durable, hash-pinned processor inputs ([ADR-0061](../decisions/ADR-0061-sync-acquisition.md)) | Split-role isolation, offline replay, fenced retry and all/split Preview |
 
 ## Acceptance
 
@@ -64,11 +65,20 @@ and retain raw-first input, exact block identity, and atomic publication.
       gas and contract-size compatibility follow ADR-0052 with hostile-input bounds;
       no BAL body fetch or Engine API dependency is introduced.
 
+- [x] Only sync receives node configuration. Both layouts publish from persisted
+      inputs, and split workers replay a completed trace while sync is stopped.
+
 ## Current Blockers
 
 None. P70 retains final release gates.
 
 ## Evidence
+
+P10-T08 passed production all/split parity, including node request counts,
+offline trace replay and a bounded cache miss. PostgreSQL regressions cover
+lease takeover, endpoint failure, oversized inputs and reorgs during waits.
+Real Reth/Lighthouse Preview verified first reads, repair, DeFi, execution
+requests, blob archive permissions, restart and finality in both layouts.
 
 P10-T01/P10-T02/P10-T03/P10-T04/P10-T05/P10-T06 passed
 RPC/indexer/store/syncer/maintenance unit and race tests and PostgreSQL 18

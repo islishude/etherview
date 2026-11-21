@@ -155,6 +155,8 @@ func (h *harness) contractsAllRoles(ctx context.Context) {
     environment:
       ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       ETHERVIEW_ROLES: all
+      ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://execution:8545,ws://execution:8546}
+      ETHERVIEW_CONSENSUS_URL: http://lighthouse:5052
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only
 `

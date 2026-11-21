@@ -1,5 +1,4 @@
 x-runtime-e2e-environment: &runtime-e2e-environment
-  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RUNTIME_RPC_URL:-http://runtime-fixture:8545}
   ETHERVIEW_CHAIN_ID: "1"
   ETHERVIEW_API_KEY_PEPPER: ""
   ETHERVIEW_POLL_INTERVAL: 250ms
@@ -98,6 +97,7 @@ services:
   etherview:
     environment:
       <<: *runtime-e2e-environment
+      ETHERVIEW_RPC_URLS: ${ETHERVIEW_RUNTIME_RPC_URL:-http://runtime-fixture:8545}
       ETHERVIEW_SESSION_PEPPER: ${ETHERVIEW_RUNTIME_SESSION_PEPPER:-}
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -135,7 +135,9 @@ services:
     extra_hosts: ["host.docker.internal:host-gateway"]
 
   sync:
-    environment: *runtime-e2e-environment
+    environment:
+      <<: *runtime-e2e-environment
+      ETHERVIEW_RPC_URLS: ${ETHERVIEW_RUNTIME_RPC_URL:-http://runtime-fixture:8545}
     depends_on: *runtime-fixture-dependency
     extra_hosts: ["host.docker.internal:host-gateway"]
     ports:

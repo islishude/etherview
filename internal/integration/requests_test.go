@@ -21,7 +21,7 @@ import (
 	"github.com/islishude/etherview/internal/api/gen"
 	"github.com/islishude/etherview/internal/chainbundle"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/consensus"
+
 	"github.com/islishude/etherview/internal/consensus/testfixture"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/query"
@@ -103,7 +103,7 @@ func TestRequestsPublicationPaginationReorgAndReplay(t *testing.T) {
 		t.Fatalf("before=%+v err=%v", before, err)
 	}
 	queue, _ := enrich.NewPostgresJobQueue(db)
-	processor := &enrich.RequestsProcessor{DB: db, Client: consensus.NewClient(cfg)}
+	processor := &enrich.RequestsProcessor{DB: db}
 	publishBlock := func(key string, target chainbundle.Bundle) {
 		t.Helper()
 		execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
@@ -115,9 +115,7 @@ func TestRequestsPublicationPaginationReorgAndReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if found, err := worker.ProcessOne(ctx); err != nil || !found {
-			t.Fatalf("process=%v err=%v", found, err)
-		}
+		runBeaconJob(t, ctx, db, worker, cfg, nil)
 	}
 	publish := func(key string) { publishBlock(key, bundle) }
 	publish("initial")

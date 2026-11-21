@@ -133,10 +133,10 @@ Additional keys in `secrets.existingSecret` are selected through these values:
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `turnstileSecretKey`                                                                  | `turnstile-secret-key`                                                                | `all`/`api`, when `config.turnstile.enabled` is true                          |
 | `pushPrivateKeyKey`                                                                   | `push-private-key`                                                                    | `all`/`maintenance`, when push is enabled                                     |
-| `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`enrich`, when consensus is enabled                        |
+| `consensusURLKey`                                                                     | `consensus-url`                                                                       | required for `all`/`sync`, when consensus is enabled                        |
 | `consensusHeadersKey`                                                                 | `consensus-headers`                                                                   | optional headers for the same Beacon roles                                    |
-| `blobArchiveReadAccessKey` / `blobArchiveReadSecretKey` / `blobArchiveReadSessionKey` | `blob-archive-read-access` / `blob-archive-read-secret` / `blob-archive-read-session` | optional read credentials for `api`, when blob archival is enabled            |
-| `blobArchiveAccessKey` / `blobArchiveSecretKey` / `blobArchiveSessionKey`             | `blob-archive-access` / `blob-archive-secret` / `blob-archive-session`                | optional writer credentials for `all`/`enrich`, when blob archival is enabled |
+| `blobArchiveReadAccessKey` / `blobArchiveReadSecretKey` / `blobArchiveReadSessionKey` | `blob-archive-read-access` / `blob-archive-read-secret` / `blob-archive-read-session` | optional read credentials for `api`/`enrich`, when blob archival is enabled            |
+| `blobArchiveAccessKey` / `blobArchiveSecretKey` / `blobArchiveSessionKey`             | `blob-archive-access` / `blob-archive-secret` / `blob-archive-session`                | optional writer credentials for `all`/`sync`, when blob archival is enabled |
 
 External Secrets uses the corresponding `externalSecret.*RemoteKey` values in
 `values.yaml`. Enabled Turnstile requires `turnstileSecretRemoteKey`; enabled
@@ -150,7 +150,7 @@ Set public switches and policy under `config.turnstile`, `config.push`, and
 archival additionally requires `config.consensus.blobs.enabled` and a separate
 durable bucket: it must not share the disposable trace cache's eviction policy.
 Without static archive keys, the SDK credential chain can use operator-owned
-accounts selected by `blobArchiveServiceAccounts.api`, `.enrich`, and `.all`.
+accounts selected by `blobArchiveServiceAccounts.api`, `.enrich`, `.sync`, and `.all`.
 These override the trace-cache account on archive roles. Review nonstandard
 Beacon/object-store ports in `networkPolicy.additionalEgress`.
 

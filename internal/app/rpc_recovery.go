@@ -15,6 +15,7 @@ func transientRPCProbe(err error) bool {
 }
 
 type rpcRecovery struct {
+	recovered  func(context.Context, ethrpc.Endpoint) error
 	pool       *ethrpc.Pool
 	pending    []ethrpc.Endpoint
 	expected   ethrpc.ChainIdentity
@@ -74,6 +75,11 @@ func (r *rpcRecovery) runOnce(ctx context.Context) error {
 		if hasEnabledRPCPurpose(endpoint.Purposes) {
 			if err := r.pool.AddVerified(endpoint); err != nil {
 				return err
+			}
+		}
+		if r.recovered != nil {
+			if e := r.recovered(ctx, endpoint); e != nil {
+				return e
 			}
 		}
 		r.logger.InfoContext(ctx, "RPC endpoint revalidated", "rpc", endpoint.Name)

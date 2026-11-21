@@ -73,7 +73,7 @@ change. New plan IDs start at P80; all lower gaps and retired prefixes stay rese
 | Plan          | Highest allocated task number |
 | ------------- | ----------------------------- |
 | P00           | 14                            |
-| P10           | 7                             |
+| P10           | 8                             |
 | P20           | 35                            |
 | P30           | 159                           |
 | P40           | 36                            |

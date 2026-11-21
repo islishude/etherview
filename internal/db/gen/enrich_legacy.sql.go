@@ -1807,31 +1807,32 @@ const enrichLegacyRetryJob = `-- name: EnrichLegacyRetryJob :one
 UPDATE durable_jobs
 SET status = CASE
         WHEN requested_generation > leased_generation THEN 'queued'
-        WHEN attempts >= max_attempts THEN 'failed'
+        WHEN NOT $1::boolean AND attempts >= max_attempts THEN 'failed'
         ELSE 'queued'
     END,
     attempts = CASE
         WHEN requested_generation > leased_generation THEN 0
+        WHEN $1::boolean THEN GREATEST(attempts-1,0)
         ELSE attempts
     END,
     available_at = CASE
         WHEN requested_generation > leased_generation THEN clock_timestamp()
-        ELSE clock_timestamp() + ($1::bigint * INTERVAL '1 microsecond')
+        ELSE clock_timestamp() + ($2::bigint * INTERVAL '1 microsecond')
     END,
     last_error = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        ELSE $2
+        ELSE $3
     END,
     result = CASE
         WHEN requested_generation > leased_generation THEN NULL
-        WHEN attempts >= max_attempts
-            THEN jsonb_build_object('state', 'failed', 'error', $2::text)
+        WHEN NOT $1::boolean AND attempts >= max_attempts
+            THEN jsonb_build_object('state', 'failed', 'error', $3::text)
         ELSE NULL
     END,
     completed_generation = CASE
         WHEN requested_generation > leased_generation
             THEN GREATEST(completed_generation, leased_generation)
-        WHEN attempts >= max_attempts
+        WHEN NOT $1::boolean AND attempts >= max_attempts
             THEN GREATEST(completed_generation, leased_generation)
         ELSE completed_generation
     END,
@@ -1840,26 +1841,27 @@ SET status = CASE
     lease_expires_at = NULL,
     leased_generation = NULL,
     updated_at = clock_timestamp()
-WHERE id = $3
+WHERE id = $4
   AND kind = 'enrichment'
-  AND chain_id = $4::numeric
-  AND stage = $5
-  AND stage_version = $6
-  AND payload->>'block_hash' = $7
-  AND payload->>'block_number' = $8
+  AND chain_id = $5::numeric
+  AND stage = $6
+  AND stage_version = $7
+  AND payload->>'block_hash' = $8
+  AND payload->>'block_number' = $9
   AND status = 'leased'
-  AND lease_token = $9
+  AND lease_token = $10
   AND lease_expires_at > clock_timestamp()
-  AND claimed_generation = $10
-  AND leased_generation = $10
-  AND completed_generation < $10
+  AND claimed_generation = $11
+  AND leased_generation = $11
+  AND completed_generation < $11
 RETURNING status,
           status = 'queued'
-          AND attempts = 0
+          AND completed_generation >= $11
           AND completed_generation < requested_generation AS followup_queued
 `
 
 type EnrichLegacyRetryJobParams struct {
+	WaitingForInput   bool           `db:"waiting_for_input" json:"waiting_for_input"`
 	RetryMicroseconds int64          `db:"retry_microseconds" json:"retry_microseconds"`
 	LastError         *string        `db:"last_error" json:"last_error"`
 	ID                int64          `db:"id" json:"id"`
@@ -1879,6 +1881,7 @@ type EnrichLegacyRetryJobRow struct {
 
 func (q *Queries) EnrichLegacyRetryJob(ctx context.Context, arg EnrichLegacyRetryJobParams) (EnrichLegacyRetryJobRow, error) {
 	row := q.db.QueryRow(ctx, enrichLegacyRetryJob,
+		arg.WaitingForInput,
 		arg.RetryMicroseconds,
 		arg.LastError,
 		arg.ID,

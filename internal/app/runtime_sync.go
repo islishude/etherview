@@ -9,7 +9,9 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	genesisstate "github.com/islishude/etherview/internal/genesis"
+	"github.com/islishude/etherview/internal/maintenance"
 	"github.com/islishude/etherview/internal/mempool"
+	"github.com/islishude/etherview/internal/state"
 	"github.com/islishude/etherview/internal/syncer"
 )
 
@@ -76,8 +78,40 @@ func (assembly runtimeAssembly) registerSyncComponents() error {
 		}); err != nil {
 			return err
 		}
+		if err := componentRegistry.Register(components.RoleSync, "11-stage-state-inputs", func() (components.Service, error) {
+			return &syncer.StateInputCollector{DB: db, ChainID: chainID, Pool: rpcBuild.Pool, Timeout: cfg.RPC.RequestTimeout, PollInterval: cfg.Runtime.PollInterval, Logger: logger}, nil
+		}); err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(components.RoleSync, "11-balance-acquisition", func() (components.Service, error) {
+			return &state.BalanceCollector{Store: state.PostgresNativeBalances{DB: db, ChainID: chainID}, Pool: rpcBuild.Pool, Timeout: cfg.RPC.RequestTimeout, Logger: logger}, nil
+		}); err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(components.RoleSync, "11-bal-acquisition", func() (components.Service, error) {
+			return &syncer.BALCollector{DB: db, ChainID: chainID, Fetcher: &ethrpc.BALFetcher{Pool: rpcBuild.Pool}, Timeout: cfg.RPC.RequestTimeout, PollInterval: cfg.Runtime.PollInterval, Logger: logger}, nil
+		}); err != nil {
+			return err
+		}
 		genesisQueue, err := enrich.NewPostgresJobQueue(db)
 		if err != nil {
+			return err
+		}
+		repairRepository, err := maintenance.NewPostgresRepository(db)
+		if err != nil {
+			return err
+		}
+		repairRepository, err = repairRepository.ForOperation(maintenance.OperationRepair)
+		if err != nil {
+			return err
+		}
+		repairExecutor, err := maintenance.NewExecutor(chainID, coreRPCSource, coreCanonicalizer, repository, genesisQueue)
+		if err != nil {
+			return err
+		}
+		if err := componentRegistry.Register(components.RoleSync, "13-core-repair", func() (components.Service, error) {
+			return maintenance.NewWorker(repairRepository, repairExecutor, maintenance.WorkerOptions{WorkerID: runtimeWorkerID("core-repair"), ServiceName: "core-repair", PollInterval: cfg.Runtime.PollInterval, Observer: assembly.businessObserver})
+		}); err != nil {
 			return err
 		}
 		genesisImporter, err := genesisstate.NewImporter(

@@ -61,5 +61,6 @@ Core repair and derived reindex are separate operations:
   the appropriate reindex range; APIs must report that state explicitly.
 - Operators choose the downstream replay range because token balances and
   other aggregates can depend on later blocks.
-- The normal synchronizer, monolith, and split maintenance role share one
-  canonicalization and durable-job implementation.
+- The sync role claims core repairs and uses the same canonicalizer as normal
+  ingestion. Maintenance claims reindex requests using database-only inputs.
+  Both role layouts filter claims by operation before locking candidates.

@@ -3,6 +3,7 @@ package state
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"slices"
 	"strconv"
@@ -72,7 +73,13 @@ func (s PostgresNativeBalances) Save(ctx context.Context, ref CanonicalRef, valu
 		return err
 	}
 	defer dbaccess.Rollback(ctx, tx)
-	q := dbgen.New(tx)
+	if err := saveNativeBalances(ctx, dbgen.New(tx), chain, number, ref, values, ""); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func saveNativeBalances(ctx context.Context, q *dbgen.Queries, chain, number pgtype.Numeric, ref CanonicalRef, values map[common.Address]string, endpoint string) error {
 	if _, err := q.NativeBalanceLockCanonical(ctx, chain, number, ref.Hash[:]); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return publicquery.ErrNotReady
@@ -85,6 +92,16 @@ func (s PostgresNativeBalances) Save(ctx context.Context, ref CanonicalRef, valu
 		addresses = append(addresses, a)
 	}
 	slices.SortFunc(addresses, func(a, b common.Address) int { return bytes.Compare(a[:], b[:]) })
+	var source *string
+	var batch []byte
+	if endpoint != "" {
+		source = &endpoint
+		hash := sha256.New()
+		for _, a := range addresses {
+			hash.Write(a[:])
+		}
+		batch = hash.Sum(nil)
+	}
 	for _, a := range addresses {
 		if _, err := parseUint256(values[a]); err != nil {
 			return ErrNativeBalanceIntegrity
@@ -93,7 +110,7 @@ func (s PostgresNativeBalances) Save(ctx context.Context, ref CanonicalRef, valu
 		if err := balance.Scan(values[a]); err != nil {
 			return err
 		}
-		n, err := q.NativeBalanceInsertObservation(ctx, dbgen.NativeBalanceInsertObservationParams{ChainID: chain, BlockNumber: number, BlockHash: ref.Hash[:], Address: a[:], Balance: balance, RpcExact: true})
+		n, err := q.NativeBalanceInsertObservation(ctx, dbgen.NativeBalanceInsertObservationParams{ChainID: chain, BlockNumber: number, BlockHash: ref.Hash[:], Address: a[:], Balance: balance, RpcExact: true, AcquisitionEndpoint: source, AcquisitionBatch: batch})
 		if err != nil {
 			return err
 		}
@@ -101,7 +118,7 @@ func (s PostgresNativeBalances) Save(ctx context.Context, ref CanonicalRef, valu
 			return ErrNativeBalanceIntegrity
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 // nativeStateBatch combines only missing balances with the caller's other state

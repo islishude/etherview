@@ -97,6 +97,21 @@ type AbiSignatureCandidate struct {
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
+type AccountInput struct {
+	ChainID      pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber  pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash    []byte             `db:"block_hash" json:"block_hash"`
+	Operation    string             `db:"operation" json:"operation"`
+	Address      []byte             `db:"address" json:"address"`
+	Argument     []byte             `db:"argument" json:"argument"`
+	ArgumentHash []byte             `db:"argument_hash" json:"argument_hash"`
+	ID           int64              `db:"id" json:"id"`
+	Attempts     int32              `db:"attempts" json:"attempts"`
+	LeaseUntil   pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
+	ExpiresAt    pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
+	Evidence     []byte             `db:"evidence" json:"evidence"`
+}
+
 type AddressActivitiesDefault struct {
 	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
 	BlockNumber     pgtype.Numeric `db:"block_number" json:"block_number"`
@@ -242,6 +257,29 @@ type AuthChallenge struct {
 	IssuedAt   pgtype.Timestamptz `db:"issued_at" json:"issued_at"`
 	ExpiresAt  pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 	ConsumedAt pgtype.Timestamptz `db:"consumed_at" json:"consumed_at"`
+}
+
+type BalAcquisition struct {
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	Generation  int64              `db:"generation" json:"generation"`
+	Endpoint    string             `db:"endpoint" json:"endpoint"`
+	Attempts    int32              `db:"attempts" json:"attempts"`
+	LeaseUntil  pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
+	Code        string             `db:"code" json:"code"`
+}
+
+type BalanceAcquisition struct {
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	Addresses   []byte             `db:"addresses" json:"addresses"`
+	ID          int64              `db:"id" json:"id"`
+	BatchDigest []byte             `db:"batch_digest" json:"batch_digest"`
+	Generation  int64              `db:"generation" json:"generation"`
+	AvailableAt pgtype.Timestamptz `db:"available_at" json:"available_at"`
+	ExpiresAt   pgtype.Timestamptz `db:"expires_at" json:"expires_at"`
 }
 
 type BeaconImplementationObservation struct {
@@ -427,6 +465,19 @@ type Block struct {
 	WithdrawalCount        *int64             `db:"withdrawal_count" json:"withdrawal_count"`
 	SlotNumberRaw          []byte             `db:"slot_number_raw" json:"slot_number_raw"`
 	BlockAccessListHashRaw []byte             `db:"block_access_list_hash_raw" json:"block_access_list_hash_raw"`
+}
+
+type BlockInput struct {
+	ChainID     pgtype.Numeric     `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric     `db:"block_number" json:"block_number"`
+	BlockHash   []byte             `db:"block_hash" json:"block_hash"`
+	Kind        string             `db:"kind" json:"kind"`
+	Version     int32              `db:"version" json:"version"`
+	Generation  int64              `db:"generation" json:"generation"`
+	Attempts    int32              `db:"attempts" json:"attempts"`
+	LeaseUntil  pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
+	ErrorCode   string             `db:"error_code" json:"error_code"`
+	Evidence    []byte             `db:"evidence" json:"evidence"`
 }
 
 type BlockJournal struct {
@@ -2034,33 +2085,39 @@ type NativeBalanceChangesP01000000 struct {
 }
 
 type NativeBalanceObservation struct {
-	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Address     []byte         `db:"address" json:"address"`
-	Balance     pgtype.Numeric `db:"balance" json:"balance"`
-	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
-	Canonical   bool           `db:"canonical" json:"canonical"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	Address             []byte         `db:"address" json:"address"`
+	Balance             pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
+	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 type NativeBalanceObservationsDefault struct {
-	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Address     []byte         `db:"address" json:"address"`
-	Balance     pgtype.Numeric `db:"balance" json:"balance"`
-	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
-	Canonical   bool           `db:"canonical" json:"canonical"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	Address             []byte         `db:"address" json:"address"`
+	Balance             pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
+	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 type NativeBalanceObservationsP01000000 struct {
-	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
-	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
-	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
-	Address     []byte         `db:"address" json:"address"`
-	Balance     pgtype.Numeric `db:"balance" json:"balance"`
-	RpcExact    bool           `db:"rpc_exact" json:"rpc_exact"`
-	Canonical   bool           `db:"canonical" json:"canonical"`
+	ChainID             pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber         pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash           []byte         `db:"block_hash" json:"block_hash"`
+	Address             []byte         `db:"address" json:"address"`
+	Balance             pgtype.Numeric `db:"balance" json:"balance"`
+	RpcExact            bool           `db:"rpc_exact" json:"rpc_exact"`
+	Canonical           bool           `db:"canonical" json:"canonical"`
+	AcquisitionEndpoint *string        `db:"acquisition_endpoint" json:"acquisition_endpoint"`
+	AcquisitionBatch    []byte         `db:"acquisition_batch" json:"acquisition_batch"`
 }
 
 type NativeTransfer struct {
@@ -2567,6 +2624,33 @@ type SearchCatalogGeneration struct {
 	MinGeneration        int64              `db:"min_generation" json:"min_generation"`
 	RetentionGenerations int64              `db:"retention_generations" json:"retention_generations"`
 	UpdatedAt            pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type StageStateInput struct {
+	ID              int64              `db:"id" json:"id"`
+	GroupID         int64              `db:"group_id" json:"group_id"`
+	Request         []byte             `db:"request" json:"request"`
+	RequestHash     []byte             `db:"request_hash" json:"request_hash"`
+	LeaseGeneration int64              `db:"lease_generation" json:"lease_generation"`
+	Attempts        int32              `db:"attempts" json:"attempts"`
+	LeaseUntil      pgtype.Timestamptz `db:"lease_until" json:"lease_until"`
+	Outcome         string             `db:"outcome" json:"outcome"`
+	Result          []byte             `db:"result" json:"result"`
+}
+
+type StateInputGroup struct {
+	ID          int64          `db:"id" json:"id"`
+	ChainID     pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	BlockNumber pgtype.Numeric `db:"block_number" json:"block_number"`
+	BlockHash   []byte         `db:"block_hash" json:"block_hash"`
+	Consumer    string         `db:"consumer" json:"consumer"`
+	Endpoint    string         `db:"endpoint" json:"endpoint"`
+}
+
+type SyncCapability struct {
+	ChainID         pgtype.Numeric `db:"chain_id" json:"chain_id"`
+	HistoricalState string         `db:"historical_state" json:"historical_state"`
+	Trace           string         `db:"trace" json:"trace"`
 }
 
 type SyncRuntimeStatus struct {

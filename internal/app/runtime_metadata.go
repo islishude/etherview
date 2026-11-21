@@ -1,10 +1,10 @@
 package app
 
 import (
-	"errors"
+	"strconv"
 
 	"github.com/islishude/etherview/internal/components"
-	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/metadata"
 )
 
 func (assembly runtimeAssembly) registerMetadataComponents() error {
@@ -13,15 +13,21 @@ func (assembly runtimeAssembly) registerMetadataComponents() error {
 	db := assembly.db
 	logger := assembly.logger
 	businessObserver := assembly.businessObserver
-	rpcBuild := assembly.rpcBuild
 	componentRegistry := assembly.componentRegistry
-	if roleSet[components.RoleMetadata] && cfg.Features.NFTMetadata {
-		if rpcBuild == nil || len(rpcBuild.Pool.Names(ethrpc.PurposeState)) == 0 {
-			return errors.New("metadata role requires an HTTP state RPC endpoint for block-pinned source discovery")
-		}
-		if err := registerMetadataWorkers(componentRegistry, db, rpcBuild.Pool, cfg, logger, businessObserver); err != nil {
+	if !cfg.Features.NFTMetadata {
+		return nil
+	}
+	if roleSet[components.RoleMetadata] {
+		repo, err := metadata.NewPostgresRepository(db, strconv.FormatUint(cfg.Chain.ID, 10))
+		if err != nil {
 			return err
 		}
+		if err := componentRegistry.Register(components.RoleMetadata, "42-nft-metadata-discovery", func() (components.Service, error) {
+			return metadata.NewSourceDiscoverer(repo, nil, metadata.SourceDiscovererOptions{Inputs: db, PollInterval: cfg.Runtime.PollInterval, MaxAttempts: metadata.DefaultMaxAttempts, Logger: logger})
+		}); err != nil {
+			return err
+		}
+		return registerMetadataWorkers(componentRegistry, db, cfg, logger, businessObserver)
 	}
 	return nil
 }

@@ -79,6 +79,13 @@ func NewExecutor(
 	}, nil
 }
 
+func NewReindexExecutor(chainID string, canonical CanonicalBlockSource, queue ReplayQueue) (*Executor, error) {
+	if err := validateCanonicalDecimal(chainID, 78); err != nil || chainID == "0" || canonical == nil || queue == nil {
+		return nil, errors.New("reindex requires a chain identity, canonical source and queue")
+	}
+	return &Executor{chainID: chainID, canonical: canonical, queue: queue}, nil
+}
+
 func (executor *Executor) Repair(ctx context.Context, request Request) error {
 	if err := executor.validate(request, OperationRepair); err != nil {
 		return err
@@ -150,7 +157,7 @@ func (executor *Executor) Reindex(ctx context.Context, request Request) error {
 }
 
 func (executor *Executor) validate(request Request, operation Operation) error {
-	if executor == nil || executor.source == nil || executor.canonicalizer == nil || executor.canonical == nil || executor.queue == nil {
+	if executor == nil || (operation == OperationRepair && (executor.source == nil || executor.canonicalizer == nil)) || executor.canonical == nil || executor.queue == nil {
 		return errors.New("use nil or incomplete maintenance executor")
 	}
 	if err := request.Validate(); err != nil {
@@ -231,6 +238,9 @@ func (executor *Executor) Bind(lease Lease) (RangeExecutor, error) {
 	queue, err := enrich.NewPostgresJobQueue(lease.session.conn)
 	if err != nil {
 		return nil, err
+	}
+	if lease.Request.Operation == OperationReindex {
+		return NewReindexExecutor(executor.chainID, repository, queue)
 	}
 	canonicalizer := &indexer.Canonicalizer{ChainID: executor.chainID, Repository: repository}
 	return NewExecutor(executor.chainID, executor.source, canonicalizer, repository, queue)

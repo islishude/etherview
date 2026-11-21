@@ -21,7 +21,7 @@ func (assembly runtimeAssembly) registerSharedComponents() error {
 	componentRegistry := assembly.componentRegistry
 	databaseHealth := assembly.databaseHealth
 	for _, role := range roles {
-		if roleUsesRPC(role, cfg) && assembly.rpcBuild != nil && assembly.rpcBuild.Recovery != nil {
+		if role == components.RoleSync && assembly.rpcBuild != nil && assembly.rpcBuild.Recovery != nil {
 			if err := componentRegistry.Register(role, "06-rpc-recovery", func() (components.Service, error) { return assembly.rpcBuild.Recovery, nil }); err != nil {
 				return err
 			}

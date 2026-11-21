@@ -12,8 +12,9 @@ signatures alone never establish protocol identity.
 
 Discovery is independent of public requests. Canonical logs and authenticated
 registries supply candidates; exact block-hash reads establish ownership and
-amounts. Database snapshots close before external calls. One operation pins
-one state endpoint. Publication rechecks canonical attachment, source generation
+amounts. Under [ADR-0061](ADR-0061-sync-acquisition.md), sync collects those
+inputs on one pinned endpoint. Enrich releases the deployment lease on missing
+input and resumes the run from its persisted checkpoint. Publication rechecks canonical attachment, source generation
 and worker ownership in one transaction. Orphan facts remain retained.
 
 Each deployment advances independently using bounded resumable work. Completed

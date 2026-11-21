@@ -6,19 +6,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/islishude/etherview/internal/nativetransfer"
 	"strconv"
 	"strings"
-
-	dbaccess "github.com/islishude/etherview/internal/db"
-	pgx "github.com/jackc/pgx/v5"
-	pgtype "github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
+	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
+	"github.com/islishude/etherview/internal/nativetransfer"
+	pgx "github.com/jackc/pgx/v5"
+	pgtype "github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
@@ -32,8 +31,8 @@ type TraceRPCProcessor struct {
 }
 
 func NewTraceRPCProcessor(db dbaccess.Database, pool *ethrpc.Pool, limits TraceLimits) (*TraceRPCProcessor, error) {
-	if db == nil || pool == nil {
-		return nil, errors.New("trace processor requires a database and RPC pool")
+	if db == nil {
+		return nil, errors.New("trace processor requires a database")
 	}
 	if limits == (TraceLimits{}) {
 		limits = DefaultTraceLimits()
@@ -124,7 +123,7 @@ func (*traceBlockBudget) add(used *int, size, limit int, name string) error {
 }
 
 func (processor *TraceRPCProcessor) Process(ctx context.Context, job Job) (StageResult, error) {
-	if processor == nil || processor.db == nil || processor.pool == nil {
+	if processor == nil || processor.db == nil {
 		return StageResult{}, errors.New("process trace stage using unconfigured processor")
 	}
 	if err := job.Validate(); err != nil {
@@ -143,11 +142,32 @@ func (processor *TraceRPCProcessor) Process(ctx context.Context, job Job) (Stage
 	if len(transactions) == 0 {
 		return processor.persist(ctx, job, transactions, "none", "complete")
 	}
+	if processor.pool == nil {
+		input, err := loadTraceInput(ctx, processor.db, job, job.Stage.String())
+		if err != nil {
+			return StageResult{}, err
+		}
+		budget := newTraceBlockBudget(processor.limits)
+		switch TraceSource(input.Source) {
+		case TraceCallTracer:
+			err = processor.fetchCallTracer(ctx, input, job.BlockHash, transactions, budget)
+		case TraceAPI:
+			err = processor.fetchTraceAPI(ctx, input, job, transactions, budget)
+		default:
+			err = Permanent(errors.New("trace_input_invalid"))
+		}
+		if err != nil {
+			return StageResult{}, err
+		}
+		result, err := processor.persist(ctx, job, transactions, input.Source, "complete")
+		result.diagnostic.Endpoint = input.Endpoint
+		return result, err
+	}
 	endpoint, err := processor.pool.Acquire(ethrpc.PurposeTrace)
 	if err != nil {
 		return StageResult{}, Unavailable(err)
 	}
-	source, err := processor.fetch(ctx, endpoint, job, transactions)
+	source, err := processor.fetch(ctx, endpoint.Client, endpoint.Capabilities, job, transactions)
 	if err != nil {
 		processor.pool.ReportFailure(endpoint.Name)
 		err = withStageDiagnostic(err, StageDiagnostic{Endpoint: endpoint.Name, Phase: "rpc"})
@@ -297,12 +317,12 @@ func (processor *TraceRPCProcessor) transactions(ctx context.Context, job Job) (
 	return result, true, nil
 }
 
-func (processor *TraceRPCProcessor) fetch(ctx context.Context, endpoint *ethrpc.Endpoint, job Job, transactions []traceTransaction) (string, error) {
-	debugStatus := endpoint.Capabilities.Status(ethrpc.CapabilityDebugTrace)
-	parityStatus := endpoint.Capabilities.Status(ethrpc.CapabilityParityTrace)
+func (processor *TraceRPCProcessor) fetch(ctx context.Context, caller rpcCaller, capabilities ethrpc.CapabilityReport, job Job, transactions []traceTransaction) (string, error) {
+	debugStatus := capabilities.Status(ethrpc.CapabilityDebugTrace)
+	parityStatus := capabilities.Status(ethrpc.CapabilityParityTrace)
 	budget := newTraceBlockBudget(processor.limits)
 	if debugStatus != ethrpc.AvailabilityUnavailable {
-		err := processor.fetchCallTracer(ctx, endpoint.Client, job.BlockHash, transactions, budget)
+		err := processor.fetchCallTracer(ctx, caller, job.BlockHash, transactions, budget)
 		if err == nil {
 			return string(TraceCallTracer), nil
 		}
@@ -311,7 +331,7 @@ func (processor *TraceRPCProcessor) fetch(ctx context.Context, endpoint *ethrpc.
 		}
 	}
 	if parityStatus != ethrpc.AvailabilityUnavailable {
-		if err := processor.fetchTraceAPI(ctx, endpoint.Client, job, transactions, budget); err != nil {
+		if err := processor.fetchTraceAPI(ctx, caller, job, transactions, budget); err != nil {
 			return "", err
 		}
 		return string(TraceAPI), nil

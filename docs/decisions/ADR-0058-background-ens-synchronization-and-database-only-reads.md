@@ -24,11 +24,11 @@ implementation identities, roots and coin type. There is no official/custom clas
 and verified deployment identities retain provenance without a namespace enum.
 All chains use the same manifest identity checks.
 
-Use the current-chain RPC pool for exact-state resolution and code/proxy identity
-verification. Never fetch missing historical blocks/logs in ENS. Each operation
+Sync acquires exact-state resolution and code/proxy identity inputs as specified
+in [ADR-0061](ADR-0061-sync-acquisition.md). Enrich reads these inputs from PostgreSQL. Never fetch missing historical blocks/logs in ENS. Each operation
 pins one endpoint and block hash, with no height/latest fallback. Close database
 snapshots before external work and recheck canonical attachment before commit.
-Only enrich/all construct ENS clients; API name reads cannot call RPC/gateways.
+Enrich owns CCIP gateway clients. API name reads consume published observations.
 Bound ENS concurrency separately from other enrichment workers. Recoverable
 ENS outages degrade names, not core readiness. Supervisor, readiness, shutdown,
 component manifest, deployment and secret scopes remain identical in all/split.

@@ -16,12 +16,12 @@ func TestConsensusOptionalValidationAndRoleSecrets(t *testing.T) {
 			if err := validateConsensusConfig(cfg); err != nil {
 				t.Fatal(err)
 			}
-			env := map[string]string{"ETHERVIEW_CONSENSUS_URL_FILE": "/only-enrich", "ETHERVIEW_CONSENSUS_HEADERS_FILE": "/only-enrich"}
+			env := map[string]string{"ETHERVIEW_CONSENSUS_URL_FILE": "/beacon-worker", "ETHERVIEW_CONSENSUS_HEADERS_FILE": "/beacon-worker"}
 			lookup := func(k string) (string, bool) { v, ok := env[k]; return v, ok }
 			calls := 0
 			read := func(string) ([]byte, error) { calls++; return nil, errors.New("secret_file_unavailable") }
 			err := applyConsensusEnvironment(&cfg, lookup, read)
-			worker := role == "enrich" || role == "all"
+			worker := role == "sync" || role == "all"
 			if worker != (err != nil) || worker != (calls > 0) {
 				t.Fatalf("role=%s calls=%d err=%v", role, calls, err)
 			}
@@ -51,5 +51,23 @@ func TestConsensusOptionalValidationAndRoleSecrets(t *testing.T) {
 	cfg.Consensus.URL = "http://user:secret@beacon.internal"
 	if validateConsensusConfig(cfg) == nil {
 		t.Fatal("URL credentials accepted")
+	}
+}
+
+func TestDatabaseOnlyRolesSkipExecutionEndpointSecrets(t *testing.T) {
+	for _, role := range []string{"api", "enrich", "maintenance", "verification", "trace", "metadata"} {
+		cfg := Default()
+		cfg.Runtime.Roles = []string{role}
+		cfg.Features.NFTMetadata = true
+		cfg.Features.Trace = true
+		err := applyRPCEnvironment(&cfg, func(name string) (string, bool) {
+			if name == "ETHERVIEW_RPC_URLS_FILE" {
+				return "/unmounted", true
+			}
+			return "", false
+		}, func(string) ([]byte, error) { t.Fatalf("%s loaded RPC credentials", role); return nil, nil }, false)
+		if err != nil || len(cfg.RPC.Endpoints) != 0 {
+			t.Fatalf("%s: endpoints=%d err=%v", role, len(cfg.RPC.Endpoints), err)
+		}
 	}
 }

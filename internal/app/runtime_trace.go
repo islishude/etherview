@@ -1,8 +1,6 @@
 package app
 
 import (
-	"errors"
-
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/enrich"
 )
@@ -15,19 +13,23 @@ func (assembly runtimeAssembly) registerTraceComponents() error {
 	rpcBuild := assembly.rpcBuild
 	traceJobWake := assembly.traceJobWake
 	componentRegistry := assembly.componentRegistry
-	if roleSet[components.RoleTrace] && cfg.Features.Trace {
-		if rpcBuild == nil || !traceRPCAvailable(rpcBuild.Pool) {
-			return errors.New("trace role is enabled but no configured trace RPC reports debug or trace-module capability")
+	if cfg.Features.Trace && roleSet[components.RoleSync] {
+		if err := componentRegistry.Register(components.RoleSync, "16-trace-inputs", func() (components.Service, error) {
+			return &enrich.TraceInputCollector{DB: db, Pool: rpcBuild.Pool, ChainID: assembly.chainID, Timeout: cfg.Runtime.LeaseDuration, PollInterval: cfg.Runtime.PollInterval, Logger: assembly.logger}, nil
+		}); err != nil {
+			return err
 		}
+	}
+	if cfg.Features.Trace && roleSet[components.RoleTrace] {
 		queue, err := enrich.NewPostgresJobQueue(db)
 		if err != nil {
 			return err
 		}
-		traceProcessor, err := enrich.NewTraceRPCProcessor(db, rpcBuild.Pool, enrich.TraceLimits{})
+		traceProcessor, err := enrich.NewTraceRPCProcessor(db, nil, enrich.TraceLimits{})
 		if err != nil {
 			return err
 		}
-		stateDiffProcessor, err := enrich.NewStateDiffRPCProcessor(db, rpcBuild.Pool, enrich.StateDiffLimits{})
+		stateDiffProcessor, err := enrich.NewStateDiffRPCProcessor(db, nil, enrich.StateDiffLimits{})
 		if err != nil {
 			return err
 		}

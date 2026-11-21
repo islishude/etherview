@@ -126,12 +126,14 @@ spec:
               value: /run/etherview-tls/tls.key
             {{- end }}
             {{- end }}
+            {{- if or (eq $roleName "all") (eq $roleName "sync") }}
             - name: ETHERVIEW_RPC_URLS
               valueFrom:
                 secretKeyRef:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
                   key: {{ $root.Values.secrets.rpcURLsKey | quote }}
                   optional: true
+            {{- end }}
             {{- if and $root.Values.genesisState.existingClaim (or (eq $roleName "all") (eq $roleName "sync")) }}
             - name: ETHERVIEW_CHAIN_GENESIS_FILE
               value: {{ $root.Values.genesisState.mountPath | quote }}
@@ -146,7 +148,7 @@ spec:
             - name: ETHERVIEW_CHAIN_GENESIS_FETCH_TIMEOUT
               value: {{ $root.Values.genesisState.fetchTimeout | quote }}
             {{- end }}
-            {{- if and $root.Values.config.consensus.enabled (or (eq $roleName "all") (eq $roleName "enrich")) }}
+            {{- if and $root.Values.config.consensus.enabled (or (eq $roleName "all") (eq $roleName "sync")) }}
             - name: ETHERVIEW_CONSENSUS_URL
               valueFrom:
                 secretKeyRef:
@@ -160,24 +162,24 @@ spec:
                   key: {{ $root.Values.secrets.consensusHeadersKey | quote }}
                   optional: true
             {{- end }}
-            {{- if and $root.Values.config.consensus.blobs.enabled (or $apiCapable (eq $roleName "enrich")) }}
+            {{- if and $root.Values.config.consensus.blobs.enabled (or $apiCapable (eq $roleName "sync") (eq $roleName "enrich")) }}
             - name: ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
-                  key: {{ ternary $root.Values.secrets.blobArchiveReadAccessKey $root.Values.secrets.blobArchiveAccessKey (eq $roleName "api") | quote }}
+                  key: {{ ternary $root.Values.secrets.blobArchiveReadAccessKey $root.Values.secrets.blobArchiveAccessKey (or (eq $roleName "api") (eq $roleName "enrich")) | quote }}
                   optional: true
             - name: ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
-                  key: {{ ternary $root.Values.secrets.blobArchiveReadSecretKey $root.Values.secrets.blobArchiveSecretKey (eq $roleName "api") | quote }}
+                  key: {{ ternary $root.Values.secrets.blobArchiveReadSecretKey $root.Values.secrets.blobArchiveSecretKey (or (eq $roleName "api") (eq $roleName "enrich")) | quote }}
                   optional: true
             - name: ETHERVIEW_CONSENSUS_BLOBS_SESSION_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ $root.Values.secrets.existingSecret | quote }}
-                  key: {{ ternary $root.Values.secrets.blobArchiveReadSessionKey $root.Values.secrets.blobArchiveSessionKey (eq $roleName "api") | quote }}
+                  key: {{ ternary $root.Values.secrets.blobArchiveReadSessionKey $root.Values.secrets.blobArchiveSessionKey (or (eq $roleName "api") (eq $roleName "enrich")) | quote }}
                   optional: true
             {{- end }}
             {{- if or $apiCapable $verificationCapable }}

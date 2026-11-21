@@ -29,10 +29,11 @@ WHERE request.status IN ('queued', 'running')
           request.id
       ) > ($2::integer, $3::timestamptz, $4::bigint)
   )
+  AND ($5::text='' OR request.operation=$5::text)
 ORDER BY CASE request.status WHEN 'queued' THEN 0 ELSE 1 END,
          request.requested_at, request.id
 FOR UPDATE OF request SKIP LOCKED
-LIMIT $5
+LIMIT $6
 `
 
 type MaintenanceLegacyClaimCandidatesParams struct {
@@ -40,6 +41,7 @@ type MaintenanceLegacyClaimCandidatesParams struct {
 	CursorStatusRank  int32              `db:"cursor_status_rank" json:"cursor_status_rank"`
 	CursorRequestedAt pgtype.Timestamptz `db:"cursor_requested_at" json:"cursor_requested_at"`
 	CursorID          int64              `db:"cursor_id" json:"cursor_id"`
+	OperationFilter   string             `db:"operation_filter" json:"operation_filter"`
 	Limit             int32              `db:"limit" json:"limit"`
 }
 
@@ -64,6 +66,7 @@ func (q *Queries) MaintenanceLegacyClaimCandidates(ctx context.Context, arg Main
 		arg.CursorStatusRank,
 		arg.CursorRequestedAt,
 		arg.CursorID,
+		arg.OperationFilter,
 		arg.Limit,
 	)
 	if err != nil {

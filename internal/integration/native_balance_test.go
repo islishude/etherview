@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,12 +18,17 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/chainbundle"
+	"github.com/islishude/etherview/internal/chaininput"
+	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/ethrpc"
 	"github.com/islishude/etherview/internal/indexer"
 	"github.com/islishude/etherview/internal/maintenance"
+	"github.com/islishude/etherview/internal/publicquery"
 	"github.com/islishude/etherview/internal/state"
 	"github.com/islishude/etherview/internal/store"
+	"github.com/islishude/etherview/internal/syncer"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type balanceRPC struct {
@@ -97,7 +104,8 @@ func TestNativeBalancePublicationCoverageReplayAndReorg(t *testing.T) {
 		}
 	}
 	queue, _ := enrich.NewPostgresJobQueue(db)
-	processor, _ := enrich.NewPostgresNativeBalanceProcessor(db, pool)
+	collector := syncer.BALCollector{DB: db, ChainID: "1", Fetcher: &ethrpc.BALFetcher{Pool: pool}, Timeout: time.Second}
+	processor, _ := enrich.NewPostgresNativeBalanceProcessor(db)
 	worker, err := enrich.NewWorker(queue, []enrich.Processor{processor}, enrich.WorkerOptions{ID: "balance-test", LeaseDuration: time.Minute})
 	if err != nil {
 		t.Fatal(err)
@@ -122,6 +130,14 @@ func TestNativeBalancePublicationCoverageReplayAndReorg(t *testing.T) {
 		execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
 		enqueue(b, key)
 		process()
+		found, err := collector.CollectOne(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found {
+			execFixture(t, ctx, db, `UPDATE durable_jobs SET available_at=now() WHERE stage='native_balance' AND status='queued'`)
+			process()
+		}
 	}
 	guardedJob := enqueue(genesis, "genesis")
 	if _, err := db.Exec(ctx, `UPDATE durable_jobs SET status='succeeded' WHERE id=$1`, guardedJob.ID); err == nil {
@@ -207,7 +223,30 @@ func TestNativeBalancePublicationCoverageReplayAndReorg(t *testing.T) {
 		t.Fatal("maintenance replay ignored retained authenticated BAL")
 	}
 	replacement := makeBlock(genesis, "replacement", false)
+	// Hold a query on a genuinely missing address while its chosen tip is replaced.
+	waiting := make(chan error, 1)
+	go func() {
+		demand := state.BalanceDemand{Store: cache, Timeout: 5 * time.Second}
+		_, err := demand.Read(ctx, ref(three), []common.Address{common.HexToAddress("0xfeed")})
+		waiting <- err
+	}()
+	for deadline := time.Now().Add(3 * time.Second); ; {
+		var queued bool
+		if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM balance_acquisitions WHERE block_hash=$1)`, three.Block.Hash().Bytes()).Scan(&queued); err != nil {
+			t.Fatal(err)
+		}
+		if queued {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("balance acquisition was not submitted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	applyDerivedReorg(t, ctx, repository, genesis, []chainbundle.Bundle{one, two, three}, []chainbundle.Bundle{replacement}, "balance replacement")
+	if err := <-waiting; !errors.Is(err, publicquery.ErrNotReady) {
+		t.Fatalf("query returned stale branch: %v", err)
+	}
 	read(three, address, "")
 	read(replacement, address, "")
 	assertRowCount(t, ctx, db, `SELECT count(*) FROM native_balance_changes WHERE canonical`, 0)
@@ -224,4 +263,191 @@ func TestNativeBalancePublicationCoverageReplayAndReorg(t *testing.T) {
 	if err := db.QueryRow(ctx, `SELECT raw FROM native_balance_blocks WHERE block_hash=$1`, one.Block.Hash().Bytes()).Scan(&raw); err != nil || len(raw) == 0 {
 		t.Fatalf("retained raw=%s error=%v", raw, err)
 	}
+}
+
+type exactBalanceRPC struct {
+	hash  common.Hash
+	calls atomic.Int64
+	codes atomic.Int64
+}
+
+func (s *exactBalanceRPC) GetBalance(_ context.Context, _ common.Address, ref rpc.BlockNumberOrHash) (hexutil.Uint64, error) {
+	if ref.BlockHash == nil || *ref.BlockHash != s.hash || !ref.RequireCanonical {
+		return 0, errors.New("unexpected block selector")
+	}
+	s.calls.Add(1)
+	return 42, nil
+}
+
+func (s *exactBalanceRPC) GetCode(_ context.Context, address common.Address, ref rpc.BlockNumberOrHash) (hexutil.Bytes, error) {
+	if ref.BlockHash == nil || *ref.BlockHash != s.hash || !ref.RequireCanonical {
+		return nil, errors.New("wrong code selector")
+	}
+	s.codes.Add(1)
+	if address == common.HexToAddress("0xb16") {
+		return make(hexutil.Bytes, (1<<20)+1), nil
+	}
+	return hexutil.Bytes{}, nil
+}
+
+func TestSyncBalanceDemandReplay(t *testing.T) {
+	db := newMigratedPostgres(t)
+	ctx := t.Context()
+	repository, err := store.NewPostgresRepository(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.ConfigureIndex(ctx, "1", 0); err != nil {
+		t.Fatal(err)
+	}
+	genesis, err := newIntegrationBundle(integrationBundleOptions{ExtraData: []byte("acquisition")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.CommitCanonicalSegment(ctx, "1", []chainbundle.Bundle{genesis}); err != nil {
+		t.Fatal(err)
+	}
+	ref := state.CanonicalRef{Hash: genesis.Block.Hash()}
+	cache := state.PostgresNativeBalances{DB: db, ChainID: "1"}
+	demand := state.BalanceDemand{Store: cache, Timeout: 300 * time.Millisecond}
+	account := common.HexToAddress("0x1234")
+	addresses := []common.Address{account, account}
+	// Both waiters time out independently, leaving one durable request.
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() { _, err := demand.Read(ctx, ref, addresses); errs <- err }()
+	}
+	for range 2 {
+		if err := <-errs; err == nil {
+			t.Fatal("missing acquisition reported success")
+		}
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM balance_acquisitions`, 1)
+	node := &exactBalanceRPC{hash: ref.Hash}
+	server := rpc.NewServer()
+	if err := server.RegisterName("eth", node); err != nil {
+		t.Fatal(err)
+	}
+	client := rpc.DialInProc(server)
+	defer client.Close()
+	pool, err := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "state", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}}}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector := state.BalanceCollector{Store: cache, Pool: pool, Timeout: time.Second}
+	workerCtx, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- collector.Run(workerCtx) }()
+	demand.Timeout = 5 * time.Second
+	values, err := demand.Read(ctx, ref, addresses)
+	api := &state.Reader{Canonical: state.PostgresCanonicalSource{DB: db, ChainID: "1"}, BalanceDemand: &demand}
+	kind, _, hash, kindErr := api.AccountKind(ctx, account.Hex())
+	if kindErr != nil || kind != "eoa" || common.HexToHash(hash) != ref.Hash {
+		stop()
+		t.Fatalf("account kind=%s hash=%s err=%v", kind, hash, kindErr)
+	}
+	stop()
+	if workerErr := <-done; workerErr != nil {
+		t.Fatal(workerErr)
+	}
+	if err != nil || !slices.Equal(values, []string{"42", "42"}) {
+		t.Fatalf("values=%v err=%v", values, err)
+	}
+	values, err = demand.Read(ctx, ref, addresses)
+	if err != nil || !slices.Equal(values, []string{"42", "42"}) || node.calls.Load() != 1 {
+		t.Fatalf("replay=%v calls=%d err=%v", values, node.calls.Load(), err)
+	}
+	if _, _, _, err = api.AccountKind(ctx, account.Hex()); err != nil || node.codes.Load() != 1 {
+		t.Fatalf("offline account read err=%v calls=%d", err, node.codes.Load())
+	}
+
+	var chain, height pgtype.Numeric
+	if err := chain.Scan("1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := height.Scan("0"); err != nil {
+		t.Fatal(err)
+	}
+	open := func() *chaininput.Session {
+		session, err := chaininput.Open(ctx, db, chain, height, ref.Hash, "integration@1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return session
+	}
+	selector := rpc.BlockNumberOrHashWithHash(ref.Hash, true)
+	var code hexutil.Bytes
+	for range 2 {
+		if err := open().CallContext(ctx, &code, "eth_getCode", account, selector); !errors.Is(err, chaininput.ErrPending) {
+			t.Fatalf("first probe = %v", err)
+		}
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM stage_state_inputs`, 1)
+	q := dbgen.New(db)
+	abandoned, err := q.StageInputClaim(ctx, 10, chain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collectorCtx, finish := context.WithCancel(ctx)
+	unavailable := rpc.NewServer()
+	if err := unavailable.RegisterName("eth", &exactBalanceRPC{}); err != nil {
+		t.Fatal(err)
+	}
+	badClient := rpc.DialInProc(unavailable)
+	t.Cleanup(badClient.Close)
+	stagePool, err := ethrpc.NewPool([]ethrpc.Endpoint{
+		{Name: "outage", Client: badClient, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}},
+		{Name: "state", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}},
+	}, ethrpc.PoolOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stage := &syncer.StateInputCollector{DB: db, ChainID: "1", Pool: stagePool, Timeout: time.Second, PollInterval: 10 * time.Millisecond}
+	go func() { done <- stage.Run(collectorCtx) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		err := open().CallContext(ctx, &code, "eth_getCode", account, selector)
+		if !errors.Is(err, chaininput.ErrPending) || time.Now().After(deadline) {
+			finish()
+			if workerErr := <-done; workerErr != nil {
+				t.Fatal(workerErr)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := open().CallContext(ctx, &code, "eth_getCode", account, selector); err != nil || node.codes.Load() != 2 {
+		t.Fatalf("stage replay = %v calls=%d", err, node.codes.Load())
+	}
+	changed, err := q.StageInputFinish(ctx, dbgen.StageInputFinishParams{ID: abandoned.ID, LeaseGeneration: abandoned.LeaseGeneration, Endpoint: "state", Outcome: "failed"})
+	if err != nil || changed != 0 {
+		t.Fatalf("expired lease publication rows=%d error=%v", changed, err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM stage_state_inputs WHERE attempts=3 AND outcome='ready'`, 1)
+	// A value beyond the acquisition wire budget cannot become a successful
+	// empty code observation. The rest of this group stays on its pinned endpoint.
+	oversize := common.HexToAddress("0xb16")
+	if err := open().CallContext(ctx, &code, "eth_getCode", oversize, selector); !errors.Is(err, chaininput.ErrPending) {
+		t.Fatal(err)
+	}
+	largeCtx, stopLarge := context.WithTimeout(ctx, 4*time.Second)
+	go func() { done <- stage.Run(largeCtx) }()
+	for largeCtx.Err() == nil {
+		err = open().CallContext(ctx, &code, "eth_getCode", oversize, selector)
+		if !errors.Is(err, chaininput.ErrPending) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	stopLarge()
+	if workerErr := <-done; workerErr != nil {
+		t.Fatal(workerErr)
+	}
+	if !errors.Is(err, chaininput.ErrUnavailable) {
+		t.Fatalf("oversize input = %v", err)
+	}
+	assertRowCount(t, ctx, db, `SELECT count(*) FROM balance_acquisitions`, 0)
 }
