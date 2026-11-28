@@ -51,7 +51,7 @@ func validateConsensusConfig(c Config) error {
 	if v.PollInterval < time.Second || v.PollInterval > time.Hour || v.RequestTimeout < time.Second || v.RequestTimeout > time.Minute || v.WorkerCount < 1 || v.WorkerCount > 16 || v.MaxResponseBytes < 1<<20 || v.MaxResponseBytes > 128<<20 {
 		return errors.New("consensus limits are outside supported bounds")
 	}
-	if slices.Contains(roles, "enrich") {
+	if slices.Contains(roles, "sync") {
 		u, parseErr := url.Parse(v.URL)
 		if parseErr != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return errors.New("consensus.url must be an HTTP(S) URL without credentials, query or fragment")
@@ -65,7 +65,7 @@ func validateConsensusConfig(c Config) error {
 			}
 		}
 	}
-	if v.Blobs.Enabled && (slices.Contains(roles, "api") || slices.Contains(roles, "enrich")) {
+	if v.Blobs.Enabled && (slices.Contains(roles, "api") || slices.Contains(roles, "enrich") || slices.Contains(roles, "sync")) {
 		b := v.Blobs
 		u, parseErr := url.Parse(b.Endpoint)
 		if parseErr != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") || b.Bucket == "" || b.Bucket == c.Adapters.S3Bucket {
@@ -119,7 +119,11 @@ func applyConsensusEnvironment(c *Config, lookup func(string) (string, bool), re
 	if err := setInt64(lookup, "CONSENSUS_MAX_RESPONSE_BYTES", &v.MaxResponseBytes); err != nil {
 		return err
 	}
-	if v.Enabled && slices.Contains(roles, "enrich") {
+	if !slices.Contains(roles, "sync") {
+		v.URL = ""
+		v.Headers = nil
+	}
+	if v.Enabled && slices.Contains(roles, "sync") {
 		address, e := lookupValueOrFile("CONSENSUS_URL", lookup, readFile)
 		if e != nil {
 			return e
@@ -137,7 +141,7 @@ func applyConsensusEnvironment(c *Config, lookup func(string) (string, bool), re
 			}
 		}
 	}
-	if v.Blobs.Enabled && (slices.Contains(roles, "api") || slices.Contains(roles, "enrich")) {
+	if v.Blobs.Enabled && (slices.Contains(roles, "api") || slices.Contains(roles, "enrich") || slices.Contains(roles, "sync")) {
 		for key, target := range map[string]*string{"ENDPOINT": &v.Blobs.Endpoint, "BUCKET": &v.Blobs.Bucket, "REGION": &v.Blobs.Region, "ACCESS_KEY": &v.Blobs.AccessKey, "SECRET_KEY": &v.Blobs.SecretKey, "SESSION_TOKEN": &v.Blobs.SessionToken} {
 			value, e := lookupValueOrFile("CONSENSUS_BLOBS_"+key, lookup, readFile)
 			if e != nil {

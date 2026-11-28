@@ -36,11 +36,8 @@ func (a runtimeAssembly) registerDeFiComponents() error {
 	if e != nil {
 		return e
 	}
-	if a.rpcBuild == nil || a.rpcBuild.Pool == nil {
-		return deficontract.ErrUnavailable
-	}
 	return a.componentRegistry.Register(components.RoleEnrich, "40-defi-index", func() (components.Service, error) {
-		return &defi.Worker{DB: a.db, Pool: a.rpcBuild.Pool, Manifest: m, Logger: a.logger}, nil
+		return &defi.Worker{DB: a.db, Manifest: m, Logger: a.logger}, nil
 	})
 }
 func newDeFiReader(db dbaccess.Database, cfg config.Config) (*defiread.Reader, error) {

@@ -64,16 +64,32 @@ func (reconciler *TokenReconciler) Owner(
 		return cached, nil
 	}
 
-	endpoint, err := reconciler.pool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		return catalog.NFTOwnerObservation{}, nftRPCUnavailable()
+	var observation catalog.NFTOwnerObservation
+	if reconciler.inputs != nil {
+		input, e := reconciler.inputs.accountInput(ctx, reference, "tokenBatch@1", common.Address{}, tokenCandidates([]parsedNFTCandidate{{standardERC721, tokenAddress, tokenID}}, []int{0}))
+		if e != nil || len(input.TokenResults) != 1 {
+			return observation, nftRPCUnavailable()
+		}
+		var callErr error
+		if input.TokenResults[0].Reverted {
+			callErr = tokenRevert{}
+		}
+		observation, err = decodeERC721Owner(input.TokenResults[0].Value, callErr)
+		if err != nil {
+			return observation, err
+		}
+	} else {
+		endpoint, err := reconciler.pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return catalog.NFTOwnerObservation{}, nftRPCUnavailable()
+		}
+		observation, err = callERC721Owner(ctx, endpoint, reference, tokenAddress, tokenID)
+		if err != nil {
+			reconciler.pool.ReportFailure(endpoint.Name)
+			return catalog.NFTOwnerObservation{}, err
+		}
+		reconciler.pool.ReportSuccess(endpoint.Name)
 	}
-	observation, err := callERC721Owner(ctx, endpoint, reference, tokenAddress, tokenID)
-	if err != nil {
-		reconciler.pool.ReportFailure(endpoint.Name)
-		return catalog.NFTOwnerObservation{}, err
-	}
-	reconciler.pool.ReportSuccess(endpoint.Name)
 	if err := reconciler.requireCanonical(ctx, reference); err != nil {
 		return catalog.NFTOwnerObservation{}, err
 	}
@@ -92,7 +108,7 @@ func (reconciler *TokenReconciler) Balances(
 	ownerAddressText string,
 	candidates []catalog.NFTBalanceCandidate,
 ) ([]catalog.NFTBalanceObservation, error) {
-	if reconciler == nil || reconciler.db == nil || reconciler.pool == nil || reconciler.canonical == nil {
+	if reconciler == nil || reconciler.db == nil || (reconciler.pool == nil && reconciler.inputs == nil) || reconciler.canonical == nil {
 		return nil, nftRPCUnavailable()
 	}
 	if len(candidates) > maxBalanceCandidates {
@@ -153,14 +169,27 @@ func (reconciler *TokenReconciler) Balances(
 		return results, nil
 	}
 
-	endpoint, err := reconciler.pool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		return nil, nftRPCUnavailable()
-	}
-	batchResults, err := callNFTBalanceBatch(ctx, endpoint, reference, ownerAddress, parsed, missing)
-	if err != nil {
-		reconciler.pool.ReportFailure(endpoint.Name)
-		return nil, err
+	var batchResults []nftBalanceBatchResult
+	if reconciler.inputs != nil {
+		input, e := reconciler.inputs.accountInput(ctx, reference, "tokenBatch@1", ownerAddress, tokenCandidates(parsed, missing))
+		if e != nil || len(input.TokenResults) != len(missing) {
+			return nil, nftRPCUnavailable()
+		}
+		batchResults, err = decodeNFTBatch(input.TokenResults, ownerAddress, parsed, missing)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		endpoint, err := reconciler.pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return nil, nftRPCUnavailable()
+		}
+		batchResults, err = callNFTBalanceBatch(ctx, endpoint, reference, ownerAddress, parsed, missing)
+		if err != nil {
+			reconciler.pool.ReportFailure(endpoint.Name)
+			return nil, err
+		}
+		reconciler.pool.ReportSuccess(endpoint.Name)
 	}
 	ownerObservations := make(map[int]catalog.NFTOwnerObservation)
 	for _, result := range batchResults {
@@ -169,7 +198,6 @@ func (reconciler *TokenReconciler) Balances(
 			ownerObservations[result.index] = *result.ownerObservation
 		}
 	}
-	reconciler.pool.ReportSuccess(endpoint.Name)
 	if err := reconciler.requireCanonical(ctx, reference); err != nil {
 		return nil, err
 	}
@@ -327,13 +355,27 @@ func callNFTBalanceBatch(
 	if err := endpoint.BatchCallContext(ctx, elements); err != nil {
 		return nil, nftRPCUnavailable()
 	}
+	values := make([]tokenResult, len(missing))
+	for i, elem := range elements {
+		if elem.Error != nil && !nftExecutionReverted(elem.Error) {
+			return nil, nftRPCUnavailable()
+		}
+		values[i] = tokenResult{Value: rpcResults[i], Reverted: elem.Error != nil}
+	}
+	return decodeNFTBatch(values, owner, candidates, missing)
+}
+func decodeNFTBatch(values []tokenResult, owner common.Address, candidates []parsedNFTCandidate, missing []int) ([]nftBalanceBatchResult, error) {
 	results := make([]nftBalanceBatchResult, len(missing))
 	for batchIndex, candidateIndex := range missing {
 		candidate := candidates[candidateIndex]
 		result := nftBalanceBatchResult{index: candidateIndex}
+		var callErr error
+		if values[batchIndex].Reverted {
+			callErr = tokenRevert{}
+		}
 		switch candidate.standard {
 		case standardERC721:
-			observation, err := decodeERC721Owner(rpcResults[batchIndex], elements[batchIndex].Error)
+			observation, err := decodeERC721Owner(values[batchIndex].Value, callErr)
 			if err != nil {
 				return nil, err
 			}
@@ -350,7 +392,7 @@ func callNFTBalanceBatch(
 			result.balance = exactNFTBalance(balance)
 			result.ownerObservation = &observation
 		case standardERC1155:
-			balance, err := decodeERC1155Balance(rpcResults[batchIndex], elements[batchIndex].Error)
+			balance, err := decodeERC1155Balance(values[batchIndex].Value, callErr)
 			if err != nil {
 				return nil, err
 			}

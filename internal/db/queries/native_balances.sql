@@ -18,8 +18,8 @@ ON CONFLICT (chain_id,block_number,block_hash,address,access_index) DO UPDATE SE
 WHERE native_balance_changes.balance=EXCLUDED.balance;
 
 -- name: NativeBalanceInsertObservation :execrows
-INSERT INTO native_balance_observations(chain_id,block_number,block_hash,address,balance,rpc_exact,canonical)
-VALUES(sqlc.arg(chain_id)::numeric,sqlc.arg(block_number)::numeric,sqlc.arg(block_hash),sqlc.arg(address),sqlc.arg(balance)::numeric,sqlc.arg(rpc_exact),true)
+INSERT INTO native_balance_observations(chain_id,block_number,block_hash,address,balance,rpc_exact,canonical,acquisition_endpoint)
+VALUES(sqlc.arg(chain_id)::numeric,sqlc.arg(block_number)::numeric,sqlc.arg(block_hash),sqlc.arg(address),sqlc.arg(balance)::numeric,sqlc.arg(rpc_exact),true,sqlc.narg(acquisition_endpoint))
 ON CONFLICT (chain_id,block_number,block_hash,address) DO UPDATE
 SET rpc_exact=native_balance_observations.rpc_exact OR EXCLUDED.rpc_exact,canonical=true
 WHERE native_balance_observations.balance=EXCLUDED.balance

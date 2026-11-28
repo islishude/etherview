@@ -17,7 +17,6 @@ import (
 
 type ConsensusProcessor struct {
 	DB        dbaccess.Database
-	Client    *consensus.Client
 	Archive   consensus.Archive
 	Namespace string
 	Blobs     bool
@@ -56,17 +55,14 @@ func (p *ConsensusProcessor) Process(ctx context.Context, job Job) (StageResult,
 	if p.Blobs {
 		return p.archiveBlock(ctx, job, chain, number, block)
 	}
-	id, err := strconv.ParseUint(job.ChainID, 10, 64)
-	if err != nil {
-		return StageResult{}, Permanent(errors.New("consensus_chain_id"))
-	}
-	network, err := p.Client.Network(ctx, id)
+	input, err := readBeaconInput(ctx, dbgen.New(p.DB), job, chain, number)
 	if err != nil {
 		return consensusFailure(err)
 	}
-	observation, err := p.observeBlock(ctx, job, chain, number, network, block)
+	network := input.Network
+	observation, err := input.Observation(block)
 	if err != nil {
-		return consensusFailure(err)
+		return retryBeaconInput(ctx, dbgen.New(p.DB), job, chain, number, input, err)
 	}
 	identity, err := json.Marshal(network)
 	if err != nil {
@@ -113,22 +109,6 @@ func (p *ConsensusProcessor) Process(ctx context.Context, job Job) (StageResult,
 		return StageResult{State: ResultComplete}, nil
 	})
 }
-func (p *ConsensusProcessor) observeBlock(ctx context.Context, job Job, chain, number pgtype.Numeric, network consensus.Network, block *types.Block) (consensus.Observation, error) {
-	raw, err := dbgen.New(p.DB).ConsensusRetainedObservation(ctx, chain, number, job.BlockHash[:])
-	if errors.Is(err, pgx.ErrNoRows) {
-		return p.Client.Observe(ctx, network, block)
-	}
-	if err != nil {
-		return consensus.Observation{}, err
-	}
-	// Reuse immutable, previously authenticated evidence after a reattach.
-	// The publication transaction still checks the freshly read network identity.
-	var observed consensus.Observation
-	if json.Unmarshal(raw, &observed) != nil || observed.ExecutionHash != block.Hash().Hex() || observed.ExecutionParent != block.ParentHash().Hex() {
-		return consensus.Observation{}, Permanent(errors.New("consensus_observation_invalid"))
-	}
-	return observed, nil
-}
 func (p *ConsensusProcessor) archiveBlock(ctx context.Context, job Job, chain, number pgtype.Numeric, block *types.Block) (StageResult, error) {
 	row, err := dbgen.New(p.DB).ConsensusReadObservation(ctx, chain, job.BlockHash[:])
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -149,9 +129,37 @@ func (p *ConsensusProcessor) archiveBlock(ctx context.Context, job Job, chain, n
 	if err != nil {
 		return consensusFailure(err)
 	}
-	refs, err = p.Client.ArchiveBlock(ctx, p.Archive, p.Namespace, observation, refs)
-	if err != nil {
-		return consensusFailure(err)
+	seen := make(map[string]bool)
+	for _, ref := range refs {
+		if seen[ref.VersionedHash] {
+			continue
+		}
+		seen[ref.VersionedHash] = true
+		found, err := consensus.ArchivedReference(ctx, p.Archive, ref)
+		if err != nil {
+			return consensusFailure(err)
+		}
+		if found {
+			continue
+		}
+		input, err := readBeaconInput(ctx, dbgen.New(p.DB), job, chain, number)
+		if err != nil {
+			return consensusFailure(err)
+		}
+		refs, err = consensus.RestoreReferences(refs, input.Blobs, p.Namespace)
+		if err != nil {
+			return consensusFailure(err)
+		}
+		for _, acquired := range refs {
+			verified, err := consensus.ArchivedReference(ctx, p.Archive, acquired)
+			if err != nil {
+				return consensusFailure(err)
+			}
+			if !verified {
+				return retryBeaconInput(ctx, dbgen.New(p.DB), job, chain, number, input, &consensus.Error{Code: "blob_storage_unavailable", Retry: true})
+			}
+		}
+		break
 	}
 	encoded, err := json.Marshal(refs)
 	if err != nil {

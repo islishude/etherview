@@ -186,8 +186,7 @@ billing:
 
   # Each chain requires name (1–128 nonblank characters), network, facilitator_url and tokens.
   payment_chains: []
-# Official Ethereum Mainnet RPC endpoints are ENS-role secrets supplied through
-# ENS shares the current-chain RPC pool in enrich; the manifest is public.
+# The manifest is public. Sync collects exact current-chain state for ENS workers.
 ens:
   policy_digest: ""
   manifest: ""

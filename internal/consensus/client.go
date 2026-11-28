@@ -196,9 +196,16 @@ type Observation struct {
 }
 
 func (c *Client) Header(ctx context.Context, id string) (beacontypes.Header, string, error) {
-	var result headerResponse
-	if err := c.get(ctx, "/eth/v1/beacon/headers/"+url.PathEscape(id), &result); err != nil {
+	var raw json.RawMessage
+	if err := c.get(ctx, "/eth/v1/beacon/headers/"+url.PathEscape(id), &raw); err != nil {
 		return beacontypes.Header{}, "", err
+	}
+	return decodeHeader(raw)
+}
+func decodeHeader(raw json.RawMessage) (beacontypes.Header, string, error) {
+	var result headerResponse
+	if json.Unmarshal(raw, &result) != nil {
+		return beacontypes.Header{}, "", failure("beacon_malformed")
 	}
 	root := result.Data.Header.Message.Hash().Hex()
 	if !fixedHex(result.Data.Root, 32) || !strings.EqualFold(root, result.Data.Root) {
@@ -207,30 +214,35 @@ func (c *Client) Header(ctx context.Context, id string) (beacontypes.Header, str
 	return result.Data.Header.Message, root, nil
 }
 func (c *Client) Observe(ctx context.Context, network Network, block *types.Block) (Observation, error) {
+	input, err := c.FetchBlock(ctx, network, block, false)
+	if err != nil {
+		return Observation{}, err
+	}
+	return input.Observation(block)
+}
+func executionSlot(network Network, block *types.Block) (uint64, error) {
 	if block.Difficulty().Sign() != 0 || block.Time() < network.Genesis {
-		return Observation{}, failure("not_applicable")
+		return 0, failure("not_applicable")
 	}
 	high, low := bits.Mul64(block.Time()-network.Genesis, 1000)
 	if network.Millis == 0 || high >= network.Millis {
-		return Observation{}, failure("beacon_spec")
+		return 0, failure("beacon_spec")
 	}
 	slot, _ := bits.Div64(high, low, network.Millis)
 
-	header, root, err := c.Header(ctx, strconv.FormatUint(slot, 10))
-	if err != nil {
-		return Observation{}, err
-	}
-	observed, err := c.Block(ctx, header, root, network)
-	if err != nil {
-		return Observation{}, err
-	}
-	if !strings.EqualFold(observed.ExecutionHash, block.Hash().Hex()) || !strings.EqualFold(observed.ExecutionParent, block.ParentHash().Hex()) {
-		return Observation{}, &Error{Code: "execution_identity_mismatch", Retry: true}
-	}
-	observed.SlotConflict = block.SlotNumber() != nil && *block.SlotNumber() != observed.Slot
-	return observed, nil
+	return slot, nil
 }
 func (c *Client) Block(ctx context.Context, header beacontypes.Header, root string, network Network) (Observation, error) {
+	var raw json.RawMessage
+	if err := c.get(ctx, "/eth/v2/beacon/blocks/"+root, &raw); err != nil {
+		return Observation{}, err
+	}
+	return decodeBlock(raw, header, root, network)
+}
+func decodeBlock(raw json.RawMessage, header beacontypes.Header, root string, network Network) (Observation, error) {
+	if network.Slots == 0 || root != header.Hash().Hex() {
+		return Observation{}, failure("beacon_header_identity")
+	}
 	var envelope struct {
 		Version string `json:"version"`
 		Data    struct {
@@ -243,9 +255,10 @@ func (c *Client) Block(ctx context.Context, header beacontypes.Header, root stri
 			} `json:"message"`
 		}
 	}
-	if err := c.get(ctx, "/eth/v2/beacon/blocks/"+root, &envelope); err != nil {
-		return Observation{}, err
+	if json.Unmarshal(raw, &envelope) != nil {
+		return Observation{}, failure("beacon_malformed")
 	}
+
 	m := envelope.Data.Message
 	// The header body_root is not in the full block message.
 	if m.Slot != strconv.FormatUint(header.Slot, 10) || m.Proposer != strconv.FormatUint(header.ProposerIndex, 10) || m.Parent != header.ParentRoot.Hex() || m.State != header.StateRoot.Hex() {

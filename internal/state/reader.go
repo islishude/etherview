@@ -19,7 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/islishude/etherview/internal/api/gen"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	"github.com/islishude/etherview/internal/ethrpc"
@@ -119,6 +119,8 @@ func (s PostgresCanonicalSource) IsCanonical(ctx context.Context, reference Cano
 }
 
 type Reader struct {
+	SyncCapabilities  func(gen.Completeness) gen.Completeness
+	BalanceDemand     *BalanceDemand
 	Balances          NativeBalanceCache
 	Base              publicquery.Reader
 	Origin            AddressOriginReader
@@ -159,7 +161,7 @@ func (r *Reader) Search(ctx context.Context, value, cursor string, limit int) ([
 }
 
 func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary, error) {
-	if r == nil || r.Base == nil || r.Canonical == nil || r.Pool == nil {
+	if r == nil || r.Base == nil || r.Canonical == nil || (r.Pool == nil && r.BalanceDemand == nil) {
 		return gen.AddressSummary{}, CapabilityError{Code: "not_configured"}
 	}
 	address, err := ethrpc.ParseAddress(value)
@@ -170,22 +172,11 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 	if err != nil {
 		return gen.AddressSummary{}, err
 	}
-	endpoint, err := r.Pool.Acquire(ethrpc.PurposeState)
-	if err != nil {
-		return gen.AddressSummary{}, CapabilityError{Code: "endpoint_unavailable"}
-	}
-	selector := rpc.BlockNumberOrHashWithHash(reference.Hash, true)
-	var nonce hexutil.Big
-	var code hexutil.Bytes
-	balances, err := r.nativeStateBatch(ctx, reference, []common.Address{address}, []rpc.BatchElem{
-		{Method: "eth_getTransactionCount", Args: []any{address, selector}, Result: &nonce},
-		{Method: "eth_getCode", Args: []any{address, selector}, Result: &code},
-	}, endpoint)
+	input, err := r.accountInput(ctx, reference, accountSummary, address, nil)
 	if err != nil {
 		return gen.AddressSummary{}, err
 	}
-	balanceDecimal := balances[0]
-	nonceDecimal := decimal(nonce)
+	balanceDecimal, nonceDecimal, code := input.Balance, input.Nonce, input.Code
 	checksummed, err := query.ChecksumAddress(address.Hex())
 	if err != nil {
 		return gen.AddressSummary{}, err
@@ -212,7 +203,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 	}
 	var delegation *gen.DelegationBinding
 	if accountType == gen.AddressSummaryTypeDelegatedEoa {
-		binding, bindingErr := r.delegationBinding(ctx, address, reference, endpoint, code)
+		binding, bindingErr := r.delegationBinding(address, reference, input)
 		if bindingErr != nil {
 			binding = unavailableDelegationBinding(r, address, reference)
 		}
@@ -226,6 +217,9 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 		}
 	}
 	completeness := r.Completeness
+	if r.SyncCapabilities != nil {
+		completeness = r.SyncCapabilities(completeness)
+	}
 	completeness.Core = gen.StageStateComplete
 	completeness.State = gen.StageStateComplete
 	if completeness.Trace == "" {
@@ -260,7 +254,7 @@ func (r *Reader) Address(ctx context.Context, value string) (gen.AddressSummary,
 }
 
 func (r *Reader) AddressDelegation(ctx context.Context, value string) (gen.DelegationBinding, error) {
-	if r == nil || r.Canonical == nil || r.Pool == nil {
+	if r == nil || r.Canonical == nil || (r.Pool == nil && r.BalanceDemand == nil) {
 		return gen.DelegationBinding{}, CapabilityError{Code: "not_configured"}
 	}
 	authority, err := ethrpc.ParseAddress(value)
@@ -271,19 +265,12 @@ func (r *Reader) AddressDelegation(ctx context.Context, value string) (gen.Deleg
 	if err != nil {
 		return gen.DelegationBinding{}, err
 	}
-	endpoint, err := r.Pool.Acquire(ethrpc.PurposeState)
+	input, err := r.accountInput(ctx, reference, accountDelegation, authority, nil)
 	if err != nil {
-		return gen.DelegationBinding{}, CapabilityError{Code: "endpoint_unavailable"}
-	}
-	selector := rpc.BlockNumberOrHashWithHash(reference.Hash, true)
-	var code hexutil.Bytes
-	if err := endpoint.Client.CallContext(ctx, &code, "eth_getCode", authority, selector); err != nil {
-		r.Pool.ReportFailure(endpoint.Name)
 		return r.canonicalUnavailableDelegation(ctx, authority, reference)
 	}
-	binding, err := r.delegationBinding(ctx, authority, reference, endpoint, code)
+	binding, err := r.delegationBinding(authority, reference, input)
 	if err != nil {
-		r.Pool.ReportFailure(endpoint.Name)
 		return r.canonicalUnavailableDelegation(ctx, authority, reference)
 	}
 	canonical, err := r.Canonical.IsCanonical(ctx, reference)
@@ -293,7 +280,6 @@ func (r *Reader) AddressDelegation(ctx context.Context, value string) (gen.Deleg
 	if !canonical {
 		return gen.DelegationBinding{}, fmt.Errorf("%w: canonical block changed during delegation query", publicquery.ErrNotReady)
 	}
-	r.Pool.ReportSuccess(endpoint.Name)
 	return binding, nil
 }
 
@@ -311,8 +297,7 @@ func (r *Reader) canonicalUnavailableDelegation(
 }
 
 func (r *Reader) delegationBinding(
-	ctx context.Context, authority common.Address, reference CanonicalRef,
-	endpoint *ethrpc.Endpoint, authorityCode []byte,
+	authority common.Address, reference CanonicalRef, input accountInput,
 ) (gen.DelegationBinding, error) {
 	authorityText, err := query.ChecksumAddress(authority.Hex())
 	if err != nil {
@@ -323,15 +308,14 @@ func (r *Reader) delegationBinding(
 		ChainId: r.chainID(), BlockNumber: strconv.FormatUint(reference.Number, 10),
 		BlockHash: strings.ToLower(reference.Hash.Hex()),
 	}
-	delegate, delegated := types.ParseDelegation(authorityCode)
+	delegate, delegated := types.ParseDelegation(input.Code)
 	if !delegated {
 		return binding, nil
 	}
-	selector := rpc.BlockNumberOrHashWithHash(reference.Hash, true)
-	var delegateCode hexutil.Bytes
-	if err := endpoint.Client.CallContext(ctx, &delegateCode, "eth_getCode", delegate, selector); err != nil {
-		return gen.DelegationBinding{}, stateUnavailable(err)
+	if input.DelegateUnavailable {
+		return gen.DelegationBinding{}, stateUnavailable(nil)
 	}
+	delegateCode := input.DelegateCode
 	delegateText, err := query.ChecksumAddress(delegate.Hex())
 	if err != nil {
 		return gen.DelegationBinding{}, err

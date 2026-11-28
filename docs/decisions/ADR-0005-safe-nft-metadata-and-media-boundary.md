@@ -21,7 +21,8 @@ with separate invalidation and content-moderation obligations.
   Exact source observations and terminal fetch outcomes are write-once;
   identical concurrent writes are no-ops and disagreements are integrity
   failures.
-- The metadata role discovers ERC-721 `tokenURI(uint256)` and ERC-1155
+- The metadata worker decodes source URIs from exact-block call results
+  persisted by sync under [ADR-0061](ADR-0061-sync-acquisition.md). It discovers ERC-721 `tokenURI(uint256)` and ERC-1155
   `uri(uint256)` from canonical transfer candidates and exact standard update
   signals: ERC-4906 `MetadataUpdate`/`BatchMetadataUpdate` and ERC-1155 `URI`.
   Update logs are validated, stored by exact block hash/log identity, immutable,

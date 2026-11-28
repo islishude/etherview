@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/islishude/etherview/internal/chaininput"
 	dbaccess "github.com/islishude/etherview/internal/db"
 	dbgen "github.com/islishude/etherview/internal/db/gen"
 	ensresolver "github.com/islishude/etherview/internal/ens"
@@ -38,7 +39,7 @@ type Worker struct {
 var endpointLabel = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
 func NewWorker(repo *Repository, options WorkerOptions) (*Worker, error) {
-	if repo == nil || options.SourceID < 1 || options.Resolver == nil || options.Pool == nil || options.Registry == (common.Address{}) || options.UniversalResolver == (common.Address{}) || len(options.Gateways) > 4 {
+	if repo == nil || options.SourceID < 1 || options.Resolver == nil || options.Registry == (common.Address{}) || options.UniversalResolver == (common.Address{}) || len(options.Gateways) > 4 {
 		return nil, ErrInvalidInput
 	}
 	m, digest, _, e := validateManifest(options.Manifest)
@@ -166,21 +167,52 @@ func (w *Worker) Step(ctx context.Context) (worked bool, failure error) {
 			return true, err
 		}
 	}
-	endpoint, e := w.options.Pool.Acquire(ethrpc.PurposeState)
-	if e != nil {
-		return true, w.retry(ctx, job, ensresolver.CodeRPCUnavailable)
+	var endpoint ensresolver.RPCCaller
+	var endpointName string
+	var inputs *chaininput.Session
+	if w.options.Pool != nil {
+		ep, err := w.options.Pool.Acquire(ethrpc.PurposeState)
+		if err != nil {
+			return true, w.retry(ctx, job, ensresolver.CodeRPCUnavailable)
+		}
+		if e = w.verifyEndpoint(ctx, ep, job, target); e != nil {
+			return true, w.retry(ctx, job, ensresolver.CodeSourceIdentity)
+		}
+		endpoint, endpointName = ep, ep.Name
+	} else {
+		hash := common.BytesToHash(job.TargetHash)
+		chain, _ := unsignedNumeric(w.options.Manifest.SourceChainID)
+		inputs, e = chaininput.Open(ctx, w.repo.db, chain, numeric(target), hash, "ens-resolution-"+w.digest.Hex())
+		if e != nil {
+			return true, e
+		}
+		session := rpcSession{endpoint: inputs}
+		for _, deployment := range w.options.Manifest.Deployments {
+			if deployment.Number > target {
+				continue
+			}
+			e = session.verifyCode(ctx, deployment, hash)
+			if inputs.Err() != nil {
+				return true, w.deferInputs(ctx, job, inputs.Err())
+			}
+			if e != nil {
+				return true, w.retry(ctx, job, ensresolver.CodeSourceIdentity)
+			}
+		}
+		endpoint = inputs
+		endpointName, e = inputs.Endpoint(ctx)
+		if e != nil {
+			return true, e
+		}
 	}
-	if !endpointLabel.MatchString(endpoint.Name) {
+	if !endpointLabel.MatchString(endpointName) {
 		return true, w.retry(ctx, job, ensresolver.CodeInvalidResponse)
 	}
-	if e = w.verifyEndpoint(ctx, endpoint, job, target); e != nil {
-		return true, w.retry(ctx, job, ensresolver.CodeSourceIdentity)
-	}
 	if data.Direction == "profile" {
-		return true, w.publishProfile(ctx, endpoint, job, data, target)
+		return true, w.publishProfile(ctx, endpoint, endpointName, job, data, target)
 	}
 	profile := ensresolver.Profile{Registry: w.options.Registry, UniversalResolver: w.options.UniversalResolver, CoinType: coin, Gateways: w.options.Gateways, Block: ensresolver.BlockRef{Number: target, Hash: common.BytesToHash(job.TargetHash)}}
-	observation := dbgen.PublishENSSyncObservationParams{SourceID: job.SourceID, CandidateID: job.CandidateID, JobID: job.ID, Generation: job.Generation, LeaseToken: job.LeaseToken, Deployment: w.options.UniversalResolver.Bytes(), Endpoint: endpoint.Name, Evidence: "resolver"}
+	observation := dbgen.PublishENSSyncObservationParams{SourceID: job.SourceID, CandidateID: job.CandidateID, JobID: job.ID, Generation: job.Generation, LeaseToken: job.LeaseToken, Deployment: w.options.UniversalResolver.Bytes(), Endpoint: endpointName, Evidence: "resolver"}
 	if data.Direction == string(enscontract.Forward) {
 		result, err := w.options.Resolver.Forward(ctx, endpoint, profile, data.LookupKey)
 		e = err
@@ -213,6 +245,9 @@ func (w *Worker) Step(ctx context.Context) (worked bool, failure error) {
 				observation.ReverseResolver = result.ReverseResolver.Bytes()
 			}
 		}
+	}
+	if inputs != nil && inputs.Err() != nil {
+		return true, w.deferInputs(ctx, job, inputs.Err())
 	}
 	if e != nil {
 		code := ensresolver.CodeResolverFailure
@@ -264,4 +299,12 @@ func equalUnsignedNumeric(a, b pgtype.Numeric) bool {
 	left, le := uint256Value(a)
 	right, re := uint256Value(b)
 	return le == nil && re == nil && left.Cmp(right) == 0
+}
+
+func (w *Worker) deferInputs(ctx context.Context, job dbgen.EnsSyncJob, err error) error {
+	if !errors.Is(err, chaininput.ErrPending) {
+		return err
+	}
+	_, err = dbgen.New(w.repo.db).AwaitENSStateInputs(ctx, job.ID, job.LeaseToken)
+	return err
 }

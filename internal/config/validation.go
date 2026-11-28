@@ -121,7 +121,7 @@ func (c Config) ValidateForRoles(roles []string) error {
 	needsAPI := false
 	metadataOnly := len(normalized) == 1 && normalized[0] == "metadata" && c.Features.NFTMetadata
 	for _, role := range normalized {
-		if role == "sync" || role == "enrich" || role == "trace" || role == "maintenance" {
+		if role == "sync" {
 			needsRPC = true
 		}
 		if role == "verification" && c.Features.Verification {

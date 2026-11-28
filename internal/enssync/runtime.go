@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/islishude/etherview/internal/chaininput"
 	ensresolver "github.com/islishude/etherview/internal/ens"
 	"github.com/islishude/etherview/internal/ethrpc"
 )
@@ -101,7 +102,7 @@ func (s *CollectionService) Run(ctx context.Context) error {
 			}
 			registered = true
 		}
-		if _, err := source.collector.Step(ctx, true); err != nil {
+		if _, err := source.collector.Step(ctx, true); err != nil && !errors.Is(err, chaininput.ErrPending) {
 			r.report(ctx, "collection", err)
 		}
 		worker, err := r.worker()

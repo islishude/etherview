@@ -31,6 +31,21 @@ func (q *Queries) AdvanceENSSyncCoverage(ctx context.Context, sourceID int64, bl
 	return result.RowsAffected(), nil
 }
 
+const awaitENSStateInputs = `-- name: AwaitENSStateInputs :execrows
+UPDATE ens_sync_jobs SET state='queued', attempts=attempts-1, retry_at=clock_timestamp()+interval '1 second',
+    queued_at=CASE WHEN attempts=1 THEN clock_timestamp() ELSE queued_at END,
+    failure_code=NULL, lease_token=NULL, lease_until=NULL
+WHERE id=$1 AND lease_token=$2 AND state='leased' AND lease_until>clock_timestamp()
+`
+
+func (q *Queries) AwaitENSStateInputs(ctx context.Context, iD int64, leaseToken pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, awaitENSStateInputs, iD, leaseToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const bindENSSyncJobDependency = `-- name: BindENSSyncJobDependency :execrows
 WITH source_lock AS (
     SELECT p.source_id FROM ens_sync_progress p WHERE p.source_id = $4 FOR UPDATE

@@ -2,7 +2,6 @@ name: etherview-x402-local
 
 x-common-environment: &common-environment
   ETHERVIEW_DATABASE_URL: postgres://etherview:etherview-x402-local@postgres:5432/etherview?sslmode=disable
-  ETHERVIEW_RPC_URLS: http://anvil:8545
   ETHERVIEW_CHAIN_ID: "31337"
   ETHERVIEW_SERVER_PUBLIC_URL: ${X402_LOCAL_PUBLIC_URL:-http://localhost:18080}
   ETHERVIEW_POLL_INTERVAL: 250ms
@@ -136,6 +135,7 @@ services:
     environment:
       <<: *api-environment
       ETHERVIEW_ROLES: all
+      ETHERVIEW_RPC_URLS: http://anvil:8545
     depends_on:
       <<: *runtime-dependencies
       x402-facilitator:
@@ -166,6 +166,7 @@ services:
     environment:
       <<: *common-environment
       ETHERVIEW_ROLES: sync
+      ETHERVIEW_RPC_URLS: http://anvil:8545
     depends_on: *runtime-dependencies
 
   enrich:

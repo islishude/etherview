@@ -36,7 +36,7 @@ Registry token/resource lifecycle, reserved names, migration/WrapperRegistry,
 record bundles, links, defaults and reverse mirroring remain separate facts.
 Depth, cycles, fanout, hostile input and batch work are bounded.
 
-Workers close database snapshots before exact RPC/CCIP calls. Core canonical
+Workers close database snapshots before declaring exact-state demands or calling CCIP gateways. Core canonical
 attachment, configuration, generation, lease and known invalidation fences are
 rechecked on publication. Exact observations can publish before history catches
 up; event-only reuse additionally requires complete relevant projections. Old
@@ -44,7 +44,7 @@ events cannot invalidate newer exact reads. Relevant later core logs and reorgs
 withdraw results independently of the scan cursor. Finite validity, half-period
 refresh and no renewal on failure bound unobserved changes.
 
-`enrich` and `all` construct the same workers using the current-chain RPC pool.
+`enrich` and `all` use the same workers and PostgreSQL inputs. Sync pins code, storage and resolver calls to a single endpoint for each resolution group.
 Source publication, immutable catalog version and `names` outbox event commit
 atomically. API reads are database-only and retain exact snapshot identity.
 One configured source retains manifest/policy and deployment identity without

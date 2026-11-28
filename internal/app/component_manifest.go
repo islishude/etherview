@@ -16,7 +16,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 	set := make(map[string]struct{})
 	add := func(key string) { set[key] = struct{}{} }
 	for _, role := range roles {
-		if roleUsesRPC(role, cfg) {
+		if role == components.RoleSync {
 			add("06-rpc-recovery")
 		}
 		add("00-operations-http")
@@ -29,6 +29,7 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 		}
 		switch role {
 		case components.RoleAPI:
+			add("07-sync-capabilities")
 			add("08-runtime-event-relay")
 			add("09-home-snapshot-feed")
 			add("20-public-api")
@@ -59,11 +60,22 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				}
 			}
 		case components.RoleSync:
+			if cfg.Features.Trace {
+				add("16-trace-inputs")
+			}
+			if cfg.Consensus.Enabled {
+				add("31-consensus-discovery")
+				add("32-beacon-inputs")
+			}
 			if wakeEnabled {
 				add("05-new-head-wake")
 			}
 			add("10-core-sync")
+			add("11-bal-acquisition")
+			add("11-balance-acquisition")
+			add("11-stage-state-inputs")
 			add("12-genesis-state")
+			add("13-core-repair")
 			if cfg.Features.Mempool {
 				add("15-pending-mempool")
 			}
@@ -76,7 +88,6 @@ func productionComponentKeys(cfg config.Config, roles []components.Role, wakeEna
 				addWorkerComponentKeys(add, "39-ens-resolution", cfg.ENS.MaxConcurrency)
 			}
 			if cfg.Consensus.Enabled {
-				add("31-consensus-discovery")
 				addWorkerComponentKeys(add, "36-consensus", cfg.Consensus.WorkerCount)
 				addWorkerComponentKeys(add, "36-requests", cfg.Consensus.WorkerCount)
 				if cfg.Consensus.Blobs.Enabled {

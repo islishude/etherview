@@ -116,7 +116,7 @@ func TestPreviewEnablesConsensusAndDurableBlobs(t *testing.T) {
 	if err := yaml.Unmarshal(data, &preview); err != nil {
 		t.Fatal(err)
 	}
-	if !preview.Consensus.Enabled || preview.Consensus.URL != "http://lighthouse:5052" || !preview.Consensus.Blobs.Enabled || preview.Consensus.Blobs.Bucket != "etherview-preview-blobs" || !preview.Consensus.Blobs.PathStyle {
+	if !preview.Consensus.Enabled || preview.Consensus.URL != "" || !preview.Consensus.Blobs.Enabled || preview.Consensus.Blobs.Bucket != "etherview-preview-blobs" || !preview.Consensus.Blobs.PathStyle {
 		t.Fatal("Preview consensus/archive configuration drift")
 	}
 	if preview.Consensus.Blobs.AccessKey != "" || preview.Consensus.Blobs.SecretKey != "" {

@@ -56,8 +56,8 @@ See [operator procedures](../operations/chain-data.md) and
   observation, releases the database query, then applies DNS/IP/redirect
   policy, byte limits, MIME and image signature checks. Before returning bytes
   it rechecks that the same exact block-hash observation is still the newest
-  canonical version. Metadata source discovery uses one state RPC endpoint and
-  an EIP-1898 block-hash selector per NFT observation; exact source and terminal
+  canonical version. Metadata source discovery requests persisted contract-call
+  inputs. Sync pins each observation to one endpoint and an EIP-1898 block hash. Exact source and terminal
   document facts are immutable and retained across reorgs. Media success and
   every early authentication or rate-limit error use no-store, restrictive CSP,
   nosniff, and same-origin resource headers.

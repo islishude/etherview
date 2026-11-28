@@ -2,12 +2,23 @@
 
 [Operations index](../operations.md) · Commands run from the repository root.
 
+- [Node connections](#node-connections)
 - [Repository build dependencies](#repository-build-dependencies)
 - [Web branding at build time](#web-branding-at-build-time)
 - [Fresh database initialization](#fresh-database-initialization)
 - [API listener TLS](#api-listener-tls)
 - [Image license inventory](#image-license-inventory)
 - [Independent verification deployment](#independent-verification-deployment)
+
+## Node connections
+
+In split deployments, mount execution HTTP/WebSocket URLs and Beacon credentials
+only on sync. In a monolith the same sync components consume these settings.
+Grant sync create/read access to the durable blob archive and grant API and enrich
+read access. Workers and API readers need the PostgreSQL writer to submit missing
+inputs. If sync stops, retained exact-block inputs remain usable. New reads wait
+within the API timeout and return the endpoint’s existing unavailable result.
+Restart sync to resume pending acquisitions after their leases expire.
 
 ## Repository build dependencies
 
@@ -94,7 +105,7 @@ per-file input limit does not increase the allowed initial page weight.
 ## Fresh database initialization
 
 The fresh-database baseline consists of numbered domain migrations from
-`0001_core.sql` through `0019_defi.sql` in
+`0001_core.sql` through `0020_chain_acquisition.sql` in
 `internal/store/migrations/`. Initialize an empty PostgreSQL database with
 `etherview migrate up`, then verify it with `etherview migrate status`. The
 runner applies all pending files in one transaction under an advisory lock;

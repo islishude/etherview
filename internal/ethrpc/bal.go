@@ -31,9 +31,10 @@ type BALFetcher struct {
 }
 
 type BALResult struct {
-	Raw    json.RawMessage
-	Method string
-	List   bal.BlockAccessList
+	Raw      json.RawMessage
+	Method   string
+	Endpoint string
+	List     bal.BlockAccessList
 }
 
 func (f *BALFetcher) Fetch(ctx context.Context, block *types.Block) (BALResult, error) {
@@ -103,6 +104,7 @@ func (f *BALFetcher) Fetch(ctx context.Context, block *types.Block) (BALResult, 
 			if err != nil {
 				return BALResult{}, err
 			}
+			result.Endpoint = name
 			f.Pool.ReportSuccess(name)
 			return result, nil
 		}

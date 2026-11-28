@@ -25,7 +25,7 @@ func TestPostgresClaimGuardCompleteIsLeaseOwnedAndIdempotent(t *testing.T) {
 			kind: "query", contains: "FOR UPDATE OF request SKIP LOCKED", columns: maintenanceColumns(12),
 			rows: [][]any{maintenanceCandidate(7, "queued", false, "50")},
 			check: func(arguments []any) error {
-				if len(arguments) != 5 || arguments[4] != int32(claimBatchSize) || arguments[0] != false {
+				if len(arguments) != 6 || arguments[5] != int32(claimBatchSize) || arguments[0] != false {
 					return fmt.Errorf("claim arguments=%v", arguments)
 				}
 				return nil
@@ -124,7 +124,7 @@ func TestPostgresClaimKeysetDoesNotStarveBeyondOwnedBatch(t *testing.T) {
 			kind: "query", contains: ") > ($2::integer, $3::timestamptz, $4::bigint)", columns: maintenanceColumns(12),
 			rows: [][]any{maintenanceCandidate(65, "running", false, nil)},
 			check: func(arguments []any) error {
-				if len(arguments) != 5 || arguments[0] != true || arguments[1] != int32(1) || arguments[3] != int64(64) {
+				if len(arguments) != 6 || arguments[0] != true || arguments[1] != int32(1) || arguments[3] != int64(64) {
 					return fmt.Errorf("cursor arguments=%v", arguments)
 				}
 				return nil

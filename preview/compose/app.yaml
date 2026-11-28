@@ -17,7 +17,6 @@ x-etherview-app-env: &etherview-app-env
   ETHERVIEW_DATABASE_READ_URL: ${ETHERVIEW_DATABASE_READ_URL:-}
   # Keep authoritative HTTP polling and add a newHeads wake hint so locally
   # mined blocks do not wait for the normal polling interval.
-  ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://execution:8545,ws://execution:8546}
   ETHERVIEW_CHAIN_GENESIS_FILE: /config/genesis.json
   ETHERVIEW_SERVER_ADDRESS: 0.0.0.0:8080
   ETHERVIEW_SERVER_METRICS_ADDRESS: 0.0.0.0:9090
@@ -113,6 +112,10 @@ services:
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: sync
+      ETHERVIEW_CONSENSUS_URL: ${ETHERVIEW_CONSENSUS_URL:-http://lighthouse:5052}
+      ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://execution:8545,ws://execution:8546}
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_WRITE_SECRET:-preview-write-dev-only}
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck
     restart: unless-stopped
@@ -123,8 +126,8 @@ services:
     environment:
       <<: *etherview-app-env
       ETHERVIEW_ROLES: enrich
-      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
-      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_WRITE_SECRET:-preview-write-dev-only}
+      ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-reader
+      ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: ${PREVIEW_BLOB_READ_SECRET:-preview-read-dev-only}
     depends_on: *etherview-runtime-depends-on
     healthcheck: *etherview-healthcheck
     restart: unless-stopped

@@ -57,6 +57,17 @@ var requestLimitKeys = []string{"MAX_DEPOSIT_REQUESTS_PER_PAYLOAD", "MAX_WITHDRA
 // It is independent of the consensus and blob jobs: envelope outages cannot
 // revoke those capabilities.
 func (c *Client) ObserveRequests(ctx context.Context, network Network, block *types.Block) (set RequestSet, err error) {
+	if block.RequestsHash() == nil {
+		return RequestSet{}, failure("not_applicable")
+	}
+	input, err := c.FetchBlock(ctx, network, block, true)
+	if err != nil {
+		return RequestSet{}, err
+	}
+	return input.RequestSet(block)
+}
+func (input Evidence) RequestSet(block *types.Block) (set RequestSet, err error) {
+	network := input.network()
 	defer func() {
 		if recover() != nil {
 			set = RequestSet{}
@@ -66,7 +77,7 @@ func (c *Client) ObserveRequests(ctx context.Context, network Network, block *ty
 	if block.RequestsHash() == nil {
 		return RequestSet{}, failure("not_applicable")
 	}
-	observed, err := c.Observe(ctx, network, block)
+	observed, err := input.Observation(block)
 	if err != nil {
 		return RequestSet{}, err
 	}
@@ -91,10 +102,7 @@ func (c *Client) ObserveRequests(ctx context.Context, network Network, block *ty
 				} `json:"message"`
 			} `json:"data"`
 		}
-		var response json.RawMessage
-		if err := c.get(ctx, "/eth/v1/beacon/execution_payload_envelopes/"+observed.Root, &response); err != nil {
-			return RequestSet{}, err
-		}
+		response := input.Envelope
 		if json.Unmarshal(response, &wire) != nil || wire.Version != "gloas" {
 			return RequestSet{}, failure("beacon_requests_invalid")
 		}

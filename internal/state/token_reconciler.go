@@ -18,6 +18,7 @@ var maximumUint256 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.
 // exact observations at one canonical block hash. PostgreSQL retains immutable
 // observations; only cache misses require an endpoint-pinned RPC batch.
 type TokenReconciler struct {
+	inputs    *Reader
 	db        dbaccess.Database
 	pool      *ethrpc.Pool
 	canonical CanonicalSource
@@ -27,6 +28,10 @@ var (
 	_ catalog.NFTStateReconciler   = (*TokenReconciler)(nil)
 	_ catalog.ERC20StateReconciler = (*TokenReconciler)(nil)
 )
+
+func NewStoredTokenReconciler(d *BalanceDemand, canonical CanonicalSource) *TokenReconciler {
+	return &TokenReconciler{db: d.Store.DB, canonical: canonical, inputs: &Reader{BalanceDemand: d, Canonical: canonical}}
+}
 
 func NewTokenReconciler(db dbaccess.Database, pool *ethrpc.Pool, canonical CanonicalSource) (*TokenReconciler, error) {
 	if db == nil {

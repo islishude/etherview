@@ -85,6 +85,34 @@ linters:
               desc: readers and shared contracts must not depend on enrichment workers
             - pkg: github.com/islishude/etherview/internal/enssync$
               desc: readers and shared contracts must use neutral ENS contracts
+        sync-owned-node-connections:
+          files:
+            - "${base-path}/internal/app/runtime_*.go"
+            - "!${base-path}/internal/app/runtime_sync.go"
+            - "!${base-path}/internal/app/runtime_capabilities.go"
+            - "${base-path}/internal/app/ens_runtime.go"
+            - "${base-path}/internal/app/defi.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/ethrpc$
+              desc: consumer wiring reads durable inputs and sync owns upstream node connections
+            - pkg: github.com/islishude/etherview/internal/consensus$
+              desc: only sync wiring constructs Beacon clients
+            - pkg: github.com/ethereum/go-ethereum/rpc$
+              desc: consumer wiring cannot dial execution RPC transports
+            - pkg: github.com/ethereum/go-ethereum/ethclient
+              desc: only sync constructs execution clients
+        database-only-chain-inputs:
+          files:
+            - "${base-path}/internal/chaininput/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/islishude/etherview/internal/ethrpc$
+              desc: persisted input sessions have no execution endpoint
+            - pkg: github.com/ethereum/go-ethereum/ethclient
+              desc: persisted input sessions have no execution endpoint
+            - pkg: github.com/islishude/etherview/internal/consensus$
+              desc: persisted input sessions have no Beacon endpoint
         database-only-ens-reader:
           files:
             - "${base-path}/internal/ensread/**"

@@ -12,11 +12,11 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/chainbundle"
-	"github.com/islishude/etherview/internal/ethrpc"
+	ensresolver "github.com/islishude/etherview/internal/ens"
 )
 
 type rpcSession struct {
-	endpoint *ethrpc.Endpoint
+	endpoint ensresolver.RPCCaller
 	limits   CollectorOptions
 }
 

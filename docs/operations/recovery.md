@@ -42,13 +42,14 @@ etherview reindex --config /etc/etherview/config.yaml \
 etherview admin repair list --config /etc/etherview/config.yaml --limit 100 --format table
 ```
 
-`repair --stage core` re-fetches through the history-purpose RPC path. The
+The sync role claims `repair --stage core` and re-fetches through the history-purpose RPC path. The
 database rechecks chain, height, canonical hash, parent, and finality while
 holding the chain lock. It cannot move canonicality or checkpoints. A range at
 or below finalized height requires `--allow-finalized` plus the recorded
 reason; this permits only a same-identity refresh.
 
-`reindex --stage requests|consensus|blob|native_balance|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` queues work for
+The maintenance role executes
+`reindex --stage requests|consensus|blob|native_balance|native_transfer|proxy|abi|token|stats|trace|state_diff|userop|holder` and queues work for
 the currently canonical block hash. It does not steal queued work or an active
 lease. Repair deliberately does not infer a downstream rebuild range; schedule
 each required derived stage explicitly and wait for its durable publication

@@ -170,6 +170,8 @@ func BindChainIdentity(ctx context.Context, db dbaccess.Database, chainID string
 	return nil
 }
 
+var ErrChainUninitialized = errors.New("configured chain is not initialized; start a sync role after running migrations")
+
 func ReadChainIdentity(ctx context.Context, db dbaccess.Database, chainID string) (ChainIdentity, error) {
 	if db == nil {
 		return ChainIdentity{}, errors.New("read chain identity: nil database")
@@ -189,7 +191,7 @@ func ReadChainIdentity(ctx context.Context, db dbaccess.Database, chainID string
 		return queryErr
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ChainIdentity{}, errors.New("configured chain is not initialized; start a sync role after running migrations")
+		return ChainIdentity{}, ErrChainUninitialized
 	}
 	if err != nil {
 		return ChainIdentity{}, fmt.Errorf("query chain identity: %w", err)

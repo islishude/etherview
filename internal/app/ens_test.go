@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/enssync"
-	"github.com/islishude/etherview/internal/ethrpc"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -83,17 +81,8 @@ func TestENSAssemblyDoesNotProbeAndCanceledServicesDrain(t *testing.T) {
 	if e = os.WriteFile(cfg.ENS.Manifest, raw, 0600); e != nil {
 		t.Fatal(e)
 	}
-	client, e := rpc.Dial(forbidden.URL)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer client.Close()
-	pool, e := ethrpc.NewPool([]ethrpc.Endpoint{{Name: "current", Client: client, Purposes: map[ethrpc.Purpose]bool{ethrpc.PurposeState: true}}}, ethrpc.PoolOptions{})
-	if e != nil {
-		t.Fatal(e)
-	}
 	registry := components.NewRegistry()
-	assembly := runtimeAssembly{ctx: t.Context(), cfg: cfg, roleSet: map[components.Role]bool{components.RoleEnrich: true}, componentRegistry: registry, db: &pgxpool.Pool{}, rpcBuild: &RPCBuild{Pool: pool}}
+	assembly := runtimeAssembly{ctx: t.Context(), cfg: cfg, roleSet: map[components.Role]bool{components.RoleEnrich: true}, componentRegistry: registry, db: &pgxpool.Pool{}}
 	if e = assembly.registerENSComponents(); e != nil {
 		t.Fatal(e)
 	}

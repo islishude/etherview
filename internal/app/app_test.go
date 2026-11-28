@@ -58,8 +58,8 @@ func TestRPCPurposesExpandsAll(t *testing.T) {
 
 func TestEnrichRoleRequiresRPC(t *testing.T) {
 	t.Parallel()
-	if !needsRPC(map[components.Role]bool{components.RoleEnrich: true}) {
-		t.Fatal("enrich role did not require RPC for block-pinned token detection")
+	if needsRPC(map[components.Role]bool{components.RoleEnrich: true}) {
+		t.Fatal("enrich role requires a node connection")
 	}
 	if needsRPC(map[components.Role]bool{components.RoleAPI: true}) {
 		t.Fatal("API-only role unexpectedly requires RPC")
@@ -94,7 +94,7 @@ func TestHistoricalStateCompletenessUsesConfiguredProbeEvidence(t *testing.T) {
 		want    gen.StageState
 	}{
 		{name: "disabled", want: gen.StageStateUnavailable},
-		{name: "enabled without RPC", enabled: true, want: gen.StageStateUnavailable},
+		{name: "waiting for sync probe", enabled: true, want: gen.StageStatePending},
 		{
 			name: "available", enabled: true,
 			build: &RPCBuild{Reports: map[string]ethrpc.CapabilityReport{
@@ -203,33 +203,33 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		wake  bool
 		want  []string
 	}{
-		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "02-durable-metrics", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
+		{name: "api", role: components.RoleAPI, want: []string{"00-operations-http", "02-durable-metrics", "07-sync-capabilities", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
 		{name: "api NATS", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Adapters.NATSURL = "nats://127.0.0.1:4222"
-		}, want: []string{"00-operations-http", "02-durable-metrics", "04-optional-nats-wake", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "04-optional-nats-wake", "07-sync-capabilities", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
 		{name: "api with OTLP", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Observability.OTLPTraceEndpoint = "https://otel.example:4318"
-		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
-		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "10-core-sync", "12-genesis-state"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "03-opentelemetry-traces", "07-sync-capabilities", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
+		{name: "sync", role: components.RoleSync, want: []string{"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "10-core-sync", "11-bal-acquisition", "11-balance-acquisition", "11-stage-state-inputs", "12-genesis-state", "13-core-repair"}},
 		{name: "sync optional", role: components.RoleSync, wake: true, setup: func(cfg *config.Config) {
 			cfg.Features.Mempool = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "06-rpc-recovery", "10-core-sync", "12-genesis-state", "15-pending-mempool"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "05-new-head-wake", "06-rpc-recovery", "10-core-sync", "11-bal-acquisition", "11-balance-acquisition", "11-stage-state-inputs", "12-genesis-state", "13-core-repair", "15-pending-mempool"}},
 		{name: "enrich", role: components.RoleEnrich, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "30-enrichment-outbox",
+			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
 			"35-core-enrichment-01", "35-core-enrichment-02",
 			"35-core-enrichment-03", "35-core-enrichment-04",
 		}},
-		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "50-role-trace"}},
+		{name: "trace disabled", role: components.RoleTrace, want: []string{"00-operations-http", "02-durable-metrics", "50-role-trace"}},
 		{name: "trace enabled", role: components.RoleTrace, setup: func(cfg *config.Config) {
 			cfg.Features.Trace = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+			"00-operations-http", "02-durable-metrics",
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 			"37-trace-enrichment-03", "37-trace-enrichment-04",
 		}},
 		{name: "API submits without execution", role: components.RoleAPI, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
-		}, want: []string{"00-operations-http", "02-durable-metrics", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
+		}, want: []string{"00-operations-http", "02-durable-metrics", "07-sync-capabilities", "08-runtime-event-relay", "09-home-snapshot-feed", "20-public-api"}},
 		{name: "verification with solc-js", role: components.RoleVerification, setup: func(cfg *config.Config) {
 			cfg.Features.Verification = true
 		}, want: []string{
@@ -240,13 +240,12 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 		{name: "metadata enabled", role: components.RoleMetadata, setup: func(cfg *config.Config) {
 			cfg.Features.NFTMetadata = true
 		}, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "41-nft-metadata-updates",
-			"42-nft-metadata-discovery",
+			"00-operations-http", "02-durable-metrics", "41-nft-metadata-updates", "42-nft-metadata-discovery",
 			"45-nft-metadata-01", "45-nft-metadata-02",
 			"45-nft-metadata-03", "45-nft-metadata-04",
 		}},
 		{name: "maintenance", role: components.RoleMaintenance, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+			"00-operations-http", "02-durable-metrics",
 			"44-historical-analytics-rollup",
 			"45-maintenance-01", "45-maintenance-02",
 			"45-maintenance-03", "45-maintenance-04",
@@ -259,7 +258,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				cfg.Features.UserAuth = true
 			},
 			want: []string{
-				"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+				"00-operations-http", "02-durable-metrics",
 				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
@@ -274,7 +273,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				cfg.Features.APIBilling = true
 			},
 			want: []string{
-				"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+				"00-operations-http", "02-durable-metrics",
 				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
@@ -291,7 +290,7 @@ func TestProductionRoleGraphIsFeatureAwareAndExact(t *testing.T) {
 				cfg.Features.APIBilling = true
 			},
 			want: []string{
-				"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+				"00-operations-http", "02-durable-metrics",
 				"44-historical-analytics-rollup",
 				"45-maintenance-01", "45-maintenance-02",
 				"45-maintenance-03", "45-maintenance-04",
@@ -334,11 +333,11 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 		want []string
 	}{
 		{role: components.RoleEnrich, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "30-enrichment-outbox",
+			"00-operations-http", "02-durable-metrics", "30-enrichment-outbox",
 			"35-core-enrichment-01", "35-core-enrichment-02",
 		}},
 		{role: components.RoleTrace, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+			"00-operations-http", "02-durable-metrics",
 			"37-trace-enrichment-01", "37-trace-enrichment-02",
 		}},
 		{role: components.RoleVerification, want: []string{
@@ -349,12 +348,11 @@ func TestProductionWorkerCountControlsDurableRoleGraphs(t *testing.T) {
 			"42-factory-derived-forward-01", "42-factory-derived-forward-02",
 		}},
 		{role: components.RoleMetadata, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery", "41-nft-metadata-updates",
-			"42-nft-metadata-discovery",
+			"00-operations-http", "02-durable-metrics", "41-nft-metadata-updates", "42-nft-metadata-discovery",
 			"45-nft-metadata-01", "45-nft-metadata-02",
 		}},
 		{role: components.RoleMaintenance, want: []string{
-			"00-operations-http", "02-durable-metrics", "06-rpc-recovery",
+			"00-operations-http", "02-durable-metrics",
 			"44-historical-analytics-rollup",
 			"45-maintenance-01", "45-maintenance-02",
 			"46-search-catalog-maintenance",

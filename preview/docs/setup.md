@@ -66,7 +66,7 @@ The public development mnemonic is documented in the
 [Preview runbook](operations.md#setup-and-lifecycle).
 Never use these keys on an external network. Beacon HTTP defaults to loopback
 port 5052 (`LIGHTHOUSE_HTTP_PORT` overrides it), while Engine RPC and RustFS
-remain internal. Only API/enrich receive scoped archive credentials. See the
+remain internal. Sync writes archived objects. API and enrich use read-only archive credentials. See the
 runbook for lifecycle, credential overrides and failure diagnosis.
 Preview mounts the certificate pair read-only only into Caddy; the API uses
 container-network HTTP. Rotate

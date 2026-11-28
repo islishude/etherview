@@ -9,14 +9,13 @@ import (
 
 	"github.com/islishude/etherview/internal/components"
 	"github.com/islishude/etherview/internal/config"
-	"github.com/islishude/etherview/internal/ethrpc"
+
 	"github.com/islishude/etherview/internal/metadata"
 )
 
 func registerMetadataWorkers(
 	registry *components.Registry,
 	db *pgxpool.Pool,
-	pool *ethrpc.Pool,
 	cfg config.Config,
 	logger *slog.Logger,
 	observers ...metadata.FetchObserver,
@@ -34,23 +33,12 @@ func registerMetadataWorkers(
 	if err != nil {
 		return err
 	}
-	discoverer, err := metadata.NewSourceDiscoverer(repository, pool, metadata.SourceDiscovererOptions{
-		PollInterval: cfg.Runtime.PollInterval, MaxAttempts: metadata.DefaultMaxAttempts, Logger: logger,
-	})
-	if err != nil {
-		return err
-	}
 	client, err := newMetadataClient(cfg)
 	if err != nil {
 		return fmt.Errorf("configure safe metadata client: %w", err)
 	}
 	if err := registry.Register(components.RoleMetadata, "41-nft-metadata-updates", func() (components.Service, error) {
 		return updateDiscoverer, nil
-	}); err != nil {
-		return err
-	}
-	if err := registry.Register(components.RoleMetadata, "42-nft-metadata-discovery", func() (components.Service, error) {
-		return discoverer, nil
 	}); err != nil {
 		return err
 	}

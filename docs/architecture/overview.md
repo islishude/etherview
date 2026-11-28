@@ -22,8 +22,8 @@ flowchart LR
     PG --> Jobs[Durable jobs and outbox]
     Jobs --> Workers[Enrich, trace and metadata workers]
     Workers --> PG
-    Beacon[Optional Beacon API] --> Workers
-    Workers --> Archive[(Durable blob archive)]
+    Beacon[Optional Beacon API] --> Sync
+    Sync --> Archive[(Durable blob archive)]
     PG --> API[API and event relays]
     Reader[(Optional PostgreSQL reader)] --> API
     Archive --> API
@@ -116,7 +116,7 @@ unresolved blockers. Routine change evidence belongs in PRs and Git.
 ## DeFi positions
 
 The optional enrich-owned DeFi index uses reviewed current-chain deployment
-identities, canonical Transfer candidates and exact-block RPC reconciliation.
+identities, canonical Transfer candidates and exact-block state inputs collected by sync.
 PostgreSQL retains resumable runs, immutable observations and lease-fenced
 publications. API readers consume completed canonical publications without
 calling RPC. Address Assets presents protocol quantities and explicit coverage

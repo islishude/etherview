@@ -282,7 +282,7 @@ adapters:
 # Preview runs a real, isolated Beacon network and a durable local archive.
 consensus:
   enabled: true
-  url: http://lighthouse:5052
+  url: ""
   headers: {}
   poll_interval: 6s
   request_timeout: 10s

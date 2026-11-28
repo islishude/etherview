@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -31,7 +32,9 @@ import (
 	"github.com/islishude/etherview/internal/enrich"
 	"github.com/islishude/etherview/internal/query"
 	"github.com/islishude/etherview/internal/store"
+	"github.com/islishude/etherview/internal/syncer"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
@@ -67,6 +70,12 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := header.Hash().Hex()
+	headerResponse := func(h beacontypes.Header) any {
+		return map[string]any{"data": map[string]any{"root": h.Hash().Hex(), "header": map[string]any{"message": map[string]string{
+			"slot": strconv.FormatUint(h.Slot, 10), "proposer_index": strconv.FormatUint(h.ProposerIndex, 10),
+			"parent_root": h.ParentRoot.Hex(), "state_root": h.StateRoot.Hex(), "body_root": h.BodyRoot.Hex(),
+		}}}}
+	}
 	var networkConflict atomic.Bool
 	var pruned atomic.Bool
 	var blobRequests atomic.Int64
@@ -84,7 +93,7 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		case "/eth/v1/config/deposit_contract":
 			response = map[string]any{"data": map[string]string{"chain_id": "1"}}
 		case "/eth/v1/beacon/headers/2", "/eth/v1/beacon/headers/head":
-			response = map[string]any{"data": map[string]any{"root": root, "header": map[string]any{"message": map[string]string{"slot": "2", "proposer_index": "9007199254740993", "parent_root": header.ParentRoot.Hex(), "state_root": header.StateRoot.Hex(), "body_root": header.BodyRoot.Hex()}}}}
+			response = headerResponse(header)
 		case "/eth/v2/beacon/blocks/" + root:
 			if pruned.Load() {
 				http.NotFound(w, r)
@@ -127,8 +136,8 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		t.Fatalf("pending=%+v err=%v", pending, err)
 	}
 	queue, _ := enrich.NewPostgresJobQueue(db)
-	cp := &enrich.ConsensusProcessor{DB: db, Client: consensus.NewClient(cfg)}
-	bp := &enrich.ConsensusProcessor{DB: db, Client: cp.Client, Archive: archive, Namespace: "1/genesis", Blobs: true}
+	cp := &enrich.ConsensusProcessor{DB: db}
+	bp := &enrich.ConsensusProcessor{DB: db, Archive: archive, Namespace: "1/genesis", Blobs: true}
 	publish := func(p *enrich.ConsensusProcessor, replay string) {
 		t.Helper()
 		execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
@@ -140,11 +149,37 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if found, err := worker.ProcessOne(ctx); err != nil || !found {
-			t.Fatalf("publish %s found=%v err=%v", p.Stage(), found, err)
-		}
+		runBeaconJob(t, ctx, db, worker, cfg, archive)
 	}
-	publish(cp, "initial")
+	// The last attempt observed another execution fork at this slot. Its
+	// terminal error must allow a new generation to reacquire corrected data.
+	wrongHeader, wrongBlock, err := testfixture.Block("bellatrix", genesis.Block, header, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongHeaderJSON, err := json.Marshal(headerResponse(wrongHeader))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongBlockJSON, err := json.Marshal(wrongBlock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongInput, err := json.Marshal(consensus.Evidence{
+		Network: consensus.Network{ChainID: 1, Genesis: 100, Millis: 12000, Slots: 32},
+		Header:  wrongHeaderJSON, Root: wrongHeader.Hash().Hex(), Block: wrongBlockJSON,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execFixture(t, ctx, db, `INSERT INTO block_inputs(chain_id,block_number,block_hash,kind,version,generation,attempts,evidence) VALUES(1,1,$1,'consensus',1,1,4,$2)`, block.Block.Hash().Bytes(), wrongInput)
+	publish(cp, "wrong-fork")
+	var rejectedCode string
+	var discarded bool
+	if err := db.QueryRow(ctx, `SELECT error_code,evidence IS NULL FROM block_inputs WHERE kind='consensus' AND block_hash=$1`, block.Block.Hash().Bytes()).Scan(&rejectedCode, &discarded); err != nil || rejectedCode != "execution_identity_mismatch" || !discarded {
+		t.Fatalf("rejected Beacon evidence code=%q discarded=%v err=%v", rejectedCode, discarded, err)
+	}
+	publish(cp, "corrected-fork")
 	observed, err := reader.BlockConsensus(ctx, "1")
 	if err != nil || observed.State != gen.ConsensusStateComplete || observed.SlotConflict == nil || !*observed.SlotConflict {
 		var jobs string
@@ -244,6 +279,13 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 	archive.mu.Lock()
 	archive.objects = map[string][]byte{}
 	archive.mu.Unlock()
+	if _, err := bp.ProcessLease(ctx, old, queue); err == nil {
+		t.Fatal("missing input published")
+	}
+	collector := syncer.BeaconCollector{DB: db, ChainID: 1, Client: consensus.NewClient(cfg), Archive: archive, Namespace: "1/genesis", Timeout: 10 * time.Second}
+	if found, err := collector.CollectOne(ctx); err != nil || !found {
+		t.Fatalf("collect missing blob found=%v err=%v", found, err)
+	}
 	if _, err := bp.ProcessLease(ctx, old, queue); !errors.Is(err, enrich.ErrLeaseLost) {
 		t.Fatalf("expired publish=%v", err)
 	}
@@ -281,7 +323,7 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 	discoveryConfig := config.Default()
 	discoveryConfig.Consensus = cfg
 	discoveryConfig.Chain.ID = 1
-	discovery := &enrich.ConsensusDiscovery{DB: db, Queue: queue, Client: cp.Client, Config: discoveryConfig}
+	discovery := &enrich.ConsensusDiscovery{DB: db, Queue: queue, Client: consensus.NewClient(cfg), Config: discoveryConfig}
 	poll := func(wantCode string) {
 		t.Helper()
 		runCtx, stop := context.WithCancel(ctx)
@@ -329,6 +371,8 @@ func TestConsensusBlobPublicationReorgAndReplay(t *testing.T) {
 		t.Fatalf("network conflict=%+v err=%v", conflict, err)
 	}
 	networkConflict.Store(false)
+	execFixture(t, ctx, db, `UPDATE consensus_overviews SET next_poll_at='-infinity'`)
+	poll("")
 	pruned.Store(true)
 	publish(cp, "network-restored")
 	publish(bp, "archive-restored")
@@ -448,7 +492,7 @@ func TestConsensusUnavailableKeepsProductionWorkerAlive(t *testing.T) {
 			defer server.Close()
 			cfg := config.DefaultConsensusConfig()
 			cfg.URL = server.URL
-			p := &enrich.ConsensusProcessor{DB: db, Client: consensus.NewClient(cfg), Blobs: test.blobs}
+			p := &enrich.ConsensusProcessor{DB: db, Blobs: test.blobs}
 			queue, _ := enrich.NewPostgresJobQueue(db)
 			execFixture(t, ctx, db, `UPDATE transactional_outbox SET published_at=now()`)
 			if _, err := queue.Enqueue(ctx, enrich.EnqueueRequest{Stage: p.Stage(), ChainID: "1", BlockHash: block.Block.Hash()}); err != nil {
@@ -458,9 +502,7 @@ func TestConsensusUnavailableKeepsProductionWorkerAlive(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if found, err := worker.ProcessOne(ctx); err != nil || !found {
-				t.Fatalf("optional result stopped worker: found=%v err=%v", found, err)
-			}
+			runBeaconJob(t, ctx, db, worker, cfg, nil)
 			var chain pgtype.Numeric
 			_ = chain.Scan("1")
 			result, err := dbgen.New(db).ConsensusStageState(ctx, chain, block.Block.Hash().Bytes(), p.Stage().Name)
@@ -471,5 +513,23 @@ func TestConsensusUnavailableKeepsProductionWorkerAlive(t *testing.T) {
 				t.Fatalf("worker did not remain usable: found=%v err=%v", found, err)
 			}
 		})
+	}
+}
+
+func runBeaconJob(t *testing.T, ctx context.Context, db *pgxpool.Pool, worker *enrich.Worker, cfg config.ConsensusConfig, archive consensus.Archive) {
+	t.Helper()
+	if found, err := worker.ProcessOne(ctx); err != nil || !found {
+		t.Fatalf("process beacon stage: found=%v err=%v", found, err)
+	}
+	collector := syncer.BeaconCollector{DB: db, ChainID: 1, Archive: archive, Namespace: "1/genesis", Client: consensus.NewClient(cfg), Timeout: time.Second * 10}
+	found, err := collector.CollectOne(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found {
+		execFixture(t, ctx, db, `UPDATE durable_jobs SET available_at=now() WHERE status='queued' AND last_error='sync_input_pending'`)
+		if found, err := worker.ProcessOne(ctx); err != nil || !found {
+			t.Fatalf("consume beacon input: found=%v err=%v", found, err)
+		}
 	}
 }

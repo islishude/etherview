@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -22,7 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (h *harness) assertAmsterdam(ctx context.Context, recipient string) {
+func (h *harness) assertAmsterdam(ctx context.Context, recipient string) rpcReceipt {
 	destination := common.HexToAddress(recipient)
 	hash := h.sendTransaction(ctx, &destination, nil, big.NewInt(9007199254740993))
 	receipt := h.waitReceipt(ctx, "Amsterdam native transfer", hash)
@@ -105,6 +106,40 @@ func (h *harness) assertAmsterdam(ctx context.Context, recipient string) {
 			return true, "", nil
 		})
 	}
+	// A previously unseen address must retain its real zero result and selected
+	// hash. The sync role owns the corresponding acquisition in either layout.
+	unseen := common.BytesToAddress(hash.Bytes())
+	var summary gen.AddressResponse
+	if err := h.getJSON(ctx, h.apiURL+"/api/v1/addresses/"+unseen.Hex(), &summary); err != nil {
+		h.t.Fatal(err)
+	}
+	if summary.Data.Balance != "0" {
+		h.t.Fatalf("first address balance = %s", summary.Data.Balance)
+	}
+	var saved bool
+	if err := h.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM account_inputs WHERE chain_id=48815 AND operation='summary@1' AND address=$1 AND block_hash=$2 AND evidence->>'Endpoint' <> '')`, unseen.Bytes(), common.HexToHash(summary.Data.AtBlock).Bytes()).Scan(&saved); err != nil || !saved {
+		h.t.Fatalf("first address input missing: saved=%t err=%v", saved, err)
+	}
+	return receipt
+}
+
+func (h *harness) assertPreviewRepair(ctx context.Context, receipt rpcReceipt) {
+	height := strconv.FormatUint(uint64(receipt.BlockNumber), 10)
+	reason := "Preview acquisition repair " + receipt.BlockHash.Hex()
+	if _, err := h.project.Run(ctx, "exec", "-T", "api", "/etherview", "repair", "--config=/etc/etherview/config.yaml", "--from", height, "--to", height, "--stage", "core", "--allow-finalized", "--reason", reason); err != nil {
+		h.t.Fatal(err)
+	}
+	waitFor(h.t, ctx, "sync-owned repair and trace", func() (bool, string, error) {
+		var status string
+		var trace bool
+		err := h.db.QueryRow(ctx, `SELECT status,EXISTS(SELECT 1 FROM block_inputs WHERE chain_id=48815 AND block_hash=$2 AND kind='trace@4' AND evidence IS NOT NULL)
+			FROM repair_requests WHERE reason=$1`, reason, receipt.BlockHash.Bytes()).Scan(&status, &trace)
+		if status == "failed" {
+			return false, status, fmt.Errorf("core repair failed at %s", height)
+		}
+		return status == "done" && trace, status, err
+	})
+
 }
 
 // Switch only this disposable project to the production all-role builder, then
@@ -120,6 +155,8 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
     environment:
       ETHERVIEW_VERIFICATION_UNSAFE_ALLOW_PRIVATE_DOWNLOAD_NETWORKS: "true"
       ETHERVIEW_ROLES: all
+      ETHERVIEW_RPC_URLS: ${ETHERVIEW_RPC_URLS:-http://execution:8545,ws://execution:8546}
+      ETHERVIEW_CONSENSUS_URL: http://lighthouse:5052
       ETHERVIEW_CONSENSUS_BLOBS_ACCESS_KEY: preview-writer
       ETHERVIEW_CONSENSUS_BLOBS_SECRET_KEY: preview-write-dev-only
       ETHERVIEW_METADATA_UNSAFE_ALLOW_PRIVATE_NETWORKS: "false"
@@ -137,5 +174,5 @@ func (h *harness) assertAmsterdamMonolith(ctx context.Context) {
 	if _, err := h.project.Run(ctx, "up", "-d", "--no-build", "--no-deps", "--wait", "--wait-timeout", "180", "api"); err != nil {
 		h.t.Fatal(err)
 	}
-	h.assertAmsterdam(ctx, "0x1235")
+	h.assertPreviewRepair(ctx, h.assertAmsterdam(ctx, "0x1235"))
 }

@@ -11,6 +11,13 @@ import (
 )
 
 type Querier interface {
+	AccountInputClaim(ctx context.Context, leaseMs int64, chainID pgtype.Numeric) (AccountInputClaimRow, error)
+	// Leave space for pending work independently of the size of the evidence cache.
+	// The submitter holds the chain admission lock while pruning and inserting.
+	AccountInputExpire(ctx context.Context, chainID pgtype.Numeric) error
+	AccountInputFinish(ctx context.Context, arg AccountInputFinishParams) (int64, error)
+	AccountInputRead(ctx context.Context, arg AccountInputReadParams) ([]byte, error)
+	AccountInputSubmit(ctx context.Context, arg AccountInputSubmitParams) (int64, error)
 	ActiveDeFiRun(ctx context.Context, sourceID string) (DefiRun, error)
 	AddressLogDetail(ctx context.Context, arg AddressLogDetailParams) (AddressLogDetailRow, error)
 	AddressLogEventDefinition(ctx context.Context, eventID []byte, chainID pgtype.Numeric, address []byte) ([]byte, error)
@@ -49,8 +56,28 @@ type Querier interface {
 	AuthWriteRevokeStatement1(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
 	AuthWriteRotateStatement1(ctx context.Context, arg AuthWriteRotateStatement1Params) error
 	AuthWriteRotateStatement2(ctx context.Context, prefix string, revokedAt pgtype.Timestamptz) (int64, error)
+	AwaitENSStateInputs(ctx context.Context, iD int64, leaseToken pgtype.UUID) (int64, error)
+	BALDemandClaim(ctx context.Context, leaseMs int64, chainID pgtype.Numeric) (BALDemandClaimRow, error)
+	BALDemandFinish(ctx context.Context, arg BALDemandFinishParams) (int64, error)
+	BALDemandSubmit(ctx context.Context, arg BALDemandSubmitParams) (string, error)
+	BALStoreAcquiredBody(ctx context.Context, arg BALStoreAcquiredBodyParams) (int64, error)
+	BalanceDemandClaim(ctx context.Context, leaseMs int64, chainID pgtype.Numeric) (BalanceDemandClaimRow, error)
+	BalanceDemandExpire(ctx context.Context, chainID pgtype.Numeric) error
+	BalanceDemandFinish(ctx context.Context, iD int64, generation int64) (int64, error)
+	BalanceDemandLock(ctx context.Context, chain string) error
+	BalanceDemandSubmit(ctx context.Context, arg BalanceDemandSubmitParams) (int64, error)
+	BeaconNetworkConflict(ctx context.Context, chainID pgtype.Numeric) (bool, error)
 	BeginBillingTopupSettlement(ctx context.Context, arg BeginBillingTopupSettlementParams) (pgtype.UUID, error)
 	BindENSSyncJobDependency(ctx context.Context, arg BindENSSyncJobDependencyParams) (int64, error)
+	BlockInputClaim(ctx context.Context, leaseMs int64, chainID pgtype.Numeric, kinds []string) (BlockInputClaimRow, error)
+	BlockInputFinish(ctx context.Context, arg BlockInputFinishParams) (int64, error)
+	BlockInputRead(ctx context.Context, arg BlockInputReadParams) (BlockInputReadRow, error)
+	// A processor may discover that a slot has moved, or an acquired blob has
+	// disappeared from the archive. Preserve the lease counter and retry budget.
+	BlockInputRejectEvidence(ctx context.Context, arg BlockInputRejectEvidenceParams) (int64, error)
+	BlockInputSubmit(ctx context.Context, arg BlockInputSubmitParams) error
+	BlockInputTraceEndpoint(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) (string, error)
+	BlockInputTransactionHashes(ctx context.Context, chainID pgtype.Numeric, blockNumber pgtype.Numeric, blockHash []byte) ([][]byte, error)
 	BrowsingStatus(ctx context.Context, arg BrowsingStatusParams) (BrowsingStatusRow, error)
 	BytecodeDBActiveLookups(ctx context.Context, serviceID []byte) (int64, error)
 	BytecodeDBAddAttempt(ctx context.Context, arg BytecodeDBAddAttemptParams) error
@@ -572,6 +599,7 @@ type Querier interface {
 	LockActiveUserForAPIKey(ctx context.Context, userID pgtype.UUID) (pgtype.UUID, error)
 	LockENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64) (EnsSyncCandidate, error)
 	LockENSSyncSource(ctx context.Context, sourceID int64) (EnsSyncProgress, error)
+	LockStateInputGroup(ctx context.Context, id int64) (string, error)
 	LockUserAPIKey(ctx context.Context, prefix string, userID pgtype.UUID) (ApiKey, error)
 	LockUserAPIKeyForDeletion(ctx context.Context, prefix string, userID pgtype.UUID) (LockUserAPIKeyForDeletionRow, error)
 	MaintenanceLegacyClaimCandidates(ctx context.Context, arg MaintenanceLegacyClaimCandidatesParams) ([]MaintenanceLegacyClaimCandidatesRow, error)
@@ -717,6 +745,7 @@ type Querier interface {
 	ReadENSPendingNameCode(ctx context.Context, arg ReadENSPendingNameCodeParams) (string, error)
 	ReadENSProfilePublications(ctx context.Context, arg ReadENSProfilePublicationsParams) ([]ReadENSProfilePublicationsRow, error)
 	ReadENSSyncCandidate(ctx context.Context, arg ReadENSSyncCandidateParams) (ReadENSSyncCandidateRow, error)
+	ReadSyncCapabilities(ctx context.Context, chainID pgtype.Numeric) (ReadSyncCapabilitiesRow, error)
 	ReconcileBillingPaymentFailed(ctx context.Context, arg ReconcileBillingPaymentFailedParams) (pgtype.UUID, error)
 	ReconcileBillingPaymentSettled(ctx context.Context, arg ReconcileBillingPaymentSettledParams) (pgtype.UUID, error)
 	ReconcileBillingTopupFailed(ctx context.Context, arg ReconcileBillingTopupFailedParams) (pgtype.UUID, error)
@@ -725,6 +754,7 @@ type Querier interface {
 	RecordENSSyncImport(ctx context.Context, arg RecordENSSyncImportParams) error
 	RecordENSSyncReplay(ctx context.Context, arg RecordENSSyncReplayParams) (int64, error)
 	RecordPriceAdapterSuccess(ctx context.Context, arg RecordPriceAdapterSuccessParams) error
+	RecordSyncCapabilities(ctx context.Context, chainID pgtype.Numeric, historicalState string, trace string) error
 	RecordUserLogin(ctx context.Context, loggedInAt pgtype.Timestamptz, iD pgtype.UUID) (User, error)
 	RefreshENSSyncCandidate(ctx context.Context, sourceID int64, candidateID int64, expectedGeneration int64) (int64, error)
 	RegisterDeFiSource(ctx context.Context, arg RegisterDeFiSourceParams) error
@@ -752,6 +782,11 @@ type Querier interface {
 	SaveENSSyncScan(ctx context.Context, arg SaveENSSyncScanParams) error
 	SetENSSyncCollectionTarget(ctx context.Context, arg SetENSSyncCollectionTargetParams) (int64, error)
 	SetENSSyncTarget(ctx context.Context, healthyUntil pgtype.Timestamptz, sourceID int64, blockHash []byte) (int64, error)
+	StageInputClaim(ctx context.Context, leaseMs int64, chainID pgtype.Numeric) (StageInputClaimRow, error)
+	StageInputFinish(ctx context.Context, arg StageInputFinishParams) (int64, error)
+	StageInputRead(ctx context.Context, groupID int64, request []byte) (StageInputReadRow, error)
+	StageInputRetry(ctx context.Context, iD int64, leaseGeneration int64) error
+	StageInputSubmit(ctx context.Context, groupID int64, request []byte) error
 	StartBillingPaymentHandler(ctx context.Context, transitionedAt pgtype.Timestamptz, iD pgtype.UUID, reservationOwner pgtype.UUID) (pgtype.UUID, error)
 	StateCanonicalTip(ctx context.Context, chainID pgtype.Numeric) (StateCanonicalTipRow, error)
 	// Parallel set-returning expressions pair equal-length arrays by position.
@@ -760,6 +795,13 @@ type Querier interface {
 	StateERC721OwnerObservation(ctx context.Context, arg StateERC721OwnerObservationParams) (StateERC721OwnerObservationRow, error)
 	// Parallel set-returning expressions pair equal-length arrays by position.
 	StateERC721OwnerObservations(ctx context.Context, arg StateERC721OwnerObservationsParams) ([]StateERC721OwnerObservationsRow, error)
+	StateInputEndpoint(ctx context.Context, id int64) (string, error)
+	StateInputGroup(ctx context.Context, arg StateInputGroupParams) (int64, error)
+	StateInputLookupGroup(ctx context.Context, arg StateInputLookupGroupParams) (int64, error)
+	StateInputPin(ctx context.Context, iD int64, endpoint string) (string, error)
+	// A group may switch upstreams until its first retained response. Serializing
+	// this update with completion prevents responses from two nodes being combined.
+	StateInputUnpinEmpty(ctx context.Context, arg StateInputUnpinEmptyParams) error
 	StateIsCanonical(ctx context.Context, chainID pgtype.Numeric, number pgtype.Numeric, blockHash []byte) (bool, error)
 	StateWriteClassifyBalancePersistenceMissStatement1(ctx context.Context, arg StateWriteClassifyBalancePersistenceMissStatement1Params) (StateWriteClassifyBalancePersistenceMissStatement1Row, error)
 	StateWriteClassifyERC20BalancePersistenceMiss(ctx context.Context, arg StateWriteClassifyERC20BalancePersistenceMissParams) (StateWriteClassifyERC20BalancePersistenceMissRow, error)
